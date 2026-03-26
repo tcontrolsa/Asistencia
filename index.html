@@ -1358,50 +1358,83 @@
 // 🔴 IMPORTANTE: REEMPLAZA ESTA URL CON LA QUE OBTUVISTE DE APPS SCRIPT 🔴
 const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
 
-// ========== CLIENTE API ==========
+// ========== CLIENTE API CON SOPORTE JSONP ==========
 class ApiClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl;
   }
   
-  async request(accion, params = {}) {
-    try {
-      const requestParams = new URLSearchParams();
-      requestParams.append('accion', accion);
+  // Método para hacer requests usando JSONP (evita CORS)
+  async requestJsonp(accion, params = {}) {
+    return new Promise((resolve, reject) => {
+      // Crear un ID único para el callback
+      const callbackName = `jsonp_callback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Crear el script element
+      const script = document.createElement('script');
+      
+      // Construir URL con parámetros
+      const urlParams = new URLSearchParams();
+      urlParams.append('accion', accion);
+      urlParams.append('callback', callbackName);
       
       Object.keys(params).forEach(key => {
         if (params[key] !== undefined && params[key] !== null) {
           if (typeof params[key] === 'object') {
-            requestParams.append(key, JSON.stringify(params[key]));
+            urlParams.append(key, JSON.stringify(params[key]));
           } else {
-            requestParams.append(key, params[key].toString());
+            urlParams.append(key, params[key].toString());
           }
         }
       });
       
-      const url = `${this.baseUrl}?${requestParams.toString()}`;
+      const url = `${this.baseUrl}?${urlParams.toString()}`;
       
-      const response = await fetch(url, {
-        method: 'GET',
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'application/json',
+      // Definir la función callback global
+      window[callbackName] = function(data) {
+        // Limpiar
+        delete window[callbackName];
+        document.body.removeChild(script);
+        
+        // Resolver la promesa
+        resolve(data);
+      };
+      
+      // Manejar errores
+      script.onerror = function() {
+        delete window[callbackName];
+        document.body.removeChild(script);
+        reject(new Error('Error de conexión con el servidor'));
+      };
+      
+      // Cargar el script
+      script.src = url;
+      document.body.appendChild(script);
+      
+      // Timeout por si tarda demasiado
+      setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          document.body.removeChild(script);
+          reject(new Error('Timeout en la solicitud'));
         }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
+      }, 30000);
+    });
+  }
+  
+  // Método principal que decide qué técnica usar
+  async request(accion, params = {}) {
+    try {
+      // Intentar primero con JSONP (funciona siempre)
+      const data = await this.requestJsonp(accion, params);
       return data;
-      
     } catch (error) {
       console.error(`Error en API call (${accion}):`, error);
       throw error;
     }
   }
   
+  // Métodos específicos (sin cambios)
   async verificarDispositivo(deviceToken) {
     return this.request('verificarDispositivo', { deviceToken });
   }
