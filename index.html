@@ -1355,20 +1355,18 @@
 
 <script>
 // ========== CONFIGURACIÓN DE API ==========
-// 🔴 IMPORTANTE: REEMPLAZA ESTA URL CON LA QUE OBTUVISTE DE APPS SCRIPT 🔴
 const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
 
-// ========== CLIENTE API CON SOPORTE JSONP ==========
+// ========== CLIENTE API CON JSONP (SIN CORS) ==========
 class ApiClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl;
   }
   
-  // Método para hacer requests usando JSONP (evita CORS)
-  async requestJsonp(accion, params = {}) {
+  request(accion, params = {}) {
     return new Promise((resolve, reject) => {
       // Crear un ID único para el callback
-      const callbackName = `jsonp_callback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const callbackName = `jsonp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       // Crear el script element
       const script = document.createElement('script');
@@ -1394,7 +1392,7 @@ class ApiClient {
       window[callbackName] = function(data) {
         // Limpiar
         delete window[callbackName];
-        document.body.removeChild(script);
+        if (script.parentNode) script.parentNode.removeChild(script);
         
         // Resolver la promesa
         resolve(data);
@@ -1403,38 +1401,33 @@ class ApiClient {
       // Manejar errores
       script.onerror = function() {
         delete window[callbackName];
-        document.body.removeChild(script);
+        if (script.parentNode) script.parentNode.removeChild(script);
         reject(new Error('Error de conexión con el servidor'));
+      };
+      
+      // Timeout
+      const timeoutId = setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+          reject(new Error('Timeout en la solicitud'));
+        }
+      }, 30000);
+      
+      // Asociar el timeout con la resolución
+      const originalCallback = window[callbackName];
+      window[callbackName] = function(data) {
+        clearTimeout(timeoutId);
+        originalCallback(data);
       };
       
       // Cargar el script
       script.src = url;
       document.body.appendChild(script);
-      
-      // Timeout por si tarda demasiado
-      setTimeout(() => {
-        if (window[callbackName]) {
-          delete window[callbackName];
-          document.body.removeChild(script);
-          reject(new Error('Timeout en la solicitud'));
-        }
-      }, 30000);
     });
   }
   
-  // Método principal que decide qué técnica usar
-  async request(accion, params = {}) {
-    try {
-      // Intentar primero con JSONP (funciona siempre)
-      const data = await this.requestJsonp(accion, params);
-      return data;
-    } catch (error) {
-      console.error(`Error en API call (${accion}):`, error);
-      throw error;
-    }
-  }
-  
-  // Métodos específicos (sin cambios)
+  // Métodos específicos
   async verificarDispositivo(deviceToken) {
     return this.request('verificarDispositivo', { deviceToken });
   }
@@ -1477,6 +1470,10 @@ const CONFIG_EMPRESA = {
   LNG: -78.47896772889067,
   RADIO_METROS: 250
 };
+
+// ========== RESTO DE TU CÓDIGO JAVASCRIPT ==========
+// [AQUÍ VA TODO EL RESTO DE TU CÓDIGO JAVASCRIPT ORIGINAL]
+// Las funciones: formatearFecha, calcularDistancia, verificarDistanciaEmpresa, etc.
 
 // ========== VARIABLES GLOBALES ==========
 let deviceToken = null;
