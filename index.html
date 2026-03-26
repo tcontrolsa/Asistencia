@@ -256,7 +256,7 @@
     }
 
     /* ===== TARJETAS ===== */
-    .card {
+    .card, .mini-dashboard, .credential, .pin-card, .registro-card {
       background: white;
       border-radius: var(--radius-2xl);
       padding: var(--space-lg);
@@ -268,14 +268,6 @@
     }
 
     .mini-dashboard {
-      background: white;
-      border-radius: var(--radius-2xl);
-      padding: var(--space-lg);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.08);
-      border: 1px solid rgba(0,0,0,0.02);
-      width: 100%;
-      height: auto;
-      min-height: fit-content;
       margin-bottom: var(--space-md);
     }
 
@@ -591,17 +583,6 @@
     }
 
     /* ===== CREDENCIAL ===== */
-    .credential {
-      background: white;
-      border-radius: var(--radius-2xl);
-      padding: var(--space-xl);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.08);
-      border: 1px solid rgba(0,0,0,0.02);
-      width: 100%;
-      height: auto;
-      min-height: fit-content;
-    }
-
     .photo-container {
       display: flex;
       justify-content: center;
@@ -846,16 +827,6 @@
     }
 
     /* ===== PIN Y REGISTRO ===== */
-    .pin-card,
-    .registro-card {
-      background: white;
-      border-radius: var(--radius-2xl);
-      padding: var(--space-xl);
-      width: 100%;
-      height: auto;
-      min-height: fit-content;
-    }
-
     .pin-input {
       width: 100%;
       padding: var(--space-md);
@@ -1467,10 +1438,12 @@ class ApiClient {
 // Inicializar cliente API
 const api = new ApiClient(API_URL);
 
-// ========== CONFIGURACIÓN ==========
-const LAT_EMPRESA = -0.1288771313385675;
-const LNG_EMPRESA = -78.47896772889067;
-const RADIO_METROS = 250;
+// ========== CONFIGURACIÓN DE LA EMPRESA ==========
+const CONFIG_EMPRESA = {
+  LAT: -0.1288771313385675,
+  LNG: -78.47896772889067,
+  RADIO_METROS: 250
+};
 
 // ========== VARIABLES GLOBALES ==========
 let deviceToken = null;
@@ -1606,13 +1579,13 @@ function verificarDistanciaEmpresa() {
   
   const distancia = calcularDistancia(
     posicion.lat, posicion.lng,
-    LAT_EMPRESA, LNG_EMPRESA
+    CONFIG_EMPRESA.LAT, CONFIG_EMPRESA.LNG
   );
   
   actualizarIndicadorDistancia(distancia);
   
-  if (distancia > RADIO_METROS) {
-    mostrarToast(`❌ Debes estar dentro del radio de la empresa (${RADIO_METROS}m). Distancia actual: ${Math.round(distancia)}m`, 'error');
+  if (distancia > CONFIG_EMPRESA.RADIO_METROS) {
+    mostrarToast(`❌ Debes estar dentro del radio de la empresa (${CONFIG_EMPRESA.RADIO_METROS}m). Distancia actual: ${Math.round(distancia)}m`, 'error');
     return false;
   }
   
@@ -1624,15 +1597,15 @@ function actualizarIndicadorDistancia(distancia) {
   if (!indicator) return;
   
   if (distancia === undefined && posicion.lat) {
-    distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+    distancia = calcularDistancia(posicion.lat, posicion.lng, CONFIG_EMPRESA.LAT, CONFIG_EMPRESA.LNG);
   }
   
   if (distancia !== undefined) {
     indicator.classList.remove('hidden');
     const distanciaRedondeada = Math.round(distancia);
-    indicator.textContent = `📍 ${distanciaRedondeada}m / ${RADIO_METROS}m`;
+    indicator.textContent = `📍 ${distanciaRedondeada}m / ${CONFIG_EMPRESA.RADIO_METROS}m`;
     
-    if (distancia <= RADIO_METROS) {
+    if (distancia <= CONFIG_EMPRESA.RADIO_METROS) {
       indicator.classList.add('valid');
       indicator.classList.remove('invalid');
     } else {
@@ -2309,8 +2282,8 @@ function iniciarRegistro(tipo) {
     document.getElementById('previewAlmuerzoRow').style.display = 'none';
     
     if (posicion.lat && posicion.lng) {
-      const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-      document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${RADIO_METROS}m`;
+      const distancia = calcularDistancia(posicion.lat, posicion.lng, CONFIG_EMPRESA.LAT, CONFIG_EMPRESA.LNG);
+      document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${CONFIG_EMPRESA.RADIO_METROS}m`;
       document.getElementById('previewDistanciaRow').style.display = 'flex';
     } else {
       document.getElementById('previewDistanciaRow').style.display = 'none';
@@ -2352,8 +2325,8 @@ function irAConfirmacion() {
   document.getElementById('previewAlmuerzoRow').style.display = 'flex';
   
   if (posicion.lat && posicion.lng) {
-    const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-    document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${RADIO_METROS}m`;
+    const distancia = calcularDistancia(posicion.lat, posicion.lng, CONFIG_EMPRESA.LAT, CONFIG_EMPRESA.LNG);
+    document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${CONFIG_EMPRESA.RADIO_METROS}m`;
     document.getElementById('previewDistanciaRow').style.display = 'flex';
   } else {
     document.getElementById('previewDistanciaRow').style.display = 'none';
@@ -2385,8 +2358,8 @@ function registrarSalidaDesdeResumen() {
   document.getElementById('previewAlmuerzoRow').style.display = 'none';
   
   if (posicion.lat && posicion.lng) {
-    const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-    document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${RADIO_METROS}m`;
+    const distancia = calcularDistancia(posicion.lat, posicion.lng, CONFIG_EMPRESA.LAT, CONFIG_EMPRESA.LNG);
+    document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${CONFIG_EMPRESA.RADIO_METROS}m`;
     document.getElementById('previewDistanciaRow').style.display = 'flex';
   } else {
     document.getElementById('previewDistanciaRow').style.display = 'none';
