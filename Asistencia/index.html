@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    /* ===== TODOS TUS ESTILOS CSS ORIGINALES VAN AQUÍ ===== */
+    /* Copia todo el CSS de tu index.html original aquí */
+    /* ... */
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading" class="loading hidden">
+  <div class="spinner"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- Distance Indicator -->
+<div id="distanceIndicator" class="distance-indicator hidden"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>CONTROL 2026</h1>
+    <div style="display: flex; gap: var(--space-sm);">
+      <div class="header-badge" id="deviceStatusHeader">
+        <i class="fas fa-shield-alt"></i> Guardia
+      </div>
+      <div class="header-badge logout" onclick="cerrarSesion()" id="btnLogout" style="display: none;">
+        <i class="fas fa-sign-out-alt"></i> Salir
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="cambiarTab('credencial')" id="tabCredencial">
+      <i class="fas fa-id-card"></i> <span>Credencial</span>
+    </div>
+    <div class="tab" onclick="cambiarTab('resumen')" id="tabResumen">
+      <i class="fas fa-chart-line"></i> <span>Resumen</span>
+    </div>
+  </div>
+
+  <!-- TAB CREDENCIAL (el mismo HTML que tenías) -->
+  <!-- Copia todo el HTML de tu index.html original aquí -->
+  <!-- ... -->
+  
+</div>
+
+<script>
+// ========== CONFIGURACIÓN DE API ==========
+// REEMPLAZA ESTA URL CON LA QUE OBTUVISTE DE APPS SCRIPT
+const API_URL = 'https://script.google.com/macros/s/AKfycbzmw94-YHktsTH94iD-8Cdpk7YLCZ9meKFKzPYGX7M/dev';
+
+// ========== CLIENTE API MEJORADO ==========
+class ApiClient {
+  constructor(baseUrl) {
+    this.baseUrl = baseUrl;
+  }
+  
+  async request(accion, params = {}) {
+    try {
+      // Agregar la acción a los parámetros
+      const requestParams = new URLSearchParams();
+      requestParams.append('accion', accion);
+      
+      // Agregar todos los parámetros
+      Object.keys(params).forEach(key => {
+        if (params[key] !== undefined && params[key] !== null) {
+          if (typeof params[key] === 'object') {
+            requestParams.append(key, JSON.stringify(params[key]));
+          } else {
+            requestParams.append(key, params[key].toString());
+          }
+        }
+      });
+      
+      const url = `${this.baseUrl}?${requestParams.toString()}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+      
+    } catch (error) {
+      console.error(`Error en API call (${accion}):`, error);
+      throw error;
+    }
+  }
+  
+  // Métodos específicos (adaptados de tus funciones originales)
+  async verificarDispositivo(deviceToken) {
+    return this.request('verificarDispositivo', { deviceToken });
+  }
+  
+  async registrarDispositivo(empleadoId, pin, deviceToken) {
+    return this.request('registrarDispositivo', { empleadoId, pin, deviceToken });
+  }
+  
+  async verificarPIN(pin, deviceToken) {
+    return this.request('verificarPIN', { pin, deviceToken });
+  }
+  
+  async obtenerEstado(id, deviceToken) {
+    return this.request('obtenerEstado', { id, deviceToken });
+  }
+  
+  async guardarRegistro(data) {
+    return this.request('guardarRegistro', data);
+  }
+  
+  async obtenerRegistros(empleadoId) {
+    return this.request('obtenerRegistros', { empleadoId });
+  }
+  
+  async obtenerDatosSupervisor() {
+    return this.request('obtenerDatosSupervisor');
+  }
+  
+  async verificarCambios(ultimoTimestamp, totalRegistros) {
+    return this.request('verificarCambios', { ultimoTimestamp, totalRegistros });
+  }
+  
+  async desvincularDispositivo(empleadoId, deviceToken) {
+    return this.request('desvincularDispositivo', { empleadoId, deviceToken });
+  }
+  
+  async verificarToken(token, empleadoId) {
+    return this.request('verificarToken', { token, empleadoId });
+  }
+  
+  async obtenerInfoEmpleado(id) {
+    return this.request('obtenerInfoEmpleado', { id });
+  }
+}
+
+// Inicializar cliente API
+const api = new ApiClient(API_URL);
+
+// ========== FUNCIONES DE UTILIDAD ==========
+// Copia TODAS tus funciones JavaScript originales aquí
+// Solo cambia las llamadas a google.script.run por las llamadas a api.*
+// Ejemplo:
+// ANTES: google.script.run.withSuccessHandler(...).verificarDispositivoTienePIN(deviceToken)
+// AHORA: api.verificarDispositivo(deviceToken).then(...).catch(...)
+
+// ========== CONFIGURACIÓN ==========
+const LAT_EMPRESA = -0.1288771313385675;
+const LNG_EMPRESA = -78.47896772889067;
+const RADIO_METROS = 250;
+
+// ========== VARIABLES GLOBALES ==========
+let deviceToken = null;
+let posicion = { lat: null, lng: null };
+let gpsActivo = false;
+let gpsPermissionGranted = false;
+let registrosCompletos = [];
+let intervaloGPS = null;
+let ultimaUbicacionValida = null;
+let reintentosGPS = 0;
+const MAX_REINTENTOS_GPS = 3;
+
+let estado = {
+  tieneEntrada: false,
+  tieneSalida: false,
+  horaEntrada: null,
+  horaSalida: null,
+  almuerzo: null,
+  horaEntradaObj: null,
+  horaSalidaObj: null,
+  esSupervisor: false
+};
+
+let empleado = {
+  id: '',
+  nombre: '',
+  area: '',
+  foto_url: '',
+  tipoRegistro: '',
+  almuerzo: ''
+};
+
+// ========== FUNCIONES DE UTILIDAD ==========
+function generarDeviceToken() {
+  try {
+    let token = localStorage.getItem('DEVICE_TOKEN');
+    if (!token) {
+      const componentes = [
+        navigator.userAgent.replace(/\s+/g, '').substring(0, 20),
+        navigator.language || 'es',
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset()
+      ];
+      
+      let hash = 0;
+      const str = componentes.join('|');
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash = hash & hash;
+      }
+      
+      const hashHex = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+      token = 'DEV_' + hashHex;
+      
+      localStorage.setItem('DEVICE_TOKEN', token);
+    }
+    return token;
+  } catch (e) {
+    return 'DEV_' + Date.now().toString(36).slice(-4);
+  }
+}
+
+function generarPIN() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+function formatearFechaCompleta() {
+  const f = new Date();
+  return f.toLocaleDateString('es-EC', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+}
+
+function formatearFechaCorta() {
+  const f = new Date();
+  const day = String(f.getDate()).padStart(2, '0');
+  const month = String(f.getMonth() + 1).padStart(2, '0');
+  const year = f.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function formatearHora(fecha) {
+  if (!fecha) return '--:--';
+  try {
+    const f = new Date(fecha);
+    if (isNaN(f.getTime())) return '--:--';
+    let hours = f.getHours();
+    const minutes = String(f.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'p. m.' : 'a. m.';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${hours}:${minutes} ${ampm}`;
+  } catch (e) {
+    return '--:--';
+  }
+}
+
+function mostrarToast(mensaje, tipo = 'info') {
+  const toast = document.getElementById('toast');
+  toast.textContent = mensaje;
+  toast.classList.remove('hidden');
+  
+  if (tipo === 'error') toast.style.background = '#dc2626';
+  else if (tipo === 'success') toast.style.background = '#059669';
+  else toast.style.background = '#0f172a';
+  
+  setTimeout(() => toast.classList.add('hidden'), 3000);
+}
+
+function showLoading(show) {
+  document.getElementById('loading').classList.toggle('hidden', !show);
+}
+
+// ========== FUNCIONES DE DISTANCIA ==========
+function calcularDistancia(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const φ1 = lat1 * Math.PI/180;
+  const φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c;
+}
+
+function verificarDistanciaEmpresa() {
+  if (!posicion.lat || !posicion.lng) {
+    mostrarToast('No se ha podido obtener tu ubicación', 'error');
+    return false;
+  }
+  
+  const distancia = calcularDistancia(
+    posicion.lat, posicion.lng,
+    LAT_EMPRESA, LNG_EMPRESA
+  );
+  
+  actualizarIndicadorDistancia(distancia);
+  
+  if (distancia > RADIO_METROS) {
+    mostrarToast(`❌ Debes estar dentro del radio de la empresa (${RADIO_METROS}m). Distancia actual: ${Math.round(distancia)}m`, 'error');
+    return false;
+  }
+  
+  return true;
+}
+
+function actualizarIndicadorDistancia(distancia) {
+  const indicator = document.getElementById('distanceIndicator');
+  if (!indicator) return;
+  
+  if (distancia === undefined && posicion.lat) {
+    distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+  }
+  
+  if (distancia !== undefined) {
+    indicator.classList.remove('hidden');
+    const distanciaRedondeada = Math.round(distancia);
+    indicator.textContent = `📍 ${distanciaRedondeada}m / ${RADIO_METROS}m`;
+    
+    if (distancia <= RADIO_METROS) {
+      indicator.classList.add('valid');
+      indicator.classList.remove('invalid');
+    } else {
+      indicator.classList.add('invalid');
+      indicator.classList.remove('valid');
+    }
+  } else {
+    indicator.classList.add('hidden');
+  }
+}
+
+// ========== FUNCIONES GPS ==========
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+function handleGPSError(error) {
+  let errorMsg = '';
+  switch(error.code) {
+    case error.PERMISSION_DENIED:
+      errorMsg = 'Permiso de ubicación denegado. ';
+      if (isIOS()) {
+        errorMsg += 'Configuración > Safari > Ubicación > Permitir';
+      } else {
+        errorMsg += 'Habilita la ubicación en la configuración del navegador';
+      }
+      break;
+    case error.POSITION_UNAVAILABLE:
+      errorMsg = 'No se pudo obtener la ubicación. Verifica que el GPS esté activo.';
+      break;
+    case error.TIMEOUT:
+      errorMsg = 'Tiempo de espera agotado. Intenta en un lugar con mejor señal.';
+      break;
+    default:
+      errorMsg = 'Error al obtener ubicación: ' + error.message;
+  }
+  mostrarToast(errorMsg, 'error');
+}
+
+function guardarUbicacionCache() {
+  if (posicion.lat && posicion.lng) {
+    ultimaUbicacionValida = { ...posicion };
+    localStorage.setItem('ULTIMA_UBICACION', JSON.stringify(ultimaUbicacionValida));
+  }
+}
+
+function restaurarUbicacionCache() {
+  const cache = localStorage.getItem('ULTIMA_UBICACION');
+  if (cache) {
+    try {
+      ultimaUbicacionValida = JSON.parse(cache);
+      if (!posicion.lat && ultimaUbicacionValida.lat) {
+        posicion = { ...ultimaUbicacionValida };
+        mostrarToast('Usando última ubicación conocida', 'info');
+        actualizarIndicadorDistancia();
+      }
+    } catch(e) {}
+  }
+}
+
+function solicitarPermisoGPS() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      mostrarToast('Geolocalización no soportada', 'error');
+      reject(new Error('Geolocalización no soportada'));
+      return;
+    }
+
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
+
+    let attempts = 0;
+    
+    function tryGetPosition() {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const nuevaPos = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          
+          posicion = nuevaPos;
+          gpsActivo = true;
+          gpsPermissionGranted = true;
+          
+          const accuracy = position.coords.accuracy;
+          if (accuracy > 100 && attempts < MAX_REINTENTOS_GPS) {
+            mostrarToast(`Precisión GPS baja (${Math.round(accuracy)}m). Mejorando...`, 'info');
+            attempts++;
+            setTimeout(tryGetPosition, 2000);
+            return;
+          }
+          
+          guardarUbicacionCache();
+          actualizarIndicadorDistancia();
+          resolve(position);
+        },
+        (error) => {
+          if (attempts < MAX_REINTENTOS_GPS) {
+            attempts++;
+            mostrarToast(`Reintentando obtener ubicación (${attempts}/${MAX_REINTENTOS_GPS})...`, 'info');
+            setTimeout(tryGetPosition, 2000);
+          } else {
+            gpsActivo = false;
+            gpsPermissionGranted = false;
+            handleGPSError(error);
+            reject(error);
+          }
+        },
+        options
+      );
+    }
+    
+    tryGetPosition();
+  });
+}
+
+function iniciarGPSConPermiso() {
+  solicitarPermisoGPS().catch(() => {});
+}
+
+function verificarGPSConMensaje() {
+  if (!gpsActivo || !posicion.lat) {
+    if (isIOS()) {
+      mostrarToast('📍 Para iOS: Toca "Permitir ubicación" y asegúrate que Safari tenga acceso en Configuración', 'info');
+    } else {
+      mostrarToast('Obteniendo ubicación...', 'info');
+    }
+    return false;
+  }
+  return true;
+}
+
+function iniciarMonitoreoGPS() {
+  if (intervaloGPS) clearInterval(intervaloGPS);
+  
+  intervaloGPS = setInterval(() => {
+    if (empleado.id && !estado.tieneSalida) {
+      solicitarPermisoGPS().catch(() => {});
+    }
+  }, 60000);
+}
+
+function detenerMonitoreoGPS() {
+  if (intervaloGPS) {
+    clearInterval(intervaloGPS);
+    intervaloGPS = null;
+  }
+}
+
+// ========== VERIFICACIÓN DE SESIÓN ==========
+function limpiarAlmacenamiento() {
+  try {
+    localStorage.removeItem('SESSION_DATA');
+    localStorage.removeItem('DEVICE_TOKEN');
+    localStorage.removeItem('ULTIMA_UBICACION');
+    sessionStorage.clear();
+    console.log('✅ Almacenamiento limpiado');
+  } catch (e) {}
+}
+
+function cerrarSesion() {
+  if (confirm('¿Estás seguro de que quieres cerrar sesión? Se eliminará el acceso de este dispositivo.')) {
+    showLoading(true);
+    
+    if (empleado.id && deviceToken) {
+      api.desvincularDispositivo(empleado.id, deviceToken)
+        .then(() => {
+          limpiarAlmacenamiento();
+          detenerMonitoreoGPS();
+          mostrarToast('Sesión cerrada correctamente', 'success');
+          window.location.reload();
+        })
+        .catch(() => {
+          limpiarAlmacenamiento();
+          window.location.reload();
+        });
+    } else {
+      limpiarAlmacenamiento();
+      window.location.reload();
+    }
+  }
+}
+
+function verificarSesion() {
+  const sessionData = localStorage.getItem('SESSION_DATA');
+  
+  if (sessionData) {
+    try {
+      const data = JSON.parse(sessionData);
+      
+      api.verificarToken(data.token, data.empleadoId)
+        .then(res => {
+          if (!res.valida) {
+            localStorage.removeItem('SESSION_DATA');
+            mostrarToast('Sesión expirada o dispositivo desvinculado', 'info');
+            window.location.reload();
+          }
+        })
+        .catch(() => {});
+        
+    } catch (e) {}
+  }
+}
+
+// ========== VERIFICACIÓN INICIAL ==========
+function verificarEstadoInicial() {
+  restaurarUbicacionCache();
+  iniciarGPSConPermiso();
+  
+  showLoading(true);
+  deviceToken = generarDeviceToken();
+  
+  try {
+    const sessionData = localStorage.getItem('SESSION_DATA');
+    if (sessionData) {
+      const data = JSON.parse(sessionData);
+      if (data.empleadoId && data.token === deviceToken) {
+        cargarEmpleadoPorId(data.empleadoId);
+        return;
+      }
+    }
+  } catch (e) {}
+  
+  api.verificarDispositivo(deviceToken)
+    .then(res => {
+      showLoading(false);
+      
+      if (res && res.tienePin) {
+        document.getElementById('verifyingScreen').classList.add('hidden');
+        document.getElementById('pinScreen').classList.remove('hidden');
+        document.getElementById('pinInput').focus();
+      } else {
+        document.getElementById('verifyingScreen').classList.add('hidden');
+        document.getElementById('registroInicialScreen').classList.remove('hidden');
+        const pinGenerado = generarPIN();
+        document.getElementById('registroPinDisplay').textContent = pinGenerado;
+      }
+    })
+    .catch(error => {
+      showLoading(false);
+      mostrarToast('Error de conexión', 'error');
+      document.getElementById('verifyingScreen').classList.add('hidden');
+      document.getElementById('pinScreen').classList.remove('hidden');
+    });
+}
+
+// ========== VERIFICACIÓN DE PIN ==========
+function verificarPIN() {
+  const pin = document.getElementById('pinInput').value.trim();
+  
+  if (!pin || pin.length < 4) {
+    mostrarToast('Ingresa tu PIN de 4 dígitos', 'error');
+    return;
+  }
+  
+  showLoading(true);
+  document.getElementById('btnVerificarPIN').disabled = true;
+  
+  api.verificarPIN(pin, deviceToken)
+    .then(res => {
+      showLoading(false);
+      document.getElementById('btnVerificarPIN').disabled = false;
+      
+      if (res.error) {
+        document.getElementById('pinResult').classList.remove('hidden');
+        document.getElementById('pinResult').innerHTML = '❌ ' + res.error;
+        document.getElementById('pinResult').style.background = '#fee2e2';
+        document.getElementById('pinResult').style.color = '#991b1b';
+        mostrarToast(res.error, 'error');
+        return;
+      }
+      
+      if (res.valido) {
+        document.getElementById('pinResult').classList.add('hidden');
+        
+        try {
+          localStorage.setItem('SESSION_DATA', JSON.stringify({
+            empleadoId: res.empleado.id,
+            token: deviceToken,
+            timestamp: new Date().toISOString()
+          }));
+        } catch (e) {}
+        
+        estado = {
+          tieneEntrada: res.empleado.tieneEntrada || false,
+          tieneSalida: res.empleado.tieneSalida || false,
+          horaEntrada: res.empleado.horaEntrada || null,
+          horaSalida: res.empleado.horaSalida || null,
+          almuerzo: res.empleado.almuerzo || null,
+          horaEntradaObj: res.empleado.horaEntrada ? new Date(res.empleado.horaEntrada) : null,
+          horaSalidaObj: res.empleado.horaSalida ? new Date(res.empleado.horaSalida) : null,
+          esSupervisor: res.empleado.esSupervisor || false
+        };
+        
+        empleado = {
+          id: res.empleado.id,
+          nombre: res.empleado.nombre || 'Empleado',
+          area: res.empleado.area || 'Área',
+          foto_url: res.empleado.foto_url || '',
+          tipoRegistro: '',
+          almuerzo: ''
+        };
+        
+        actualizarCredencial();
+        document.getElementById('pinScreen').classList.add('hidden');
+        document.getElementById('credentialScreen').classList.remove('hidden');
+        document.getElementById('btnLogout').style.display = 'flex';
+        document.getElementById('deviceStatusHeader').innerHTML = '<i class="fas fa-check-circle"></i> ' + empleado.nombre.split(' ')[0];
+        
+        obtenerRegistrosEmpleado();
+        iniciarMonitoreoGPS();
+        mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
+        
+        if (estado.esSupervisor) {
+          document.getElementById('btnSupervisor').style.display = 'flex';
+        } else {
+          document.getElementById('btnSupervisor').style.display = 'none';
+        }
+        
+      } else {
+        document.getElementById('pinResult').classList.remove('hidden');
+        document.getElementById('pinResult').innerHTML = '❌ PIN incorrecto';
+        document.getElementById('pinResult').style.background = '#fee2e2';
+        document.getElementById('pinResult').style.color = '#991b1b';
+        mostrarToast('PIN incorrecto', 'error');
+      }
+    })
+    .catch(error => {
+      showLoading(false);
+      document.getElementById('btnVerificarPIN').disabled = false;
+      mostrarToast('Error de conexión', 'error');
+    });
+}
+
+// ========== MOSTRAR REGISTRO INICIAL ==========
+function mostrarRegistroInicial() {
+  document.getElementById('pinScreen').classList.add('hidden');
+  document.getElementById('registroInicialScreen').classList.remove('hidden');
+  
+  const pinGenerado = generarPIN();
+  document.getElementById('registroPinDisplay').textContent = pinGenerado;
+  document.getElementById('registroEmployeeId').value = '';
+  document.getElementById('registroEmployeeId').focus();
+}
+
+// ========== CONFIRMAR REGISTRO INICIAL ==========
+function confirmarRegistroInicial() {
+  const empleadoId = document.getElementById('registroEmployeeId').value.trim();
+  const pin = document.getElementById('registroPinDisplay').textContent;
+  
+  if (!empleadoId) {
+    mostrarToast('Ingresa tu ID de empleado', 'error');
+    return;
+  }
+  
+  showLoading(true);
+  
+  api.registrarDispositivo(empleadoId, pin, deviceToken)
+    .then(res => {
+      showLoading(false);
+      
+      if (res.error) {
+        mostrarToast(res.error, 'error');
+        return;
+      }
+      
+      if (res.ok) {
+        mostrarToast('Registro exitoso. Guarda tu PIN: ' + pin, 'success');
+        
+        try {
+          localStorage.setItem('SESSION_DATA', JSON.stringify({
+            empleadoId: empleadoId,
+            token: deviceToken,
+            timestamp: new Date().toISOString()
+          }));
+        } catch (e) {}
+        
+        cargarEmpleadoPorId(empleadoId);
+      }
+    })
+    .catch(error => {
+      showLoading(false);
+      mostrarToast('Error de conexión', 'error');
+    });
+}
+
+// ========== CARGAR EMPLEADO POR ID ==========
+function cargarEmpleadoPorId(id) {
+  showLoading(true);
+  
+  api.obtenerEstado(id, null)
+    .then(res => {
+      showLoading(false);
+      
+      if (res.error) {
+        mostrarToast(res.error, 'error');
+        volverAPIN();
+        return;
+      }
+      
+      estado = {
+        tieneEntrada: res.tieneEntrada || false,
+        tieneSalida: res.tieneSalida || false,
+        horaEntrada: res.horaEntrada ? formatearHora(res.horaEntrada) : null,
+        horaSalida: res.horaSalida ? formatearHora(res.horaSalida) : null,
+        almuerzo: res.almuerzo || null,
+        horaEntradaObj: res.horaEntrada ? new Date(res.horaEntrada) : null,
+        horaSalidaObj: res.horaSalida ? new Date(res.horaSalida) : null,
+        esSupervisor: res.esSupervisor || false
+      };
+      
+      empleado = {
+        id: res.id,
+        nombre: res.nombre || 'Empleado',
+        area: res.area || 'Área',
+        foto_url: res.foto_url || '',
+        tipoRegistro: '',
+        almuerzo: ''
+      };
+      
+      actualizarCredencial();
+      document.getElementById('registroInicialScreen').classList.add('hidden');
+      document.getElementById('pinScreen').classList.add('hidden');
+      document.getElementById('verifyingScreen').classList.add('hidden');
+      document.getElementById('credentialScreen').classList.remove('hidden');
+      document.getElementById('btnLogout').style.display = 'flex';
+      document.getElementById('deviceStatusHeader').innerHTML = '<i class="fas fa-check-circle"></i> ' + empleado.nombre.split(' ')[0];
+      
+      obtenerRegistrosEmpleado();
+      iniciarMonitoreoGPS();
+      mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
+      
+      if (estado.esSupervisor) {
+        document.getElementById('btnSupervisor').style.display = 'flex';
+      } else {
+        document.getElementById('btnSupervisor').style.display = 'none';
+      }
+    })
+    .catch(error => {
+      showLoading(false);
+      mostrarToast('Error al cargar empleado', 'error');
+      volverAPIN();
+    });
+}
+
+// ========== ABRIR SUPERVISOR ==========
+function abrirSupervisor() {
+  window.open('supervisor.html', '_blank');
+}
+
+// ========== VOLVER A PANTALLA DE PIN ==========
+function volverAPIN() {
+  document.getElementById('registroInicialScreen').classList.add('hidden');
+  document.getElementById('pinScreen').classList.remove('hidden');
+  document.getElementById('pinInput').value = '';
+  document.getElementById('pinInput').focus();
+  document.getElementById('pinResult').classList.add('hidden');
+  document.getElementById('btnLogout').style.display = 'none';
+}
+
+// ========== ACTUALIZAR CREDENCIAL ==========
+function actualizarCredencial() {
+  document.getElementById('fechaActual').innerHTML = '<i class="far fa-calendar-alt"></i> ' + formatearFechaCompleta();
+  
+  const nombreCompleto = empleado.nombre || 'EMPLEADO';
+  const partes = nombreCompleto.split(' ');
+  const primerNombre = partes[0] || 'EMPLEADO';
+  const apellido = partes.slice(1).join(' ') || 'APELLIDO';
+  
+  document.getElementById('firstName').textContent = primerNombre.toUpperCase();
+  document.getElementById('lastName').textContent = apellido.toUpperCase();
+  document.getElementById('position').textContent = empleado.area || 'Área';
+  document.getElementById('idNo').textContent = empleado.id || '-';
+  document.getElementById('area').textContent = empleado.area || '-';
+  document.getElementById('deviceInfo').innerHTML = '🔐 Sesión activa';
+  
+  const photoImg = document.getElementById('employeePhoto');
+  const photoPlaceholder = document.getElementById('photoPlaceholder');
+  
+  if (empleado.foto_url && empleado.foto_url.trim() !== '') {
+    photoImg.src = empleado.foto_url;
+    photoImg.classList.remove('hidden');
+    photoPlaceholder.classList.add('hidden');
+  } else {
+    photoImg.classList.add('hidden');
+    photoPlaceholder.classList.remove('hidden');
+  }
+  
+  document.getElementById('btnEntrada').disabled = estado.tieneEntrada;
+  document.getElementById('btnSalida').disabled = !estado.tieneEntrada || estado.tieneSalida;
+  
+  if (estado.tieneEntrada) {
+    document.getElementById('attendanceEntrada').innerHTML = '<i class="fas fa-check-circle" style="color: #22c55e;"></i> ' + (estado.horaEntrada || 'Registrada');
+  } else {
+    document.getElementById('attendanceEntrada').innerHTML = '<i class="fas fa-clock" style="color: #eab308;"></i> Pendiente';
+  }
+  
+  if (estado.tieneSalida) {
+    document.getElementById('attendanceSalida').innerHTML = '<i class="fas fa-check-circle" style="color: #22c55e;"></i> ' + (estado.horaSalida || 'Registrada');
+  } else {
+    document.getElementById('attendanceSalida').innerHTML = '<i class="fas fa-clock" style="color: #eab308;"></i> Pendiente';
+  }
+  
+  document.getElementById('attendanceAlmuerzo').textContent = estado.almuerzo ? 
+    (estado.almuerzo === 'SI' ? 'Planta' : 'Fuera') : '-';
+}
+
+// ========== OBTENER REGISTROS ==========
+function obtenerRegistrosEmpleado() {
+  if (!empleado.id) return;
+  
+  api.obtenerRegistros(empleado.id)
+    .then(registros => {
+      registrosCompletos = registros || [];
+      actualizarMiniDashboard();
+    })
+    .catch(error => {
+      console.error("Error al obtener registros:", error);
+    });
+}
+
+// ========== ACTUALIZAR MINI DASHBOARD ==========
+function actualizarMiniDashboard() {
+  if (!empleado.id) {
+    document.getElementById('resumenNombre').textContent = 'No hay empleado';
+    document.getElementById('resumenId').textContent = '-';
+    document.getElementById('resumenAvatar').textContent = '?';
+    return;
+  }
+
+  document.getElementById('resumenFecha').textContent = formatearFechaCorta();
+  
+  const nombreCompleto = empleado.nombre || 'Empleado';
+  document.getElementById('resumenNombre').textContent = nombreCompleto;
+  document.getElementById('resumenId').textContent = empleado.id;
+  document.getElementById('resumenAvatar').textContent = nombreCompleto.charAt(0).toUpperCase();
+  
+  const hoy = new Date();
+  const hoyStr = hoy.toISOString().split('T')[0];
+  
+  let horaEntradaTexto = '--:--';
+  let horaSalidaTexto = '--:--';
+  let tieneEntrada = false;
+  let tieneSalida = false;
+  let almuerzo = null;
+  
+  if (registrosCompletos && registrosCompletos.length > 0) {
+    const registrosHoy = registrosCompletos.filter(r => r.fecha === hoyStr);
+    
+    const entradaHoy = registrosHoy.find(r => r.tipo === 'ENTRADA');
+    const salidaHoy = registrosHoy.find(r => r.tipo === 'SALIDA');
+    
+    tieneEntrada = !!entradaHoy;
+    tieneSalida = !!salidaHoy;
+    almuerzo = entradaHoy?.almuerzo || null;
+    
+    if (entradaHoy) {
+      if (entradaHoy.timestamp) {
+        horaEntradaTexto = formatearHora(entradaHoy.timestamp);
+      } else if (entradaHoy.hora) {
+        horaEntradaTexto = entradaHoy.hora;
+      }
+    }
+    
+    if (salidaHoy) {
+      if (salidaHoy.timestamp) {
+        horaSalidaTexto = formatearHora(salidaHoy.timestamp);
+      } else if (salidaHoy.hora) {
+        horaSalidaTexto = salidaHoy.hora;
+      }
+    }
+  }
+  
+  const entradaCard = document.getElementById('resumenEntradaCard');
+  document.getElementById('resumenEntradaHora').textContent = horaEntradaTexto;
+  
+  if (tieneEntrada) {
+    entradaCard.className = 'time-card entry';
+    document.getElementById('resumenEntradaStatus').innerHTML = '<i class="fas fa-check-circle"></i> Completada';
+    document.getElementById('resumenEntradaStatus').className = 'time-status completed';
+  } else {
+    entradaCard.className = 'time-card pending';
+    document.getElementById('resumenEntradaStatus').innerHTML = '<i class="fas fa-hourglass-half"></i> Pendiente';
+    document.getElementById('resumenEntradaStatus').className = 'time-status pending';
+  }
+  
+  const salidaCard = document.getElementById('resumenSalidaCard');
+  document.getElementById('resumenSalidaHora').textContent = horaSalidaTexto;
+  
+  if (tieneSalida) {
+    salidaCard.className = 'time-card exit';
+    document.getElementById('resumenSalidaStatus').innerHTML = '<i class="fas fa-check-circle"></i> Completada';
+    document.getElementById('resumenSalidaStatus').className = 'time-status completed';
+  } else if (tieneEntrada && !tieneSalida) {
+    salidaCard.className = 'time-card pending';
+    document.getElementById('resumenSalidaStatus').innerHTML = '<i class="fas fa-hourglass-half"></i> Pendiente';
+    document.getElementById('resumenSalidaStatus').className = 'time-status pending';
+  } else {
+    salidaCard.className = 'time-card pending';
+    document.getElementById('resumenSalidaStatus').innerHTML = '<i class="fas fa-hourglass-half"></i> Pendiente';
+    document.getElementById('resumenSalidaStatus').className = 'time-status pending';
+  }
+  
+  document.getElementById('resumenAlmuerzo').innerHTML = almuerzo === 'SI' ? 'Dentro de planta' : 
+                         almuerzo === 'NO' ? 'Fuera de planta' : 'No registrado';
+  
+  const estadoGeneral = document.getElementById('resumenEstadoGeneral');
+  const btnSalida = document.getElementById('btnSalidaResumen');
+  
+  if (!tieneEntrada) {
+    estadoGeneral.className = 'status-badge pending';
+    estadoGeneral.innerHTML = '<i class="fas fa-clock"></i><span>Jornada pendiente</span>';
+    btnSalida.style.display = 'none';
+  } else if (tieneEntrada && !tieneSalida) {
+    estadoGeneral.className = 'status-badge in-progress';
+    estadoGeneral.innerHTML = '<i class="fas fa-play-circle"></i><span>Jornada en curso</span>';
+    btnSalida.style.display = 'flex';
+  } else {
+    estadoGeneral.className = 'status-badge completed';
+    estadoGeneral.innerHTML = '<i class="fas fa-check-circle"></i><span>Jornada completada</span>';
+    btnSalida.style.display = 'none';
+  }
+}
+
+// ========== REGISTRO DE ASISTENCIA ==========
+function cambiarTab(tab) {
+  document.getElementById('tabCredencial').classList.toggle('active', tab === 'credencial');
+  document.getElementById('tabResumen').classList.toggle('active', tab === 'resumen');
+  document.getElementById('tabContentCredencial').classList.toggle('active', tab === 'credencial');
+  document.getElementById('tabContentResumen').classList.toggle('active', tab === 'resumen');
+  
+  if (tab === 'resumen' && empleado.id) {
+    actualizarMiniDashboard();
+  }
+}
+
+function volverACredencial() {
+  document.getElementById('lunchContainer').classList.add('hidden');
+  document.getElementById('confirmContainer').classList.add('hidden');
+  document.getElementById('credentialScreen').classList.remove('hidden');
+}
+
+function iniciarRegistro(tipo) {
+  if (!verificarGPSConMensaje()) return;
+  
+  if (!verificarDistanciaEmpresa()) {
+    mostrarToast('No puedes registrar porque estás fuera del rango permitido', 'error');
+    return;
+  }
+  
+  empleado.tipoRegistro = tipo;
+  
+  if (tipo === 'ENTRADA') {
+    document.getElementById('credentialScreen').classList.add('hidden');
+    document.getElementById('lunchContainer').classList.remove('hidden');
+    
+    document.getElementById('lunchSi').classList.remove('selected');
+    document.getElementById('lunchNo').classList.remove('selected');
+    document.getElementById('lunchSi').style.background = '#f8fafc';
+    document.getElementById('lunchNo').style.background = '#f8fafc';
+    document.getElementById('lunchSi').style.borderColor = '#e2e8f0';
+    document.getElementById('lunchNo').style.borderColor = '#e2e8f0';
+    
+    document.getElementById('btnConfirmar').disabled = true;
+    empleado.almuerzo = '';
+  } else {
+    document.getElementById('previewNombre').textContent = empleado.nombre;
+    document.getElementById('previewId').textContent = empleado.id;
+    document.getElementById('previewTipo').textContent = 'SALIDA';
+    document.getElementById('previewAlmuerzoRow').style.display = 'none';
+    
+    if (posicion.lat && posicion.lng) {
+      const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+      document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${RADIO_METROS}m`;
+      document.getElementById('previewDistanciaRow').style.display = 'flex';
+    } else {
+      document.getElementById('previewDistanciaRow').style.display = 'none';
+    }
+    
+    document.getElementById('credentialScreen').classList.add('hidden');
+    document.getElementById('confirmContainer').classList.remove('hidden');
+  }
+}
+
+function seleccionarAlmuerzo(op) {
+  empleado.almuerzo = op;
+  
+  if (op === 'SI') {
+    document.getElementById('lunchSi').style.background = '#fee2e2';
+    document.getElementById('lunchSi').style.borderColor = '#dc2626';
+    document.getElementById('lunchNo').style.background = '#f8fafc';
+    document.getElementById('lunchNo').style.borderColor = '#e2e8f0';
+  } else {
+    document.getElementById('lunchNo').style.background = '#fee2e2';
+    document.getElementById('lunchNo').style.borderColor = '#dc2626';
+    document.getElementById('lunchSi').style.background = '#f8fafc';
+    document.getElementById('lunchSi').style.borderColor = '#e2e8f0';
+  }
+  
+  document.getElementById('btnConfirmar').disabled = false;
+}
+
+function irAConfirmacion() {
+  if (!empleado.almuerzo) { 
+    mostrarToast('Selecciona una opción', 'error'); 
+    return; 
+  }
+  
+  document.getElementById('previewNombre').textContent = empleado.nombre;
+  document.getElementById('previewId').textContent = empleado.id;
+  document.getElementById('previewTipo').textContent = 'ENTRADA';
+  document.getElementById('previewAlmuerzo').textContent = empleado.almuerzo === 'SI' ? 'Planta' : 'Fuera';
+  document.getElementById('previewAlmuerzoRow').style.display = 'flex';
+  
+  if (posicion.lat && posicion.lng) {
+    const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+    document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${RADIO_METROS}m`;
+    document.getElementById('previewDistanciaRow').style.display = 'flex';
+  } else {
+    document.getElementById('previewDistanciaRow').style.display = 'none';
+  }
+  
+  document.getElementById('lunchContainer').classList.add('hidden');
+  document.getElementById('confirmContainer').classList.remove('hidden');
+}
+
+function registrarSalidaDesdeResumen() {
+  if (!verificarGPSConMensaje()) return;
+  
+  if (!verificarDistanciaEmpresa()) {
+    mostrarToast('No puedes registrar porque estás fuera del rango permitido', 'error');
+    return;
+  }
+  
+  if (!empleado.id) { 
+    mostrarToast('No hay empleado seleccionado', 'error'); 
+    return; 
+  }
+  
+  empleado.tipoRegistro = 'SALIDA';
+  empleado.almuerzo = estado.almuerzo || '';
+  
+  document.getElementById('previewNombre').textContent = empleado.nombre;
+  document.getElementById('previewId').textContent = empleado.id;
+  document.getElementById('previewTipo').textContent = 'SALIDA';
+  document.getElementById('previewAlmuerzoRow').style.display = 'none';
+  
+  if (posicion.lat && posicion.lng) {
+    const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+    document.getElementById('previewDistancia').textContent = `${Math.round(distancia)}m / ${RADIO_METROS}m`;
+    document.getElementById('previewDistanciaRow').style.display = 'flex';
+  } else {
+    document.getElementById('previewDistanciaRow').style.display = 'none';
+  }
+  
+  cambiarTab('credencial');
+  document.getElementById('credentialScreen').classList.add('hidden');
+  document.getElementById('confirmContainer').classList.remove('hidden');
+}
+
+function registrar() {
+  if (!verificarDistanciaEmpresa()) {
+    mostrarToast('No puedes registrar porque estás fuera del rango permitido', 'error');
+    return;
+  }
+  
+  showLoading(true);
+  document.getElementById('btnRegistrar').disabled = true;
+  
+  const datosRegistro = {
+    id: empleado.id,
+    nombre: empleado.nombre,
+    tipo: empleado.tipoRegistro,
+    almuerzo: empleado.almuerzo || '',
+    lat: posicion.lat,
+    lng: posicion.lng,
+    dispositivo: deviceToken || 'MANUAL'
+  };
+  
+  api.guardarRegistro(datosRegistro)
+    .then(res => {
+      showLoading(false);
+      document.getElementById('btnRegistrar').disabled = false;
+      
+      if (res.error) { 
+        mostrarToast(res.error, 'error');
+        return; 
+      }
+      
+      mostrarToast('Registro exitoso', 'success');
+      
+      if (empleado.tipoRegistro === 'ENTRADA') {
+        estado.tieneEntrada = true;
+        estado.horaEntrada = formatearHora(new Date());
+        estado.almuerzo = empleado.almuerzo;
+      } else {
+        estado.tieneSalida = true;
+        estado.horaSalida = formatearHora(new Date());
+      }
+      
+      actualizarCredencial();
+      
+      setTimeout(() => {
+        document.getElementById('confirmContainer').classList.add('hidden');
+        document.getElementById('credentialScreen').classList.remove('hidden');
+        obtenerRegistrosEmpleado();
+      }, 1000);
+    })
+    .catch(error => {
+      showLoading(false);
+      document.getElementById('btnRegistrar').disabled = false;
+      mostrarToast('Error al registrar', 'error');
+    });
+}
+
+function identificarManual() {
+  mostrarToast('Función en desarrollo', 'info');
+}
+
+function volverAInicio() {
+  document.getElementById('manualContainer').classList.add('hidden');
+  document.getElementById('credentialScreen').classList.remove('hidden');
+}
+
+// ========== EVENTOS ==========
+document.getElementById('pinInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') verificarPIN();
+});
+
+document.getElementById('registroEmployeeId').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') confirmarRegistroInicial();
+});
+
+// ========== INICIALIZACIÓN ==========
+window.onload = function() {
+  setTimeout(() => {
+    verificarEstadoInicial();
+  }, 100);
+  
+  setInterval(() => {
+    if (empleado.id) {
+      obtenerRegistrosEmpleado();
+    }
+  }, 30000);
+  
+  setInterval(() => {
+    if (posicion.lat && posicion.lng) {
+      actualizarIndicadorDistancia();
+    }
+  }, 5000);
+};
+
+// ========== FUNCIÓN PARA AJUSTAR RESPONSIVE ==========
+function ajustarResponsive() {
+  const container = document.querySelector('.container');
+  if (container) {
+    container.style.height = window.innerHeight + 'px';
+  }
+  
+  const root = document.documentElement;
+  const vh = window.innerHeight / 100;
+  
+  root.style.setProperty('--space-md', `${vh * 1.5}px`);
+  root.style.setProperty('--text-base', `${vh * 1.6}px`);
+  root.style.setProperty('--photo-size', `${vh * 18}px`);
+}
+
+window.addEventListener('resize', ajustarResponsive);
+window.addEventListener('load', ajustarResponsive);
+window.addEventListener('orientationchange', ajustarResponsive);
+
+ajustarResponsive();
+
+</script>
+
+</body>
+</html>
