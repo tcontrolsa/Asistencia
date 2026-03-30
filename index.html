@@ -7,10 +7,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Control 2026">
     <meta name="theme-color" content="#dc2626">
-    <meta name="format-detection" content="telephone=no">
     <title>Control 2026 - Asistencia</title>
     
-    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -53,7 +51,6 @@
             bottom: 0;
         }
 
-        /* App Container */
         .app-container {
             max-width: 500px;
             margin: 0 auto;
@@ -64,24 +61,20 @@
             box-shadow: 0 0 40px rgba(0,0,0,0.1);
         }
 
-        /* Status Bar */
         .status-bar {
             background: transparent;
             height: env(safe-area-inset-top, 44px);
             padding-top: env(safe-area-inset-top, 20px);
         }
 
-        /* Main Content */
         .main-content {
             height: calc(100vh - 70px - env(safe-area-inset-top));
             overflow-y: auto;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             padding: 16px 16px 0 16px;
-            position: relative;
         }
 
-        /* Bottom Navigation */
         .bottom-nav {
             position: absolute;
             bottom: 0;
@@ -115,7 +108,6 @@
 
         .nav-item i {
             font-size: 24px;
-            transition: transform 0.2s;
         }
 
         .nav-item.active {
@@ -127,65 +119,6 @@
             transform: scale(0.95);
         }
 
-        /* Splash Screen */
-        .splash-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            animation: fadeOut 0.5s ease 2s forwards;
-        }
-
-        @keyframes fadeOut {
-            to {
-                opacity: 0;
-                visibility: hidden;
-            }
-        }
-
-        .splash-logo {
-            width: 100px;
-            height: 100px;
-            background: white;
-            border-radius: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 24px;
-            animation: bounce 1s ease;
-        }
-
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-20px); }
-        }
-
-        .splash-logo i {
-            font-size: 48px;
-            color: var(--primary);
-        }
-
-        .splash-title {
-            color: white;
-            font-size: 28px;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-        }
-
-        .splash-subtitle {
-            color: rgba(255,255,255,0.8);
-            font-size: 14px;
-            margin-top: 8px;
-        }
-
-        /* Cards con efecto glassmorphism */
         .glass-card {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
@@ -194,17 +127,6 @@
             margin-bottom: 16px;
             border: 1px solid rgba(255,255,255,0.2);
             box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .glass-card:active {
-            transform: scale(0.98);
-        }
-
-        /* Photo Container */
-        .photo-container {
-            position: relative;
-            display: inline-block;
         }
 
         .employee-photo {
@@ -230,7 +152,6 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
 
-        /* Floating Action Button */
         .fab {
             position: fixed;
             bottom: 90px;
@@ -254,16 +175,6 @@
             transform: scale(0.9);
         }
 
-        /* Pull to Refresh */
-        .pull-to-refresh {
-            text-align: center;
-            padding: 16px;
-            color: var(--gray-500);
-            font-size: 12px;
-            transition: all 0.3s;
-        }
-
-        /* Timeline Items */
         .timeline-item {
             background: white;
             border-radius: 16px;
@@ -274,11 +185,6 @@
             gap: 16px;
             transition: all 0.2s;
             border: 1px solid var(--gray-200);
-        }
-
-        .timeline-item:active {
-            transform: translateX(5px);
-            border-color: var(--primary);
         }
 
         .timeline-icon {
@@ -301,7 +207,6 @@
             color: #991b1b;
         }
 
-        /* Stats Cards */
         .stat-card {
             background: white;
             border-radius: 16px;
@@ -311,12 +216,6 @@
             border: 1px solid var(--gray-200);
         }
 
-        .stat-card:active {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-        }
-
-        /* Loading Animation */
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -344,7 +243,6 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Toast personalizado */
         .custom-toast {
             position: fixed;
             bottom: 90px;
@@ -372,7 +270,6 @@
             }
         }
 
-        /* Distance Indicator */
         .distance-indicator {
             position: fixed;
             bottom: 90px;
@@ -396,7 +293,6 @@
             background: rgba(220,38,38,0.9);
         }
 
-        /* PIN Input */
         .pin-input {
             text-align: center;
             letter-spacing: 8px;
@@ -408,7 +304,6 @@
             padding: 16px;
         }
 
-        /* Animaciones de página */
         .page {
             animation: pageEnter 0.3s ease;
         }
@@ -424,34 +319,10 @@
             }
         }
 
-        /* Scrollbar personalizada */
-        .main-content::-webkit-scrollbar {
-            width: 4px;
+        .hidden {
+            display: none !important;
         }
 
-        .main-content::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .main-content::-webkit-scrollbar-thumb {
-            background: var(--gray-400);
-            border-radius: 4px;
-        }
-
-        /* Badge de notificación */
-        .notification-badge {
-            position: absolute;
-            top: -4px;
-            right: -4px;
-            background: var(--primary);
-            color: white;
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-size: 10px;
-            font-weight: bold;
-        }
-
-        /* Responsive */
         @media (max-width: 480px) {
             .glass-card {
                 padding: 16px;
@@ -468,15 +339,8 @@
 <body>
 
 <div class="app-container">
-    <!-- Status Bar -->
     <div class="status-bar"></div>
-
-    <!-- Main Content -->
-    <div class="main-content" id="mainContent">
-        <!-- Aquí se cargarán las páginas dinámicamente -->
-    </div>
-
-    <!-- Bottom Navigation -->
+    <div class="main-content" id="mainContent"></div>
     <div class="bottom-nav">
         <button class="nav-item active" data-page="home">
             <i class="fas fa-id-card"></i>
@@ -491,19 +355,15 @@
             <span>Perfil</span>
         </button>
     </div>
-
-    <!-- Floating Action Button -->
     <button class="fab" id="fabButton" style="display: none;">
         <i class="fas fa-qrcode"></i>
     </button>
 </div>
 
-<!-- Loading Overlay -->
 <div id="loadingOverlay" class="loading-overlay hidden">
     <div class="loading-spinner"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     // ========== CONFIGURACIÓN ==========
     const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
@@ -515,9 +375,7 @@
     // ========== VARIABLES GLOBALES ==========
     let deviceToken = null;
     let posicion = { lat: null, lng: null };
-    let gpsActivo = false;
     let registrosCompletos = [];
-    let intervaloGPS = null;
     let currentPage = 'home';
     let isAuthenticated = false;
 
@@ -539,71 +397,235 @@
         almuerzo: ''
     };
 
-    // ========== SPLASH SCREEN ==========
-    function showSplash() {
-        const splash = document.createElement('div');
-        splash.className = 'splash-screen';
-        splash.innerHTML = `
-            <div class="splash-logo">
-                <i class="fas fa-shield-alt"></i>
-            </div>
-            <div class="splash-title">CONTROL 2026</div>
-            <div class="splash-subtitle">Sistema de Asistencia</div>
-        `;
-        document.body.appendChild(splash);
-        
-        setTimeout(() => {
-            splash.remove();
-        }, 2500);
-    }
-
-    // ========== NAVEGACIÓN ==========
-    function navigateTo(page) {
-        currentPage = page;
-        
-        // Actualizar botones de navegación
-        document.querySelectorAll('.nav-item').forEach(item => {
-            if (item.dataset.page === page) {
-                item.classList.add('active');
+    // ========== FUNCIONES DE UI ==========
+    function showLoading(show) {
+        const loading = document.getElementById('loadingOverlay');
+        if (loading) {
+            if (show) {
+                loading.classList.remove('hidden');
             } else {
-                item.classList.remove('active');
+                loading.classList.add('hidden');
             }
-        });
-        
-        // Mostrar/ocultar FAB según página
-        const fab = document.getElementById('fabButton');
-        if (fab) {
-            if (page === 'home' && isAuthenticated) {
-                fab.style.display = 'flex';
-            } else {
-                fab.style.display = 'none';
-            }
-        }
-        
-        // Cargar contenido según página
-        if (page === 'home') {
-            renderHomePage();
-        } else if (page === 'history') {
-            renderHistoryPage();
-        } else if (page === 'profile') {
-            renderProfilePage();
         }
     }
 
-    // ========== RENDERIZAR PÁGINAS ==========
-    function renderHomePage() {
-        const mainContent = document.getElementById('mainContent');
+    function mostrarToast(msg, tipo = 'info') {
+        const toast = document.createElement('div');
+        toast.className = 'custom-toast';
+        toast.textContent = msg;
+        if (tipo === 'error') toast.style.background = 'rgba(220,38,38,0.9)';
+        if (tipo === 'success') toast.style.background = 'rgba(34,197,94,0.9)';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    function formatearHora(fecha) {
+        if (!fecha) return '--:--';
+        try {
+            const d = new Date(fecha);
+            if (isNaN(d.getTime())) return '--:--';
+            return d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+            return '--:--';
+        }
+    }
+
+    function formatearFechaCorta() {
+        const d = new Date();
+        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    }
+
+    // ========== FUNCIONES DE DISTANCIA ==========
+    function calcularDistancia(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function verificarDistanciaEmpresa() {
+        if (!posicion.lat || !posicion.lng) {
+            mostrarToast('Obteniendo ubicación...', 'info');
+            return false;
+        }
+        const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
         
-        if (!isAuthenticated) {
-            mainContent.innerHTML = renderAuthScreen();
+        if (distancia <= RADIO_METROS) {
+            return true;
+        } else {
+            mostrarToast(`❌ Fuera del área (${Math.round(distancia)}m)`, 'error');
+            return false;
+        }
+    }
+
+    function solicitarPermisoGPS() {
+        if (!navigator.geolocation) {
+            mostrarToast('Geolocalización no soportada', 'error');
             return;
         }
-        
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                posicion = { lat: position.coords.latitude, lng: position.coords.longitude };
+                const indicator = document.getElementById('distanceIndicator');
+                if (indicator) {
+                    const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+                    indicator.textContent = `📍 ${Math.round(distancia)}m / ${RADIO_METROS}m`;
+                    indicator.classList.remove('hidden');
+                    if (distancia <= RADIO_METROS) {
+                        indicator.classList.add('valid');
+                        indicator.classList.remove('invalid');
+                        setTimeout(() => indicator.classList.add('hidden'), 3000);
+                    } else {
+                        indicator.classList.add('invalid');
+                        indicator.classList.remove('valid');
+                    }
+                }
+            },
+            (error) => {
+                console.error('GPS error:', error);
+                mostrarToast('Activa el GPS para registrar asistencia', 'error');
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    }
+
+    // ========== FUNCIÓN JSONP ==========
+    function jsonpRequest(params) {
+        return new Promise((resolve, reject) => {
+            const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+            window[callback] = function(data) {
+                delete window[callback];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                resolve(data);
+            };
+            
+            const url = new URL(API_URL);
+            url.searchParams.append('callback', callback);
+            Object.keys(params).forEach(key => {
+                if (params[key] !== undefined && params[key] !== null) {
+                    url.searchParams.append(key, typeof params[key] === 'object' ? JSON.stringify(params[key]) : params[key].toString());
+                }
+            });
+            
+            const script = document.createElement('script');
+            script.src = url.toString();
+            script.onerror = () => {
+                delete window[callback];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                reject(new Error('Error de conexión con el servidor'));
+            };
+            document.body.appendChild(script);
+        });
+    }
+
+    // ========== FUNCIONES DE AUTENTICACIÓN ==========
+    function generarDeviceToken() {
+        let token = localStorage.getItem('DEVICE_TOKEN');
+        if (!token) {
+            token = 'DEV_' + Math.random().toString(36).substr(2, 8).toUpperCase();
+            localStorage.setItem('DEVICE_TOKEN', token);
+        }
+        return token;
+    }
+
+    function generarPIN() {
+        return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    // ========== RENDERIZADO DE PÁGINAS ==========
+    function renderAuthScreen() {
+        const mainContent = document.getElementById('mainContent');
+        mainContent.innerHTML = `
+            <div class="page">
+                <!-- Pantalla de verificación -->
+                <div id="verifyingScreen">
+                    <div class="glass-card text-center py-5">
+                        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+                        <h5 class="fw-bold">Verificando...</h5>
+                        <p class="text-muted">Por favor espera</p>
+                    </div>
+                </div>
+                
+                <!-- Pantalla de PIN -->
+                <div id="pinScreen" class="hidden">
+                    <div class="glass-card">
+                        <div class="text-center mb-4">
+                            <div class="bg-primary-light rounded-circle d-inline-flex p-3 mb-3">
+                                <i class="fas fa-lock fa-2x text-primary"></i>
+                            </div>
+                            <h3 class="h4 fw-bold">Acceso al sistema</h3>
+                            <p class="text-muted small">Ingresa tu PIN personal de 4 dígitos</p>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <input type="password" id="pinInput" class="form-control form-control-lg pin-input" placeholder="••••" maxlength="4" inputmode="numeric" autocomplete="off">
+                        </div>
+                        
+                        <div class="alert alert-info py-2 small mb-4">
+                            <i class="fas fa-info-circle"></i> Si es tu primera vez, haz clic en "Registrar dispositivo"
+                        </div>
+                        
+                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="verificarPIN()">
+                            <i class="fas fa-arrow-right"></i> Ingresar
+                        </button>
+                        
+                        <button class="btn btn-outline-primary w-100" onclick="mostrarRegistroInicial()">
+                            <i class="fas fa-user-plus"></i> Registrar dispositivo
+                        </button>
+                        
+                        <div id="pinResult" class="hidden alert alert-danger mt-3"></div>
+                    </div>
+                </div>
+                
+                <!-- Pantalla de registro inicial -->
+                <div id="registroInicialScreen" class="hidden">
+                    <div class="glass-card">
+                        <div class="text-center mb-4">
+                            <div class="bg-primary-light rounded-circle d-inline-flex p-3 mb-3">
+                                <i class="fas fa-mobile-alt fa-2x text-primary"></i>
+                            </div>
+                            <h3 class="h4 fw-bold">Registro inicial</h3>
+                            <p class="text-muted small">Vincula este dispositivo a tu cuenta</p>
+                        </div>
+                        
+                        <div class="bg-light rounded-3 p-3 mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span class="text-muted">PIN generado</span>
+                                <span class="fw-bold text-primary font-monospace fs-4" id="registroPinDisplay">----</span>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-danger py-2 small mb-3">
+                            <i class="fas fa-exclamation-triangle"></i> Guarda este PIN. Lo necesitarás para acceder desde cualquier navegador.
+                        </div>
+                        
+                        <input type="text" id="registroEmployeeId" class="form-control form-control-lg mb-3" placeholder="Ingresa tu ID de empleado">
+                        
+                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="confirmarRegistroInicial()">
+                            <i class="fas fa-check"></i> Confirmar registro
+                        </button>
+                        
+                        <button class="btn btn-outline-secondary w-100" onclick="volverAPIN()">
+                            <i class="fas fa-arrow-left"></i> Volver
+                        </button>
+                        
+                        <div id="registroResult" class="hidden alert alert-danger mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderHomePage() {
+        const mainContent = document.getElementById('mainContent');
         mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div class="text-center">
-                        <div class="photo-container">
+                        <div class="photo-container d-inline-block">
                             <img id="employeePhoto" class="employee-photo hidden" src="" alt="Foto">
                             <div id="photoPlaceholder" class="employee-photo-placeholder d-inline-flex">👤</div>
                         </div>
@@ -631,13 +653,13 @@
                         <div class="col-4">
                             <div class="stat-card">
                                 <div class="text-muted small">ENTRADA</div>
-                                <div class="fw-bold text-success" id="attendanceEntrada">${estado.tieneEntrada ? estado.horaEntrada || 'Registrada' : 'Pendiente'}</div>
+                                <div class="fw-bold text-success" id="attendanceEntrada">${estado.tieneEntrada ? (estado.horaEntrada || 'Registrada') : 'Pendiente'}</div>
                             </div>
                         </div>
                         <div class="col-4">
                             <div class="stat-card">
                                 <div class="text-muted small">SALIDA</div>
-                                <div class="fw-bold text-danger" id="attendanceSalida">${estado.tieneSalida ? estado.horaSalida || 'Registrada' : 'Pendiente'}</div>
+                                <div class="fw-bold text-danger" id="attendanceSalida">${estado.tieneSalida ? (estado.horaSalida || 'Registrada') : 'Pendiente'}</div>
                             </div>
                         </div>
                         <div class="col-4">
@@ -668,7 +690,7 @@
         actualizarCredencialHome();
         cargarUltimosRegistros();
     }
-    
+
     function renderHistoryPage() {
         const mainContent = document.getElementById('mainContent');
         mainContent.innerHTML = `
@@ -676,7 +698,7 @@
                 <div class="glass-card">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="fw-bold mb-0"><i class="fas fa-chart-line"></i> Mi Jornada Hoy</h5>
-                        <span class="badge bg-light" id="resumenFecha">${new Date().toLocaleDateString()}</span>
+                        <span class="badge bg-light" id="resumenFecha">${formatearFechaCorta()}</span>
                     </div>
                     
                     <div class="d-flex align-items-center gap-3 mb-3 p-3 bg-light rounded-3">
@@ -690,13 +712,13 @@
                     <div class="row g-2 mb-3">
                         <div class="col-6">
                             <div class="stat-card">
-                                <div class="stat-value fs-2 fw-bold text-success" id="resumenEntradaHora">--:--</div>
+                                <div class="fs-2 fw-bold text-success" id="resumenEntradaHora">--:--</div>
                                 <small class="text-muted">ENTRADA</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="stat-card">
-                                <div class="stat-value fs-2 fw-bold text-danger" id="resumenSalidaHora">--:--</div>
+                                <div class="fs-2 fw-bold text-danger" id="resumenSalidaHora">--:--</div>
                                 <small class="text-muted">SALIDA</small>
                             </div>
                         </div>
@@ -707,9 +729,8 @@
                         <strong>Almuerzo:</strong> <span id="resumenAlmuerzo">No registrado</span>
                     </div>
                     
-                    <div class="status-badge w-100 justify-content-center p-3 rounded-3" id="resumenEstadoGeneral">
-                        <i class="fas fa-clock"></i>
-                        <span>Jornada pendiente</span>
+                    <div class="p-3 rounded-3 text-center" id="resumenEstadoGeneral">
+                        <i class="fas fa-clock"></i> Jornada pendiente
                     </div>
                 </div>
                 
@@ -722,13 +743,13 @@
         
         actualizarHistorial();
     }
-    
+
     function renderProfilePage() {
         const mainContent = document.getElementById('mainContent');
         mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card text-center">
-                    <div class="photo-container">
+                    <div class="photo-container d-inline-block">
                         <img id="profilePhoto" class="employee-photo hidden" src="" alt="Foto">
                         <div id="profilePhotoPlaceholder" class="employee-photo-placeholder d-inline-flex">👤</div>
                     </div>
@@ -767,7 +788,6 @@
             </div>
         `;
         
-        // Cargar foto de perfil
         const profilePhoto = document.getElementById('profilePhoto');
         const profilePlaceholder = document.getElementById('profilePhotoPlaceholder');
         if (empleado.foto_url && empleado.foto_url.trim()) {
@@ -778,85 +798,7 @@
         
         calcularEstadisticas();
     }
-    
-    function renderAuthScreen() {
-        return `
-            <div class="page">
-                <div id="verifyingScreen" class="text-center py-5">
-                    <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
-                    <h5 class="fw-bold">Verificando...</h5>
-                    <p class="text-muted">Por favor espera</p>
-                </div>
-                
-                <div id="pinScreen" class="hidden">
-                    <div class="glass-card">
-                        <div class="text-center mb-4">
-                            <div class="bg-primary-light rounded-circle d-inline-flex p-3 mb-3">
-                                <i class="fas fa-lock fa-2x text-primary"></i>
-                            </div>
-                            <h3 class="h4 fw-bold">Acceso al sistema</h3>
-                            <p class="text-muted small">Ingresa tu PIN personal de 4 dígitos</p>
-                        </div>
-                        
-                        <div class="mb-4">
-                            <input type="password" id="pinInput" class="form-control form-control-lg pin-input" placeholder="••••" maxlength="4" inputmode="numeric" autocomplete="off">
-                        </div>
-                        
-                        <div class="alert alert-info py-2 small mb-4">
-                            <i class="fas fa-info-circle"></i> Si es tu primera vez, haz clic en "Registrar dispositivo"
-                        </div>
-                        
-                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="verificarPIN()">
-                            <i class="fas fa-arrow-right"></i> Ingresar
-                        </button>
-                        
-                        <button class="btn btn-outline-primary w-100" onclick="mostrarRegistroInicial()">
-                            <i class="fas fa-user-plus"></i> Registrar dispositivo
-                        </button>
-                        
-                        <div id="pinResult" class="hidden alert alert-danger mt-3"></div>
-                    </div>
-                </div>
-                
-                <div id="registroInicialScreen" class="hidden">
-                    <div class="glass-card">
-                        <div class="text-center mb-4">
-                            <div class="bg-primary-light rounded-circle d-inline-flex p-3 mb-3">
-                                <i class="fas fa-mobile-alt fa-2x text-primary"></i>
-                            </div>
-                            <h3 class="h4 fw-bold">Registro inicial</h3>
-                            <p class="text-muted small">Vincula este dispositivo a tu cuenta</p>
-                        </div>
-                        
-                        <div class="bg-light rounded-3 p-3 mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span class="text-muted">PIN generado</span>
-                                <span class="fw-bold text-primary font-monospace fs-4" id="registroPinDisplay">----</span>
-                            </div>
-                        </div>
-                        
-                        <div class="alert alert-danger py-2 small mb-3">
-                            <i class="fas fa-exclamation-triangle"></i> Guarda este PIN. Lo necesitarás para acceder desde cualquier navegador.
-                        </div>
-                        
-                        <input type="text" id="registroEmployeeId" class="form-control form-control-lg mb-3" placeholder="Ingresa tu ID de empleado">
-                        
-                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="confirmarRegistroInicial()">
-                            <i class="fas fa-check"></i> Confirmar registro
-                        </button>
-                        
-                        <button class="btn btn-outline-secondary w-100" onclick="volverAPIN()">
-                            <i class="fas fa-arrow-left"></i> Volver
-                        </button>
-                        
-                        <div id="registroResult" class="hidden alert alert-danger mt-3"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    // ========== FUNCIONES DE UI ==========
+
     function actualizarCredencialHome() {
         const photoImg = document.getElementById('employeePhoto');
         const photoPlaceholder = document.getElementById('photoPlaceholder');
@@ -866,15 +808,27 @@
             photoPlaceholder.classList.add('hidden');
         }
         
+        const firstName = document.getElementById('firstName');
+        const lastName = document.getElementById('lastName');
+        const position = document.getElementById('position');
+        const idNo = document.getElementById('idNo');
+        const area = document.getElementById('area');
+        
+        if (firstName) firstName.textContent = empleado.nombre?.split(' ')[0]?.toUpperCase() || 'EMPLEADO';
+        if (lastName) lastName.textContent = empleado.nombre?.split(' ').slice(1).join(' ')?.toUpperCase() || 'NOMBRE';
+        if (position) position.textContent = empleado.area || 'Área';
+        if (idNo) idNo.textContent = empleado.id || '-';
+        if (area) area.textContent = empleado.area || '-';
+        
         const attendanceEntrada = document.getElementById('attendanceEntrada');
         const attendanceSalida = document.getElementById('attendanceSalida');
         const attendanceAlmuerzo = document.getElementById('attendanceAlmuerzo');
         
         if (attendanceEntrada) {
-            attendanceEntrada.innerHTML = estado.tieneEntrada ? estado.horaEntrada || 'Registrada' : 'Pendiente';
+            attendanceEntrada.innerHTML = estado.tieneEntrada ? (estado.horaEntrada || 'Registrada') : 'Pendiente';
         }
         if (attendanceSalida) {
-            attendanceSalida.innerHTML = estado.tieneSalida ? estado.horaSalida || 'Registrada' : 'Pendiente';
+            attendanceSalida.innerHTML = estado.tieneSalida ? (estado.horaSalida || 'Registrada') : 'Pendiente';
         }
         if (attendanceAlmuerzo) {
             attendanceAlmuerzo.textContent = estado.almuerzo === 'SI' ? 'Planta' : estado.almuerzo === 'NO' ? 'Fuera' : '-';
@@ -885,7 +839,7 @@
         if (btnEntrada) btnEntrada.disabled = estado.tieneEntrada;
         if (btnSalida) btnSalida.disabled = !estado.tieneEntrada || estado.tieneSalida;
     }
-    
+
     function cargarUltimosRegistros() {
         const container = document.getElementById('ultimosRegistros');
         if (!container) return;
@@ -913,7 +867,7 @@
             </div>
         `).join('');
     }
-    
+
     function actualizarHistorial() {
         const container = document.getElementById('historialRegistros');
         if (!container) return;
@@ -940,7 +894,7 @@
             </div>
         `).join('');
         
-        // Actualizar resumen
+        // Actualizar resumen del día
         const hoy = new Date().toISOString().split('T')[0];
         const registrosHoy = registrosCompletos.filter(r => r.fecha === hoy);
         const entrada = registrosHoy.find(r => r.tipo === 'ENTRADA');
@@ -957,21 +911,21 @@
         
         if (resumenEstadoGeneral) {
             if (!entrada) {
-                resumenEstadoGeneral.className = 'bg-danger bg-opacity-10 text-danger p-3 rounded-3';
+                resumenEstadoGeneral.className = 'p-3 rounded-3 text-center bg-danger bg-opacity-10 text-danger';
                 resumenEstadoGeneral.innerHTML = '<i class="fas fa-clock"></i> Jornada pendiente';
             } else if (entrada && !salida) {
-                resumenEstadoGeneral.className = 'bg-warning bg-opacity-10 text-warning p-3 rounded-3';
+                resumenEstadoGeneral.className = 'p-3 rounded-3 text-center bg-warning bg-opacity-10 text-warning';
                 resumenEstadoGeneral.innerHTML = '<i class="fas fa-play-circle"></i> Jornada en curso';
             } else {
-                resumenEstadoGeneral.className = 'bg-success bg-opacity-10 text-success p-3 rounded-3';
+                resumenEstadoGeneral.className = 'p-3 rounded-3 text-center bg-success bg-opacity-10 text-success';
                 resumenEstadoGeneral.innerHTML = '<i class="fas fa-check-circle"></i> Jornada completada';
             }
         }
     }
-    
+
     function calcularEstadisticas() {
         const diasUnicos = new Set(registrosCompletos.map(r => r.fecha)).size;
-        const totalHoras = registrosCompletos.length * 8; // Aproximación
+        const totalHoras = registrosCompletos.length * 8;
         
         const statTotalDias = document.getElementById('statTotalDias');
         const statTotalHoras = document.getElementById('statTotalHoras');
@@ -979,122 +933,83 @@
         if (statTotalDias) statTotalDias.textContent = diasUnicos;
         if (statTotalHoras) statTotalHoras.textContent = totalHoras;
     }
-    
-    function formatearHora(fecha) {
-        if (!fecha) return '--:--';
-        try {
-            const d = new Date(fecha);
-            if (isNaN(d.getTime())) return '--:--';
-            return d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
-        } catch (e) {
-            return '--:--';
-        }
-    }
-    
-    // ========== FUNCIONES DE API Y AUTENTICACIÓN ==========
-    function jsonpRequest(params) {
-        return new Promise((resolve, reject) => {
-            const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
-            window[callback] = function(data) {
-                delete window[callback];
-                document.body.removeChild(script);
-                resolve(data);
-            };
-            
-            const url = new URL(API_URL);
-            url.searchParams.append('callback', callback);
-            Object.keys(params).forEach(key => {
-                if (params[key] !== undefined && params[key] !== null) {
-                    url.searchParams.append(key, typeof params[key] === 'object' ? JSON.stringify(params[key]) : params[key].toString());
-                }
-            });
-            
-            const script = document.createElement('script');
-            script.src = url.toString();
-            script.onerror = () => {
-                delete window[callback];
-                document.body.removeChild(script);
-                reject(new Error('Error de conexión con el servidor'));
-            };
-            document.body.appendChild(script);
-        });
-    }
-    
-    function generarDeviceToken() {
-        let token = localStorage.getItem('DEVICE_TOKEN');
-        if (!token) {
-            token = 'DEV_' + Math.random().toString(36).substr(2, 8).toUpperCase();
-            localStorage.setItem('DEVICE_TOKEN', token);
-        }
-        return token;
-    }
-    
-    function generarPIN() {
-        return Math.floor(1000 + Math.random() * 9000).toString();
-    }
-    
-    function mostrarToast(msg, tipo = 'info') {
-        const toast = document.createElement('div');
-        toast.className = 'custom-toast';
-        toast.textContent = msg;
-        if (tipo === 'error') toast.style.background = 'rgba(220,38,38,0.9)';
-        if (tipo === 'success') toast.style.background = 'rgba(34,197,94,0.9)';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
-    }
-    
-    function showLoading(show) {
-        const loading = document.getElementById('loadingOverlay');
-        if (loading) {
-            loading.classList.toggle('hidden', !show);
-        }
-    }
-    
-    // ========== FUNCIONES DE DISTANCIA ==========
-    function calcularDistancia(lat1, lon1, lat2, lon2) {
-        const R = 6371e3;
-        const φ1 = lat1 * Math.PI / 180;
-        const φ2 = lat2 * Math.PI / 180;
-        const Δφ = (lat2 - lat1) * Math.PI / 180;
-        const Δλ = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-    
-    function verificarDistanciaEmpresa() {
-        if (!posicion.lat || !posicion.lng) {
-            mostrarToast('Obteniendo ubicación...', 'info');
-            return false;
-        }
-        const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-        
-        if (distancia <= RADIO_METROS) {
-            return true;
-        } else {
-            mostrarToast(`❌ Fuera del área (${Math.round(distancia)}m)`, 'error');
-            return false;
-        }
-    }
-    
-    function solicitarPermisoGPS() {
-        if (!navigator.geolocation) {
-            mostrarToast('Geolocalización no soportada', 'error');
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                posicion = { lat: position.coords.latitude, lng: position.coords.longitude };
-                gpsActivo = true;
-            },
-            (error) => {
-                console.error('GPS error:', error);
-                mostrarToast('Activa el GPS para registrar asistencia', 'error');
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
-    }
-    
+
     // ========== FUNCIONES DE REGISTRO ==========
+    async function obtenerRegistrosEmpleado() {
+        if (!empleado.id) return;
+        try {
+            const registros = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: empleado.id });
+            registrosCompletos = registros || [];
+            if (currentPage === 'home') cargarUltimosRegistros();
+            if (currentPage === 'history') actualizarHistorial();
+            if (currentPage === 'profile') calcularEstadisticas();
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    async function guardarRegistro(datos) {
+        return jsonpRequest({ accion: 'guardarRegistro', ...datos });
+    }
+
+    async function registrar() {
+        if (!verificarDistanciaEmpresa()) return;
+        
+        showLoading(true);
+        
+        const datos = {
+            id: empleado.id,
+            nombre: empleado.nombre,
+            tipo: empleado.tipoRegistro,
+            almuerzo: empleado.almuerzo || '',
+            lat: posicion.lat,
+            lng: posicion.lng,
+            dispositivo: deviceToken
+        };
+        
+        try {
+            const res = await guardarRegistro(datos);
+            showLoading(false);
+            
+            if (res.error) {
+                mostrarToast(res.error, 'error');
+                return;
+            }
+            
+            mostrarToast('Registro exitoso', 'success');
+            
+            if (empleado.tipoRegistro === 'ENTRADA') {
+                estado.tieneEntrada = true;
+                estado.horaEntrada = new Date().toLocaleTimeString();
+                estado.almuerzo = empleado.almuerzo;
+            } else {
+                estado.tieneSalida = true;
+                estado.horaSalida = new Date().toLocaleTimeString();
+            }
+            
+            await obtenerRegistrosEmpleado();
+            if (currentPage === 'home') actualizarCredencialHome();
+            mostrarToast('Registro completado', 'success');
+        } catch (error) {
+            showLoading(false);
+            mostrarToast('Error al registrar: ' + error.message, 'error');
+        }
+    }
+
+    function iniciarRegistro(tipo) {
+        empleado.tipoRegistro = tipo;
+        
+        if (tipo === 'ENTRADA') {
+            const almuerzo = confirm('¿Almuerzas dentro de planta?\nAceptar = Sí, Cancelar = No');
+            empleado.almuerzo = almuerzo ? 'SI' : 'NO';
+            registrar();
+        } else {
+            empleado.almuerzo = estado.almuerzo || '';
+            registrar();
+        }
+    }
+
+    // ========== FUNCIONES DE AUTENTICACIÓN ==========
     async function verificarPIN() {
         const pin = document.getElementById('pinInput').value.trim();
         if (!pin || pin.length < 4) {
@@ -1150,156 +1065,19 @@
             mostrarToast('Error de conexión: ' + error.message, 'error');
         }
     }
-    
-    async function obtenerRegistrosEmpleado() {
-        if (!empleado.id) return;
-        try {
-            const registros = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: empleado.id });
-            registrosCompletos = registros || [];
-            if (currentPage === 'home') cargarUltimosRegistros();
-            if (currentPage === 'history') actualizarHistorial();
-            if (currentPage === 'profile') calcularEstadisticas();
-        } catch (error) {
-            console.error('Error:', error);
-        }
-    }
-    
-    async function guardarRegistro(datos) {
-        return jsonpRequest({ accion: 'guardarRegistro', ...datos });
-    }
-    
-    async function registrar() {
-        if (!verificarDistanciaEmpresa()) return;
-        
-        showLoading(true);
-        
-        const datos = {
-            id: empleado.id,
-            nombre: empleado.nombre,
-            tipo: empleado.tipoRegistro,
-            almuerzo: empleado.almuerzo || '',
-            lat: posicion.lat,
-            lng: posicion.lng,
-            dispositivo: deviceToken
-        };
-        
-        try {
-            const res = await guardarRegistro(datos);
-            showLoading(false);
-            
-            if (res.error) {
-                mostrarToast(res.error, 'error');
-                return;
-            }
-            
-            mostrarToast('Registro exitoso', 'success');
-            
-            if (empleado.tipoRegistro === 'ENTRADA') {
-                estado.tieneEntrada = true;
-                estado.horaEntrada = new Date().toLocaleTimeString();
-                estado.almuerzo = empleado.almuerzo;
-            } else {
-                estado.tieneSalida = true;
-                estado.horaSalida = new Date().toLocaleTimeString();
-            }
-            
-            await obtenerRegistrosEmpleado();
-            actualizarCredencialHome();
-            mostrarToast('Registro completado', 'success');
-        } catch (error) {
-            showLoading(false);
-            mostrarToast('Error al registrar: ' + error.message, 'error');
-        }
-    }
-    
-    function iniciarRegistro(tipo) {
-        empleado.tipoRegistro = tipo;
-        
-        if (tipo === 'ENTRADA') {
-            // Mostrar selector de almuerzo
-            const almuerzo = confirm('¿Almuerzas dentro de planta?\nAceptar = Sí, Cancelar = No');
-            empleado.almuerzo = almuerzo ? 'SI' : 'NO';
-            registrar();
-        } else {
-            empleado.almuerzo = estado.almuerzo || '';
-            registrar();
-        }
-    }
-    
-    async function verificarEstadoInicial() {
-        deviceToken = generarDeviceToken();
-        solicitarPermisoGPS();
-        
-        const sessionData = localStorage.getItem('SESSION_DATA');
-        if (sessionData) {
-            try {
-                const data = JSON.parse(sessionData);
-                if (data.empleadoId && data.token === deviceToken) {
-                    const res = await jsonpRequest({ accion: 'obtenerEstado', id: data.empleadoId, deviceToken: null });
-                    if (!res.error) {
-                        estado = {
-                            tieneEntrada: res.tieneEntrada || false,
-                            tieneSalida: res.tieneSalida || false,
-                            horaEntrada: res.horaEntrada || null,
-                            horaSalida: res.horaSalida || null,
-                            almuerzo: res.almuerzo || null,
-                            esSupervisor: res.esSupervisor || false
-                        };
-                        empleado = {
-                            id: res.id,
-                            nombre: res.nombre,
-                            area: res.area,
-                            foto_url: res.foto_url,
-                            tipoRegistro: '',
-                            almuerzo: ''
-                        };
-                        isAuthenticated = true;
-                        await obtenerRegistrosEmpleado();
-                        navigateTo('home');
-                        return;
-                    }
-                }
-            } catch (e) {}
-        }
-        
-        // Si no hay sesión, mostrar pantalla de autenticación
-        isAuthenticated = false;
-        renderHomePage();
-        
-        // Verificar si tiene PIN
-        try {
-            const res = await jsonpRequest({ accion: 'verificarDispositivo', deviceToken });
-            const verifyingScreen = document.getElementById('verifyingScreen');
-            const pinScreen = document.getElementById('pinScreen');
-            const registroScreen = document.getElementById('registroInicialScreen');
-            
-            if (verifyingScreen) verifyingScreen.classList.add('hidden');
-            
-            if (res && res.tienePin) {
-                if (pinScreen) pinScreen.classList.remove('hidden');
-            } else {
-                if (registroScreen) {
-                    registroScreen.classList.remove('hidden');
-                    document.getElementById('registroPinDisplay').textContent = generarPIN();
-                }
-            }
-        } catch (error) {
-            const verifyingScreen = document.getElementById('verifyingScreen');
-            const pinScreen = document.getElementById('pinScreen');
-            if (verifyingScreen) verifyingScreen.classList.add('hidden');
-            if (pinScreen) pinScreen.classList.remove('hidden');
-            mostrarToast('Error de conexión', 'error');
-        }
-    }
-    
+
     function mostrarRegistroInicial() {
         const pinScreen = document.getElementById('pinScreen');
         const registroScreen = document.getElementById('registroInicialScreen');
+        const verifyingScreen = document.getElementById('verifyingScreen');
+        
+        if (verifyingScreen) verifyingScreen.classList.add('hidden');
         if (pinScreen) pinScreen.classList.add('hidden');
         if (registroScreen) registroScreen.classList.remove('hidden');
+        
         document.getElementById('registroPinDisplay').textContent = generarPIN();
     }
-    
+
     async function confirmarRegistroInicial() {
         const empleadoId = document.getElementById('registroEmployeeId').value.trim();
         const pin = document.getElementById('registroPinDisplay').textContent;
@@ -1356,14 +1134,15 @@
             mostrarToast('Error de conexión: ' + error.message, 'error');
         }
     }
-    
+
     function volverAPIN() {
         const registroScreen = document.getElementById('registroInicialScreen');
         const pinScreen = document.getElementById('pinScreen');
+        
         if (registroScreen) registroScreen.classList.add('hidden');
         if (pinScreen) pinScreen.classList.remove('hidden');
     }
-    
+
     async function cerrarSesion() {
         if (confirm('¿Cerrar sesión? Se eliminará el acceso de este dispositivo.')) {
             showLoading(true);
@@ -1378,32 +1157,140 @@
             location.reload();
         }
     }
-    
+
+    // ========== NAVEGACIÓN ==========
+    function navigateTo(page) {
+        currentPage = page;
+        
+        document.querySelectorAll('.nav-item').forEach(item => {
+            if (item.dataset.page === page) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+        
+        const fab = document.getElementById('fabButton');
+        if (fab) {
+            if (page === 'home' && isAuthenticated) {
+                fab.style.display = 'flex';
+            } else {
+                fab.style.display = 'none';
+            }
+        }
+        
+        if (page === 'home') {
+            renderHomePage();
+        } else if (page === 'history') {
+            renderHistoryPage();
+        } else if (page === 'profile') {
+            renderProfilePage();
+        }
+    }
+
+    // ========== VERIFICACIÓN INICIAL ==========
+    async function verificarEstadoInicial() {
+        deviceToken = generarDeviceToken();
+        solicitarPermisoGPS();
+        
+        // Crear elemento de distancia
+        const distanceIndicator = document.createElement('div');
+        distanceIndicator.id = 'distanceIndicator';
+        distanceIndicator.className = 'distance-indicator hidden';
+        document.body.appendChild(distanceIndicator);
+        
+        const sessionData = localStorage.getItem('SESSION_DATA');
+        if (sessionData) {
+            try {
+                const data = JSON.parse(sessionData);
+                if (data.empleadoId && data.token === deviceToken) {
+                    showLoading(true);
+                    const res = await jsonpRequest({ accion: 'obtenerEstado', id: data.empleadoId, deviceToken: null });
+                    showLoading(false);
+                    
+                    if (!res.error) {
+                        estado = {
+                            tieneEntrada: res.tieneEntrada || false,
+                            tieneSalida: res.tieneSalida || false,
+                            horaEntrada: res.horaEntrada || null,
+                            horaSalida: res.horaSalida || null,
+                            almuerzo: res.almuerzo || null,
+                            esSupervisor: res.esSupervisor || false
+                        };
+                        empleado = {
+                            id: res.id,
+                            nombre: res.nombre,
+                            area: res.area,
+                            foto_url: res.foto_url,
+                            tipoRegistro: '',
+                            almuerzo: ''
+                        };
+                        isAuthenticated = true;
+                        await obtenerRegistrosEmpleado();
+                        navigateTo('home');
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Error cargando sesión:', e);
+            }
+        }
+        
+        // Si no hay sesión válida, mostrar pantalla de autenticación
+        isAuthenticated = false;
+        renderAuthScreen();
+        
+        // Verificar si el dispositivo ya tiene PIN
+        try {
+            showLoading(true);
+            const res = await jsonpRequest({ accion: 'verificarDispositivo', deviceToken });
+            showLoading(false);
+            
+            const verifyingScreen = document.getElementById('verifyingScreen');
+            const pinScreen = document.getElementById('pinScreen');
+            const registroScreen = document.getElementById('registroInicialScreen');
+            
+            if (verifyingScreen) verifyingScreen.classList.add('hidden');
+            
+            if (res && res.tienePin) {
+                if (pinScreen) pinScreen.classList.remove('hidden');
+                document.getElementById('pinInput')?.focus();
+            } else {
+                if (registroScreen) {
+                    registroScreen.classList.remove('hidden');
+                    document.getElementById('registroPinDisplay').textContent = generarPIN();
+                }
+            }
+        } catch (error) {
+            showLoading(false);
+            console.error('Error verificando dispositivo:', error);
+            const verifyingScreen = document.getElementById('verifyingScreen');
+            const pinScreen = document.getElementById('pinScreen');
+            if (verifyingScreen) verifyingScreen.classList.add('hidden');
+            if (pinScreen) pinScreen.classList.remove('hidden');
+            mostrarToast('Error de conexión con el servidor', 'error');
+        }
+    }
+
     // ========== INICIALIZACIÓN ==========
     document.addEventListener('DOMContentLoaded', () => {
-        showSplash();
-        
-        // Configurar navegación
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', () => {
-                navigateTo(item.dataset.page);
+                if (isAuthenticated) {
+                    navigateTo(item.dataset.page);
+                }
             });
         });
         
-        // FAB button
         const fab = document.getElementById('fabButton');
         if (fab) {
             fab.addEventListener('click', () => {
-                if (currentPage === 'home') {
-                    // Escanear QR o acción rápida
-                    mostrarToast('Función de QR próximamente', 'info');
-                }
+                mostrarToast('Función de QR próximamente', 'info');
             });
         }
         
-        setTimeout(verificarEstadoInicial, 100);
+        verificarEstadoInicial();
         
-        // Actualizar datos periódicamente
         setInterval(() => {
             if (isAuthenticated && empleado.id) {
                 obtenerRegistrosEmpleado();
