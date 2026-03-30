@@ -187,6 +187,11 @@
             border: 1px solid var(--gray-200);
         }
 
+        .timeline-item:active {
+            transform: translateX(5px);
+            border-color: var(--primary);
+        }
+
         .timeline-icon {
             width: 48px;
             height: 48px;
@@ -214,6 +219,18 @@
             text-align: center;
             transition: all 0.2s;
             border: 1px solid var(--gray-200);
+        }
+
+        .stat-card:active {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary);
+            line-height: 1;
         }
 
         .loading-overlay {
@@ -304,6 +321,11 @@
             padding: 16px;
         }
 
+        .pin-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
         .page {
             animation: pageEnter 0.3s ease;
         }
@@ -321,6 +343,50 @@
 
         .hidden {
             display: none !important;
+        }
+
+        .btn-lunch-option {
+            background: var(--gray-50);
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-lunch-option.selected {
+            background: var(--primary-light);
+            border-color: var(--primary);
+        }
+
+        .btn-lunch-option i {
+            font-size: 24px;
+            margin-bottom: 4px;
+            color: var(--primary);
+        }
+
+        .time-card {
+            background: white;
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            border: 2px solid var(--gray-200);
+        }
+
+        .time-card.entry {
+            border-color: var(--success);
+            background: linear-gradient(145deg, #ffffff, #dcfce7);
+        }
+
+        .time-card.exit {
+            border-color: var(--danger);
+            background: linear-gradient(145deg, #ffffff, #fee2e2);
+        }
+
+        .time-card.pending {
+            border-color: var(--warning);
+            background: linear-gradient(145deg, #ffffff, #fef9c3);
         }
 
         @media (max-width: 480px) {
@@ -375,7 +441,9 @@
     // ========== VARIABLES GLOBALES ==========
     let deviceToken = null;
     let posicion = { lat: null, lng: null };
+    let gpsActivo = false;
     let registrosCompletos = [];
+    let intervaloGPS = null;
     let currentPage = 'home';
     let isAuthenticated = false;
 
@@ -419,20 +487,29 @@
         setTimeout(() => toast.remove(), 3000);
     }
 
-    function formatearHora(fecha) {
-        if (!fecha) return '--:--';
-        try {
-            const d = new Date(fecha);
-            if (isNaN(d.getTime())) return '--:--';
-            return d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
-        } catch (e) {
-            return '--:--';
-        }
+    function formatearFechaCompleta() {
+        return new Date().toLocaleDateString('es-EC', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     }
 
     function formatearFechaCorta() {
         const d = new Date();
         return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    }
+
+    function formatearHora(fecha) {
+        if (!fecha) return '--:--';
+        try {
+            const d = new Date(fecha);
+            if (isNaN(d.getTime())) return '--:--';
+            let hours = d.getHours();
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'p. m.' : 'a. m.';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return `${hours}:${minutes} ${ampm}`;
+        } catch (e) {
+            return '--:--';
+        }
     }
 
     // ========== FUNCIONES DE DISTANCIA ==========
@@ -452,13 +529,24 @@
             return false;
         }
         const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-        
-        if (distancia <= RADIO_METROS) {
-            return true;
-        } else {
-            mostrarToast(`❌ Fuera del área (${Math.round(distancia)}m)`, 'error');
-            return false;
+        const indicator = document.getElementById('distanceIndicator');
+        if (indicator) {
+            indicator.textContent = `📍 ${Math.round(distancia)}m / ${RADIO_METROS}m`;
+            indicator.classList.remove('hidden');
+            
+            if (distancia <= RADIO_METROS) {
+                indicator.classList.add('valid');
+                indicator.classList.remove('invalid');
+                setTimeout(() => indicator.classList.add('hidden'), 3000);
+                return true;
+            } else {
+                indicator.classList.add('invalid');
+                indicator.classList.remove('valid');
+                mostrarToast(`❌ Fuera del área (${Math.round(distancia)}m)`, 'error');
+                return false;
+            }
         }
+        return false;
     }
 
     function solicitarPermisoGPS() {
@@ -469,27 +557,25 @@
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 posicion = { lat: position.coords.latitude, lng: position.coords.longitude };
-                const indicator = document.getElementById('distanceIndicator');
-                if (indicator) {
-                    const distancia = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-                    indicator.textContent = `📍 ${Math.round(distancia)}m / ${RADIO_METROS}m`;
-                    indicator.classList.remove('hidden');
-                    if (distancia <= RADIO_METROS) {
-                        indicator.classList.add('valid');
-                        indicator.classList.remove('invalid');
-                        setTimeout(() => indicator.classList.add('hidden'), 3000);
-                    } else {
-                        indicator.classList.add('invalid');
-                        indicator.classList.remove('valid');
-                    }
-                }
+                gpsActivo = true;
+                verificarDistanciaEmpresa();
             },
             (error) => {
                 console.error('GPS error:', error);
-                mostrarToast('Activa el GPS para registrar asistencia', 'error');
+                if (error.code === 1) {
+                    mostrarToast('Permiso de ubicación denegado. Activa el GPS para registrar asistencia', 'error');
+                } else {
+                    mostrarToast('Error al obtener ubicación. Verifica que el GPS esté activo', 'error');
+                }
             },
             { enableHighAccuracy: true, timeout: 10000 }
         );
+    }
+
+    function iniciarGPS() {
+        solicitarPermisoGPS();
+        if (intervaloGPS) clearInterval(intervaloGPS);
+        intervaloGPS = setInterval(solicitarPermisoGPS, 60000);
     }
 
     // ========== FUNCIÓN JSONP ==========
@@ -535,12 +621,316 @@
         return Math.floor(1000 + Math.random() * 9000).toString();
     }
 
+    // ========== FUNCIONES DE API ==========
+    async function verificarDispositivoTienePIN(deviceToken) {
+        return jsonpRequest({ accion: 'verificarDispositivo', deviceToken });
+    }
+
+    async function registrarDispositivoConPIN(empleadoId, pin, deviceToken) {
+        return jsonpRequest({ accion: 'registrarDispositivo', empleadoId, pin, deviceToken });
+    }
+
+    async function verificarPINAPI(pin, deviceToken) {
+        return jsonpRequest({ accion: 'verificarPIN', pin, deviceToken });
+    }
+
+    async function obtenerEstado(id, deviceToken) {
+        return jsonpRequest({ accion: 'obtenerEstado', id, deviceToken });
+    }
+
+    async function guardarRegistroAPI(data) {
+        return jsonpRequest({ accion: 'guardarRegistro', ...data });
+    }
+
+    async function obtenerRegistrosEmpleadoAPI(empleadoId) {
+        return jsonpRequest({ accion: 'obtenerRegistros', empleadoId });
+    }
+
+    async function desvincularDispositivoAPI(empleadoId, deviceToken) {
+        return jsonpRequest({ accion: 'desvincularDispositivo', empleadoId, deviceToken });
+    }
+
+    async function verificarTokenValidoAPI(token, empleadoId) {
+        return jsonpRequest({ accion: 'verificarToken', token, empleadoId });
+    }
+
+    // ========== FUNCIONES DE REGISTRO ==========
+    async function obtenerRegistrosEmpleado() {
+        if (!empleado.id) return;
+        try {
+            const registros = await obtenerRegistrosEmpleadoAPI(empleado.id);
+            registrosCompletos = registros || [];
+            if (currentPage === 'home') cargarUltimosRegistros();
+            if (currentPage === 'history') actualizarHistorial();
+            if (currentPage === 'profile') calcularEstadisticas();
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    async function guardarRegistro(datos) {
+        return guardarRegistroAPI(datos);
+    }
+
+    async function registrar() {
+        if (!verificarDistanciaEmpresa()) return;
+        
+        showLoading(true);
+        
+        const datos = {
+            id: empleado.id,
+            nombre: empleado.nombre,
+            tipo: empleado.tipoRegistro,
+            almuerzo: empleado.almuerzo || '',
+            lat: posicion.lat,
+            lng: posicion.lng,
+            dispositivo: deviceToken
+        };
+        
+        try {
+            const res = await guardarRegistro(datos);
+            showLoading(false);
+            
+            if (res.error) {
+                mostrarToast(res.error, 'error');
+                return;
+            }
+            
+            mostrarToast('Registro exitoso', 'success');
+            
+            const ahora = new Date();
+            const horaActual = formatearHora(ahora);
+            
+            if (empleado.tipoRegistro === 'ENTRADA') {
+                estado.tieneEntrada = true;
+                estado.horaEntrada = horaActual;
+                estado.almuerzo = empleado.almuerzo;
+            } else {
+                estado.tieneSalida = true;
+                estado.horaSalida = horaActual;
+            }
+            
+            await obtenerRegistrosEmpleado();
+            if (currentPage === 'home') actualizarCredencialHome();
+            mostrarToast('Registro completado', 'success');
+        } catch (error) {
+            showLoading(false);
+            mostrarToast('Error al registrar: ' + error.message, 'error');
+        }
+    }
+
+    function iniciarRegistro(tipo) {
+        if (!verificarDistanciaEmpresa()) return;
+        
+        empleado.tipoRegistro = tipo;
+        
+        if (tipo === 'ENTRADA') {
+            mostrarLunchSelector();
+        } else {
+            empleado.almuerzo = estado.almuerzo || '';
+            registrar();
+        }
+    }
+
+    function mostrarLunchSelector() {
+        const mainContent = document.getElementById('mainContent');
+        mainContent.innerHTML = `
+            <div class="page">
+                <div class="glass-card">
+                    <h3 class="h4 fw-bold text-center mb-4">¿Dónde almuerzas?</h3>
+                    <div class="row g-3 mb-4">
+                        <div class="col-6">
+                            <div class="btn-lunch-option text-center" onclick="seleccionarAlmuerzo('SI')" id="lunchSi">
+                                <i class="fas fa-building"></i>
+                                <div class="fw-bold mt-1">Dentro de planta</div>
+                                <small class="text-muted">Almuerzo en empresa</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="btn-lunch-option text-center" onclick="seleccionarAlmuerzo('NO')" id="lunchNo">
+                                <i class="fas fa-home"></i>
+                                <div class="fw-bold mt-1">Fuera de planta</div>
+                                <small class="text-muted">Almuerzo externo</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary btn-lg" onclick="confirmarAlmuerzo()" id="btnConfirmarAlmuerzo" disabled>
+                            <i class="fas fa-check"></i> Confirmar y registrar
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="volverAHome()">
+                            <i class="fas fa-arrow-left"></i> Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    let almuerzoSeleccionado = null;
+
+    function seleccionarAlmuerzo(op) {
+        almuerzoSeleccionado = op;
+        const lunchSi = document.getElementById('lunchSi');
+        const lunchNo = document.getElementById('lunchNo');
+        const btnConfirmar = document.getElementById('btnConfirmarAlmuerzo');
+        
+        if (op === 'SI') {
+            lunchSi.classList.add('selected');
+            lunchNo.classList.remove('selected');
+        } else {
+            lunchNo.classList.add('selected');
+            lunchSi.classList.remove('selected');
+        }
+        
+        if (btnConfirmar) btnConfirmar.disabled = false;
+    }
+
+    function confirmarAlmuerzo() {
+        if (almuerzoSeleccionado) {
+            empleado.almuerzo = almuerzoSeleccionado;
+            registrar();
+        }
+    }
+
+    function volverAHome() {
+        almuerzoSeleccionado = null;
+        if (isAuthenticated) {
+            renderHomePage();
+        } else {
+            renderAuthScreen();
+        }
+    }
+
+    // ========== FUNCIONES DE VERIFICACIÓN ==========
+    async function verificarPIN() {
+        const pin = document.getElementById('pinInput').value.trim();
+        if (!pin || pin.length < 4) {
+            mostrarToast('Ingresa PIN de 4 dígitos', 'error');
+            return;
+        }
+        
+        showLoading(true);
+        
+        try {
+            const res = await verificarPINAPI(pin, deviceToken);
+            showLoading(false);
+            
+            if (res.error) {
+                const pinResult = document.getElementById('pinResult');
+                if (pinResult) {
+                    pinResult.classList.remove('hidden');
+                    pinResult.textContent = '❌ ' + res.error;
+                }
+                mostrarToast(res.error, 'error');
+                return;
+            }
+            
+            if (res.valido) {
+                localStorage.setItem('SESSION_DATA', JSON.stringify({
+                    empleadoId: res.empleado.id,
+                    token: deviceToken,
+                    timestamp: new Date().toISOString()
+                }));
+                
+                estado = {
+                    tieneEntrada: res.empleado.tieneEntrada || false,
+                    tieneSalida: res.empleado.tieneSalida || false,
+                    horaEntrada: res.empleado.horaEntrada || null,
+                    horaSalida: res.empleado.horaSalida || null,
+                    almuerzo: res.empleado.almuerzo || null,
+                    esSupervisor: res.empleado.esSupervisor || false
+                };
+                
+                empleado = {
+                    id: res.empleado.id,
+                    nombre: res.empleado.nombre || 'Empleado',
+                    area: res.empleado.area || 'Área',
+                    foto_url: res.empleado.foto_url || '',
+                    tipoRegistro: '',
+                    almuerzo: ''
+                };
+                
+                isAuthenticated = true;
+                await obtenerRegistrosEmpleado();
+                renderHomePage();
+                mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
+                
+                const btnSupervisor = document.getElementById('btnSupervisor');
+                if (btnSupervisor && estado.esSupervisor) {
+                    btnSupervisor.style.display = 'flex';
+                }
+            } else {
+                mostrarToast('PIN incorrecto', 'error');
+            }
+        } catch (error) {
+            showLoading(false);
+            mostrarToast('Error de conexión: ' + error.message, 'error');
+        }
+    }
+
+    async function confirmarRegistroInicial() {
+        const empleadoId = document.getElementById('registroEmployeeId').value.trim();
+        const pin = document.getElementById('registroPinDisplay').textContent;
+        
+        if (!empleadoId) {
+            mostrarToast('Ingresa tu ID de empleado', 'error');
+            return;
+        }
+        
+        showLoading(true);
+        
+        try {
+            const res = await registrarDispositivoConPIN(empleadoId, pin, deviceToken);
+            showLoading(false);
+            
+            if (res.error) {
+                mostrarToast(res.error, 'error');
+                return;
+            }
+            
+            if (res.ok) {
+                mostrarToast(`Registro exitoso. Guarda tu PIN: ${pin}`, 'success');
+                localStorage.setItem('SESSION_DATA', JSON.stringify({
+                    empleadoId,
+                    token: deviceToken,
+                    timestamp: new Date().toISOString()
+                }));
+                
+                const estadoRes = await obtenerEstado(empleadoId, null);
+                if (!estadoRes.error) {
+                    estado = {
+                        tieneEntrada: estadoRes.tieneEntrada || false,
+                        tieneSalida: estadoRes.tieneSalida || false,
+                        horaEntrada: estadoRes.horaEntrada || null,
+                        horaSalida: estadoRes.horaSalida || null,
+                        almuerzo: estadoRes.almuerzo || null,
+                        esSupervisor: estadoRes.esSupervisor || false
+                    };
+                    empleado = {
+                        id: estadoRes.id,
+                        nombre: estadoRes.nombre,
+                        area: estadoRes.area,
+                        foto_url: estadoRes.foto_url,
+                        tipoRegistro: '',
+                        almuerzo: ''
+                    };
+                    isAuthenticated = true;
+                    await obtenerRegistrosEmpleado();
+                    renderHomePage();
+                }
+            }
+        } catch (error) {
+            showLoading(false);
+            mostrarToast('Error de conexión: ' + error.message, 'error');
+        }
+    }
+
     // ========== RENDERIZADO DE PÁGINAS ==========
     function renderAuthScreen() {
         const mainContent = document.getElementById('mainContent');
         mainContent.innerHTML = `
             <div class="page">
-                <!-- Pantalla de verificación -->
                 <div id="verifyingScreen">
                     <div class="glass-card text-center py-5">
                         <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
@@ -549,7 +939,6 @@
                     </div>
                 </div>
                 
-                <!-- Pantalla de PIN -->
                 <div id="pinScreen" class="hidden">
                     <div class="glass-card">
                         <div class="text-center mb-4">
@@ -580,7 +969,6 @@
                     </div>
                 </div>
                 
-                <!-- Pantalla de registro inicial -->
                 <div id="registroInicialScreen" class="hidden">
                     <div class="glass-card">
                         <div class="text-center mb-4">
@@ -617,6 +1005,56 @@
                 </div>
             </div>
         `;
+        
+        // Verificar si el dispositivo ya tiene PIN
+        verificarDispositivoConPIN();
+    }
+
+    async function verificarDispositivoConPIN() {
+        try {
+            const res = await verificarDispositivoTienePIN(deviceToken);
+            const verifyingScreen = document.getElementById('verifyingScreen');
+            const pinScreen = document.getElementById('pinScreen');
+            const registroScreen = document.getElementById('registroInicialScreen');
+            
+            if (verifyingScreen) verifyingScreen.classList.add('hidden');
+            
+            if (res && res.tienePin) {
+                if (pinScreen) pinScreen.classList.remove('hidden');
+                document.getElementById('pinInput')?.focus();
+            } else {
+                if (registroScreen) {
+                    registroScreen.classList.remove('hidden');
+                    document.getElementById('registroPinDisplay').textContent = generarPIN();
+                }
+            }
+        } catch (error) {
+            const verifyingScreen = document.getElementById('verifyingScreen');
+            const pinScreen = document.getElementById('pinScreen');
+            if (verifyingScreen) verifyingScreen.classList.add('hidden');
+            if (pinScreen) pinScreen.classList.remove('hidden');
+            mostrarToast('Error de conexión con el servidor', 'error');
+        }
+    }
+
+    function mostrarRegistroInicial() {
+        const pinScreen = document.getElementById('pinScreen');
+        const registroScreen = document.getElementById('registroInicialScreen');
+        const verifyingScreen = document.getElementById('verifyingScreen');
+        
+        if (verifyingScreen) verifyingScreen.classList.add('hidden');
+        if (pinScreen) pinScreen.classList.add('hidden');
+        if (registroScreen) registroScreen.classList.remove('hidden');
+        
+        document.getElementById('registroPinDisplay').textContent = generarPIN();
+    }
+
+    function volverAPIN() {
+        const registroScreen = document.getElementById('registroInicialScreen');
+        const pinScreen = document.getElementById('pinScreen');
+        
+        if (registroScreen) registroScreen.classList.add('hidden');
+        if (pinScreen) pinScreen.classList.remove('hidden');
     }
 
     function renderHomePage() {
@@ -645,7 +1083,7 @@
                         </div>
                         <div class="d-flex justify-content-between py-2">
                             <span class="text-muted">Estado</span>
-                            <span class="fw-bold text-success" id="deviceInfo">🔐 Activo</span>
+                            <span class="fw-bold text-success" id="deviceInfo">🔐 Sesión activa</span>
                         </div>
                     </div>
                     
@@ -689,114 +1127,17 @@
         
         actualizarCredencialHome();
         cargarUltimosRegistros();
-    }
-
-    function renderHistoryPage() {
-        const mainContent = document.getElementById('mainContent');
-        mainContent.innerHTML = `
-            <div class="page">
-                <div class="glass-card">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="fw-bold mb-0"><i class="fas fa-chart-line"></i> Mi Jornada Hoy</h5>
-                        <span class="badge bg-light" id="resumenFecha">${formatearFechaCorta()}</span>
-                    </div>
-                    
-                    <div class="d-flex align-items-center gap-3 mb-3 p-3 bg-light rounded-3">
-                        <div class="bg-primary text-white rounded-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 24px;" id="resumenAvatar">${empleado.nombre?.charAt(0) || '?'}</div>
-                        <div class="flex-grow-1">
-                            <h6 class="fw-bold mb-1" id="resumenNombre">${empleado.nombre || 'Empleado'}</h6>
-                            <small class="text-muted"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</small>
-                        </div>
-                    </div>
-                    
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <div class="stat-card">
-                                <div class="fs-2 fw-bold text-success" id="resumenEntradaHora">--:--</div>
-                                <small class="text-muted">ENTRADA</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="stat-card">
-                                <div class="fs-2 fw-bold text-danger" id="resumenSalidaHora">--:--</div>
-                                <small class="text-muted">SALIDA</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="alert alert-warning">
-                        <i class="fas fa-utensils"></i>
-                        <strong>Almuerzo:</strong> <span id="resumenAlmuerzo">No registrado</span>
-                    </div>
-                    
-                    <div class="p-3 rounded-3 text-center" id="resumenEstadoGeneral">
-                        <i class="fas fa-clock"></i> Jornada pendiente
-                    </div>
-                </div>
-                
-                <div class="glass-card mt-3">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-history"></i> Historial completo</h5>
-                    <div id="historialRegistros"></div>
-                </div>
-            </div>
-        `;
         
-        actualizarHistorial();
-    }
-
-    function renderProfilePage() {
-        const mainContent = document.getElementById('mainContent');
-        mainContent.innerHTML = `
-            <div class="page">
-                <div class="glass-card text-center">
-                    <div class="photo-container d-inline-block">
-                        <img id="profilePhoto" class="employee-photo hidden" src="" alt="Foto">
-                        <div id="profilePhotoPlaceholder" class="employee-photo-placeholder d-inline-flex">👤</div>
-                    </div>
-                    <h3 class="fw-bold mt-3">${empleado.nombre || 'Empleado'}</h3>
-                    <p class="text-muted">${empleado.area || 'Área'}</p>
-                    <p class="text-muted"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</p>
-                </div>
-                
-                <div class="glass-card mt-3">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-chart-bar"></i> Estadísticas</h5>
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <div class="stat-card">
-                                <div class="fs-2 fw-bold text-success" id="statTotalDias">0</div>
-                                <small class="text-muted">Días trabajados</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="stat-card">
-                                <div class="fs-2 fw-bold text-primary" id="statTotalHoras">0</div>
-                                <small class="text-muted">Horas totales</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="glass-card mt-3">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-cog"></i> Configuración</h5>
-                    <button class="btn btn-outline-danger w-100 mb-2" onclick="cerrarSesion()">
-                        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
-                    </button>
-                    <button class="btn btn-outline-secondary w-100" onclick="location.reload()">
-                        <i class="fas fa-sync-alt"></i> Actualizar Datos
-                    </button>
-                </div>
-            </div>
-        `;
+        const fab = document.getElementById('fabButton');
+        if (fab) fab.style.display = 'flex';
         
-        const profilePhoto = document.getElementById('profilePhoto');
-        const profilePlaceholder = document.getElementById('profilePhotoPlaceholder');
-        if (empleado.foto_url && empleado.foto_url.trim()) {
-            profilePhoto.src = empleado.foto_url;
-            profilePhoto.classList.remove('hidden');
-            profilePlaceholder.classList.add('hidden');
+        if (estado.esSupervisor) {
+            const supervisorBtn = document.createElement('button');
+            supervisorBtn.className = 'btn btn-info btn-lg w-100 mt-2 text-white';
+            supervisorBtn.innerHTML = '<i class="fas fa-chart-line"></i> Panel Supervisor';
+            supervisorBtn.onclick = () => window.open('supervisor.html', '_blank');
+            document.querySelector('.glass-card:last-child')?.appendChild(supervisorBtn);
         }
-        
-        calcularEstadisticas();
     }
 
     function actualizarCredencialHome() {
@@ -868,6 +1209,83 @@
         `).join('');
     }
 
+    function renderHistoryPage() {
+        const mainContent = document.getElementById('mainContent');
+        mainContent.innerHTML = `
+            <div class="page">
+                <div class="glass-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-chart-line"></i> Mi Jornada Hoy</h5>
+                        <span class="badge bg-light" id="resumenFecha">${formatearFechaCorta()}</span>
+                    </div>
+                    
+                    <div class="d-flex align-items-center gap-3 mb-3 p-3 bg-light rounded-3">
+                        <div class="bg-primary text-white rounded-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 24px;" id="resumenAvatar">${empleado.nombre?.charAt(0) || '?'}</div>
+                        <div class="flex-grow-1">
+                            <h6 class="fw-bold mb-1" id="resumenNombre">${empleado.nombre || 'Empleado'}</h6>
+                            <small class="text-muted"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <div class="time-card entry">
+                                <div class="time-icon">⏰</div>
+                                <div class="time-label">ENTRADA</div>
+                                <div class="time-value fw-bold text-success" id="resumenEntradaHora">--:--</div>
+                                <div class="time-status" id="resumenEntradaStatus">Pendiente</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="time-card exit">
+                                <div class="time-icon">🚪</div>
+                                <div class="time-label">SALIDA</div>
+                                <div class="time-value fw-bold text-danger" id="resumenSalidaHora">--:--</div>
+                                <div class="time-status" id="resumenSalidaStatus">Pendiente</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="lunch-info p-3 rounded-3 mb-3" style="background: #fffbeb;">
+                        <i class="fas fa-utensils fa-2x text-warning"></i>
+                        <div class="flex-grow-1">
+                            <div class="small text-muted">Opción de almuerzo</div>
+                            <div class="fw-bold" id="resumenAlmuerzo">No registrado</div>
+                        </div>
+                    </div>
+                    
+                    <div class="status-badge w-100 justify-content-center p-3 rounded-3 text-center" id="resumenEstadoGeneral">
+                        <i class="fas fa-clock"></i> Jornada pendiente
+                    </div>
+                </div>
+                
+                <div class="glass-card mt-3">
+                    <h5 class="fw-bold mb-3"><i class="fas fa-history"></i> Historial completo</h5>
+                    <div id="historialRegistros"></div>
+                </div>
+            </div>
+        `;
+        
+        actualizarHistorial();
+        
+        const btnSalidaResumen = document.createElement('button');
+        btnSalidaResumen.className = 'btn btn-danger btn-lg w-100 mt-3';
+        btnSalidaResumen.innerHTML = '<i class="fas fa-sign-out-alt"></i> Registrar Salida';
+        btnSalidaResumen.onclick = () => {
+            if (!estado.tieneEntrada) {
+                mostrarToast('Primero debes registrar la entrada', 'error');
+            } else if (estado.tieneSalida) {
+                mostrarToast('Ya tienes salida registrada hoy', 'error');
+            } else {
+                iniciarRegistro('SALIDA');
+            }
+        };
+        
+        if (estado.tieneEntrada && !estado.tieneSalida) {
+            document.querySelector('.glass-card:first-child')?.appendChild(btnSalidaResumen);
+        }
+    }
+
     function actualizarHistorial() {
         const container = document.getElementById('historialRegistros');
         if (!container) return;
@@ -902,245 +1320,129 @@
         
         const resumenEntradaHora = document.getElementById('resumenEntradaHora');
         const resumenSalidaHora = document.getElementById('resumenSalidaHora');
+        const resumenEntradaStatus = document.getElementById('resumenEntradaStatus');
+        const resumenSalidaStatus = document.getElementById('resumenSalidaStatus');
         const resumenAlmuerzo = document.getElementById('resumenAlmuerzo');
         const resumenEstadoGeneral = document.getElementById('resumenEstadoGeneral');
         
         if (resumenEntradaHora) resumenEntradaHora.textContent = entrada ? formatearHora(entrada.timestamp || entrada.hora) : '--:--';
         if (resumenSalidaHora) resumenSalidaHora.textContent = salida ? formatearHora(salida.timestamp || salida.hora) : '--:--';
+        
+        if (resumenEntradaStatus) {
+            resumenEntradaStatus.innerHTML = entrada ? '<i class="fas fa-check-circle"></i> Completada' : '<i class="fas fa-hourglass-half"></i> Pendiente';
+            resumenEntradaStatus.className = entrada ? 'time-status completed' : 'time-status pending';
+        }
+        
+        if (resumenSalidaStatus) {
+            resumenSalidaStatus.innerHTML = salida ? '<i class="fas fa-check-circle"></i> Completada' : '<i class="fas fa-hourglass-half"></i> Pendiente';
+            resumenSalidaStatus.className = salida ? 'time-status completed' : 'time-status pending';
+        }
+        
         if (resumenAlmuerzo) resumenAlmuerzo.textContent = entrada?.almuerzo === 'SI' ? '🍽️ Dentro de planta' : entrada?.almuerzo === 'NO' ? '🏠 Fuera de planta' : '❓ No registrado';
         
         if (resumenEstadoGeneral) {
             if (!entrada) {
-                resumenEstadoGeneral.className = 'p-3 rounded-3 text-center bg-danger bg-opacity-10 text-danger';
+                resumenEstadoGeneral.className = 'status-badge w-100 justify-content-center p-3 rounded-3 text-center bg-danger bg-opacity-10 text-danger';
                 resumenEstadoGeneral.innerHTML = '<i class="fas fa-clock"></i> Jornada pendiente';
             } else if (entrada && !salida) {
-                resumenEstadoGeneral.className = 'p-3 rounded-3 text-center bg-warning bg-opacity-10 text-warning';
+                resumenEstadoGeneral.className = 'status-badge w-100 justify-content-center p-3 rounded-3 text-center bg-warning bg-opacity-10 text-warning';
                 resumenEstadoGeneral.innerHTML = '<i class="fas fa-play-circle"></i> Jornada en curso';
             } else {
-                resumenEstadoGeneral.className = 'p-3 rounded-3 text-center bg-success bg-opacity-10 text-success';
+                resumenEstadoGeneral.className = 'status-badge w-100 justify-content-center p-3 rounded-3 text-center bg-success bg-opacity-10 text-success';
                 resumenEstadoGeneral.innerHTML = '<i class="fas fa-check-circle"></i> Jornada completada';
             }
         }
     }
 
+    function renderProfilePage() {
+        const mainContent = document.getElementById('mainContent');
+        const totalDias = new Set(registrosCompletos.map(r => r.fecha)).size;
+        const totalRegistros = registrosCompletos.length;
+        
+        mainContent.innerHTML = `
+            <div class="page">
+                <div class="glass-card text-center">
+                    <div class="photo-container d-inline-block">
+                        <img id="profilePhoto" class="employee-photo hidden" src="" alt="Foto">
+                        <div id="profilePhotoPlaceholder" class="employee-photo-placeholder d-inline-flex">👤</div>
+                    </div>
+                    <h3 class="fw-bold mt-3">${empleado.nombre || 'Empleado'}</h3>
+                    <p class="text-muted">${empleado.area || 'Área'}</p>
+                    <p class="text-muted"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</p>
+                    ${estado.esSupervisor ? '<span class="badge bg-info text-white">Supervisor</span>' : ''}
+                </div>
+                
+                <div class="glass-card mt-3">
+                    <h5 class="fw-bold mb-3"><i class="fas fa-chart-bar"></i> Estadísticas de asistencia</h5>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <div class="stat-value" id="statTotalDias">${totalDias}</div>
+                                <small class="text-muted">Días trabajados</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <div class="stat-value" id="statTotalRegistros">${totalRegistros}</div>
+                                <small class="text-muted">Total registros</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <div class="stat-value text-success" id="statEntradas">${registrosCompletos.filter(r => r.tipo === 'ENTRADA').length}</div>
+                                <small class="text-muted">Entradas</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <div class="stat-value text-danger" id="statSalidas">${registrosCompletos.filter(r => r.tipo === 'SALIDA').length}</div>
+                                <small class="text-muted">Salidas</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="glass-card mt-3">
+                    <h5 class="fw-bold mb-3"><i class="fas fa-cog"></i> Configuración</h5>
+                    <button class="btn btn-outline-danger w-100 mb-2" onclick="cerrarSesion()">
+                        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                    </button>
+                    <button class="btn btn-outline-secondary w-100" onclick="location.reload()">
+                        <i class="fas fa-sync-alt"></i> Actualizar Datos
+                    </button>
+                    <button class="btn btn-outline-primary w-100 mt-2" onclick="verificarDistanciaEmpresa()">
+                        <i class="fas fa-map-marker-alt"></i> Verificar ubicación
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        const profilePhoto = document.getElementById('profilePhoto');
+        const profilePlaceholder = document.getElementById('profilePhotoPlaceholder');
+        if (empleado.foto_url && empleado.foto_url.trim()) {
+            profilePhoto.src = empleado.foto_url;
+            profilePhoto.classList.remove('hidden');
+            profilePlaceholder.classList.add('hidden');
+        }
+    }
+
     function calcularEstadisticas() {
-        const diasUnicos = new Set(registrosCompletos.map(r => r.fecha)).size;
-        const totalHoras = registrosCompletos.length * 8;
+        const totalDias = new Set(registrosCompletos.map(r => r.fecha)).size;
+        const totalRegistros = registrosCompletos.length;
+        const totalEntradas = registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
+        const totalSalidas = registrosCompletos.filter(r => r.tipo === 'SALIDA').length;
         
         const statTotalDias = document.getElementById('statTotalDias');
-        const statTotalHoras = document.getElementById('statTotalHoras');
+        const statTotalRegistros = document.getElementById('statTotalRegistros');
+        const statEntradas = document.getElementById('statEntradas');
+        const statSalidas = document.getElementById('statSalidas');
         
-        if (statTotalDias) statTotalDias.textContent = diasUnicos;
-        if (statTotalHoras) statTotalHoras.textContent = totalHoras;
-    }
-
-    // ========== FUNCIONES DE REGISTRO ==========
-    async function obtenerRegistrosEmpleado() {
-        if (!empleado.id) return;
-        try {
-            const registros = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: empleado.id });
-            registrosCompletos = registros || [];
-            if (currentPage === 'home') cargarUltimosRegistros();
-            if (currentPage === 'history') actualizarHistorial();
-            if (currentPage === 'profile') calcularEstadisticas();
-        } catch (error) {
-            console.error('Error:', error);
-        }
-    }
-
-    async function guardarRegistro(datos) {
-        return jsonpRequest({ accion: 'guardarRegistro', ...datos });
-    }
-
-    async function registrar() {
-        if (!verificarDistanciaEmpresa()) return;
-        
-        showLoading(true);
-        
-        const datos = {
-            id: empleado.id,
-            nombre: empleado.nombre,
-            tipo: empleado.tipoRegistro,
-            almuerzo: empleado.almuerzo || '',
-            lat: posicion.lat,
-            lng: posicion.lng,
-            dispositivo: deviceToken
-        };
-        
-        try {
-            const res = await guardarRegistro(datos);
-            showLoading(false);
-            
-            if (res.error) {
-                mostrarToast(res.error, 'error');
-                return;
-            }
-            
-            mostrarToast('Registro exitoso', 'success');
-            
-            if (empleado.tipoRegistro === 'ENTRADA') {
-                estado.tieneEntrada = true;
-                estado.horaEntrada = new Date().toLocaleTimeString();
-                estado.almuerzo = empleado.almuerzo;
-            } else {
-                estado.tieneSalida = true;
-                estado.horaSalida = new Date().toLocaleTimeString();
-            }
-            
-            await obtenerRegistrosEmpleado();
-            if (currentPage === 'home') actualizarCredencialHome();
-            mostrarToast('Registro completado', 'success');
-        } catch (error) {
-            showLoading(false);
-            mostrarToast('Error al registrar: ' + error.message, 'error');
-        }
-    }
-
-    function iniciarRegistro(tipo) {
-        empleado.tipoRegistro = tipo;
-        
-        if (tipo === 'ENTRADA') {
-            const almuerzo = confirm('¿Almuerzas dentro de planta?\nAceptar = Sí, Cancelar = No');
-            empleado.almuerzo = almuerzo ? 'SI' : 'NO';
-            registrar();
-        } else {
-            empleado.almuerzo = estado.almuerzo || '';
-            registrar();
-        }
-    }
-
-    // ========== FUNCIONES DE AUTENTICACIÓN ==========
-    async function verificarPIN() {
-        const pin = document.getElementById('pinInput').value.trim();
-        if (!pin || pin.length < 4) {
-            mostrarToast('Ingresa PIN de 4 dígitos', 'error');
-            return;
-        }
-        
-        showLoading(true);
-        
-        try {
-            const res = await jsonpRequest({ accion: 'verificarPIN', pin, deviceToken });
-            showLoading(false);
-            
-            if (res.error) {
-                mostrarToast(res.error, 'error');
-                return;
-            }
-            
-            if (res.valido) {
-                localStorage.setItem('SESSION_DATA', JSON.stringify({
-                    empleadoId: res.empleado.id,
-                    token: deviceToken,
-                    timestamp: new Date().toISOString()
-                }));
-                
-                estado = {
-                    tieneEntrada: res.empleado.tieneEntrada || false,
-                    tieneSalida: res.empleado.tieneSalida || false,
-                    horaEntrada: res.empleado.horaEntrada || null,
-                    horaSalida: res.empleado.horaSalida || null,
-                    almuerzo: res.empleado.almuerzo || null,
-                    esSupervisor: res.empleado.esSupervisor || false
-                };
-                
-                empleado = {
-                    id: res.empleado.id,
-                    nombre: res.empleado.nombre || 'Empleado',
-                    area: res.empleado.area || 'Área',
-                    foto_url: res.empleado.foto_url || '',
-                    tipoRegistro: '',
-                    almuerzo: ''
-                };
-                
-                isAuthenticated = true;
-                await obtenerRegistrosEmpleado();
-                navigateTo('home');
-                mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
-            } else {
-                mostrarToast('PIN incorrecto', 'error');
-            }
-        } catch (error) {
-            showLoading(false);
-            mostrarToast('Error de conexión: ' + error.message, 'error');
-        }
-    }
-
-    function mostrarRegistroInicial() {
-        const pinScreen = document.getElementById('pinScreen');
-        const registroScreen = document.getElementById('registroInicialScreen');
-        const verifyingScreen = document.getElementById('verifyingScreen');
-        
-        if (verifyingScreen) verifyingScreen.classList.add('hidden');
-        if (pinScreen) pinScreen.classList.add('hidden');
-        if (registroScreen) registroScreen.classList.remove('hidden');
-        
-        document.getElementById('registroPinDisplay').textContent = generarPIN();
-    }
-
-    async function confirmarRegistroInicial() {
-        const empleadoId = document.getElementById('registroEmployeeId').value.trim();
-        const pin = document.getElementById('registroPinDisplay').textContent;
-        
-        if (!empleadoId) {
-            mostrarToast('Ingresa tu ID de empleado', 'error');
-            return;
-        }
-        
-        showLoading(true);
-        
-        try {
-            const res = await jsonpRequest({ accion: 'registrarDispositivo', empleadoId, pin, deviceToken });
-            showLoading(false);
-            
-            if (res.error) {
-                mostrarToast(res.error, 'error');
-                return;
-            }
-            
-            if (res.ok) {
-                mostrarToast(`Registro exitoso. Guarda tu PIN: ${pin}`, 'success');
-                localStorage.setItem('SESSION_DATA', JSON.stringify({
-                    empleadoId,
-                    token: deviceToken,
-                    timestamp: new Date().toISOString()
-                }));
-                
-                const estadoRes = await jsonpRequest({ accion: 'obtenerEstado', id: empleadoId, deviceToken: null });
-                if (!estadoRes.error) {
-                    estado = {
-                        tieneEntrada: estadoRes.tieneEntrada || false,
-                        tieneSalida: estadoRes.tieneSalida || false,
-                        horaEntrada: estadoRes.horaEntrada || null,
-                        horaSalida: estadoRes.horaSalida || null,
-                        almuerzo: estadoRes.almuerzo || null,
-                        esSupervisor: estadoRes.esSupervisor || false
-                    };
-                    empleado = {
-                        id: estadoRes.id,
-                        nombre: estadoRes.nombre,
-                        area: estadoRes.area,
-                        foto_url: estadoRes.foto_url,
-                        tipoRegistro: '',
-                        almuerzo: ''
-                    };
-                    isAuthenticated = true;
-                    await obtenerRegistrosEmpleado();
-                    navigateTo('home');
-                }
-            }
-        } catch (error) {
-            showLoading(false);
-            mostrarToast('Error de conexión: ' + error.message, 'error');
-        }
-    }
-
-    function volverAPIN() {
-        const registroScreen = document.getElementById('registroInicialScreen');
-        const pinScreen = document.getElementById('pinScreen');
-        
-        if (registroScreen) registroScreen.classList.add('hidden');
-        if (pinScreen) pinScreen.classList.remove('hidden');
+        if (statTotalDias) statTotalDias.textContent = totalDias;
+        if (statTotalRegistros) statTotalRegistros.textContent = totalRegistros;
+        if (statEntradas) statEntradas.textContent = totalEntradas;
+        if (statSalidas) statSalidas.textContent = totalSalidas;
     }
 
     async function cerrarSesion() {
@@ -1148,7 +1450,7 @@
             showLoading(true);
             if (empleado.id && deviceToken) {
                 try {
-                    await jsonpRequest({ accion: 'desvincularDispositivo', empleadoId: empleado.id, deviceToken });
+                    await desvincularDispositivoAPI(empleado.id, deviceToken);
                 } catch (e) {}
             }
             localStorage.clear();
@@ -1191,7 +1493,7 @@
     // ========== VERIFICACIÓN INICIAL ==========
     async function verificarEstadoInicial() {
         deviceToken = generarDeviceToken();
-        solicitarPermisoGPS();
+        iniciarGPS();
         
         // Crear elemento de distancia
         const distanceIndicator = document.createElement('div');
@@ -1205,7 +1507,7 @@
                 const data = JSON.parse(sessionData);
                 if (data.empleadoId && data.token === deviceToken) {
                     showLoading(true);
-                    const res = await jsonpRequest({ accion: 'obtenerEstado', id: data.empleadoId, deviceToken: null });
+                    const res = await obtenerEstado(data.empleadoId, null);
                     showLoading(false);
                     
                     if (!res.error) {
@@ -1227,7 +1529,7 @@
                         };
                         isAuthenticated = true;
                         await obtenerRegistrosEmpleado();
-                        navigateTo('home');
+                        renderHomePage();
                         return;
                     }
                 }
@@ -1239,37 +1541,6 @@
         // Si no hay sesión válida, mostrar pantalla de autenticación
         isAuthenticated = false;
         renderAuthScreen();
-        
-        // Verificar si el dispositivo ya tiene PIN
-        try {
-            showLoading(true);
-            const res = await jsonpRequest({ accion: 'verificarDispositivo', deviceToken });
-            showLoading(false);
-            
-            const verifyingScreen = document.getElementById('verifyingScreen');
-            const pinScreen = document.getElementById('pinScreen');
-            const registroScreen = document.getElementById('registroInicialScreen');
-            
-            if (verifyingScreen) verifyingScreen.classList.add('hidden');
-            
-            if (res && res.tienePin) {
-                if (pinScreen) pinScreen.classList.remove('hidden');
-                document.getElementById('pinInput')?.focus();
-            } else {
-                if (registroScreen) {
-                    registroScreen.classList.remove('hidden');
-                    document.getElementById('registroPinDisplay').textContent = generarPIN();
-                }
-            }
-        } catch (error) {
-            showLoading(false);
-            console.error('Error verificando dispositivo:', error);
-            const verifyingScreen = document.getElementById('verifyingScreen');
-            const pinScreen = document.getElementById('pinScreen');
-            if (verifyingScreen) verifyingScreen.classList.add('hidden');
-            if (pinScreen) pinScreen.classList.remove('hidden');
-            mostrarToast('Error de conexión con el servidor', 'error');
-        }
     }
 
     // ========== INICIALIZACIÓN ==========
