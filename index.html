@@ -119,67 +119,179 @@
             transform: scale(0.95);
         }
 
-        .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 20px;
+        /* Splash Screen */
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: fadeOut 0.5s ease 2s forwards;
+        }
+
+        @keyframes fadeOut {
+            to {
+                opacity: 0;
+                visibility: hidden;
+            }
+        }
+
+        .splash-logo {
+            width: 100px;
+            height: 100px;
+            background: white;
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            animation: bounce 1s ease;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .splash-logo i {
+            font-size: 48px;
+            color: var(--primary);
+        }
+
+        .splash-title {
+            color: white;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .splash-subtitle {
+            color: rgba(255,255,255,0.8);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        /* Credencial Card */
+        .credencial-card {
+            background: linear-gradient(135deg, #ffffff 0%, #fef9f9 100%);
+            border-radius: 24px;
+            padding: 24px;
             margin-bottom: 16px;
-            border: 1px solid rgba(255,255,255,0.2);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
         }
 
-        .employee-photo {
-            width: 100px;
-            height: 100px;
-            border-radius: 20px;
+        .credencial-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+        }
+
+        .photo-container-large {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .employee-photo-large {
+            width: 140px;
+            height: 140px;
+            border-radius: 24px;
             object-fit: cover;
-            border: 3px solid white;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 4px solid white;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            transition: transform 0.3s;
         }
 
-        .employee-photo-placeholder {
-            width: 100px;
-            height: 100px;
-            border-radius: 20px;
+        .employee-photo-placeholder-large {
+            width: 140px;
+            height: 140px;
+            border-radius: 24px;
             background: linear-gradient(145deg, var(--gray-100), var(--gray-200));
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 48px;
+            font-size: 64px;
             color: var(--gray-500);
-            border: 3px solid white;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 4px solid white;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: transform 0.3s;
         }
 
-        .fab {
+        .employee-photo-large:active,
+        .employee-photo-placeholder-large:active {
+            transform: scale(0.98);
+        }
+
+        /* Modal para foto en grande */
+        .photo-modal {
             position: fixed;
-            bottom: 90px;
-            right: 20px;
-            width: 56px;
-            height: 56px;
-            border-radius: 28px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            backdrop-filter: blur(20px);
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 12px rgba(220,38,38,0.4);
+            z-index: 10000;
+            animation: fadeIn 0.3s ease;
             cursor: pointer;
-            transition: all 0.3s;
-            z-index: 90;
-            border: none;
         }
 
-        .fab:active {
-            transform: scale(0.9);
+        .photo-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 16px;
+            animation: zoomIn 0.3s ease;
         }
 
-        .timeline-item {
+        @keyframes zoomIn {
+            from {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* Grouped History */
+        .history-group {
+            margin-bottom: 24px;
+        }
+
+        .history-date {
+            background: var(--gray-200);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 12px;
+            display: inline-block;
+        }
+
+        .history-item {
             background: white;
             border-radius: 16px;
             padding: 16px;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
             gap: 16px;
@@ -187,12 +299,12 @@
             border: 1px solid var(--gray-200);
         }
 
-        .timeline-item:active {
+        .history-item:active {
             transform: translateX(5px);
             border-color: var(--primary);
         }
 
-        .timeline-icon {
+        .history-icon {
             width: 48px;
             height: 48px;
             border-radius: 12px;
@@ -202,14 +314,57 @@
             font-size: 24px;
         }
 
-        .timeline-icon.entry {
+        .history-icon.entry {
             background: linear-gradient(135deg, #dcfce7, #bbf7d0);
             color: #166534;
         }
 
-        .timeline-icon.exit {
+        .history-icon.exit {
             background: linear-gradient(135deg, #fee2e2, #fecaca);
             color: #991b1b;
+        }
+
+        .history-content {
+            flex: 1;
+        }
+
+        .history-time {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+
+        .history-type {
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+
+        .history-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .history-badge.si {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .history-badge.no {
+            background: #fef9c3;
+            color: #854d0e;
+        }
+
+        /* Glass Card */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
 
         .stat-card {
@@ -384,20 +539,86 @@
             background: linear-gradient(145deg, #ffffff, #fee2e2);
         }
 
-        .time-card.pending {
-            border-color: var(--warning);
-            background: linear-gradient(145deg, #ffffff, #fef9c3);
+        .time-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .time-label {
+            font-size: 11px;
+            color: var(--gray-500);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .time-value {
+            font-size: 18px;
+            font-weight: 700;
+            margin: 8px 0;
+        }
+
+        .time-status {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .time-status.completed {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .time-status.pending {
+            background: #fef9c3;
+            color: #854d0e;
+        }
+
+        .lunch-info {
+            background: #fffbeb;
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            border: 1px solid #fcd34d;
+        }
+
+        .fab {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(220,38,38,0.4);
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 90;
+            border: none;
+        }
+
+        .fab:active {
+            transform: scale(0.9);
         }
 
         @media (max-width: 480px) {
-            .glass-card {
-                padding: 16px;
+            .employee-photo-large {
+                width: 120px;
+                height: 120px;
             }
-            
-            .employee-photo,
-            .employee-photo-placeholder {
-                width: 80px;
-                height: 80px;
+            .employee-photo-placeholder-large {
+                width: 120px;
+                height: 120px;
+                font-size: 56px;
             }
         }
     </style>
@@ -465,6 +686,24 @@
         almuerzo: ''
     };
 
+    // ========== SPLASH SCREEN ==========
+    function showSplash() {
+        const splash = document.createElement('div');
+        splash.className = 'splash-screen';
+        splash.innerHTML = `
+            <div class="splash-logo">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="splash-title">CONTROL 2026</div>
+            <div class="splash-subtitle">Sistema de Asistencia</div>
+        `;
+        document.body.appendChild(splash);
+        
+        setTimeout(() => {
+            splash.remove();
+        }, 2500);
+    }
+
     // ========== FUNCIONES DE UI ==========
     function showLoading(show) {
         const loading = document.getElementById('loadingOverlay');
@@ -510,6 +749,37 @@
         } catch (e) {
             return '--:--';
         }
+    }
+
+    function formatearFechaParaGrupo(fecha) {
+        const f = new Date(fecha);
+        const hoy = new Date();
+        const ayer = new Date(hoy);
+        ayer.setDate(ayer.getDate() - 1);
+        
+        if (f.toDateString() === hoy.toDateString()) {
+            return 'Hoy';
+        } else if (f.toDateString() === ayer.toDateString()) {
+            return 'Ayer';
+        } else {
+            return f.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+        }
+    }
+
+    // ========== FUNCIÓN PARA MOSTRAR FOTO EN MODAL ==========
+    function showPhotoModal(url) {
+        const modal = document.createElement('div');
+        modal.className = 'photo-modal';
+        modal.onclick = () => modal.remove();
+        
+        const img = document.createElement('img');
+        img.src = url;
+        img.onerror = () => {
+            modal.innerHTML = '<div style="color:white; text-align:center;"><i class="fas fa-image fa-4x mb-3"></i><br>No se pudo cargar la imagen</div>';
+        };
+        
+        modal.appendChild(img);
+        document.body.appendChild(modal);
     }
 
     // ========== FUNCIONES DE DISTANCIA ==========
@@ -650,10 +920,6 @@
         return jsonpRequest({ accion: 'desvincularDispositivo', empleadoId, deviceToken });
     }
 
-    async function verificarTokenValidoAPI(token, empleadoId) {
-        return jsonpRequest({ accion: 'verificarToken', token, empleadoId });
-    }
-
     // ========== FUNCIONES DE REGISTRO ==========
     async function obtenerRegistrosEmpleado() {
         if (!empleado.id) return;
@@ -661,8 +927,8 @@
             const registros = await obtenerRegistrosEmpleadoAPI(empleado.id);
             registrosCompletos = registros || [];
             if (currentPage === 'home') cargarUltimosRegistros();
-            if (currentPage === 'history') actualizarHistorial();
-            if (currentPage === 'profile') calcularEstadisticas();
+            if (currentPage === 'history') actualizarHistorialAgrupado();
+            if (currentPage === 'profile') actualizarEstadisticasPerfil();
         } catch (error) {
             console.error('Error:', error);
         }
@@ -711,7 +977,8 @@
             }
             
             await obtenerRegistrosEmpleado();
-            if (currentPage === 'home') actualizarCredencialHome();
+            if (currentPage === 'home') renderHomePage();
+            if (currentPage === 'history') renderHistoryPage();
             mostrarToast('Registro completado', 'success');
         } catch (error) {
             showLoading(false);
@@ -802,7 +1069,7 @@
         }
     }
 
-    // ========== FUNCIONES DE VERIFICACIÓN ==========
+    // ========== VERIFICACIÓN DE PIN ==========
     async function verificarPIN() {
         const pin = document.getElementById('pinInput').value.trim();
         if (!pin || pin.length < 4) {
@@ -855,11 +1122,6 @@
                 await obtenerRegistrosEmpleado();
                 renderHomePage();
                 mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
-                
-                const btnSupervisor = document.getElementById('btnSupervisor');
-                if (btnSupervisor && estado.esSupervisor) {
-                    btnSupervisor.style.display = 'flex';
-                }
             } else {
                 mostrarToast('PIN incorrecto', 'error');
             }
@@ -1006,7 +1268,6 @@
             </div>
         `;
         
-        // Verificar si el dispositivo ya tiene PIN
         verificarDispositivoConPIN();
     }
 
@@ -1057,53 +1318,48 @@
         if (pinScreen) pinScreen.classList.remove('hidden');
     }
 
+    // ========== RENDER HOME (CREDENCIAL) ==========
     function renderHomePage() {
         const mainContent = document.getElementById('mainContent');
+        const nombrePartes = empleado.nombre?.split(' ') || ['EMPLEADO', 'NOMBRE'];
+        const primerNombre = nombrePartes[0]?.toUpperCase() || 'EMPLEADO';
+        const apellido = nombrePartes.slice(1).join(' ')?.toUpperCase() || 'NOMBRE';
+        
         mainContent.innerHTML = `
             <div class="page">
-                <div class="glass-card">
+                <div class="credencial-card">
                     <div class="text-center">
-                        <div class="photo-container d-inline-block">
-                            <img id="employeePhoto" class="employee-photo hidden" src="" alt="Foto">
-                            <div id="photoPlaceholder" class="employee-photo-placeholder d-inline-flex">👤</div>
+                        <div class="photo-container-large" onclick="showPhotoModal('${empleado.foto_url || ''}')">
+                            ${empleado.foto_url && empleado.foto_url.trim() ? 
+                                `<img id="employeePhotoLarge" class="employee-photo-large" src="${empleado.foto_url}" alt="Foto">` :
+                                `<div id="photoPlaceholderLarge" class="employee-photo-placeholder-large">👤</div>`
+                            }
                         </div>
-                        <h2 class="h5 fw-light mt-3" id="firstName">${empleado.nombre?.split(' ')[0]?.toUpperCase() || 'EMPLEADO'}</h2>
-                        <h3 class="h3 fw-bold" id="lastName">${empleado.nombre?.split(' ').slice(1).join(' ')?.toUpperCase() || 'NOMBRE'}</h3>
-                        <span class="badge bg-primary-light text-primary px-3 py-2 mt-2" id="position">${empleado.area || 'Área'}</span>
-                    </div>
-                    
-                    <div class="mt-4">
-                        <div class="d-flex justify-content-between py-2 border-bottom">
-                            <span class="text-muted">ID Empleado</span>
-                            <span class="fw-bold" id="idNo">${empleado.id || '-'}</span>
-                        </div>
-                        <div class="d-flex justify-content-between py-2 border-bottom">
-                            <span class="text-muted">Área</span>
-                            <span class="fw-bold" id="area">${empleado.area || '-'}</span>
-                        </div>
-                        <div class="d-flex justify-content-between py-2">
-                            <span class="text-muted">Estado</span>
-                            <span class="fw-bold text-success" id="deviceInfo">🔐 Sesión activa</span>
+                        <div class="mt-3">
+                            <div class="text-muted small mb-1">ID: ${empleado.id || '-'}</div>
+                            <h2 class="h3 fw-bold mb-0">${primerNombre}</h2>
+                            <h3 class="h4 fw-light text-muted">${apellido}</h3>
+                            <span class="badge bg-primary-light text-primary px-3 py-2 mt-2">${empleado.area || 'Área'}</span>
                         </div>
                     </div>
                     
-                    <div class="row g-2 mt-3">
+                    <div class="row g-3 mt-3">
                         <div class="col-4">
-                            <div class="stat-card">
+                            <div class="stat-card text-center">
                                 <div class="text-muted small">ENTRADA</div>
-                                <div class="fw-bold text-success" id="attendanceEntrada">${estado.tieneEntrada ? (estado.horaEntrada || 'Registrada') : 'Pendiente'}</div>
+                                <div class="fw-bold text-success fs-5">${estado.tieneEntrada ? (estado.horaEntrada || 'Registrada') : 'Pendiente'}</div>
                             </div>
                         </div>
                         <div class="col-4">
-                            <div class="stat-card">
+                            <div class="stat-card text-center">
                                 <div class="text-muted small">SALIDA</div>
-                                <div class="fw-bold text-danger" id="attendanceSalida">${estado.tieneSalida ? (estado.horaSalida || 'Registrada') : 'Pendiente'}</div>
+                                <div class="fw-bold text-danger fs-5">${estado.tieneSalida ? (estado.horaSalida || 'Registrada') : 'Pendiente'}</div>
                             </div>
                         </div>
                         <div class="col-4">
-                            <div class="stat-card">
+                            <div class="stat-card text-center">
                                 <div class="text-muted small">ALMUERZO</div>
-                                <div class="fw-bold" id="attendanceAlmuerzo">${estado.almuerzo === 'SI' ? 'Planta' : estado.almuerzo === 'NO' ? 'Fuera' : '-'}</div>
+                                <div class="fw-bold fs-5">${estado.almuerzo === 'SI' ? '🏢 Planta' : estado.almuerzo === 'NO' ? '🏠 Fuera' : '-'}</div>
                             </div>
                         </div>
                     </div>
@@ -1116,69 +1372,25 @@
                             <i class="fas fa-sign-out-alt"></i> REGISTRAR SALIDA
                         </button>
                     </div>
+                    
+                    ${estado.esSupervisor ? `
+                        <button class="btn btn-info btn-lg w-100 mt-3 text-white" onclick="window.open('supervisor.html', '_blank')">
+                            <i class="fas fa-chart-line"></i> PANEL SUPERVISOR
+                        </button>
+                    ` : ''}
                 </div>
                 
-                <div class="glass-card mt-3">
+                <div class="glass-card">
                     <h5 class="fw-bold mb-3"><i class="fas fa-clock"></i> Últimos registros</h5>
                     <div id="ultimosRegistros"></div>
                 </div>
             </div>
         `;
         
-        actualizarCredencialHome();
         cargarUltimosRegistros();
         
         const fab = document.getElementById('fabButton');
         if (fab) fab.style.display = 'flex';
-        
-        if (estado.esSupervisor) {
-            const supervisorBtn = document.createElement('button');
-            supervisorBtn.className = 'btn btn-info btn-lg w-100 mt-2 text-white';
-            supervisorBtn.innerHTML = '<i class="fas fa-chart-line"></i> Panel Supervisor';
-            supervisorBtn.onclick = () => window.open('supervisor.html', '_blank');
-            document.querySelector('.glass-card:last-child')?.appendChild(supervisorBtn);
-        }
-    }
-
-    function actualizarCredencialHome() {
-        const photoImg = document.getElementById('employeePhoto');
-        const photoPlaceholder = document.getElementById('photoPlaceholder');
-        if (empleado.foto_url && empleado.foto_url.trim()) {
-            photoImg.src = empleado.foto_url;
-            photoImg.classList.remove('hidden');
-            photoPlaceholder.classList.add('hidden');
-        }
-        
-        const firstName = document.getElementById('firstName');
-        const lastName = document.getElementById('lastName');
-        const position = document.getElementById('position');
-        const idNo = document.getElementById('idNo');
-        const area = document.getElementById('area');
-        
-        if (firstName) firstName.textContent = empleado.nombre?.split(' ')[0]?.toUpperCase() || 'EMPLEADO';
-        if (lastName) lastName.textContent = empleado.nombre?.split(' ').slice(1).join(' ')?.toUpperCase() || 'NOMBRE';
-        if (position) position.textContent = empleado.area || 'Área';
-        if (idNo) idNo.textContent = empleado.id || '-';
-        if (area) area.textContent = empleado.area || '-';
-        
-        const attendanceEntrada = document.getElementById('attendanceEntrada');
-        const attendanceSalida = document.getElementById('attendanceSalida');
-        const attendanceAlmuerzo = document.getElementById('attendanceAlmuerzo');
-        
-        if (attendanceEntrada) {
-            attendanceEntrada.innerHTML = estado.tieneEntrada ? (estado.horaEntrada || 'Registrada') : 'Pendiente';
-        }
-        if (attendanceSalida) {
-            attendanceSalida.innerHTML = estado.tieneSalida ? (estado.horaSalida || 'Registrada') : 'Pendiente';
-        }
-        if (attendanceAlmuerzo) {
-            attendanceAlmuerzo.textContent = estado.almuerzo === 'SI' ? 'Planta' : estado.almuerzo === 'NO' ? 'Fuera' : '-';
-        }
-        
-        const btnEntrada = document.getElementById('btnEntrada');
-        const btnSalida = document.getElementById('btnSalida');
-        if (btnEntrada) btnEntrada.disabled = estado.tieneEntrada;
-        if (btnSalida) btnSalida.disabled = !estado.tieneEntrada || estado.tieneSalida;
     }
 
     function cargarUltimosRegistros() {
@@ -1187,220 +1399,253 @@
         
         const ultimos = registrosCompletos.slice(0, 5);
         if (ultimos.length === 0) {
-            container.innerHTML = '<p class="text-muted text-center">No hay registros recientes</p>';
+            container.innerHTML = '<p class="text-muted text-center py-3">No hay registros recientes</p>';
             return;
         }
         
         container.innerHTML = ultimos.map(reg => `
-            <div class="timeline-item">
-                <div class="timeline-icon ${reg.tipo === 'ENTRADA' ? 'entry' : 'exit'}">
+            <div class="history-item">
+                <div class="history-icon ${reg.tipo === 'ENTRADA' ? 'entry' : 'exit'}">
                     <i class="fas ${reg.tipo === 'ENTRADA' ? 'fa-sign-in-alt' : 'fa-sign-out-alt'}"></i>
                 </div>
-                <div class="flex-grow-1">
-                    <div class="fw-bold">${reg.tipo}</div>
-                    <small class="text-muted">${reg.fecha} - ${reg.hora}</small>
+                <div class="history-content">
+                    <div class="history-time">${formatearHora(reg.timestamp || reg.hora)}</div>
+                    <div class="history-type">${reg.fecha}</div>
                 </div>
-                <div>
-                    <span class="badge ${reg.almuerzo === 'SI' ? 'bg-success' : reg.almuerzo === 'NO' ? 'bg-warning' : 'bg-secondary'}">
-                        ${reg.almuerzo === 'SI' ? 'Planta' : reg.almuerzo === 'NO' ? 'Fuera' : '-'}
-                    </span>
+                <div class="history-badge ${reg.almuerzo === 'SI' ? 'si' : reg.almuerzo === 'NO' ? 'no' : ''}">
+                    ${reg.almuerzo === 'SI' ? '🏢 Planta' : reg.almuerzo === 'NO' ? '🏠 Fuera' : '-'}
                 </div>
             </div>
         `).join('');
     }
 
+    // ========== RENDER HISTORY (RESUMEN) ==========
     function renderHistoryPage() {
         const mainContent = document.getElementById('mainContent');
+        const hoy = new Date().toISOString().split('T')[0];
+        const registrosHoy = registrosCompletos.filter(r => r.fecha === hoy);
+        const entrada = registrosHoy.find(r => r.tipo === 'ENTRADA');
+        const salida = registrosHoy.find(r => r.tipo === 'SALIDA');
+        
         mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="fw-bold mb-0"><i class="fas fa-chart-line"></i> Mi Jornada Hoy</h5>
-                        <span class="badge bg-light" id="resumenFecha">${formatearFechaCorta()}</span>
+                        <span class="badge bg-light">${formatearFechaCorta()}</span>
                     </div>
                     
-                    <div class="d-flex align-items-center gap-3 mb-3 p-3 bg-light rounded-3">
-                        <div class="bg-primary text-white rounded-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 24px;" id="resumenAvatar">${empleado.nombre?.charAt(0) || '?'}</div>
-                        <div class="flex-grow-1">
-                            <h6 class="fw-bold mb-1" id="resumenNombre">${empleado.nombre || 'Empleado'}</h6>
+                    <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-light rounded-3">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; font-size: 24px;">${empleado.nombre?.charAt(0) || '?'}</div>
+                        <div>
+                            <h6 class="fw-bold mb-0">${empleado.nombre || 'Empleado'}</h6>
                             <small class="text-muted"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</small>
                         </div>
                     </div>
                     
-                    <div class="row g-2 mb-3">
+                    <div class="row g-3 mb-3">
                         <div class="col-6">
                             <div class="time-card entry">
                                 <div class="time-icon">⏰</div>
                                 <div class="time-label">ENTRADA</div>
-                                <div class="time-value fw-bold text-success" id="resumenEntradaHora">--:--</div>
-                                <div class="time-status" id="resumenEntradaStatus">Pendiente</div>
+                                <div class="time-value">${entrada ? formatearHora(entrada.timestamp || entrada.hora) : '--:--'}</div>
+                                <div class="time-status ${entrada ? 'completed' : 'pending'}">
+                                    <i class="fas ${entrada ? 'fa-check-circle' : 'fa-hourglass-half'}"></i>
+                                    ${entrada ? 'Completada' : 'Pendiente'}
+                                </div>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="time-card exit">
                                 <div class="time-icon">🚪</div>
                                 <div class="time-label">SALIDA</div>
-                                <div class="time-value fw-bold text-danger" id="resumenSalidaHora">--:--</div>
-                                <div class="time-status" id="resumenSalidaStatus">Pendiente</div>
+                                <div class="time-value">${salida ? formatearHora(salida.timestamp || salida.hora) : '--:--'}</div>
+                                <div class="time-status ${salida ? 'completed' : 'pending'}">
+                                    <i class="fas ${salida ? 'fa-check-circle' : 'fa-hourglass-half'}"></i>
+                                    ${salida ? 'Completada' : 'Pendiente'}
+                                </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="lunch-info p-3 rounded-3 mb-3" style="background: #fffbeb;">
+                    <div class="lunch-info">
                         <i class="fas fa-utensils fa-2x text-warning"></i>
-                        <div class="flex-grow-1">
+                        <div>
                             <div class="small text-muted">Opción de almuerzo</div>
-                            <div class="fw-bold" id="resumenAlmuerzo">No registrado</div>
+                            <div class="fw-bold">${entrada?.almuerzo === 'SI' ? '🍽️ Dentro de planta' : entrada?.almuerzo === 'NO' ? '🏠 Fuera de planta' : '❓ No registrado'}</div>
                         </div>
                     </div>
                     
-                    <div class="status-badge w-100 justify-content-center p-3 rounded-3 text-center" id="resumenEstadoGeneral">
-                        <i class="fas fa-clock"></i> Jornada pendiente
+                    <div class="p-3 rounded-3 text-center ${!entrada ? 'bg-danger bg-opacity-10 text-danger' : (entrada && !salida ? 'bg-warning bg-opacity-10 text-warning' : 'bg-success bg-opacity-10 text-success')}">
+                        <i class="fas ${!entrada ? 'fa-clock' : (entrada && !salida ? 'fa-play-circle' : 'fa-check-circle')}"></i>
+                        <span class="fw-bold ms-2">${!entrada ? 'Jornada pendiente' : (entrada && !salida ? 'Jornada en curso' : 'Jornada completada')}</span>
                     </div>
                 </div>
                 
                 <div class="glass-card mt-3">
                     <h5 class="fw-bold mb-3"><i class="fas fa-history"></i> Historial completo</h5>
-                    <div id="historialRegistros"></div>
+                    <div id="historialAgrupado"></div>
                 </div>
             </div>
         `;
         
-        actualizarHistorial();
+        actualizarHistorialAgrupado();
         
-        const btnSalidaResumen = document.createElement('button');
-        btnSalidaResumen.className = 'btn btn-danger btn-lg w-100 mt-3';
-        btnSalidaResumen.innerHTML = '<i class="fas fa-sign-out-alt"></i> Registrar Salida';
-        btnSalidaResumen.onclick = () => {
-            if (!estado.tieneEntrada) {
-                mostrarToast('Primero debes registrar la entrada', 'error');
-            } else if (estado.tieneSalida) {
-                mostrarToast('Ya tienes salida registrada hoy', 'error');
-            } else {
-                iniciarRegistro('SALIDA');
-            }
-        };
-        
-        if (estado.tieneEntrada && !estado.tieneSalida) {
-            document.querySelector('.glass-card:first-child')?.appendChild(btnSalidaResumen);
+        // Botón rápido de salida si corresponde
+        if (entrada && !salida) {
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'mt-3';
+            btnContainer.innerHTML = `
+                <button class="btn btn-danger btn-lg w-100" onclick="iniciarRegistro('SALIDA')">
+                    <i class="fas fa-sign-out-alt"></i> REGISTRAR SALIDA
+                </button>
+            `;
+            document.querySelector('.glass-card:first-child')?.appendChild(btnContainer);
         }
     }
 
-    function actualizarHistorial() {
-        const container = document.getElementById('historialRegistros');
+    function actualizarHistorialAgrupado() {
+        const container = document.getElementById('historialAgrupado');
         if (!container) return;
         
         if (registrosCompletos.length === 0) {
-            container.innerHTML = '<p class="text-muted text-center">No hay registros disponibles</p>';
+            container.innerHTML = '<p class="text-muted text-center py-3">No hay registros disponibles</p>';
             return;
         }
         
-        container.innerHTML = registrosCompletos.map(reg => `
-            <div class="timeline-item">
-                <div class="timeline-icon ${reg.tipo === 'ENTRADA' ? 'entry' : 'exit'}">
-                    <i class="fas ${reg.tipo === 'ENTRADA' ? 'fa-sign-in-alt' : 'fa-sign-out-alt'}"></i>
-                </div>
-                <div class="flex-grow-1">
-                    <div class="fw-bold">${reg.tipo}</div>
-                    <small class="text-muted">${reg.fecha} - ${reg.hora}</small>
-                </div>
-                <div>
-                    <span class="badge ${reg.almuerzo === 'SI' ? 'bg-success' : reg.almuerzo === 'NO' ? 'bg-warning' : 'bg-secondary'}">
-                        ${reg.almuerzo === 'SI' ? 'Planta' : reg.almuerzo === 'NO' ? 'Fuera' : '-'}
-                    </span>
-                </div>
-            </div>
-        `).join('');
-        
-        // Actualizar resumen del día
-        const hoy = new Date().toISOString().split('T')[0];
-        const registrosHoy = registrosCompletos.filter(r => r.fecha === hoy);
-        const entrada = registrosHoy.find(r => r.tipo === 'ENTRADA');
-        const salida = registrosHoy.find(r => r.tipo === 'SALIDA');
-        
-        const resumenEntradaHora = document.getElementById('resumenEntradaHora');
-        const resumenSalidaHora = document.getElementById('resumenSalidaHora');
-        const resumenEntradaStatus = document.getElementById('resumenEntradaStatus');
-        const resumenSalidaStatus = document.getElementById('resumenSalidaStatus');
-        const resumenAlmuerzo = document.getElementById('resumenAlmuerzo');
-        const resumenEstadoGeneral = document.getElementById('resumenEstadoGeneral');
-        
-        if (resumenEntradaHora) resumenEntradaHora.textContent = entrada ? formatearHora(entrada.timestamp || entrada.hora) : '--:--';
-        if (resumenSalidaHora) resumenSalidaHora.textContent = salida ? formatearHora(salida.timestamp || salida.hora) : '--:--';
-        
-        if (resumenEntradaStatus) {
-            resumenEntradaStatus.innerHTML = entrada ? '<i class="fas fa-check-circle"></i> Completada' : '<i class="fas fa-hourglass-half"></i> Pendiente';
-            resumenEntradaStatus.className = entrada ? 'time-status completed' : 'time-status pending';
-        }
-        
-        if (resumenSalidaStatus) {
-            resumenSalidaStatus.innerHTML = salida ? '<i class="fas fa-check-circle"></i> Completada' : '<i class="fas fa-hourglass-half"></i> Pendiente';
-            resumenSalidaStatus.className = salida ? 'time-status completed' : 'time-status pending';
-        }
-        
-        if (resumenAlmuerzo) resumenAlmuerzo.textContent = entrada?.almuerzo === 'SI' ? '🍽️ Dentro de planta' : entrada?.almuerzo === 'NO' ? '🏠 Fuera de planta' : '❓ No registrado';
-        
-        if (resumenEstadoGeneral) {
-            if (!entrada) {
-                resumenEstadoGeneral.className = 'status-badge w-100 justify-content-center p-3 rounded-3 text-center bg-danger bg-opacity-10 text-danger';
-                resumenEstadoGeneral.innerHTML = '<i class="fas fa-clock"></i> Jornada pendiente';
-            } else if (entrada && !salida) {
-                resumenEstadoGeneral.className = 'status-badge w-100 justify-content-center p-3 rounded-3 text-center bg-warning bg-opacity-10 text-warning';
-                resumenEstadoGeneral.innerHTML = '<i class="fas fa-play-circle"></i> Jornada en curso';
-            } else {
-                resumenEstadoGeneral.className = 'status-badge w-100 justify-content-center p-3 rounded-3 text-center bg-success bg-opacity-10 text-success';
-                resumenEstadoGeneral.innerHTML = '<i class="fas fa-check-circle"></i> Jornada completada';
+        // Agrupar por fecha
+        const grupos = {};
+        registrosCompletos.forEach(reg => {
+            if (!grupos[reg.fecha]) {
+                grupos[reg.fecha] = [];
             }
+            grupos[reg.fecha].push(reg);
+        });
+        
+        // Ordenar fechas descendente
+        const fechasOrdenadas = Object.keys(grupos).sort((a, b) => new Date(b) - new Date(a));
+        
+        container.innerHTML = fechasOrdenadas.map(fecha => {
+            const registrosDia = grupos[fecha].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const entradaDia = registrosDia.find(r => r.tipo === 'ENTRADA');
+            const salidaDia = registrosDia.find(r => r.tipo === 'SALIDA');
+            
+            return `
+                <div class="history-group">
+                    <div class="history-date">
+                        <i class="far fa-calendar-alt me-1"></i> ${formatearFechaParaGrupo(fecha)}
+                    </div>
+                    ${registrosDia.map(reg => `
+                        <div class="history-item">
+                            <div class="history-icon ${reg.tipo === 'ENTRADA' ? 'entry' : 'exit'}">
+                                <i class="fas ${reg.tipo === 'ENTRADA' ? 'fa-sign-in-alt' : 'fa-sign-out-alt'}"></i>
+                            </div>
+                            <div class="history-content">
+                                <div class="history-time">${formatearHora(reg.timestamp || reg.hora)}</div>
+                                <div class="history-type">${reg.tipo}</div>
+                            </div>
+                            <div class="history-badge ${reg.almuerzo === 'SI' ? 'si' : reg.almuerzo === 'NO' ? 'no' : ''}">
+                                ${reg.almuerzo === 'SI' ? '🏢 Planta' : reg.almuerzo === 'NO' ? '🏠 Fuera' : '-'}
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${entradaDia && salidaDia ? `
+                        <div class="text-end mt-1 mb-2">
+                            <small class="text-muted">
+                                <i class="fas fa-chart-line"></i> Duración: 
+                                ${calcularDuracion(entradaDia.timestamp || entradaDia.hora, salidaDia.timestamp || salidaDia.hora)}
+                            </small>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    function calcularDuracion(entrada, salida) {
+        try {
+            const entradaDate = new Date(entrada);
+            const salidaDate = new Date(salida);
+            if (isNaN(entradaDate) || isNaN(salidaDate)) return '--';
+            const diffMs = salidaDate - entradaDate;
+            const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffMinutos = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            return `${diffHoras}h ${diffMinutos}min`;
+        } catch {
+            return '--';
         }
     }
 
+    // ========== RENDER PROFILE (PERFIL) ==========
     function renderProfilePage() {
         const mainContent = document.getElementById('mainContent');
         const totalDias = new Set(registrosCompletos.map(r => r.fecha)).size;
-        const totalRegistros = registrosCompletos.length;
+        const totalEntradas = registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
+        const totalSalidas = registrosCompletos.filter(r => r.tipo === 'SALIDA').length;
+        
+        // Calcular asistencia del mes
+        const mesActual = new Date().getMonth();
+        const añoActual = new Date().getFullYear();
+        const registrosMes = registrosCompletos.filter(r => {
+            const fecha = new Date(r.fecha);
+            return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+        });
+        const diasTrabajadosMes = new Set(registrosMes.map(r => r.fecha)).size;
         
         mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card text-center">
-                    <div class="photo-container d-inline-block">
-                        <img id="profilePhoto" class="employee-photo hidden" src="" alt="Foto">
-                        <div id="profilePhotoPlaceholder" class="employee-photo-placeholder d-inline-flex">👤</div>
+                    <div class="photo-container-large d-inline-block" onclick="showPhotoModal('${empleado.foto_url || ''}')">
+                        ${empleado.foto_url && empleado.foto_url.trim() ? 
+                            `<img class="employee-photo-large" src="${empleado.foto_url}" alt="Foto">` :
+                            `<div class="employee-photo-placeholder-large">👤</div>`
+                        }
                     </div>
                     <h3 class="fw-bold mt-3">${empleado.nombre || 'Empleado'}</h3>
                     <p class="text-muted">${empleado.area || 'Área'}</p>
-                    <p class="text-muted"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</p>
-                    ${estado.esSupervisor ? '<span class="badge bg-info text-white">Supervisor</span>' : ''}
+                    <div class="d-flex justify-content-center gap-2 mt-2">
+                        <span class="badge bg-secondary"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</span>
+                        ${estado.esSupervisor ? '<span class="badge bg-info text-white"><i class="fas fa-chart-line"></i> Supervisor</span>' : ''}
+                    </div>
                 </div>
                 
                 <div class="glass-card mt-3">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-chart-bar"></i> Estadísticas de asistencia</h5>
-                    <div class="row g-2">
+                    <h5 class="fw-bold mb-3"><i class="fas fa-chart-bar"></i> Estadísticas generales</h5>
+                    <div class="row g-3">
                         <div class="col-6">
                             <div class="stat-card">
-                                <div class="stat-value" id="statTotalDias">${totalDias}</div>
+                                <div class="stat-value">${totalDias}</div>
                                 <small class="text-muted">Días trabajados</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="stat-card">
-                                <div class="stat-value" id="statTotalRegistros">${totalRegistros}</div>
-                                <small class="text-muted">Total registros</small>
+                                <div class="stat-value">${diasTrabajadosMes}</div>
+                                <small class="text-muted">Días este mes</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <div class="stat-value text-success">${totalEntradas}</div>
+                                <small class="text-muted">Total entradas</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <div class="stat-value text-danger">${totalSalidas}</div>
+                                <small class="text-muted">Total salidas</small>
                             </div>
                         </div>
                     </div>
-                    <div class="row g-2 mt-2">
-                        <div class="col-6">
-                            <div class="stat-card">
-                                <div class="stat-value text-success" id="statEntradas">${registrosCompletos.filter(r => r.tipo === 'ENTRADA').length}</div>
-                                <small class="text-muted">Entradas</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="stat-card">
-                                <div class="stat-value text-danger" id="statSalidas">${registrosCompletos.filter(r => r.tipo === 'SALIDA').length}</div>
-                                <small class="text-muted">Salidas</small>
-                            </div>
-                        </div>
+                </div>
+                
+                <div class="glass-card mt-3">
+                    <h5 class="fw-bold mb-3"><i class="fas fa-info-circle"></i> Información del dispositivo</h5>
+                    <div class="small text-muted mb-2">
+                        <i class="fas fa-mobile-alt me-1"></i> Token: <span class="font-monospace">${deviceToken || '--'}</span>
+                    </div>
+                    <div class="small text-muted">
+                        <i class="fas fa-map-marker-alt me-1"></i> Ubicación: ${gpsActivo && posicion.lat ? `${posicion.lat.toFixed(6)}, ${posicion.lng.toFixed(6)}` : 'No disponible'}
                     </div>
                 </div>
                 
@@ -1409,42 +1654,43 @@
                     <button class="btn btn-outline-danger w-100 mb-2" onclick="cerrarSesion()">
                         <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
                     </button>
-                    <button class="btn btn-outline-secondary w-100" onclick="location.reload()">
+                    <button class="btn btn-outline-secondary w-100 mb-2" onclick="location.reload()">
                         <i class="fas fa-sync-alt"></i> Actualizar Datos
                     </button>
-                    <button class="btn btn-outline-primary w-100 mt-2" onclick="verificarDistanciaEmpresa()">
-                        <i class="fas fa-map-marker-alt"></i> Verificar ubicación
+                    <button class="btn btn-outline-primary w-100" onclick="verificarDistanciaEmpresa()">
+                        <i class="fas fa-map-marker-alt"></i> Verificar ubicación actual
                     </button>
+                </div>
+                
+                <div class="text-center text-muted small py-3">
+                    <i class="fas fa-shield-alt"></i> CONTROL 2026 v2.0
                 </div>
             </div>
         `;
-        
-        const profilePhoto = document.getElementById('profilePhoto');
-        const profilePlaceholder = document.getElementById('profilePhotoPlaceholder');
-        if (empleado.foto_url && empleado.foto_url.trim()) {
-            profilePhoto.src = empleado.foto_url;
-            profilePhoto.classList.remove('hidden');
-            profilePlaceholder.classList.add('hidden');
-        }
     }
 
-    function calcularEstadisticas() {
+    function actualizarEstadisticasPerfil() {
         const totalDias = new Set(registrosCompletos.map(r => r.fecha)).size;
-        const totalRegistros = registrosCompletos.length;
         const totalEntradas = registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
         const totalSalidas = registrosCompletos.filter(r => r.tipo === 'SALIDA').length;
         
-        const statTotalDias = document.getElementById('statTotalDias');
-        const statTotalRegistros = document.getElementById('statTotalRegistros');
-        const statEntradas = document.getElementById('statEntradas');
-        const statSalidas = document.getElementById('statSalidas');
+        const mesActual = new Date().getMonth();
+        const añoActual = new Date().getFullYear();
+        const registrosMes = registrosCompletos.filter(r => {
+            const fecha = new Date(r.fecha);
+            return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+        });
+        const diasTrabajadosMes = new Set(registrosMes.map(r => r.fecha)).size;
         
-        if (statTotalDias) statTotalDias.textContent = totalDias;
-        if (statTotalRegistros) statTotalRegistros.textContent = totalRegistros;
-        if (statEntradas) statEntradas.textContent = totalEntradas;
-        if (statSalidas) statSalidas.textContent = totalSalidas;
+        const statTotalDias = document.querySelector('#statTotalDias');
+        const statDiasMes = document.querySelector('#statDiasMes');
+        const statEntradas = document.querySelector('#statEntradas');
+        const statSalidas = document.querySelector('#statSalidas');
+        
+        // Actualizar si existen (se renderiza de nuevo en cada navegación)
     }
 
+    // ========== CERRAR SESIÓN ==========
     async function cerrarSesion() {
         if (confirm('¿Cerrar sesión? Se eliminará el acceso de este dispositivo.')) {
             showLoading(true);
@@ -1474,11 +1720,7 @@
         
         const fab = document.getElementById('fabButton');
         if (fab) {
-            if (page === 'home' && isAuthenticated) {
-                fab.style.display = 'flex';
-            } else {
-                fab.style.display = 'none';
-            }
+            fab.style.display = (page === 'home' && isAuthenticated) ? 'flex' : 'none';
         }
         
         if (page === 'home') {
@@ -1492,6 +1734,7 @@
 
     // ========== VERIFICACIÓN INICIAL ==========
     async function verificarEstadoInicial() {
+        showSplash();
         deviceToken = generarDeviceToken();
         iniciarGPS();
         
@@ -1538,7 +1781,6 @@
             }
         }
         
-        // Si no hay sesión válida, mostrar pantalla de autenticación
         isAuthenticated = false;
         renderAuthScreen();
     }
@@ -1556,7 +1798,7 @@
         const fab = document.getElementById('fabButton');
         if (fab) {
             fab.addEventListener('click', () => {
-                mostrarToast('Función de QR próximamente', 'info');
+                mostrarToast('Escanea tu código QR de empleado', 'info');
             });
         }
         
