@@ -67,13 +67,13 @@
             padding-top: env(safe-area-inset-top, 20px);
         }
 
-.main-content {
-    height: calc(100vh - 70px - env(safe-area-inset-top));
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 90px) 16px;
-}
+        .main-content {
+            height: calc(100vh - 70px - env(safe-area-inset-top));
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 90px) 16px;
+        }
 
         .bottom-nav {
             position: absolute;
@@ -419,8 +419,29 @@
             border-left: 3px solid var(--danger);
         }
 
+        /* Tarjeta de ALMUERZO resaltada */
         .status-card.lunch {
             border-left: 3px solid var(--warning);
+            background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
+            border: 2px solid var(--warning);
+            box-shadow: 0 4px 12px rgba(234, 179, 8, 0.2);
+            transform: scale(1.02);
+            transition: transform 0.2s ease;
+        }
+
+        .status-card.lunch .status-icon i {
+            color: var(--warning);
+            text-shadow: 0 0 2px rgba(234, 179, 8, 0.3);
+        }
+
+        .status-card.lunch .status-label {
+            color: #92400e;
+            font-weight: 700;
+        }
+
+        .status-card.lunch .status-value {
+            color: #78350f;
+            font-weight: 800;
         }
 
         .status-icon {
@@ -451,57 +472,14 @@
             color: var(--warning);
         }
 
-        /* Footer con QR */
+        /* Footer - SIN QR */
         .credencial-footer-profesional {
             padding: clamp(12px, 4vw, 16px) clamp(16px, 5vw, 24px);
             background: white;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             border-top: 1px solid var(--gray-100);
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-
-        .qr-code-area {
-            display: flex;
-            align-items: center;
-            gap: clamp(8px, 2.5vw, 12px);
-        }
-
-        .qr-icon {
-            width: clamp(36px, 11vw, 44px);
-            height: clamp(36px, 11vw, 44px);
-            background: var(--gray-900);
-            border-radius: clamp(10px, 3vw, 12px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .qr-icon i {
-            font-size: clamp(18px, 5.5vw, 24px);
-            color: white;
-        }
-
-        .qr-info {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .qr-label {
-            font-size: clamp(8px, 2.5vw, 10px);
-            font-weight: 600;
-            text-transform: uppercase;
-            color: var(--gray-500);
-            letter-spacing: 0.5px;
-        }
-
-        .qr-value {
-            font-size: clamp(11px, 3.5vw, 14px);
-            font-weight: 700;
-            color: var(--gray-800);
-            font-family: monospace;
         }
 
         .validity-date {
@@ -529,28 +507,28 @@
             margin-bottom: 8px;
         }
 
-.btn-action {
-    flex: 1;
-    min-width: 0;
-    padding: clamp(12px, 4vw, 14px) clamp(8px, 2vw, 12px);
-    border: none;
-    border-radius: 48px;
-    font-size: clamp(11px, 3.2vw, 13px);
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    overflow: hidden;
-    white-space: nowrap;
-}
+        .btn-action {
+            flex: 1;
+            min-width: 0;
+            padding: clamp(12px, 4vw, 14px) clamp(8px, 2vw, 12px);
+            border: none;
+            border-radius: 48px;
+            font-size: clamp(11px, 3.2vw, 13px);
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
 
-.btn-action i {
-    flex-shrink: 0;
-    font-size: clamp(14px, 4vw, 16px);
-}
+        .btn-action i {
+            flex-shrink: 0;
+            font-size: clamp(14px, 4vw, 16px);
+        }
 
         .btn-action:active {
             transform: scale(0.97);
@@ -585,6 +563,34 @@
             padding: clamp(12px, 4vw, 14px);
             font-weight: 700;
             font-size: clamp(12px, 3.8vw, 14px);
+        }
+
+        /* Botón flotante de WhatsApp */
+        .fab-whatsapp {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: clamp(48px, 14vw, 56px);
+            height: clamp(48px, 14vw, 56px);
+            border-radius: 50%;
+            background: linear-gradient(135deg, #25D366, #128C7E);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 90;
+            border: none;
+        }
+
+        .fab-whatsapp i {
+            font-size: clamp(24px, 7vw, 28px);
+        }
+
+        .fab-whatsapp:active {
+            transform: scale(0.9);
         }
 
         /* Modal para foto */
@@ -859,33 +865,6 @@
             color: var(--primary);
         }
 
-        .fab {
-            position: fixed;
-            bottom: 90px;
-            right: 20px;
-            width: clamp(48px, 14vw, 56px);
-            height: clamp(48px, 14vw, 56px);
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 12px rgba(220,38,38,0.4);
-            cursor: pointer;
-            transition: all 0.3s;
-            z-index: 90;
-            border: none;
-        }
-
-        .fab i {
-            font-size: clamp(20px, 6vw, 24px);
-        }
-
-        .fab:active {
-            transform: scale(0.9);
-        }
-
         /* Media Queries para orientación landscape */
         @media (max-width: 480px) and (orientation: landscape) {
             .main-content {
@@ -932,16 +911,7 @@
             }
             
             .credencial-footer-profesional {
-                flex-direction: column;
-                text-align: center;
-            }
-            
-            .qr-code-area {
                 justify-content: center;
-            }
-            
-            .validity-date {
-                text-align: center;
             }
         }
 
@@ -978,8 +948,8 @@
             <span>Perfil</span>
         </button>
     </div>
-    <button class="fab" id="fabButton" style="display: none;">
-        <i class="fas fa-qrcode"></i>
+    <button class="fab-whatsapp" id="fabWhatsApp" style="display: none;">
+        <i class="fab fa-whatsapp"></i>
     </button>
 </div>
 
@@ -994,6 +964,10 @@
     const LAT_EMPRESA = -0.1288771313385675;
     const LNG_EMPRESA = -78.47896772889067;
     const RADIO_METROS = 250;
+    
+    // Número de WhatsApp para soporte (cambiar según necesidad)
+    const WHATSAPP_NUMBER = '593999999999'; // Número con código de país sin '+' ni espacios
+    const WHATSAPP_MESSAGE = 'Hola, necesito soporte técnico para el sistema CONTROL 2026';
 
     // ========== VARIABLES GLOBALES ==========
     let deviceToken = null;
@@ -1120,6 +1094,13 @@
         
         modal.appendChild(img);
         document.body.appendChild(modal);
+    }
+
+    // ========== FUNCIÓN WHATSAPP ==========
+    function abrirWhatsAppSoporte() {
+        const mensajeCodificado = encodeURIComponent(WHATSAPP_MESSAGE);
+        const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeCodificado}`;
+        window.open(url, '_blank');
     }
 
     // ========== FUNCIONES DE DISTANCIA ==========
@@ -1325,33 +1306,32 @@
         }
     }
 
-function horaLimiteAlmuerzoPasada() {
-    const ahora = new Date();
-    return (ahora.getHours() * 60 + ahora.getMinutes()) > (9 * 60 + 30);
-}
-
-function iniciarRegistro(tipo) {
-    if (!verificarDistanciaEmpresa()) return;
-
-    empleado.tipoRegistro = tipo;
-
-    if (tipo === 'ENTRADA') {
-        if (horaLimiteAlmuerzoPasada()) {
-            // Pasó las 09:30 — sin opción de almuerzo en planta
-            mostrarToast(
-                'Fuera del horario (límite 09:30). Se registra almuerzo fuera de planta.',
-                'error'
-            );
-            empleado.almuerzo = 'NO';
-            setTimeout(() => registrar(), 2000);
-        } else {
-            mostrarLunchSelector();
-        }
-    } else {
-        empleado.almuerzo = estado.almuerzo || '';
-        registrar();
+    function horaLimiteAlmuerzoPasada() {
+        const ahora = new Date();
+        return (ahora.getHours() * 60 + ahora.getMinutes()) > (9 * 60 + 30);
     }
-}
+
+    function iniciarRegistro(tipo) {
+        if (!verificarDistanciaEmpresa()) return;
+
+        empleado.tipoRegistro = tipo;
+
+        if (tipo === 'ENTRADA') {
+            if (horaLimiteAlmuerzoPasada()) {
+                mostrarToast(
+                    'Fuera del horario (límite 09:30). Se registra almuerzo fuera de planta.',
+                    'error'
+                );
+                empleado.almuerzo = 'NO';
+                setTimeout(() => registrar(), 2000);
+            } else {
+                mostrarLunchSelector();
+            }
+        } else {
+            empleado.almuerzo = estado.almuerzo || '';
+            registrar();
+        }
+    }
 
     function mostrarLunchSelector() {
         const mainContent = document.getElementById('mainContent');
@@ -1766,17 +1746,8 @@ function iniciarRegistro(tipo) {
                         </div>
                     </div>
                     
-                    <!-- Footer con QR y vigencia -->
+                    <!-- Footer - Solo vigencia (sin QR) -->
                     <div class="credencial-footer-profesional">
-                        <div class="qr-code-area">
-                            <div class="qr-icon">
-                                <i class="fas fa-qrcode"></i>
-                            </div>
-                            <div class="qr-info">
-                                <div class="qr-label">CÓDIGO QR</div>
-                                <div class="qr-value">${empleado.id || 'ID-EMPLEADO'}</div>
-                            </div>
-                        </div>
                         <div class="validity-date">
                             <div class="validity-label">VIGENTE HASTA</div>
                             <div class="validity-value">${fechaVigencia.toLocaleDateString('es-EC')}</div>
@@ -1802,8 +1773,8 @@ function iniciarRegistro(tipo) {
             </div>
         `;
         
-        const fab = document.getElementById('fabButton');
-        if (fab) fab.style.display = 'flex';
+        const fabWhatsApp = document.getElementById('fabWhatsApp');
+        if (fabWhatsApp) fabWhatsApp.style.display = 'flex';
     }
 
     // ========== RENDER HISTORY (RESUMEN) ==========
@@ -2087,9 +2058,9 @@ function iniciarRegistro(tipo) {
             }
         });
         
-        const fab = document.getElementById('fabButton');
-        if (fab) {
-            fab.style.display = (page === 'home' && isAuthenticated) ? 'flex' : 'none';
+        const fabWhatsApp = document.getElementById('fabWhatsApp');
+        if (fabWhatsApp) {
+            fabWhatsApp.style.display = (page === 'home' && isAuthenticated) ? 'flex' : 'none';
         }
         
         if (page === 'home') {
@@ -2164,11 +2135,9 @@ function iniciarRegistro(tipo) {
             });
         });
         
-        const fab = document.getElementById('fabButton');
-        if (fab) {
-            fab.addEventListener('click', () => {
-                mostrarToast('Escanea tu código QR de empleado', 'info');
-            });
+        const fabWhatsApp = document.getElementById('fabWhatsApp');
+        if (fabWhatsApp) {
+            fabWhatsApp.addEventListener('click', abrirWhatsAppSoporte);
         }
         
         verificarEstadoInicial();
