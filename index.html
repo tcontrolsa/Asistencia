@@ -67,13 +67,13 @@
             padding-top: env(safe-area-inset-top, 20px);
         }
 
-        .main-content {
-            height: calc(100vh - 70px - env(safe-area-inset-top));
-            overflow-y: auto;
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
-            padding: 16px 16px 0 16px;
-        }
+.main-content {
+    height: calc(100vh - 70px - env(safe-area-inset-top));
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 90px) 16px;
+}
 
         .bottom-nav {
             position: absolute;
@@ -529,20 +529,28 @@
             margin-bottom: 8px;
         }
 
-        .btn-action {
-            flex: 1;
-            padding: clamp(12px, 4vw, 14px);
-            border: none;
-            border-radius: 48px;
-            font-size: clamp(12px, 3.8vw, 14px);
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
+.btn-action {
+    flex: 1;
+    min-width: 0;
+    padding: clamp(12px, 4vw, 14px) clamp(8px, 2vw, 12px);
+    border: none;
+    border-radius: 48px;
+    font-size: clamp(11px, 3.2vw, 13px);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.btn-action i {
+    flex-shrink: 0;
+    font-size: clamp(14px, 4vw, 16px);
+}
 
         .btn-action:active {
             transform: scale(0.97);
@@ -1317,18 +1325,33 @@
         }
     }
 
-    function iniciarRegistro(tipo) {
-        if (!verificarDistanciaEmpresa()) return;
-        
-        empleado.tipoRegistro = tipo;
-        
-        if (tipo === 'ENTRADA') {
-            mostrarLunchSelector();
+function horaLimiteAlmuerzoPasada() {
+    const ahora = new Date();
+    return (ahora.getHours() * 60 + ahora.getMinutes()) > (9 * 60 + 30);
+}
+
+function iniciarRegistro(tipo) {
+    if (!verificarDistanciaEmpresa()) return;
+
+    empleado.tipoRegistro = tipo;
+
+    if (tipo === 'ENTRADA') {
+        if (horaLimiteAlmuerzoPasada()) {
+            // Pasó las 09:30 — sin opción de almuerzo en planta
+            mostrarToast(
+                'Fuera del horario (límite 09:30). Se registra almuerzo fuera de planta.',
+                'error'
+            );
+            empleado.almuerzo = 'NO';
+            setTimeout(() => registrar(), 2000);
         } else {
-            empleado.almuerzo = estado.almuerzo || '';
-            registrar();
+            mostrarLunchSelector();
         }
+    } else {
+        empleado.almuerzo = estado.almuerzo || '';
+        registrar();
     }
+}
 
     function mostrarLunchSelector() {
         const mainContent = document.getElementById('mainContent');
