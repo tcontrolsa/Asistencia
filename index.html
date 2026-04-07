@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Control 2026">
     <meta name="theme-color" content="#dc2626">
@@ -43,7 +43,7 @@
         body {
             background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            overflow-x: hidden;
+            overflow: hidden;
             position: fixed;
             top: 0;
             left: 0;
@@ -54,40 +54,39 @@
         .app-container {
             max-width: 500px;
             margin: 0 auto;
-            height: 100vh;
+            height: 100%;
             background: var(--gray-100);
+            display: flex;
+            flex-direction: column;
             position: relative;
-            overflow: hidden;
             box-shadow: 0 0 40px rgba(0,0,0,0.1);
         }
 
         .status-bar {
+            flex-shrink: 0;
             background: transparent;
             height: env(safe-area-inset-top, 44px);
-            padding-top: env(safe-area-inset-top, 20px);
         }
 
         .main-content {
-            height: calc(100vh - 70px - env(safe-area-inset-top));
+            flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
-            padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 90px) 16px;
+            padding: 16px;
         }
 
         .bottom-nav {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            flex-shrink: 0;
             background: rgba(255, 255, 255, 0.98);
             backdrop-filter: blur(20px);
             border-top: 1px solid rgba(0,0,0,0.05);
-            padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 8px);
+            padding: 8px 16px;
             display: flex;
             justify-content: space-around;
             align-items: center;
             z-index: 100;
+            padding-bottom: max(8px, env(safe-area-inset-bottom));
         }
 
         .nav-item {
@@ -119,7 +118,6 @@
             transform: scale(0.95);
         }
 
-        /* Splash Screen */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -177,7 +175,6 @@
             margin-top: 8px;
         }
 
-        /* ========== CREDENCIAL PROFESIONAL RESPONSIVE ========== */
         .credencial-wrapper {
             padding: 4px;
         }
@@ -190,7 +187,6 @@
             transition: transform 0.3s ease;
         }
 
-        /* Header con patrón */
         .credencial-header-profesional {
             background: linear-gradient(135deg, var(--primary) 0%, #991b1b 100%);
             padding: clamp(16px, 5vw, 20px) clamp(16px, 5vw, 24px);
@@ -259,7 +255,6 @@
             font-weight: 500;
         }
 
-        /* Foto y nombre */
         .photo-name-section {
             padding: clamp(16px, 5vw, 24px) clamp(16px, 5vw, 24px) clamp(12px, 4vw, 16px) clamp(16px, 5vw, 24px);
             text-align: center;
@@ -339,7 +334,6 @@
             margin-top: 8px;
         }
 
-        /* Grid de información */
         .info-grid-profesional {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -375,7 +369,6 @@
             color: var(--gray-700);
         }
 
-        /* Estado de asistencia */
         .status-section {
             padding: clamp(12px, 4vw, 16px) clamp(16px, 5vw, 24px);
             background: var(--gray-50);
@@ -419,7 +412,6 @@
             border-left: 3px solid var(--danger);
         }
 
-        /* Tarjeta de ALMUERZO resaltada */
         .status-card.lunch {
             border-left: 3px solid var(--warning);
             background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
@@ -472,7 +464,6 @@
             color: var(--warning);
         }
 
-        /* Footer - SIN QR */
         .credencial-footer-profesional {
             padding: clamp(12px, 4vw, 16px) clamp(16px, 5vw, 24px);
             background: white;
@@ -499,7 +490,6 @@
             color: var(--gray-700);
         }
 
-        /* Botones de acción */
         .action-buttons-profesional {
             display: flex;
             gap: clamp(8px, 2.5vw, 12px);
@@ -565,10 +555,9 @@
             font-size: clamp(12px, 3.8vw, 14px);
         }
 
-        /* Botón flotante de WhatsApp */
         .fab-whatsapp {
             position: fixed;
-            bottom: 90px;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
             right: 20px;
             width: clamp(48px, 14vw, 56px);
             height: clamp(48px, 14vw, 56px);
@@ -593,7 +582,6 @@
             transform: scale(0.9);
         }
 
-        /* Modal para foto */
         .photo-modal {
             position: fixed;
             top: 0;
@@ -629,7 +617,6 @@
             }
         }
 
-        /* Otras vistas responsive */
         .glass-card {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
@@ -774,7 +761,7 @@
 
         .custom-toast {
             position: fixed;
-            bottom: 90px;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
             left: 16px;
             right: 16px;
             background: rgba(0,0,0,0.9);
@@ -801,7 +788,7 @@
 
         .distance-indicator {
             position: fixed;
-            bottom: 90px;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
             left: 16px;
             background: rgba(0,0,0,0.8);
             backdrop-filter: blur(10px);
@@ -865,62 +852,49 @@
             color: var(--primary);
         }
 
-        /* Media Queries para orientación landscape */
         @media (max-width: 480px) and (orientation: landscape) {
             .main-content {
-                padding: 12px 12px 0 12px;
+                padding: 12px;
             }
-            
             .status-grid {
                 flex-wrap: nowrap;
             }
-            
             .status-card {
                 min-width: 70px;
             }
-            
             .info-grid-profesional {
                 grid-template-columns: repeat(4, 1fr);
             }
-            
             .info-item-profesional {
                 padding: 8px 4px;
             }
         }
 
-        /* Pantallas muy pequeñas */
         @media (max-width: 380px) {
             .nav-item span {
                 display: none;
             }
-            
             .nav-item i {
                 font-size: 22px;
             }
-            
             .status-grid {
                 flex-direction: column;
             }
-            
             .status-card {
                 min-width: auto;
             }
-            
             .action-buttons-profesional {
                 flex-direction: column;
             }
-            
             .credencial-footer-profesional {
                 justify-content: center;
             }
         }
 
-        /* Tablets */
         @media (min-width: 768px) {
             .app-container {
                 max-width: 600px;
             }
-            
             .employee-photo-profesional,
             .employee-photo-placeholder-profesional {
                 width: 120px;
@@ -965,8 +939,7 @@
     const LNG_EMPRESA = -78.47896772889067;
     const RADIO_METROS = 250;
     
-    // Número de WhatsApp para soporte (cambiar según necesidad)
-    const WHATSAPP_NUMBER = '593999999999'; // Número con código de país sin '+' ni espacios
+    const WHATSAPP_NUMBER = '5939633561149';
     const WHATSAPP_MESSAGE = 'Hola, necesito soporte técnico para el sistema CONTROL 2026';
 
     // ========== VARIABLES GLOBALES ==========
@@ -996,6 +969,37 @@
         almuerzo: ''
     };
 
+    // ========== FUNCIÓN PARA FORZAR EL LAYOUT CORRECTO ==========
+    function ajustarLayout() {
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) {
+            appContainer.style.display = 'flex';
+            void appContainer.offsetHeight;
+        }
+        
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        if (isAndroid) {
+            const bottomNav = document.querySelector('.bottom-nav');
+            if (bottomNav) {
+                const originalHeight = window.innerHeight;
+                setTimeout(() => {
+                    const newHeight = window.innerHeight;
+                    const bottomBarHeight = Math.max(0, originalHeight - newHeight);
+                    if (bottomBarHeight > 10) {
+                        bottomNav.style.paddingBottom = (bottomBarHeight + 8) + 'px';
+                        const fab = document.querySelector('.fab-whatsapp');
+                        if (fab) {
+                            fab.style.bottom = (bottomBarHeight + 80) + 'px';
+                        }
+                    }
+                }, 100);
+            }
+        }
+    }
+
+    window.addEventListener('resize', () => setTimeout(ajustarLayout, 50));
+    window.addEventListener('orientationchange', () => setTimeout(ajustarLayout, 100));
+
     // ========== SPLASH SCREEN ==========
     function showSplash() {
         const splash = document.createElement('div');
@@ -1011,6 +1015,7 @@
         
         setTimeout(() => {
             splash.remove();
+            ajustarLayout();
         }, 2500);
     }
 
@@ -1033,6 +1038,14 @@
         if (tipo === 'error') toast.style.background = 'rgba(220,38,38,0.9)';
         if (tipo === 'success') toast.style.background = 'rgba(34,197,94,0.9)';
         document.body.appendChild(toast);
+        
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        if (isAndroid) {
+            const bottomNav = document.querySelector('.bottom-nav');
+            const bottomNavHeight = bottomNav ? bottomNav.offsetHeight : 70;
+            toast.style.bottom = (bottomNavHeight + 10) + 'px';
+        }
+        
         setTimeout(() => toast.remove(), 3000);
     }
 
@@ -1076,7 +1089,6 @@
         }
     }
 
-    // ========== FUNCIÓN PARA MOSTRAR FOTO EN MODAL ==========
     function showPhotoModal(url) {
         if (!url || url.trim() === '') {
             mostrarToast('No hay foto disponible', 'info');
@@ -1096,14 +1108,12 @@
         document.body.appendChild(modal);
     }
 
-    // ========== FUNCIÓN WHATSAPP ==========
     function abrirWhatsAppSoporte() {
         const mensajeCodificado = encodeURIComponent(WHATSAPP_MESSAGE);
         const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeCodificado}`;
         window.open(url, '_blank');
     }
 
-    // ========== FUNCIONES DE DISTANCIA ==========
     function calcularDistancia(lat1, lon1, lat2, lon2) {
         const R = 6371e3;
         const φ1 = lat1 * Math.PI / 180;
@@ -1165,11 +1175,13 @@
 
     function iniciarGPS() {
         solicitarPermisoGPS();
-        if (intervaloGPS) clearInterval(intervaloGPS);
+        if (intervaloGPS) {
+            clearInterval(intervaloGPS);
+            intervaloGPS = null;
+        }
         intervaloGPS = setInterval(solicitarPermisoGPS, 60000);
     }
 
-    // ========== FUNCIÓN JSONP ==========
     function jsonpRequest(params) {
         return new Promise((resolve, reject) => {
             const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
@@ -1198,7 +1210,6 @@
         });
     }
 
-    // ========== FUNCIONES DE AUTENTICACIÓN ==========
     function generarDeviceToken() {
         let token = localStorage.getItem('DEVICE_TOKEN');
         if (!token) {
@@ -1212,7 +1223,6 @@
         return Math.floor(1000 + Math.random() * 9000).toString();
     }
 
-    // ========== FUNCIONES DE API ==========
     async function verificarDispositivoTienePIN(deviceToken) {
         return jsonpRequest({ accion: 'verificarDispositivo', deviceToken });
     }
@@ -1241,7 +1251,6 @@
         return jsonpRequest({ accion: 'desvincularDispositivo', empleadoId, deviceToken });
     }
 
-    // ========== FUNCIONES DE REGISTRO ==========
     async function obtenerRegistrosEmpleado() {
         if (!empleado.id) return;
         try {
@@ -1366,6 +1375,7 @@
                 </div>
             </div>
         `;
+        ajustarLayout();
     }
 
     let almuerzoSeleccionado = null;
@@ -1401,9 +1411,9 @@
         } else {
             renderAuthScreen();
         }
+        ajustarLayout();
     }
 
-    // ========== VERIFICACIÓN DE PIN ==========
     async function verificarPIN() {
         const pin = document.getElementById('pinInput').value.trim();
         if (!pin || pin.length < 4) {
@@ -1463,6 +1473,7 @@
             showLoading(false);
             mostrarToast('Error de conexión: ' + error.message, 'error');
         }
+        ajustarLayout();
     }
 
     async function confirmarRegistroInicial() {
@@ -1520,9 +1531,9 @@
             showLoading(false);
             mostrarToast('Error de conexión: ' + error.message, 'error');
         }
+        ajustarLayout();
     }
 
-    // ========== RENDERIZADO DE PÁGINAS ==========
     function renderAuthScreen() {
         const mainContent = document.getElementById('mainContent');
         mainContent.innerHTML = `
@@ -1603,6 +1614,7 @@
         `;
         
         verificarDispositivoConPIN();
+        ajustarLayout();
     }
 
     async function verificarDispositivoConPIN() {
@@ -1630,6 +1642,7 @@
             if (pinScreen) pinScreen.classList.remove('hidden');
             mostrarToast('Error de conexión con el servidor', 'error');
         }
+        ajustarLayout();
     }
 
     function mostrarRegistroInicial() {
@@ -1642,6 +1655,7 @@
         if (registroScreen) registroScreen.classList.remove('hidden');
         
         document.getElementById('registroPinDisplay').textContent = generarPIN();
+        ajustarLayout();
     }
 
     function volverAPIN() {
@@ -1650,9 +1664,9 @@
         
         if (registroScreen) registroScreen.classList.add('hidden');
         if (pinScreen) pinScreen.classList.remove('hidden');
+        ajustarLayout();
     }
 
-    // ========== RENDER HOME (CREDENCIAL PROFESIONAL RESPONSIVE) ==========
     function renderHomePage() {
         const mainContent = document.getElementById('mainContent');
         const nombreCompleto = empleado.nombre || 'EMPLEADO';
@@ -1660,7 +1674,6 @@
         const primerNombre = partes[0] || 'EMPLEADO';
         const apellido = partes.slice(1).join(' ') || '';
         
-        const fechaActual = new Date();
         const fechaVigencia = new Date();
         fechaVigencia.setFullYear(fechaVigencia.getFullYear() + 1);
         
@@ -1671,7 +1684,6 @@
         mainContent.innerHTML = `
             <div class="credencial-wrapper">
                 <div class="credencial-profesional">
-                    <!-- Header con gradiente -->
                     <div class="credencial-header-profesional">
                         <div class="credencial-badge">
                             <i class="fas fa-shield-alt"></i>
@@ -1681,7 +1693,6 @@
                         <div class="credencial-subtitle">Sistema de Gestión de Asistencia</div>
                     </div>
                     
-                    <!-- Foto y nombre -->
                     <div class="photo-name-section">
                         <div class="photo-frame">
                             <div onclick="showPhotoModal('${empleado.foto_url || ''}')">
@@ -1698,7 +1709,6 @@
                         <div class="employee-department-profesional">${empleado.area || 'Departamento'}</div>
                     </div>
                     
-                    <!-- Grid de información corporativa -->
                     <div class="info-grid-profesional">
                         <div class="info-item-profesional">
                             <div class="info-label-profesional">ID EMPLEADO</div>
@@ -1718,7 +1728,6 @@
                         </div>
                     </div>
                     
-                    <!-- Estado de asistencia del día -->
                     <div class="status-section">
                         <div class="status-title">ESTADO DE ASISTENCIA - HOY</div>
                         <div class="status-grid">
@@ -1746,7 +1755,6 @@
                         </div>
                     </div>
                     
-                    <!-- Footer - Solo vigencia (sin QR) -->
                     <div class="credencial-footer-profesional">
                         <div class="validity-date">
                             <div class="validity-label">VIGENTE HASTA</div>
@@ -1755,7 +1763,6 @@
                     </div>
                 </div>
                 
-                <!-- Botones de acción -->
                 <div class="action-buttons-profesional">
                     <button class="btn-action btn-entrada" onclick="iniciarRegistro('ENTRADA')" id="btnEntrada" ${tieneEntrada ? 'disabled' : ''}>
                         <i class="fas fa-sign-in-alt"></i> REGISTRAR ENTRADA
@@ -1775,9 +1782,10 @@
         
         const fabWhatsApp = document.getElementById('fabWhatsApp');
         if (fabWhatsApp) fabWhatsApp.style.display = 'flex';
+        
+        ajustarLayout();
     }
 
-    // ========== RENDER HISTORY (RESUMEN) ==========
     function renderHistoryPage() {
         const mainContent = document.getElementById('mainContent');
         const hoy = new Date().toISOString().split('T')[0];
@@ -1849,7 +1857,6 @@
         
         actualizarHistorialAgrupado();
         
-        // Botón rápido de salida si corresponde
         if (entrada && !salida) {
             const btnContainer = document.createElement('div');
             btnContainer.className = 'mt-3';
@@ -1860,6 +1867,8 @@
             `;
             document.querySelector('.glass-card:first-child')?.appendChild(btnContainer);
         }
+        
+        ajustarLayout();
     }
 
     function actualizarHistorialAgrupado() {
@@ -1871,7 +1880,6 @@
             return;
         }
         
-        // Agrupar por fecha
         const grupos = {};
         registrosCompletos.forEach(reg => {
             if (!grupos[reg.fecha]) {
@@ -1880,7 +1888,6 @@
             grupos[reg.fecha].push(reg);
         });
         
-        // Ordenar fechas descendente
         const fechasOrdenadas = Object.keys(grupos).sort((a, b) => new Date(b) - new Date(a));
         
         container.innerHTML = fechasOrdenadas.map(fecha => {
@@ -1934,7 +1941,6 @@
         }
     }
 
-    // ========== RENDER PROFILE (PERFIL) ==========
     function renderProfilePage() {
         const mainContent = document.getElementById('mainContent');
         const totalDias = new Set(registrosCompletos.map(r => r.fecha)).size;
@@ -2024,13 +2030,12 @@
                 </div>
             </div>
         `;
+        
+        ajustarLayout();
     }
 
-    function actualizarEstadisticasPerfil() {
-        // Las estadísticas se actualizan al renderizar la página
-    }
+    function actualizarEstadisticasPerfil() {}
 
-    // ========== CERRAR SESIÓN ==========
     async function cerrarSesion() {
         if (confirm('¿Cerrar sesión? Se eliminará el acceso de este dispositivo.')) {
             showLoading(true);
@@ -2046,7 +2051,6 @@
         }
     }
 
-    // ========== NAVEGACIÓN ==========
     function navigateTo(page) {
         currentPage = page;
         
@@ -2070,15 +2074,15 @@
         } else if (page === 'profile') {
             renderProfilePage();
         }
+        
+        ajustarLayout();
     }
 
-    // ========== VERIFICACIÓN INICIAL ==========
     async function verificarEstadoInicial() {
         showSplash();
         deviceToken = generarDeviceToken();
         iniciarGPS();
         
-        // Crear elemento de distancia
         const distanceIndicator = document.createElement('div');
         distanceIndicator.id = 'distanceIndicator';
         distanceIndicator.className = 'distance-indicator hidden';
@@ -2125,7 +2129,6 @@
         renderAuthScreen();
     }
 
-    // ========== INICIALIZACIÓN ==========
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', () => {
