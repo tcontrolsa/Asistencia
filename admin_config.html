@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#dc2626">
+    <title>Configuración - CONTROL 2026</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .config-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .config-header {
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 24px;
+            color: white;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .config-header h1 {
+            font-size: clamp(24px, 6vw, 32px);
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .config-header p {
+            opacity: 0.9;
+            margin-bottom: 0;
+        }
+
+        .config-card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .config-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title i {
+            color: #dc2626;
+            font-size: 24px;
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 8px;
+        }
+
+        .form-control, .form-select {
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+            padding: 10px 16px;
+            transition: all 0.2s;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: #dc2626;
+            box-shadow: 0 0 0 3px rgba(220,38,38,0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            background: linear-gradient(135deg, #b91c1c, #991b1b);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-weight: 600;
+        }
+
+        .btn-outline-secondary {
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-weight: 600;
+        }
+
+        .alert {
+            border-radius: 16px;
+            border: none;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 52px;
+            height: 28px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: 0.3s;
+            border-radius: 28px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #22c55e;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+
+        .info-badge {
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+
+        .info-badge i {
+            color: #3b82f6;
+            margin-right: 8px;
+        }
+
+        .save-alert {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #22c55e;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 12px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .coordenadas-input {
+            font-family: monospace;
+        }
+
+        .help-text {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="config-container">
+    <div class="config-header">
+        <h1><i class="fas fa-sliders-h"></i> Panel de Configuración</h1>
+        <p>CONTROL 2026 - Sistema de Gestión de Asistencia</p>
+    </div>
+
+    <!-- Tarjeta 1: Ubicación de la Empresa -->
+    <div class="config-card">
+        <div class="card-title">
+            <i class="fas fa-map-marker-alt"></i>
+            Ubicación de la Empresa
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Latitud</label>
+            <input type="text" class="form-control coordenadas-input" id="configLatitud" placeholder="-0.1288771313385675">
+            <div class="help-text">Coordenada de latitud de la empresa</div>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Longitud</label>
+            <input type="text" class="form-control coordenadas-input" id="configLongitud" placeholder="-78.47896772889067">
+            <div class="help-text">Coordenada de longitud de la empresa</div>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Radio de Validez (metros)</label>
+            <input type="number" class="form-control" id="configRadio" placeholder="250" min="10" max="1000">
+            <div class="help-text">Distancia máxima desde la empresa para registrar asistencia</div>
+        </div>
+        
+        <button class="btn btn-outline-secondary w-100 mt-2" onclick="obtenerUbicacionActual()">
+            <i class="fas fa-location-dot"></i> Usar mi ubicación actual
+        </button>
+    </div>
+
+    <!-- Tarjeta 2: Horarios Laborales -->
+    <div class="config-card">
+        <div class="card-title">
+            <i class="fas fa-clock"></i>
+            Horarios Laborales
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Hora Máxima de Almuerzo</label>
+            <input type="time" class="form-control" id="configHoraAlmuerzo" value="09:30">
+            <div class="help-text">Hora límite para seleccionar opción de almuerzo (formato HH:MM)</div>
+        </div>
+        
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="configAlmuerzoActivo" style="width: 48px; height: 24px;">
+                <label class="form-check-label ms-2">Activar hora máxima de almuerzo</label>
+            </div>
+            <div class="help-text">Si está desactivado, los empleados pueden seleccionar almuerzo a cualquier hora</div>
+        </div>
+        
+        <hr>
+        
+        <div class="mb-3">
+            <label class="form-label">Hora de Inicio de Jornada</label>
+            <input type="time" class="form-control" id="configHoraInicio" value="08:00">
+            <div class="help-text">Hora oficial de inicio de la jornada laboral</div>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Hora de Fin de Jornada</label>
+            <input type="time" class="form-control" id="configHoraFin" value="17:00">
+            <div class="help-text">Hora oficial de fin de la jornada laboral</div>
+        </div>
+        
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="configMarcacionAutomatica">
+                <label class="form-check-label ms-2">Marcación automática de salida</label>
+            </div>
+            <div class="help-text">Registrar salida automáticamente después del tiempo especificado</div>
+        </div>
+        
+        <div class="mb-3" id="divTiempoAutomatico" style="display: none;">
+            <label class="form-label">Tiempo para marcación automática (minutos)</label>
+            <input type="number" class="form-control" id="configTiempoAutomatico" value="10" min="1" max="120">
+            <div class="help-text">Minutos después de la hora de fin para registrar salida automática</div>
+        </div>
+    </div>
+
+    <!-- Tarjeta 3: Configuración de Registro -->
+    <div class="config-card">
+        <div class="card-title">
+            <i class="fas fa-fingerprint"></i>
+            Configuración de Registro
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Tolerancia de GPS (metros)</label>
+            <input type="number" class="form-control" id="configToleranciaGPS" value="50" min="0" max="200">
+            <div class="help-text">Margen de error permitido para la ubicación GPS</div>
+        </div>
+        
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="configRequiereFoto">
+                <label class="form-check-label ms-2">Requerir foto en cada registro</label>
+            </div>
+            <div class="help-text">Solicitar toma de foto al registrar entrada/salida</div>
+        </div>
+        
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="configPermiteRegistroManual">
+                <label class="form-check-label ms-2">Permitir registro manual (sin GPS)</label>
+            </div>
+            <div class="help-text">Permitir a supervisores registrar asistencia manualmente</div>
+        </div>
+    </div>
+
+    <!-- Tarjeta 4: Supervisores -->
+    <div class="config-card">
+        <div class="card-title">
+            <i class="fas fa-user-tie"></i>
+            Usuarios Supervisores
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Agregar Supervisor</label>
+            <div class="input-group">
+                <input type="text" class="form-control" id="nuevoSupervisorId" placeholder="ID de empleado">
+                <button class="btn btn-primary" onclick="agregarSupervisor()">
+                    <i class="fas fa-plus"></i> Agregar
+                </button>
+            </div>
+            <div class="help-text">Ingresa el ID del empleado para asignarlo como supervisor</div>
+        </div>
+        
+        <div class="info-badge">
+            <i class="fas fa-list"></i> <strong>Supervisores Actuales</strong>
+            <div id="listaSupervisores" class="mt-2">
+                <div class="text-muted">Cargando...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tarjeta 5: Otras Configuraciones -->
+    <div class="config-card">
+        <div class="card-title">
+            <i class="fas fa-cog"></i>
+            Otras Configuraciones
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Número de WhatsApp para Soporte</label>
+            <input type="tel" class="form-control" id="configWhatsApp" placeholder="593999999999">
+            <div class="help-text">Número con código de país sin el signo + (ej: 593999999999)</div>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Mensaje de Soporte</label>
+            <textarea class="form-control" id="configMensajeSoporte" rows="3">Hola, necesito soporte técnico para el sistema CONTROL 2026</textarea>
+            <div class="help-text">Mensaje predefinido para contacto de soporte</div>
+        </div>
+        
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="configModoMantenimiento">
+                <label class="form-check-label ms-2">Modo Mantenimiento</label>
+            </div>
+            <div class="help-text">Mostrar mensaje de mantenimiento a los usuarios</div>
+        </div>
+        
+        <div class="mb-3" id="divMensajeMantenimiento" style="display: none;">
+            <label class="form-label">Mensaje de Mantenimiento</label>
+            <textarea class="form-control" id="configMensajeMantenimiento" rows="2">El sistema se encuentra en mantenimiento. Por favor intenta más tarde.</textarea>
+        </div>
+    </div>
+
+    <!-- Botones de acción -->
+    <div class="d-flex gap-3 mb-5">
+        <button class="btn btn-primary flex-grow-1" onclick="guardarConfiguraciones()">
+            <i class="fas fa-save"></i> Guardar Configuración
+        </button>
+        <button class="btn btn-success flex-grow-1" onclick="cargarConfiguraciones()">
+            <i class="fas fa-sync-alt"></i> Recargar
+        </button>
+        <button class="btn btn-outline-secondary" onclick="window.close()">
+            <i class="fas fa-times"></i> Cerrar
+        </button>
+    </div>
+</div>
+
+<div id="saveAlert" class="save-alert">
+    <i class="fas fa-check-circle"></i>
+    Configuración guardada exitosamente
+</div>
+
+<div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-spinner"></div>
+</div>
+
+<script>
+    // ========== CONFIGURACIÓN ==========
+    const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+    const CLAVE_GUARDIA = 'TCONTROL2026';
+
+    // ========== FUNCIONES DE UI ==========
+    function showLoading(show) {
+        const loading = document.getElementById('loadingOverlay');
+        if (loading) {
+            if (show) loading.classList.remove('hidden');
+            else loading.classList.add('hidden');
+        }
+    }
+
+    function mostrarToast(mensaje, tipo = 'success') {
+        const alert = document.getElementById('saveAlert');
+        if (alert) {
+            alert.style.display = 'flex';
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 3000);
+        }
+        alert(mensaje);
+    }
+
+    // Mostrar/ocultar campos condicionales
+    document.getElementById('configMarcacionAutomatica')?.addEventListener('change', function(e) {
+        const div = document.getElementById('divTiempoAutomatico');
+        if (div) div.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    document.getElementById('configModoMantenimiento')?.addEventListener('change', function(e) {
+        const div = document.getElementById('divMensajeMantenimiento');
+        if (div) div.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    // ========== FUNCIONES JSONP ==========
+    function jsonpRequest(params) {
+        return new Promise((resolve, reject) => {
+            const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+            window[callback] = function(data) {
+                delete window[callback];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                resolve(data);
+            };
+            
+            const url = new URL(API_URL);
+            url.searchParams.append('callback', callback);
+            url.searchParams.append('clave', CLAVE_GUARDIA);
+            Object.keys(params).forEach(key => {
+                if (params[key] !== undefined && params[key] !== null) {
+                    url.searchParams.append(key, typeof params[key] === 'object' ? JSON.stringify(params[key]) : params[key].toString());
+                }
+            });
+            
+            const script = document.createElement('script');
+            script.src = url.toString();
+            script.onerror = () => {
+                delete window[callback];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                reject(new Error('Error de conexión con el servidor'));
+            };
+            document.body.appendChild(script);
+        });
+    }
+
+    // ========== CARGAR CONFIGURACIONES ==========
+    async function cargarConfiguraciones() {
+        showLoading(true);
+        
+        try {
+            const res = await jsonpRequest({ accion: 'obtenerConfiguraciones' });
+            showLoading(false);
+            
+            if (res.error) {
+                console.error('Error:', res.error);
+                return;
+            }
+            
+            // Cargar ubicación
+            if (res.ubicacion) {
+                document.getElementById('configLatitud').value = res.ubicacion.lat || LAT_EMPRESA;
+                document.getElementById('configLongitud').value = res.ubicacion.lng || LNG_EMPRESA;
+                document.getElementById('configRadio').value = res.ubicacion.radio || RADIO_METROS;
+            }
+            
+            // Cargar horarios
+            if (res.horarios) {
+                document.getElementById('configHoraAlmuerzo').value = res.horarios.hora_almuerzo || '09:30';
+                document.getElementById('configAlmuerzoActivo').checked = res.horarios.almuerzo_activo !== false;
+                document.getElementById('configHoraInicio').value = res.horarios.hora_inicio || '08:00';
+                document.getElementById('configHoraFin').value = res.horarios.hora_fin || '17:00';
+                document.getElementById('configMarcacionAutomatica').checked = res.horarios.marcacion_automatica || false;
+                document.getElementById('configTiempoAutomatico').value = res.horarios.tiempo_automatico || 10;
+                
+                // Mostrar/ocultar campo de tiempo automático
+                const divAuto = document.getElementById('divTiempoAutomatico');
+                if (divAuto) divAuto.style.display = res.horarios.marcacion_automatica ? 'block' : 'none';
+            }
+            
+            // Cargar configuración de registro
+            if (res.registro) {
+                document.getElementById('configToleranciaGPS').value = res.registro.tolerancia_gps || 50;
+                document.getElementById('configRequiereFoto').checked = res.registro.requiere_foto || false;
+                document.getElementById('configPermiteRegistroManual').checked = res.registro.permite_registro_manual || false;
+            }
+            
+            // Cargar otras configuraciones
+            if (res.otras) {
+                document.getElementById('configWhatsApp').value = res.otras.whatsapp_number || '593999999999';
+                document.getElementById('configMensajeSoporte').value = res.otras.mensaje_soporte || 'Hola, necesito soporte técnico para el sistema CONTROL 2026';
+                document.getElementById('configModoMantenimiento').checked = res.otras.modo_mantenimiento || false;
+                document.getElementById('configMensajeMantenimiento').value = res.otras.mensaje_mantenimiento || 'El sistema se encuentra en mantenimiento. Por favor intenta más tarde.';
+                
+                const divMant = document.getElementById('divMensajeMantenimiento');
+                if (divMant) divMant.style.display = res.otras.modo_mantenimiento ? 'block' : 'none';
+            }
+            
+            // Cargar lista de supervisores
+            if (res.supervisores) {
+                cargarListaSupervisores(res.supervisores);
+            }
+            
+        } catch (error) {
+            showLoading(false);
+            console.error('Error:', error);
+            alert('Error al cargar configuraciones: ' + error.message);
+        }
+    }
+
+    async function cargarListaSupervisores(supervisores) {
+        const container = document.getElementById('listaSupervisores');
+        if (!container) return;
+        
+        if (!supervisores || supervisores.length === 0) {
+            container.innerHTML = '<div class="text-muted">No hay supervisores registrados</div>';
+            return;
+        }
+        
+        container.innerHTML = supervisores.map(sup => `
+            <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                <div>
+                    <strong>${sup.nombre || sup.id}</strong><br>
+                    <small class="text-muted">ID: ${sup.id}</small>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="eliminarSupervisor('${sup.id}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `).join('');
+    }
+
+    // ========== GUARDAR CONFIGURACIONES ==========
+    async function guardarConfiguraciones() {
+        showLoading(true);
+        
+        const configuraciones = {
+            ubicacion: {
+                lat: parseFloat(document.getElementById('configLatitud').value),
+                lng: parseFloat(document.getElementById('configLongitud').value),
+                radio: parseInt(document.getElementById('configRadio').value)
+            },
+            horarios: {
+                hora_almuerzo: document.getElementById('configHoraAlmuerzo').value,
+                almuerzo_activo: document.getElementById('configAlmuerzoActivo').checked,
+                hora_inicio: document.getElementById('configHoraInicio').value,
+                hora_fin: document.getElementById('configHoraFin').value,
+                marcacion_automatica: document.getElementById('configMarcacionAutomatica').checked,
+                tiempo_automatico: parseInt(document.getElementById('configTiempoAutomatico').value)
+            },
+            registro: {
+                tolerancia_gps: parseInt(document.getElementById('configToleranciaGPS').value),
+                requiere_foto: document.getElementById('configRequiereFoto').checked,
+                permite_registro_manual: document.getElementById('configPermiteRegistroManual').checked
+            },
+            otras: {
+                whatsapp_number: document.getElementById('configWhatsApp').value,
+                mensaje_soporte: document.getElementById('configMensajeSoporte').value,
+                modo_mantenimiento: document.getElementById('configModoMantenimiento').checked,
+                mensaje_mantenimiento: document.getElementById('configMensajeMantenimiento').value
+            }
+        };
+        
+        try {
+            const res = await jsonpRequest({ 
+                accion: 'guardarConfiguraciones', 
+                configuraciones: JSON.stringify(configuraciones) 
+            });
+            
+            showLoading(false);
+            
+            if (res.error) {
+                alert('Error al guardar: ' + res.error);
+            } else {
+                const alertDiv = document.getElementById('saveAlert');
+                if (alertDiv) {
+                    alertDiv.style.display = 'flex';
+                    setTimeout(() => {
+                        alertDiv.style.display = 'none';
+                    }, 3000);
+                }
+                alert('Configuración guardada exitosamente');
+            }
+        } catch (error) {
+            showLoading(false);
+            alert('Error al guardar: ' + error.message);
+        }
+    }
+
+    // ========== AGREGAR/ELIMINAR SUPERVISOR ==========
+    async function agregarSupervisor() {
+        const empleadoId = document.getElementById('nuevoSupervisorId').value.trim();
+        if (!empleadoId) {
+            alert('Ingresa el ID del empleado');
+            return;
+        }
+        
+        showLoading(true);
+        
+        try {
+            const res = await jsonpRequest({ 
+                accion: 'agregarSupervisor', 
+                empleadoId: empleadoId 
+            });
+            
+            showLoading(false);
+            
+            if (res.error) {
+                alert('Error: ' + res.error);
+            } else {
+                document.getElementById('nuevoSupervisorId').value = '';
+                await cargarConfiguraciones();
+                alert('Supervisor agregado exitosamente');
+            }
+        } catch (error) {
+            showLoading(false);
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function eliminarSupervisor(empleadoId) {
+        if (!confirm(`¿Eliminar al supervisor ${empleadoId}?`)) return;
+        
+        showLoading(true);
+        
+        try {
+            const res = await jsonpRequest({ 
+                accion: 'eliminarSupervisor', 
+                empleadoId: empleadoId 
+            });
+            
+            showLoading(false);
+            
+            if (res.error) {
+                alert('Error: ' + res.error);
+            } else {
+                await cargarConfiguraciones();
+                alert('Supervisor eliminado');
+            }
+        } catch (error) {
+            showLoading(false);
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // ========== OBTENER UBICACIÓN ACTUAL ==========
+    function obtenerUbicacionActual() {
+        if (!navigator.geolocation) {
+            alert('Geolocalización no soportada');
+            return;
+        }
+        
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                document.getElementById('configLatitud').value = position.coords.latitude;
+                document.getElementById('configLongitud').value = position.coords.longitude;
+                alert('Ubicación actual cargada correctamente');
+            },
+            (error) => {
+                alert('Error al obtener ubicación: ' + error.message);
+            },
+            { enableHighAccuracy: true }
+        );
+    }
+
+    // ========== INICIALIZACIÓN ==========
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarConfiguraciones();
+    });
+</script>
+
+</body>
+</html>
