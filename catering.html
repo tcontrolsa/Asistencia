@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Catering - Control de Almuerzos</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            min-height: 100vh;
+            padding: 12px;
+        }
+
+        .app-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #f8fafc;
+            border-radius: 28px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            padding: 20px;
+            text-align: center;
+            position: relative;
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+        }
+
+        .refresh-btn {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:active {
+            transform: translateY(-50%) scale(0.95);
+        }
+
+        .refresh-btn.loading {
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 12px;
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .stat-btn {
+            text-align: center;
+            padding: 12px 8px;
+            background: #f8fafc;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            width: 100%;
+        }
+
+        .stat-btn:active {
+            transform: scale(0.96);
+        }
+
+        .stat-btn.active {
+            background: #fee2e2;
+            border: 2px solid #dc2626;
+        }
+
+        .stat-number {
+            font-size: 28px;
+            font-weight: 800;
+            font-family: monospace;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #64748b;
+            font-weight: 600;
+        }
+
+        .stat-btn.total .stat-number { color: #dc2626; }
+        .stat-btn.pending .stat-number { color: #eab308; }
+        .stat-btn.consumed .stat-number { color: #22c55e; }
+
+        .search-box {
+            padding: 12px;
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            border: 2px solid #e2e8f0;
+            border-radius: 40px;
+            font-size: 14px;
+            background: white url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="%2394a3b8" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>') no-repeat 14px center;
+            background-size: 18px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #dc2626;
+        }
+
+        .main-content {
+            padding: 12px;
+            max-height: calc(100vh - 280px);
+            overflow-y: auto;
+        }
+
+        .employee-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .employee-card {
+            background: white;
+            border-radius: 18px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.15s;
+            cursor: pointer;
+        }
+
+        .employee-card:active {
+            transform: scale(0.98);
+        }
+
+        .employee-card.consumed {
+            background: #dcfce7;
+            border-color: #22c55e;
+            opacity: 0.85;
+            cursor: default;
+            pointer-events: none;
+        }
+
+        .employee-card.processing {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .emp-photo {
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
+            object-fit: cover;
+            background: #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        .emp-photo-placeholder {
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 22px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .emp-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .emp-name {
+            font-size: 15px;
+            font-weight: 800;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .emp-meta {
+            display: flex;
+            gap: 10px;
+            font-size: 11px;
+            color: #64748b;
+            flex-wrap: wrap;
+        }
+
+        .emp-meta i {
+            width: 12px;
+            margin-right: 2px;
+        }
+
+        .emp-status {
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-consumed {
+            background: #22c55e;
+            color: white;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: #94a3b8;
+        }
+
+        .empty-state i {
+            font-size: 50px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        .toast-fast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #22c55e;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 1000;
+            animation: fadeInUp 0.2s ease;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .toast-fast.error {
+            background: #dc2626;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .last-update {
+            font-size: 10px;
+            color: #94a3b8;
+            text-align: center;
+            padding: 8px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .error-banner {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px;
+            text-align: center;
+            font-size: 13px;
+            margin: 12px;
+            border-radius: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="header">
+        <h1><i class="bi bi-egg-fried"></i> Catering</h1>
+        <p>Control de almuerzos en planta</p>
+        <button class="refresh-btn" onclick="cargarDatos()" title="Actualizar">
+            <i class="bi bi-arrow-repeat"></i>
+        </button>
+    </div>
+
+    <div class="stats-row">
+        <button class="stat-btn total active" onclick="filtrarPor('todos')">
+            <div class="stat-number" id="totalCount">0</div>
+            <div class="stat-label">TOTAL</div>
+        </button>
+        <button class="stat-btn pending" onclick="filtrarPor('pendientes')">
+            <div class="stat-number" id="pendingCount">0</div>
+            <div class="stat-label">PENDIENTES</div>
+        </button>
+        <button class="stat-btn consumed" onclick="filtrarPor('consumidos')">
+            <div class="stat-number" id="consumedCount">0</div>
+            <div class="stat-label">CONSUMIDOS</div>
+        </button>
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="searchInput" class="search-input" placeholder="Buscar por nombre o ID..." oninput="filtrarLista()">
+    </div>
+
+    <div class="main-content" id="mainContent">
+        <div id="employeeList" class="employee-list">
+            <div class="empty-state">
+                <i class="bi bi-hourglass-split"></i>
+                <p>Cargando lista de almuerzos...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="last-update" id="lastUpdate">
+        Actualizando...
+    </div>
+</div>
+
+<div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+</div>
+
+<script>
+// ============================================================
+//  CONFIGURACIÓN - ACTUALIZAR CON TU URL CORRECTA
+// ============================================================
+// ⚠️ IMPORTANTE: Reemplaza esta URL con la URL CORRECTA de tu Web App
+// La URL debe ser algo como: https://script.google.com/macros/s/AKfycbxxxx/exec
+const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+
+// Estado global
+let empleados = [];
+let filtroActual = 'todos';
+let timeoutAutoRefresh = null;
+let isRefreshing = false;
+let procesandoIds = new Set();
+
+// ============================================================
+//  UTILIDADES
+// ============================================================
+function $(id) { 
+    return document.getElementById(id); 
+}
+
+function mostrarToast(msg, esError = false) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-fast' + (esError ? ' error' : '');
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+}
+
+function showLoading(show) {
+    const overlay = $('loadingOverlay');
+    if (overlay) {
+        overlay.classList.toggle('hidden', !show);
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function safeString(val) {
+    if (val === null || val === undefined) return '';
+    return String(val).trim();
+}
+
+function convertirUrlDrive(url) {
+    const urlStr = safeString(url);
+    if (!urlStr) return null;
+    
+    if (urlStr.includes('lh3.googleusercontent.com')) return urlStr;
+    
+    let fileId = null;
+    let match = urlStr.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match) { fileId = match[1]; }
+    
+    if (!fileId) {
+        match = urlStr.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (match) { fileId = match[1]; }
+    }
+    
+    if (!fileId) {
+        match = urlStr.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (match) { fileId = match[1]; }
+    }
+    
+    if (!fileId) {
+        match = urlStr.match(/open\?id=([a-zA-Z0-9_-]+)/);
+        if (match) { fileId = match[1]; }
+    }
+    
+    if (fileId) {
+        return `https://lh3.googleusercontent.com/d/${fileId}`;
+    }
+    
+    return urlStr.startsWith('http') ? urlStr : null;
+}
+
+function actualizarHoraActualizacion() {
+    const ahora = new Date();
+    const horaStr = ahora.toLocaleTimeString('es-EC', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+    });
+    $('lastUpdate').innerHTML = `<i class="bi bi-clock"></i> Última actualización: ${horaStr}`;
+}
+
+// ============================================================
+//  JSONP REQUEST
+// ============================================================
+function jsonpRequest(params) {
+    return new Promise((resolve, reject) => {
+        const callback = `cb_cat_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const timeout = setTimeout(() => {
+            delete window[callback];
+            reject(new Error('Timeout de conexión (15s)'));
+        }, 15000);
+
+        window[callback] = (data) => {
+            clearTimeout(timeout);
+            delete window[callback];
+            resolve(data);
+        };
+
+        try {
+            const url = new URL(API_URL);
+            url.searchParams.append('callback', callback);
+            
+            Object.keys(params).forEach(k => {
+                const val = params[k];
+                if (val !== undefined && val !== null) {
+                    url.searchParams.append(k, safeString(val));
+                }
+            });
+
+            console.log('📡 JSONP Request:', url.toString());
+            
+            const script = document.createElement('script');
+            script.src = url.toString();
+            script.onerror = () => { 
+                clearTimeout(timeout); 
+                delete window[callback];
+                reject(new Error('Error de red - Verifica la URL del API')); 
+            };
+            document.body.appendChild(script);
+            
+            setTimeout(() => {
+                if (script.parentNode) script.parentNode.removeChild(script);
+            }, 20000);
+        } catch (err) {
+            clearTimeout(timeout);
+            reject(err);
+        }
+    });
+}
+
+// ============================================================
+//  API CALLS
+// ============================================================
+async function cargarListaCatering() {
+    console.log('📡 Llamando a obtenerListaCatering...');
+    return await jsonpRequest({ accion: 'obtenerListaCatering' });
+}
+
+async function marcarConsumido(empleadoId, empleadoNombre) {
+    console.log(`📡 Marcando consumo para ${empleadoId}...`);
+    return await jsonpRequest({ 
+        accion: 'marcarAlmuerzoConsumido', 
+        empleadoId: safeString(empleadoId),
+        nombre: safeString(empleadoNombre)
+    });
+}
+
+// ============================================================
+//  CARGA DE DATOS
+// ============================================================
+async function cargarDatos() {
+    if (isRefreshing) return;
+    isRefreshing = true;
+    const btn = document.querySelector('.refresh-btn');
+    if (btn) btn.classList.add('loading');
+    
+    try {
+        const res = await cargarListaCatering();
+        
+        if (btn) btn.classList.remove('loading');
+        isRefreshing = false;
+        
+        if (res && res.error) {
+            console.error('Error del servidor:', res.error);
+            mostrarToast('Error: ' + safeString(res.error), true);
+            
+            // Mostrar mensaje de error en la lista
+            const container = $('employeeList');
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <p>Error al cargar datos</p>
+                        <small>${escapeHtml(safeString(res.error))}</small>
+                    </div>
+                `;
+            }
+            return;
+        }
+        
+        if (res && Array.isArray(res.empleados)) {
+            empleados = res.empleados;
+            console.log(`✅ ${empleados.length} empleados cargados`);
+            
+            if (empleados.length === 0) {
+                console.warn('⚠️ No hay empleados que almuerzan en planta hoy');
+                const container = $('employeeList');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <i class="bi bi-egg-fried"></i>
+                            <p>No hay empleados que almuerzan en planta hoy</p>
+                            <small>Verifica que los empleados hayan marcado entrada con almuerzo "SI"</small>
+                        </div>
+                    `;
+                }
+            }
+            
+            actualizarStats();
+            filtrarLista();
+            actualizarHoraActualizacion();
+        } else {
+            console.warn('Respuesta inválida:', res);
+            mostrarToast('Formato de respuesta inválido', true);
+        }
+    } catch (err) {
+        if (btn) btn.classList.remove('loading');
+        isRefreshing = false;
+        console.error('Error en cargarDatos:', err);
+        mostrarToast('Error de conexión: ' + safeString(err.message), true);
+        
+        const container = $('employeeList');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="bi bi-wifi-off"></i>
+                    <p>Error de conexión</p>
+                    <small>Verifica que la URL del API sea correcta</small>
+                </div>
+            `;
+        }
+    }
+}
+
+function actualizarStats() {
+    const total = empleados.length;
+    const consumidos = empleados.filter(e => e.consumido === true).length;
+    const pendientes = total - consumidos;
+    
+    $('totalCount').textContent = total;
+    $('pendingCount').textContent = pendientes;
+    $('consumedCount').textContent = consumidos;
+}
+
+// ============================================================
+//  FILTRADO Y RENDERIZADO
+// ============================================================
+function filtrarPor(tipo) {
+    filtroActual = tipo;
+    
+    document.querySelectorAll('.stat-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    if (tipo === 'todos') document.querySelector('.stat-btn.total').classList.add('active');
+    if (tipo === 'pendientes') document.querySelector('.stat-btn.pending').classList.add('active');
+    if (tipo === 'consumidos') document.querySelector('.stat-btn.consumed').classList.add('active');
+    
+    localStorage.setItem('catering_filtro', tipo);
+    filtrarLista();
+}
+
+function filtrarLista() {
+    const searchTerm = (safeString($('searchInput')?.value || '')).toLowerCase();
+    
+    let filtrados = [...empleados];
+    
+    if (searchTerm) {
+        filtrados = filtrados.filter(emp => 
+            safeString(emp.nombre).toLowerCase().includes(searchTerm) || 
+            safeString(emp.id).toLowerCase().includes(searchTerm)
+        );
+    }
+    
+    if (filtroActual === 'pendientes') {
+        filtrados = filtrados.filter(emp => emp.consumido === false);
+    } else if (filtroActual === 'consumidos') {
+        filtrados = filtrados.filter(emp => emp.consumido === true);
+    }
+    
+    renderizarLista(filtrados);
+}
+
+function renderizarLista(lista) {
+    const container = $('employeeList');
+    
+    if (!container) return;
+    
+    if (!lista || lista.length === 0) {
+        let mensaje = '';
+        if (filtroActual === 'pendientes') mensaje = '✅ No hay almuerzos pendientes';
+        else if (filtroActual === 'consumidos') mensaje = '📋 No hay almuerzos consumidos registrados';
+        else mensaje = '🍽️ No hay empleados que almuerzan en planta hoy';
+        
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="bi bi-egg-fried"></i>
+                <p>${mensaje}</p>
+                <small>Actualiza la lista si crees que debería haber empleados</small>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = lista.map(emp => {
+        const fotoUrl = convertirUrlDrive(emp.foto_url);
+        const tieneFoto = fotoUrl && fotoUrl.trim() !== '';
+        const inicial = (safeString(emp.nombre).charAt(0) || '?').toUpperCase();
+        const consumido = emp.consumido === true;
+        const procesando = procesandoIds.has(safeString(emp.id));
+        const id = escapeHtml(safeString(emp.id));
+        const nombre = escapeHtml(safeString(emp.nombre));
+        const area = escapeHtml(safeString(emp.area || 'Sin área'));
+        const hora = safeString(emp.hora_entrada || '--:--');
+        
+        return `
+            <div class="employee-card ${consumido ? 'consumed' : ''} ${procesando ? 'processing' : ''}" 
+                 data-id="${id}"
+                 data-nombre="${nombre}"
+                 onclick="${consumido || procesando ? '' : `registrarConsumo('${id.replace(/'/g, "\\'")}', '${nombre.replace(/'/g, "\\'")}')`}">
+                ${tieneFoto ? 
+                    `<img class="emp-photo" src="${escapeHtml(fotoUrl)}" alt="${nombre}" 
+                          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                     <div class="emp-photo-placeholder" style="display:none">${inicial}</div>` : 
+                    `<div class="emp-photo-placeholder">${inicial}</div>`
+                }
+                <div class="emp-info">
+                    <div class="emp-name">${nombre}</div>
+                    <div class="emp-meta">
+                        <span><i class="bi bi-person-badge"></i> ${id}</span>
+                        <span><i class="bi bi-building"></i> ${area}</span>
+                        <span><i class="bi bi-clock"></i> ${hora}</span>
+                    </div>
+                </div>
+                <div class="emp-status ${consumido ? 'status-consumed' : 'status-pending'}">
+                    ${consumido ? '<i class="bi bi-check-circle-fill"></i> Consumido' : '<i class="bi bi-egg-fried"></i> Servir'}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ============================================================
+//  REGISTRAR CONSUMO
+// ============================================================
+async function registrarConsumo(id, nombre) {
+    if (procesandoIds.has(id)) return;
+    
+    const empleadoIndex = empleados.findIndex(e => safeString(e.id) === id);
+    if (empleadoIndex === -1) return;
+    
+    if (empleados[empleadoIndex].consumido === true) return;
+    
+    procesandoIds.add(id);
+    const estadoAnterior = empleados[empleadoIndex].consumido;
+    
+    // Actualizar UI optimistamente
+    empleados[empleadoIndex].consumido = true;
+    actualizarStats();
+    filtrarLista();
+    mostrarToast(`✓ ${nombre} - Almuerzo marcado como consumido`);
+    
+    try {
+        const res = await marcarConsumido(id, nombre);
+        
+        if (res && res.error) {
+            // Revertir si hay error
+            empleados[empleadoIndex].consumido = estadoAnterior;
+            actualizarStats();
+            filtrarLista();
+            mostrarToast('Error: ' + safeString(res.error), true);
+        } else {
+            console.log(`✅ Consumo registrado: ${nombre}`);
+            // Recargar datos para asegurar consistencia
+            setTimeout(() => cargarDatos(), 800);
+        }
+    } catch (err) {
+        // Revertir en caso de error
+        empleados[empleadoIndex].consumido = estadoAnterior;
+        actualizarStats();
+        filtrarLista();
+        mostrarToast('Error: ' + safeString(err.message), true);
+    } finally {
+        procesandoIds.delete(id);
+    }
+}
+
+// ============================================================
+//  RECARGA AUTOMÁTICA
+// ============================================================
+function iniciarRecargaAutomatica() {
+    if (timeoutAutoRefresh) clearInterval(timeoutAutoRefresh);
+    timeoutAutoRefresh = setInterval(() => {
+        if (document.visibilityState === 'visible' && !isRefreshing) {
+            cargarDatos();
+        }
+    }, 30000); // Cada 30 segundos
+}
+
+function restaurarPreferencias() {
+    const filtroGuardado = localStorage.getItem('catering_filtro');
+    if (filtroGuardado && ['todos', 'pendientes', 'consumidos'].includes(filtroGuardado)) {
+        filtroActual = filtroGuardado;
+        document.querySelectorAll('.stat-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        if (filtroActual === 'todos') document.querySelector('.stat-btn.total').classList.add('active');
+        if (filtroActual === 'pendientes') document.querySelector('.stat-btn.pending').classList.add('active');
+        if (filtroActual === 'consumidos') document.querySelector('.stat-btn.consumed').classList.add('active');
+    }
+}
+
+// ============================================================
+//  INICIALIZACIÓN
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 App de Catering iniciada');
+    console.log(`📍 API URL: ${API_URL}`);
+    
+    restaurarPreferencias();
+    cargarDatos();
+    iniciarRecargaAutomatica();
+    
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            console.log('👁️ App visible - recargando datos');
+            cargarDatos();
+        }
+    });
+});
+</script>
+</body>
+</html>
