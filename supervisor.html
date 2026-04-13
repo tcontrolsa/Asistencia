@@ -358,6 +358,15 @@
     .almuerzo-fuera  { background:var(--blu-lt); color:#1e3a8a; }
     .sin-registro    { background:var(--g100);   color:var(--g500); }
 
+    /* Botón editar almuerzo */
+    .edit-almuerzo-btn {
+      background:var(--ind-lt); color:var(--indigo); border:none;
+      padding:4px 10px; border-radius:var(--rfull); font-size:var(--fxs);
+      font-weight:600; cursor:pointer; transition:all .2s;
+      display:inline-flex; align-items:center; gap:4px;
+    }
+    .edit-almuerzo-btn:hover { background:var(--indigo); color:white; transform:scale(1.02); }
+
     /* ===== UTILS ===== */
     .empty-state { text-align:center; padding:40px; color:var(--g400); }
     .empty-state i { font-size:32px; margin-bottom:12px; display:block; }
@@ -563,7 +572,7 @@
       </div>
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>Empleado</th><th>Área</th><th>Entrada</th><th>Salida</th><th>Estado</th><th>Almuerzo</th></tr></thead>
+          <thead><tr><th>Empleado</th><th>Área</th><th>Entrada</th><th>Salida</th><th>Estado</th><th>Almuerzo</th><th>Acción</th></thead>
           <tbody id="tablaHoyBody"></tbody>
         </table>
       </div>
@@ -625,7 +634,7 @@
       </div>
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>Empleado</th><th>Área</th><th>Asistencias</th><th>Faltas</th><th>Tardanzas</th><th>Alm. Planta</th><th>Alm. Fuera</th><th>Puntualidad</th></tr></thead>
+          <thead><tr><th>Empleado</th><th>Área</th><th>Asistencias</th><th>Faltas</th><th>Tardanzas</th><th>Alm. Planta</th><th>Alm. Fuera</th><th>Puntualidad</th></thead>
           <tbody id="tablaMensualBody"></tbody>
         </table>
       </div>
@@ -651,7 +660,7 @@
       </div>
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>Empleado</th><th>Área</th><th>Tardanzas</th><th>Min. perdidos</th><th>Hrs. extra</th><th>Prom. entrada</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Empleado</th><th>Área</th><th>Tardanzas</th><th>Min. perdidos</th><th>Hrs. extra</th><th>Prom. entrada</th><th>Estado</th></thead>
           <tbody id="tablaTardanzasBody"></tbody>
         </table>
       </div>
@@ -688,11 +697,35 @@
   </div>
 </div>
 
+<!-- ===== MODAL EDITAR ALMUERZO ===== -->
+<div id="editAlmuerzoModal" class="modal-overlay hidden">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fas fa-utensils"></i> Editar almuerzo</h3>
+      <button class="modal-close" onclick="cerrarModalEditar()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="editAlmuerzoInfo"></div>
+      <div class="form-group">
+        <label class="form-label">¿Almuerza en planta hoy?</label>
+        <select id="editAlmuerzoValor" class="form-select">
+          <option value="SI">Sí, almuerza en planta</option>
+          <option value="NO">No, almuerza fuera</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary-modal" onclick="cerrarModalEditar()">Cancelar</button>
+      <button class="btn-primary-modal" onclick="guardarEdicionAlmuerzo()"><i class="fas fa-save"></i> Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
 // ============================================================
-//  CONFIGURACIÓN — mismo endpoint que index.html
+//  CONFIGURACIÓN
 // ============================================================
 const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
 
@@ -713,8 +746,11 @@ let estaActualizando = false;
 let ultimaVerificacion = 0;
 const INTERVALO_POLLING = 30000;
 
+// Variable para almacenar empleado a editar
+let empleadoEditando = null;
+
 // ============================================================
-//  JSONP — reemplaza google.script.run para GitHub Pages
+//  JSONP
 // ============================================================
 function jsonpRequest(params) {
   return new Promise((resolve, reject) => {
@@ -785,6 +821,8 @@ function escapeHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+function $(id) { return document.getElementById(id); }
 
 // ============================================================
 //  FORMATEO DE FECHAS / HORAS
@@ -868,7 +906,7 @@ function diaSemana(fechaStr) {
 }
 
 // ============================================================
-//  PERIODOS CONTABLES (26 del mes anterior → 25 del mes)
+//  PERIODOS CONTABLES
 // ============================================================
 function generarPeriodos() {
   const lista = [];
@@ -924,6 +962,76 @@ function dispositivoHtml(d) {
   if (s === 'MANUAL')   return '<i class="fas fa-keyboard" style="color:var(--g500)"></i> Manual';
   if (s.startsWith('DEV_')) return '<i class="fas fa-mobile-alt" style="color:var(--green)"></i> App Móvil';
   return escapeHtml(d || '—');
+}
+
+// ============================================================
+//  FUNCIÓN PARA EDITAR ALMUERZO (NUEVA)
+// ============================================================
+async function actualizarAlmuerzoEmpleado(empleadoId, nuevoValor) {
+  mostrarLoader(true, 'Actualizando almuerzo...');
+  try {
+    const res = await jsonpRequest({
+      accion: 'actualizarAlmuerzoSupervisor',
+      empleadoId: empleadoId,
+      almuerzo: nuevoValor
+    });
+    mostrarLoader(false);
+    if (res?.error) {
+      mostrarToast(res.error, 'error');
+      return false;
+    }
+    mostrarToast('Almuerzo actualizado correctamente', 'success');
+    return true;
+  } catch(err) {
+    mostrarLoader(false);
+    mostrarToast('Error de conexión: ' + err.message, 'error');
+    return false;
+  }
+}
+
+function abrirModalEditarAlmuerzo(empleado) {
+  empleadoEditando = empleado;
+  const infoDiv = document.getElementById('editAlmuerzoInfo');
+  infoDiv.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      ${photoCell(empleado)}
+      <div>
+        <strong style="font-size:var(--flg)">${escapeHtml(empleado.nombre)}</strong><br>
+        <span style="font-size:var(--fsm);color:var(--g500)">ID: ${escapeHtml(empleado.id)}</span><br>
+        <span style="font-size:var(--fsm);color:var(--g500)">Área: ${escapeHtml(empleado.area || '—')}</span>
+      </div>
+    </div>
+  `;
+  const select = document.getElementById('editAlmuerzoValor');
+  select.value = empleado.almuerzoHoy === 'SI' ? 'SI' : 'NO';
+  document.getElementById('editAlmuerzoModal').classList.remove('hidden');
+}
+
+function cerrarModalEditar() {
+  document.getElementById('editAlmuerzoModal').classList.add('hidden');
+  empleadoEditando = null;
+}
+
+async function guardarEdicionAlmuerzo() {
+  if (!empleadoEditando) return;
+  const nuevoValor = document.getElementById('editAlmuerzoValor').value;
+  const exito = await actualizarAlmuerzoEmpleado(empleadoEditando.id, nuevoValor);
+  if (exito) {
+    // Actualizar cache local
+    const idx = empleadosCache.findIndex(e => e.id === empleadoEditando.id);
+    if (idx !== -1) {
+      empleadosCache[idx].almuerzoHoy = nuevoValor;
+      // También actualizar el registro de entrada correspondiente
+      const registroEntrada = empleadosCache[idx].registros?.find(r => r.tipo === 'ENTRADA' && r.fecha === hoy);
+      if (registroEntrada) registroEntrada.almuerzo = nuevoValor;
+    }
+    cerrarModalEditar();
+    // Recargar paneles visibles
+    if (panelActual === 'hoy') cargarHoy();
+    if (panelActual === 'almuerzo') cargarAlmuerzo();
+    if (panelActual === 'dashboard') cargarDashboard();
+    if (panelActual === 'directorio') cargarDirectorio();
+  }
 }
 
 // ============================================================
@@ -1081,7 +1189,7 @@ function setTrend(id, pct) {
 }
 
 // ============================================================
-//  HOY
+//  HOY (con botón editar)
 // ============================================================
 function cargarHoy() {
   const total  = empleadosCache.length;
@@ -1125,8 +1233,16 @@ function filtrarTablaHoy() {
   });
   const tbody = $('tablaHoyBody');
   tbody.innerHTML = data.length===0
-    ? '<tr><td colspan="6" class="empty-state" style="padding:32px;">No hay empleados que coincidan</td></tr>'
-    : data.map(e=>`<tr><td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td><td>${escapeHtml(e.area||'—')}</td><td>${e._eH}</td><td>${e._sH}</td><td>${e._est}</td><td>${e._alm}</td></tr>`).join('');
+    ? '<tr><td colspan="7" class="empty-state" style="padding:32px;">No hay empleados que coincidan</td></tr>'
+    : data.map(e=>`<tr>
+        <td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td>
+        <td>${escapeHtml(e.area||'—')}</td>
+        <td>${e._eH}</td>
+        <td>${e._sH}</td>
+        <td>${e._est}</td>
+        <td>${e._alm}</td>
+        <td>${e.entradaHoy ? `<button class="edit-almuerzo-btn" onclick="event.stopPropagation();abrirModalEditarAlmuerzo({id:'${escapeHtml(e.id)}',nombre:'${escapeHtml(e.nombre)}',area:'${escapeHtml(e.area||'—')}',almuerzoHoy:'${e.almuerzoHoy||'NO'}',foto_url:'${escapeHtml(e.foto_url||'')}'})"><i class="fas fa-pen"></i> Editar</button>` : '<span class="pill dim">No aplica</span>'}</td>
+      </tr>`).join('');
 }
 
 function filtrarHoyPor(v) {
@@ -1177,7 +1293,10 @@ function filtrarDirectorio() {
             <div class="employee-detail-row"><span><i class="fas fa-door-open"></i> Salida hoy</span><span>${salStr}</span></div>
             <div class="employee-detail-row"><span><i class="fas fa-utensils"></i> Almuerzo</span><span>${almStr}</span></div>
           </div>
-          <div class="employee-card-footer"><span class="pill ${pClass}">${pLabel}</span></div>
+          <div class="employee-card-footer">
+            <span class="pill ${pClass}">${pLabel}</span>
+            ${e.entradaHoy ? `<button class="edit-almuerzo-btn" onclick="event.stopPropagation();abrirModalEditarAlmuerzo({id:'${escapeHtml(e.id)}',nombre:'${escapeHtml(e.nombre)}',area:'${escapeHtml(e.area||'—')}',almuerzoHoy:'${e.almuerzoHoy||'NO'}',foto_url:'${escapeHtml(e.foto_url||'')}'})"><i class="fas fa-pen"></i> Editar almuerzo</button>` : ''}
+          </div>
         </div>`;
       }).join('');
 }
@@ -1276,7 +1395,7 @@ function mostrarDetalle(id) {
       </div>
       <div class="registros-table-wrapper" style="padding:0 var(--pad) var(--pad);">
         <table class="registros-table">
-          <thead><tr><th>Día</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas trab.</th><th>Almuerzo</th><th>Dispositivo</th></tr></thead>
+          <thead><tr><th>Día</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas trab.</th><th>Almuerzo</th><th>Dispositivo</th></thead>
           <tbody>${filas||'<tr><td colspan="7" class="empty-state">Sin registros</td></tr>'}</tbody>
         </table>
       </div>
@@ -1319,9 +1438,11 @@ function mostrarAlmuerzosLista(tipo) {
       const alm = e.entradaHoy ? 'No marcó almuerzo' : 'Sin asistencia';
       return `<tr onclick="mostrarDetalle('${escapeHtml(e.id)}')" style="cursor:pointer">
         <td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td>
-        <td>${escapeHtml(e.area||'—')}</td><td>${est}</td><td><span class="pill dim">${alm}</span></td></tr>`;
+        <td>${escapeHtml(e.area||'—')}</td>
+        <td>${est}</td><td><span class="pill dim">${alm}</span></td>
+      </tr>`;
     }).join('');
-    $('listaAlmuerzo').innerHTML = `<div class="table-wrapper"><table><thead><tr><th>Empleado</th><th>Área</th><th>Asistencia</th><th>Almuerzo</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+    $('listaAlmuerzo').innerHTML = `<div class="table-wrapper"></table><thead><tr><th>Empleado</th><th>Área</th><th>Asistencia</th><th>Almuerzo</th></thead><tbody>${filas}</tbody></table></div>`;
     return;
   }
 
@@ -1336,10 +1457,10 @@ function mostrarAlmuerzosLista(tipo) {
     return `<tr onclick="mostrarDetalle('${escapeHtml(e.id)}')" style="cursor:pointer">
       <td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td>
       <td>${escapeHtml(e.area||'—')}</td>
-      <td>${e.entradaHoy ? formatearHora(horaV) : '—'}</td>
-      <td>${bdgHtml}</td></tr>`;
+      <td>${e.entradaHoy ? formatearHora(horaV) : '—'}</td><td>${bdgHtml}</td>
+    </tr>`;
   }).join('');
-  $('listaAlmuerzo').innerHTML = `<div class="table-wrapper"><table><thead><tr><th>Empleado</th><th>Área</th><th>Hora entrada</th><th>Estado</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+  $('listaAlmuerzo').innerHTML = `<div class="table-wrapper"><table><thead><tr><th>Empleado</th><th>Área</th><th>Hora entrada</th><th>Estado</th></thead><tbody>${filas}</tbody></table></div>`;
 }
 
 // ============================================================
@@ -1473,7 +1594,7 @@ function filtrarTablaTardanzas() {
 }
 
 // ============================================================
-//  POLLING / VERIFICAR CAMBIOS
+//  POLLING
 // ============================================================
 async function verificarCambios() {
   if (estaActualizando) return;
@@ -1502,7 +1623,7 @@ function iniciarPolling() {
 }
 
 // ============================================================
-//  CARGA PRINCIPAL — usa JSONP en lugar de google.script.run
+//  CARGA PRINCIPAL
 // ============================================================
 async function cargarDatosCompletos() {
   if (estaActualizando) return;
@@ -1560,9 +1681,6 @@ function cambiarPanel(id) {
   if (id !== 'detalle') cargarPanelActual();
 }
 
-// Atajo: querySelector por id
-function $(id) { return document.getElementById(id); }
-
 // ============================================================
 //  INICIO
 // ============================================================
@@ -1572,9 +1690,12 @@ document.querySelectorAll('.nav-item').forEach(item =>
 $('btnRefresh').addEventListener('click', cargarDatosCompletos);
 $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
 
-// Cerrar modal al hacer clic en el overlay
+// Cerrar modales al hacer clic en el overlay
 $('extraLunchModal').addEventListener('click', e => {
   if (e.target === $('extraLunchModal')) cerrarModal();
+});
+$('editAlmuerzoModal').addEventListener('click', e => {
+  if (e.target === $('editAlmuerzoModal')) cerrarModalEditar();
 });
 
 // Arranque
