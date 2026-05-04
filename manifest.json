@@ -1,0 +1,37 @@
+{
+  "name": "TCONTROL Asistencia",
+  "short_name": "TCONTROL",
+  "description": "Sistema de control de asistencia TCONTROL S.A.",
+  "start_url": "./INDEX_PRUEBAS.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1e40af",
+  "orientation": "portrait-primary",
+  "lang": "es",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Registrar Entrada",
+      "short_name": "Entrada",
+      "description": "Registra tu entrada rápidamente",
+      "url": "./INDEX_PRUEBAS.html#entrada",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
+}
