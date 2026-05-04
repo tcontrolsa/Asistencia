@@ -2098,8 +2098,10 @@
     <script src="./JS/firebase_backend.js"></script>
     <script src="./JS/firebase_migration.js"></script>
     <script>
-        // Determinar si usamos Firebase basándonos en LocalStorage
-        window.USE_FIREBASE = localStorage.getItem('tcontrol_use_firebase') === 'true';
+        // FIREBASE POR DEFECTO PARA TODOS LOS USUARIOS
+        // Se puede desactivar localmente desde la consola con: localStorage.setItem('tcontrol_use_firebase', 'false')
+        const storedFirebaseSetting = localStorage.getItem('tcontrol_use_firebase');
+        window.USE_FIREBASE = (storedFirebaseSetting !== 'false'); 
     </script>
     <!-- =================================== -->
 </head>
