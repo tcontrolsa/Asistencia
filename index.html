@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 
@@ -26,8 +25,10 @@
     <title>TCONTROL - Asistencia</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css"
+        media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+        media="print" onload="this.media='all'">
 
     <style>
         /* CRITICAL SPLASH STYLES */
@@ -43,7 +44,11 @@
             color: white;
             transition: opacity 0.5s ease, visibility 0.5s;
         }
-        .splash-screen.fade-out { opacity: 0; visibility: hidden; }
+
+        .splash-screen.fade-out {
+            opacity: 0;
+            visibility: hidden;
+        }
 
         /* ===== PWA INSTALL BANNER ===== */
         #pwaInstallBanner {
@@ -69,15 +74,20 @@
             border: none;
             max-width: calc(100vw - 32px);
         }
-        #pwaInstallBanner.show { display: flex; }
+
+        #pwaInstallBanner.show {
+            display: flex;
+        }
+
         #pwaInstallBanner img {
             width: 28px;
             height: 28px;
             border-radius: 6px;
             flex-shrink: 0;
         }
+
         #pwaInstallBanner .pwa-close {
-            background: rgba(255,255,255,0.2);
+            background: rgba(255, 255, 255, 0.2);
             border: none;
             color: white;
             border-radius: 50%;
@@ -91,19 +101,56 @@
             flex-shrink: 0;
             padding: 0;
         }
+
         @keyframes slideUpBanner {
-            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-            to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
         }
+
         /* =============================== */
         .splash-logo {
             font-size: 80px;
             margin-bottom: 20px;
             animation: pulse 2s infinite;
         }
-        .splash-title { font-size: 28px; font-weight: 800; letter-spacing: 2px; margin-bottom: 5px; }
-        .splash-subtitle { font-size: 14px; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; }
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
+
+        .splash-title {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+        }
+
+        .splash-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.1);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
 
         * {
             margin: 0;
@@ -1330,6 +1377,7 @@
             position: relative;
             overflow: hidden;
         }
+
         .btn-action::after {
             content: '';
             position: absolute;
@@ -1338,10 +1386,25 @@
             transition: background 0.2s;
             border-radius: inherit;
         }
-        .btn-action:not(:disabled):active::after { background: rgba(255, 255, 255, 0.25); }
-        .btn-action i { flex-shrink: 0; font-size: clamp(15px, 4vw, 17px); }
-        .btn-action:not(:disabled):active { transform: scale(0.96); }
-        .btn-action:disabled { opacity: 0.35; cursor: not-allowed; filter: grayscale(0.5); }
+
+        .btn-action:not(:disabled):active::after {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .btn-action i {
+            flex-shrink: 0;
+            font-size: clamp(15px, 4vw, 17px);
+        }
+
+        .btn-action:not(:disabled):active {
+            transform: scale(0.96);
+        }
+
+        .btn-action:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            filter: grayscale(0.5);
+        }
 
         .btn-entrada {
             background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
@@ -1377,16 +1440,31 @@
             transition: var(--transition);
             box-shadow: var(--shadow-sm);
         }
-        .status-card.entry { border-left: 4px solid var(--success); }
-        .status-card.exit  { border-left: 4px solid var(--danger); }
+
+        .status-card.entry {
+            border-left: 4px solid var(--success);
+        }
+
+        .status-card.exit {
+            border-left: 4px solid var(--danger);
+        }
+
         .status-card.entry.active-entry {
             background: linear-gradient(135deg, #f0fdf4, #dcfce7);
             border-color: var(--success);
             animation: statusPulse 3s ease-in-out infinite;
         }
+
         @keyframes statusPulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.15); }
-            50%       { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.15);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(22, 163, 74, 0);
+            }
         }
 
         /* Estilos Horas Extras */
@@ -2014,6 +2092,16 @@
             }
         }
     </style>
+    <!-- ===== FIREBASE SDKS & BACKEND ===== -->
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
+    <script src="./JS/firebase_backend.js"></script>
+    <script src="./JS/firebase_migration.js"></script>
+    <script>
+        // Determinar si usamos Firebase basándonos en LocalStorage
+        window.USE_FIREBASE = localStorage.getItem('tcontrol_use_firebase') === 'true';
+    </script>
+    <!-- =================================== -->
 </head>
 
 <body>
@@ -2464,6 +2552,11 @@
         // Reintenta automáticamente si el servidor está bloqueado (error de LockService)
         // Esto es crítico en horas pico (ej: 8am cuando todos marcan entrada a la vez)
         function jsonpRequest(params, _retryCount = 0) {
+            // 🔥 INTERCEPTOR FIREBASE
+            if (window.USE_FIREBASE && window.FirebaseBackend) {
+                return window.FirebaseBackend.procesarAccion(params);
+            }
+
             return new Promise((resolve, reject) => {
                 const MAX_RETRIES = 3;
                 const RETRY_DELAY_MS = [1000, 2000, 4000]; // backoff exponencial
@@ -2544,7 +2637,7 @@
 
                 window[callback]._timeoutId = timeoutId;
                 const _originalCallback = window[callback];
-                window[callback] = function(data) {
+                window[callback] = function (data) {
                     clearTimeout(timeoutId);
                     _originalCallback(data);
                 };
@@ -2602,11 +2695,23 @@
             if (!empleado.id) return;
             try {
                 const registros = await obtenerRegistrosEmpleadoAPI(empleado.id);
-                registrosCompletos = registros || [];
+                
+                // Prevenir crash si el backend devuelve un error (ej: falta de índice en Firebase)
+                if (registros && registros.error) {
+                    console.error('Error del backend al obtener registros:', registros.error);
+                    if (registros.error.includes('index')) {
+                        console.warn("Falta crear un índice Compuesto en Firestore. Revisa el link de error arriba y dale clic para crearlo.");
+                    }
+                    registrosCompletos = [];
+                } else {
+                    registrosCompletos = Array.isArray(registros) ? registros : [];
+                }
+                
                 if (currentPage === 'history') actualizarHistorialAgrupado();
                 if (currentPage === 'profile') renderProfilePage();
             } catch (error) {
                 console.error('Error:', error);
+                registrosCompletos = [];
             }
         }
 
@@ -4864,6 +4969,17 @@
                 
                 <div class="glass-card mt-3">
                     <h5 class="fw-bold mb-3" style="font-size: clamp(14px, 4.5vw, 16px);"><i class="fas fa-cog"></i> Configuración</h5>
+                    
+                    ${estado.esSupervisor ? `
+                    <button class="btn btn-warning w-100 mb-2 text-dark fw-bold shadow-sm" onclick="ejecutarMigracionAFirebase()" style="font-size: clamp(12px, 3.8vw, 14px); padding: clamp(10px, 3.5vw, 12px); border-radius: 12px;">
+                        <i class="fas fa-database"></i> Iniciar Migración a Firebase
+                    </button>
+                    ` : ''}
+
+                    <button class="btn btn-outline-primary w-100 mb-2" onclick="toggleFirebase()" style="font-size: clamp(12px, 3.8vw, 14px); padding: clamp(10px, 3.5vw, 12px);">
+                        <i class="fas fa-bolt"></i> ${window.USE_FIREBASE ? 'Desactivar' : 'Activar'} Firebase
+                    </button>
+
                     <button class="btn btn-outline-danger w-100 mb-2" onclick="cerrarSesion()" style="font-size: clamp(12px, 3.8vw, 14px); padding: clamp(10px, 3.5vw, 12px);">
                         <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
                     </button>
@@ -4964,34 +5080,34 @@
                             const hoyStr = new Date().toISOString().split('T')[0];
                             const registroHoy = registros.filter(r => r.fecha === hoyStr);
                             const entradaHoy = registroHoy.find(r => r.tipo === 'ENTRADA');
-                            const salidaHoy  = registroHoy.find(r => r.tipo === 'SALIDA');
+                            const salidaHoy = registroHoy.find(r => r.tipo === 'SALIDA');
 
                             estado = {
                                 tieneEntrada: estadoRes.tieneEntrada || false,
-                                tieneSalida:  estadoRes.tieneSalida  || false,
-                                horaEntrada:  entradaHoy ? formatearHora(entradaHoy.timestamp || entradaHoy.hora) : (estadoRes.horaEntrada || null),
-                                horaSalida:   salidaHoy  ? formatearHora(salidaHoy.timestamp  || salidaHoy.hora)  : (estadoRes.horaSalida  || null),
-                                almuerzo:     estadoRes.almuerzo    || null,
+                                tieneSalida: estadoRes.tieneSalida || false,
+                                horaEntrada: entradaHoy ? formatearHora(entradaHoy.timestamp || entradaHoy.hora) : (estadoRes.horaEntrada || null),
+                                horaSalida: salidaHoy ? formatearHora(salidaHoy.timestamp || salidaHoy.hora) : (estadoRes.horaSalida || null),
+                                almuerzo: estadoRes.almuerzo || null,
                                 esSupervisor: estadoRes.esSupervisor || false
                             };
 
                             empleado = {
-                                id:              estadoRes.id,
-                                nombre:          estadoRes.nombre,
-                                area:            estadoRes.area,
-                                foto_url:        estadoRes.foto_url,
-                                cargo:           estadoRes.cargo           || '',
+                                id: estadoRes.id,
+                                nombre: estadoRes.nombre,
+                                area: estadoRes.area,
+                                foto_url: estadoRes.foto_url,
+                                cargo: estadoRes.cargo || '',
                                 fechaNacimiento: estadoRes.fechaNacimiento || '',
-                                baseLat:         estadoRes.baseLat         || null,
-                                baseLng:         estadoRes.baseLng         || null,
-                                authExtras:      estadoRes.authExtras      || 'NO',
-                                tipoRegistro:    '',
-                                almuerzo:        ''
+                                baseLat: estadoRes.baseLat || null,
+                                baseLng: estadoRes.baseLng || null,
+                                authExtras: estadoRes.authExtras || 'NO',
+                                tipoRegistro: '',
+                                almuerzo: ''
                             };
 
                             actualizarInterfazSegunCargo();
                             registrosCompletos = registros;
-                            isAuthenticated    = true;
+                            isAuthenticated = true;
 
                             if (esCumpleanos(empleado.fechaNacimiento)) {
                                 setTimeout(celebrarCumpleanos, 1000);
@@ -5006,7 +5122,7 @@
 
                             // Cargar configuraciones en segundo plano (no bloquea la UI)
                             if (!configRes) {
-                                cargarConfiguracionesSistema().catch(() => {});
+                                cargarConfiguracionesSistema().catch(() => { });
                             }
                             return;
                         }
@@ -5017,7 +5133,7 @@
                 }
             } else {
                 // Sin sesión: cargar configuración en segundo plano
-                cargarConfiguracionesSistema().catch(() => {});
+                cargarConfiguracionesSistema().catch(() => { });
             }
 
             isAuthenticated = false;
@@ -5241,6 +5357,20 @@
             }, 10000);
         });
 
+        // ========== TOGGLE FIREBASE ==========
+        function toggleFirebase() {
+            const current = localStorage.getItem('tcontrol_use_firebase') === 'true';
+            if (!current) {
+                if(confirm("¿Estás seguro de activar Firebase? Asegúrate de haber migrado la base de datos primero.")) {
+                    localStorage.setItem('tcontrol_use_firebase', 'true');
+                    window.location.reload();
+                }
+            } else {
+                localStorage.setItem('tcontrol_use_firebase', 'false');
+                window.location.reload();
+            }
+        }
+
         // ========================================================
         // PWA: REGISTRO DEL SERVICE WORKER + BOTÓN DE INSTALACIÓN
         // ========================================================
@@ -5272,7 +5402,7 @@
 
             // 2. Botón de instalación (beforeinstallprompt)
             let deferredPrompt = null;
-            const banner  = document.getElementById('pwaInstallBanner');
+            const banner = document.getElementById('pwaInstallBanner');
             const closeBtn = document.getElementById('pwaInstallClose');
 
             window.addEventListener('beforeinstallprompt', e => {
