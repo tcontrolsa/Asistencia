@@ -106,8 +106,13 @@ async function ejecutarMigracionAFirebase() {
         }
 
         // Commitear últimos restos
-        if (batchCount > 0) {
-            await batchCommit(batch, batchCount);
+        // 6. Subir Configuración
+        if (data.configuracion) {
+            setStatus("Migrando Configuración...", 95, "Sincronizando parámetros globales...");
+            await db.collection('configuracion').doc('sistema').set({
+                valor: data.configuracion,
+                fecha_actualizacion: firebase.firestore.FieldValue.serverTimestamp()
+            });
         }
 
         setStatus("¡Migración Completada con Éxito!", 100, "La base de datos está lista para usar Firebase");

@@ -47,6 +47,10 @@ window.FirebaseBackend = {
                     return await this.obtenerEmpleadosTaller(params);
                 case 'actualizarAutorizacionExtras':
                     return await this.actualizarAutorizacionExtras(params);
+                case 'obtenerConfiguraciones':
+                    return await this.obtenerConfiguraciones(params);
+                case 'desvincularDispositivo':
+                    return await this.desvincularDispositivo(params);
                 default:
                     return { error: "Acción no soportada en Firebase: " + params.accion };
             }
@@ -521,6 +525,39 @@ window.FirebaseBackend = {
         } else {
             return { error: "No se encontró registro de entrada para hoy" };
         }
+    },
+
+    async obtenerConfiguraciones() {
+        try {
+            const configSnap = await db.collection('configuracion').doc('sistema').get();
+            if (configSnap.exists) {
+                return JSON.parse(configSnap.data().valor);
+            }
+            
+            // Valores por defecto si no hay configuración en Firebase
+            const configDefault = {
+                ubicacion: { lat: -0.128877, lng: -78.478967, radio: 250 },
+                horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "08:15", hora_salida: "17:00", almuerzo_activo: true, hora_inicio: "08:00", hora_fin: "17:00", marcacion_automatica: false, tiempo_automatico: 10 },
+                registro: { tolerancia_gps: 50, requiere_foto: false, permite_registro_manual: true },
+                otras: { whatsapp_number: "593999999999", mensaje_soporte: "Hola, necesito soporte técnico", modo_mantenimiento: false }
+            };
+            return configDefault;
+        } catch (error) {
+            console.error("Error en obtenerConfiguraciones:", error);
+            return { error: error.message };
+        }
+    },
+
+    async desvincularDispositivo(params) {
+        const id = params.empleadoId?.toString();
+        if (!id) return { error: "ID faltante" };
+
+        await db.collection('empleados').doc(id).update({
+            deviceToken: "",
+            id_dispositivo: ""
+        });
+        
+        return { ok: true, mensaje: "Dispositivo desvinculado correctamente" };
     },
 
     // Auxiliares
