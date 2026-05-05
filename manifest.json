@@ -2,7 +2,7 @@
   "name": "TCONTROL Asistencia",
   "short_name": "TCONTROL",
   "description": "Sistema de control de asistencia TCONTROL S.A.",
-  "start_url": "index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#1e40af",
@@ -31,7 +31,7 @@
       "name": "Registrar Entrada",
       "short_name": "Entrada",
       "description": "Registra tu entrada rápidamente",
-      "url": "index.html#entrada",
+      "url": "./index.html#entrada",
       "icons": [
         {
           "src": "icon-192.png",
