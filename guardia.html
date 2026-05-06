@@ -653,16 +653,16 @@
         </div>
         <div class="main-content">
             <div class="card">
-                <div class="mb-3">
-                    <label class="form-label d-block text-center mb-2">ID Empleado</label>
-                    <input type="text" id="supId" class="form-control" placeholder="Ej: 123" style="padding: 14px; border-radius: 48px; text-align: center;">
+                <div class="mb-4 text-center">
+                    <i class="fas fa-terminal fa-3x text-danger mb-3"></i>
+                    <h2 class="h5 mb-1">Acceso de Seguridad</h2>
+                    <p class="text-muted small">Ingrese la contraseña de terminal</p>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label d-block text-center mb-2">PIN de Seguridad</label>
-                    <input type="password" id="iClave" class="form-control" placeholder="••••" maxlength="4" style="padding: 14px; border-radius: 48px; text-align: center;">
+                <div class="mb-4">
+                    <input type="password" id="iClave" class="form-control" placeholder="••••••••" style="padding: 18px; border-radius: 48px; text-align: center; font-size: 24px; letter-spacing: 4px;">
                 </div>
                 <button class="btn-large btn-primary" onclick="login()">
-                    <i class="fas fa-arrow-right"></i> Ingresar Terminal
+                    <i class="fas fa-unlock-alt"></i> Activar Terminal
                 </button>
             </div>
         </div>
@@ -1067,25 +1067,25 @@ function refGPS() {
 //  LOGIN
 // ============================================================
 async function login() {
-    const id = $('supId').value.trim();
     const pin = $('iClave').value.trim();
     
-    if (!id || !pin) { 
-        mostrarToast('Ingrese ID y PIN', 'error'); 
+    if (!pin) { 
+        mostrarToast('Ingrese la contraseña', 'error'); 
         return; 
     }
     
     showLoading(true);
     try {
         const deviceToken = generarDeviceToken();
-        const res = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken, empleadoId: id });
+        // Usar verificarClaveGuardia que valida contra TCONTROL2026
+        const res = await jsonpRequest({ accion: 'verificarClaveGuardia', pin: pin, deviceToken: deviceToken });
         
         showLoading(false);
         if (res.error) {
             mostrarToast(res.error, 'error');
-        } else if (res.valido) {
-            // Guardar sesión
-            const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
+        } else if (res.ok) {
+            // Guardar sesión genérica para el terminal de guardia
+            const sessionData = { id: 'GUARDIA', token: deviceToken, timestamp: new Date().getTime() };
             localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
             
             $('vLogin').classList.add('hidden');
@@ -1095,7 +1095,7 @@ async function login() {
             $('iId').focus();
             cargarPresentes();
         } else {
-            mostrarToast('PIN incorrecto', 'error');
+            mostrarToast('Contraseña incorrecta', 'error');
         }
     } catch (err) {
         showLoading(false);
@@ -1117,8 +1117,7 @@ function logout() {
     $('vTerm').classList.add('hidden');
     $('vLogin').classList.remove('hidden');
     $('iClave').value = '';
-    $('supId').value = '';
-    $('supId').focus();
+    $('iClave').focus();
     if (watchId) navigator.geolocation.clearWatch(watchId);
     limpiarTodo();
 }
@@ -1302,7 +1301,6 @@ function verificarEstadoSesion() {
 }
 
 $('iClave')?.addEventListener('keypress', e => { if (e.key === 'Enter') login(); });
-$('supId')?.addEventListener('keypress', e => { if (e.key === 'Enter') $('iClave').focus(); });
 $('iId')?.addEventListener('keypress', e => { if (e.key === 'Enter') buscar(); });
 
 window.addEventListener('beforeunload', () => {

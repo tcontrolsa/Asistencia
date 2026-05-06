@@ -2134,6 +2134,10 @@
                 <i class="fas fa-user-circle"></i>
                 <span>Perfil</span>
             </button>
+            <button class="nav-item" id="navItemAdmin" data-page="admin" style="display: none;">
+                <i class="fas fa-lock"></i>
+                <span>Master</span>
+            </button>
         </div>
         <!-- ===== PWA INSTALL BANNER ===== -->
         <div id="pwaInstallBanner">
@@ -2165,7 +2169,7 @@
         let HORA_LIMITE_ALMUERZO = "09:30";
         let HORA_INICIO_ESPERADA = "08:00";
         let HORA_ENTRADA_LIMITE = "08:15";
-        let HORA_SALIDA = "17:00";
+        let HORA_SALIDA = "16:15";
         let ALMUERZO_ACTIVO = true;
         let WHATSAPP_NUMBER = "593999999999";
         let WHATSAPP_MESSAGE = "Hola, necesito soporte técnico para el sistema CONTROL 2026";
@@ -2279,7 +2283,7 @@
                         HORA_LIMITE_ALMUERZO = res.horarios.hora_almuerzo || "09:30";
                         HORA_INICIO_ESPERADA = res.horarios.hora_inicio || "08:00";
                         HORA_ENTRADA_LIMITE = res.horarios.hora_entrada_limite || "08:15";
-                        HORA_SALIDA = res.horarios.hora_salida || "17:00";
+                        HORA_SALIDA = res.horarios.hora_salida || "16:15";
                         ALMUERZO_ACTIVO = res.horarios.almuerzo_activo !== false;
                     }
                     if (res.otras) {
@@ -2697,7 +2701,7 @@
             if (!empleado.id) return;
             try {
                 const registros = await obtenerRegistrosEmpleadoAPI(empleado.id);
-                
+
                 // Prevenir crash si el backend devuelve un error (ej: falta de índice en Firebase)
                 if (registros && registros.error) {
                     console.error('Error del backend al obtener registros:', registros.error);
@@ -2708,7 +2712,7 @@
                 } else {
                     registrosCompletos = Array.isArray(registros) ? registros : [];
                 }
-                
+
                 if (currentPage === 'history') actualizarHistorialAgrupado();
                 if (currentPage === 'profile') renderProfilePage();
             } catch (error) {
@@ -2772,7 +2776,7 @@
 
         function obtenerHoraSalidaConfigrada() {
             // Usar variable global HORA_SALIDA si existe, sino del localStorage, sino default
-            return HORA_SALIDA || localStorage.getItem('HORA_SALIDA') || '17:00';
+            return HORA_SALIDA || localStorage.getItem('HORA_SALIDA') || '16:15';
         }
 
         function esAntesDeSalida(horaSalida) {
@@ -3464,11 +3468,11 @@
             ajustarLayout();
         }
 
-        // ========== VERIFICACIÓN DE PIN ==========
+        // ========== VERIFICACIÓN DE CONTRASEÑA ==========
         async function verificarPIN() {
             const pin = document.getElementById('pinInput').value.trim();
             if (!pin || pin.length < 4) {
-                mostrarToast('Ingresa PIN de 4 dígitos', 'error');
+                mostrarToast('Ingresa tu contraseña de acceso', 'error');
                 return;
             }
 
@@ -3551,7 +3555,7 @@
                     }
                     mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
                 } else {
-                    mostrarToast('PIN incorrecto', 'error');
+                    mostrarToast('Contraseña incorrecta', 'error');
                 }
             } catch (error) {
                 showLoading(false);
@@ -3581,7 +3585,7 @@
                 }
 
                 if (res.ok) {
-                    mostrarToast(`Registro exitoso. Guarda tu PIN: ${pin}`, 'success');
+                    mostrarToast(`Registro exitoso. Tu clave de acceso es: ${pin}`, 'success');
                     localStorage.setItem('SESSION_DATA', JSON.stringify({
                         empleadoId,
                         token: deviceToken,
@@ -3651,10 +3655,10 @@
                     <div class="glass-card">
                         <div class="text-center mb-4">
                             <div class="bg-primary-light rounded-circle d-inline-flex p-3 mb-3">
-                                <i class="fas fa-lock fa-2x text-primary"></i>
+                                <i class="fas fa-key fa-2x text-primary"></i>
                             </div>
                             <h3 class="h4 fw-bold">Acceso al sistema</h3>
-                            <p class="text-muted small">Ingresa tu PIN personal de 4 dígitos</p>
+                            <p class="text-muted small">Ingresa tu contraseña de acceso</p>
                         </div>
                         
                         <div class="mb-4">
@@ -3689,13 +3693,13 @@
                         
                         <div class="bg-light rounded-3 p-3 mb-3">
                             <div class="d-flex justify-content-between">
-                                <span class="text-muted">PIN generado</span>
+                                <span class="text-muted">Contraseña generada</span>
                                 <span class="fw-bold text-primary font-monospace fs-4" id="registroPinDisplay">----</span>
                             </div>
                         </div>
                         
                         <div class="alert alert-danger py-2 small mb-3">
-                            <i class="fas fa-exclamation-triangle"></i> Guarda este PIN. Lo necesitarás para acceder desde cualquier navegador.
+                            <i class="fas fa-exclamation-triangle"></i> Guarda esta contraseña. La necesitarás para acceder desde cualquier navegador.
                         </div>
                         
                         <input type="text" id="registroEmployeeId" class="form-control form-control-lg mb-3" placeholder="Ingresa tu ID de empleado">
@@ -5043,9 +5047,69 @@
                 renderHorasExtrasPage();
             } else if (page === 'profile') {
                 renderProfilePage();
+            } else if (page === 'admin') {
+                renderAdminPage();
             }
 
             ajustarLayout();
+        }
+
+        function renderAdminPage() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+            <div class="page">
+                <div class="glass-card mb-4 text-center">
+                    <div class="admin-icon mb-2">
+                        <i class="fas fa-user-shield" style="font-size: 40px; color: var(--primary);"></i>
+                    </div>
+                    <h3 class="fw-bold mb-1">Panel Master</h3>
+                    <p class="text-muted small">Acceso centralizado a todos los módulos</p>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="glass-card text-center p-3 h-100" onclick="window.open('supervisor.html', '_blank')" style="cursor: pointer;">
+                            <div class="mb-2"><i class="fas fa-chart-line text-primary" style="font-size: 24px;"></i></div>
+                            <div class="fw-bold small">Supervisor</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="glass-card text-center p-3 h-100" onclick="window.open('catering.html', '_blank')" style="cursor: pointer;">
+                            <div class="mb-2"><i class="fas fa-utensils text-success" style="font-size: 24px;"></i></div>
+                            <div class="fw-bold small">Catering</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="glass-card text-center p-3 h-100" onclick="window.open('guardia.html', '_blank')" style="cursor: pointer;">
+                            <div class="mb-2"><i class="fas fa-shield-alt text-danger" style="font-size: 24px;"></i></div>
+                            <div class="fw-bold small">Guardia</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="glass-card text-center p-3 h-100" onclick="window.open('admin_config.html', '_blank')" style="cursor: pointer;">
+                            <div class="mb-2"><i class="fas fa-cog text-secondary" style="font-size: 24px;"></i></div>
+                            <div class="fw-bold small">Configuración</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="glass-card text-center p-3 h-100" onclick="window.open('diagnostico.html', '_blank')" style="cursor: pointer;">
+                            <div class="mb-2"><i class="fas fa-tools text-warning" style="font-size: 24px;"></i></div>
+                            <div class="fw-bold small">Diagnóstico</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="glass-card text-center p-3 h-100" onclick="window.open('ubicacion.html', '_blank')" style="cursor: pointer;">
+                            <div class="mb-2"><i class="fas fa-map-marked-alt text-info" style="font-size: 24px;"></i></div>
+                            <div class="fw-bold small">Ubicación</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <small class="text-muted">Este panel es visible únicamente para el administrador del sistema.</small>
+                </div>
+            </div>
+            `;
         }
 
         // ========== VERIFICACIÓN INICIAL (OPTIMIZADA - CARGA EN PARALELO) ==========
@@ -5147,6 +5211,7 @@
 
         function actualizarInterfazSegunCargo() {
             const navItemExtras = document.getElementById('navItemExtras');
+            const navItemAdmin = document.getElementById('navItemAdmin');
             if (!navItemExtras) return;
 
             const cargoActual = empleado.cargo || '';
@@ -5177,6 +5242,12 @@
                 navItemExtras.style.display = 'flex';
             } else {
                 navItemExtras.style.display = 'none';
+            }
+
+            // Lógica para el botón Admin (Solo para el ADMIN_ID)
+            if (navItemAdmin) {
+                const esAdmin = empleado.id === ADMIN_ID;
+                navItemAdmin.style.display = esAdmin ? 'flex' : 'none';
             }
 
             // Forzar ajuste de layout si cambió la visibilidad
@@ -5363,7 +5434,7 @@
         function toggleFirebase() {
             const current = localStorage.getItem('tcontrol_use_firebase') === 'true';
             if (!current) {
-                if(confirm("¿Estás seguro de activar Firebase? Asegúrate de haber migrado la base de datos primero.")) {
+                if (confirm("¿Estás seguro de activar Firebase? Asegúrate de haber migrado la base de datos primero.")) {
                     localStorage.setItem('tcontrol_use_firebase', 'true');
                     window.location.reload();
                 }

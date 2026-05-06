@@ -373,6 +373,7 @@
         <input type="text" id="searchAsistencia" class="search-input" placeholder="Buscar por nombre o ID..." oninput="filtrarAsistenciaTabla()" style="flex:1;">
         <button class="btn-primary-modal" id="btnNuevoRegistroManual" style="white-space:nowrap; padding: 10px 15px;"><i class="fas fa-plus"></i> Nuevo Registro</button>
         <button class="btn-primary-modal" id="btnMasivo" style="white-space:nowrap; padding: 10px 15px; background:var(--indigo);"><i class="fas fa-bolt"></i> Completado Masivo</button>
+        <button class="btn-primary-modal" id="btnDepurar" style="white-space:nowrap; padding: 10px 15px; background:var(--red);"><i class="fas fa-broom"></i> Depurar Duplicados</button>
       </div>
       <div class="table-wrapper"><div id="asistenciaTablaContainer"></div></div>
     </div>
@@ -388,16 +389,12 @@
     <div class="login-header">
       <i class="fas fa-user-shield"></i>
       <h2>Acceso Supervisor</h2>
-      <p>ID y PIN de Seguridad</p>
+      <p>Ingresa tu Contraseña de Seguridad</p>
     </div>
     <div class="login-body">
       <div class="form-group">
-        <label>ID Empleado</label>
-        <input type="text" id="supId" class="form-input" placeholder="Ej: 123">
-      </div>
-      <div class="form-group">
-        <label>PIN de Acceso</label>
-        <input type="password" id="supPin" class="form-input" placeholder="••••" maxlength="4">
+        <label>Contraseña / PIN</label>
+        <input type="password" id="supPin" class="form-input" placeholder="••••" maxlength="6">
       </div>
       <button class="btn-login" onclick="intentarLoginSupervisor()">Ingresar al Panel</button>
       <div id="login-error" class="error-msg hidden"></div>
@@ -1384,7 +1381,11 @@ function mostrarDetalle(id) {
   const ADMIN_ID = "1058";
   let sessionData = {};
   try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e){}
-  const esAdminMaster = sessionData.id === ADMIN_ID;
+  
+  // Definir esAdminMaster de forma global para los closures si es necesario, 
+  // pero aquí lo usaremos dentro de mostrarDetalle.
+  const esAdminMaster = (sessionData.id === ADMIN_ID);
+  window.esAdminMaster = esAdminMaster; // Asegurarlo en el scope global por si acaso lo llaman desde onclicks dinámicos
 
   let e = empCache.find(x => x.id === id);
   if (!e) return;
@@ -1763,6 +1764,46 @@ async function completarRegistro(empleadoId, tipo, hora, fecha) {
   }
 }
 
+async function eliminarRegistroSupervisor(docId, empleadoId) {
+  if (!confirm('¿Estás seguro de eliminar este registro permanentemente?')) return;
+  
+  mostrarLoader(true);
+  try {
+    const res = await jsonpRequest({ accion: 'eliminarRegistro', docId: docId });
+    if (res.ok) {
+      mostrarToast('Registro eliminado', 'success');
+      await cargarDatosCompletos();
+      if (panelActual === 'detalle') mostrarDetalle(empleadoId);
+      else if (panelActual === 'asistencia') cargarAsistencia();
+    } else {
+      mostrarToast(res.error || 'Error al eliminar', 'error');
+    }
+  } catch(e) {
+    mostrarToast('Error de conexión', 'error');
+  } finally {
+    mostrarLoader(false);
+  }
+}
+
+async function depurarBaseDeDatos() {
+  if (!confirm('¿Deseas depurar los registros duplicados de hoy? Esta acción es irreversible.')) return;
+  
+  mostrarLoader(true);
+  try {
+    const res = await jsonpRequest({ accion: 'depurarDuplicados' });
+    mostrarLoader(false);
+    if (res.ok) {
+      mostrarToast(`Depuración exitosa: ${res.eliminados} duplicados eliminados`, 'success');
+      await cargarDatosCompletos();
+    } else {
+      mostrarToast(res.error || 'Error en depuración', 'error');
+    }
+  } catch(e) {
+    mostrarLoader(false);
+    mostrarToast('Error de conexión', 'error');
+  }
+}
+
 function mostrarModalManual() {
   const modal = $('manualRegistroModal');
   const sel = $('manEmpleadoId');
@@ -1900,11 +1941,10 @@ function cargarPanelActual() {
 // GESTIÓN DE SESIÓN SUPERVISOR
 // ============================================================
 async function intentarLoginSupervisor() {
-  const id = $('supId').value.trim();
   const pin = $('supPin').value.trim(); 
   
-  if (!id || !pin) {
-    mostrarError('Ingrese ID y PIN');
+  if (!pin) {
+    mostrarError('Ingrese su contraseña');
     return;
   }
   
@@ -1913,15 +1953,17 @@ async function intentarLoginSupervisor() {
   
   try {
     const deviceToken = generarDeviceToken();
-    const res = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken, empleadoId: id });
+    // Búsqueda solo por PIN para unificar el sistema
+    const res = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken });
     
     if (res.error) {
       mostrarError(res.error);
     } else if (res.valido) {
-      if (res.empleado.esSupervisor) {
+      const esMaster = res.empleado.id === "1058";
+      if (res.empleado.esSupervisor || esMaster) {
         const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
         localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
-        if (res.empleado.id === "1058" && $('navItemReportes')) $('navItemReportes').style.display = 'flex';
+        if (esMaster && $('navItemReportes')) $('navItemReportes').style.display = 'flex';
         
         $('login-supervisor').classList.add('hidden');
         cargarDatosCompletos();
@@ -1929,7 +1971,7 @@ async function intentarLoginSupervisor() {
         mostrarError('El usuario no tiene rango de Supervisor.');
       }
     } else {
-      mostrarError('PIN incorrecto.');
+      mostrarError('PIN o Contraseña incorrecta.');
     }
   } catch(e) {
     mostrarError('Error de conexión');
@@ -1974,6 +2016,7 @@ $('btnRefresh').addEventListener('click', cargarDatosCompletos);
 $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
 $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
 $('btnMasivo').addEventListener('click', mostrarModalMasivo);
+if ($('btnDepurar')) $('btnDepurar').addEventListener('click', depurarBaseDeDatos);
 
 document.getElementById('extraLunchModal').addEventListener('click', e => {
   if (e.target === document.getElementById('extraLunchModal')) cerrarModal();
