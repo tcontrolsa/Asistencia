@@ -4,15 +4,16 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.0';
+const CACHE_NAME = 'tcontrol-v1.3';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
 const PRECACHE_URLS = [
-  './INDEX_PRUEBAS.html',
+  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './JS/firebase_backend.js',
   // CDNs críticos (Bootstrap, FontAwesome)
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
@@ -27,7 +28,7 @@ self.addEventListener('install', event => {
       console.log('[SW] Pre-cacheando app shell');
       // Cachear recursos locales de forma obligatoria
       return cache.addAll([
-        './INDEX_PRUEBAS.html',
+        './index.html',
         './manifest.json',
         './icon-192.png',
         './icon-512.png'
@@ -100,7 +101,7 @@ self.addEventListener('fetch', event => {
           }
           // Si es navegación a la app, servir el shell cacheado
           if (event.request.mode === 'navigate') {
-            return caches.match('./INDEX_PRUEBAS.html');
+            return caches.match('./index.html');
           }
           // Para otros recursos, retornar respuesta vacía
           return new Response('', {
