@@ -636,6 +636,11 @@
             text-align: center;
         }
     </style>
+    <!-- FIREBASE SDKS -->
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
+    <script src="./JS/firebase_backend.js"></script>
+    <script>window.USE_FIREBASE = true;</script>
 </head>
 <body>
 
@@ -648,9 +653,16 @@
         </div>
         <div class="main-content">
             <div class="card">
-                <input type="password" id="iClave" class="form-control" placeholder="Clave de acceso" style="padding: 14px; border-radius: 48px; text-align: center; margin-bottom: 12px;">
+                <div class="mb-3">
+                    <label class="form-label d-block text-center mb-2">ID Empleado</label>
+                    <input type="text" id="supId" class="form-control" placeholder="Ej: 123" style="padding: 14px; border-radius: 48px; text-align: center;">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label d-block text-center mb-2">PIN de Seguridad</label>
+                    <input type="password" id="iClave" class="form-control" placeholder="••••" maxlength="4" style="padding: 14px; border-radius: 48px; text-align: center;">
+                </div>
                 <button class="btn-large btn-primary" onclick="login()">
-                    <i class="fas fa-arrow-right"></i> Ingresar
+                    <i class="fas fa-arrow-right"></i> Ingresar Terminal
                 </button>
             </div>
         </div>
@@ -873,6 +885,9 @@ function cambiarTab(tab) {
 //  JSONP
 // ============================================================
 function jsonpRequest(params) {
+    if (window.USE_FIREBASE && window.FirebaseBackend) {
+        return window.FirebaseBackend.procesarAccion(params);
+    }
     return new Promise((resolve, reject) => {
         const callback = `cb_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const timeout = setTimeout(() => {
@@ -888,8 +903,18 @@ function jsonpRequest(params) {
 
         const url = new URL(API_URL);
         url.searchParams.append('callback', callback);
+        
+        // Inyectar credenciales de sesión si existen
+        const session = localStorage.getItem('SUPERVISOR_SESSION');
+        if (session) {
+            const data = JSON.parse(session);
+            url.searchParams.append('empleadoId', data.id);
+            url.searchParams.append('deviceToken', data.token);
+        }
+
         Object.keys(params).forEach(k => {
             if (params[k] !== undefined && params[k] !== null) {
+                if (k === 'empleadoId' || k === 'deviceToken') return;
                 url.searchParams.append(k, params[k].toString());
             }
         });
@@ -1038,26 +1063,39 @@ function refGPS() {
 // ============================================================
 //  LOGIN
 // ============================================================
+// ============================================================
+//  LOGIN
+// ============================================================
 async function login() {
-    const clave = $('iClave').value.trim();
-    if (!clave) { mostrarToast('Ingrese la clave', 'error'); return; }
+    const id = $('supId').value.trim();
+    const pin = $('iClave').value.trim();
+    
+    if (!id || !pin) { 
+        mostrarToast('Ingrese ID y PIN', 'error'); 
+        return; 
+    }
     
     showLoading(true);
     try {
-        const res = await validarClave(clave);
+        const deviceToken = generarDeviceToken();
+        const res = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken, empleadoId: id });
+        
         showLoading(false);
-        if (res && res.ok) {
+        if (res.error) {
+            mostrarToast(res.error, 'error');
+        } else if (res.valido) {
+            // Guardar sesión
+            const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
+            localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
+            
             $('vLogin').classList.add('hidden');
             $('vTerm').classList.remove('hidden');
-            mostrarToast('Bienvenido', 'success');
+            mostrarToast('Terminal Activa', 'success');
             startGPS();
             $('iId').focus();
-            // Precargar presentes
             cargarPresentes();
         } else {
-            mostrarToast('Clave incorrecta', 'error');
-            $('iClave').value = '';
-            $('iClave').focus();
+            mostrarToast('PIN incorrecto', 'error');
         }
     } catch (err) {
         showLoading(false);
@@ -1065,11 +1103,22 @@ async function login() {
     }
 }
 
+function generarDeviceToken() {
+    let token = localStorage.getItem('DEVICE_TOKEN_GUARDIA');
+    if (!token) {
+        token = 'GRD_' + Math.random().toString(36).substr(2, 9).toUpperCase();
+        localStorage.setItem('DEVICE_TOKEN_GUARDIA', token);
+    }
+    return token;
+}
+
 function logout() {
+    localStorage.removeItem('SUPERVISOR_SESSION');
     $('vTerm').classList.add('hidden');
     $('vLogin').classList.remove('hidden');
     $('iClave').value = '';
-    $('iClave').focus();
+    $('supId').value = '';
+    $('supId').focus();
     if (watchId) navigator.geolocation.clearWatch(watchId);
     limpiarTodo();
 }
@@ -1240,17 +1289,27 @@ function limpiarDatosEmpleado() {
     estadoEmpleado = {};
 }
 
-// ============================================================
-//  EVENTOS
-// ============================================================
+function verificarEstadoSesion() {
+    const session = localStorage.getItem('SUPERVISOR_SESSION');
+    if (session) {
+        $('vLogin').classList.add('hidden');
+        $('vTerm').classList.remove('hidden');
+        startGPS();
+        cargarPresentes();
+    } else {
+        $('vLogin').classList.remove('hidden');
+    }
+}
+
 $('iClave')?.addEventListener('keypress', e => { if (e.key === 'Enter') login(); });
+$('supId')?.addEventListener('keypress', e => { if (e.key === 'Enter') $('iClave').focus(); });
 $('iId')?.addEventListener('keypress', e => { if (e.key === 'Enter') buscar(); });
 
 window.addEventListener('beforeunload', () => {
     if (watchId) navigator.geolocation.clearWatch(watchId);
 });
 
-startGPS();
+verificarEstadoSesion();
 </script>
 </body>
 </html>
