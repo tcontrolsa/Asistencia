@@ -61,56 +61,11 @@ self.addEventListener('activate', event => {
   );
 });
 
-// ===== ESTRATEGIA DE FETCH =====
+// ===== ESTRATEGIA DE FETCH (DEBUG: NETWORK ONLY) =====
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
-  // ── 1. Solicitudes a la API de Google Apps Script ──
-  // SIEMPRE network — los datos de asistencia deben ser en tiempo real
-  if (url.hostname.includes('script.google.com') ||
-      url.hostname.includes('googleapis.com')) {
-    // No interceptamos — el navegador maneja directamente (JSONP via script tags)
-    return;
-  }
-
-  // ── 2. Solicitudes de script tags (JSONP) ──
-  // Los script tags de JSONP no se pueden cachear útilmente
-  if (event.request.destination === 'script' &&
-      url.hostname.includes('google')) {
-    return;
-  }
-
-  // ── 3. App Shell y recursos estáticos: Network First con fallback a caché ──
-  event.respondWith(
-    fetch(event.request)
-      .then(networkResponse => {
-        // Si la red responde bien, actualizar la caché
-        if (networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => {
-        // Sin red: servir desde caché
-        return caches.match(event.request).then(cachedResponse => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          // Si es navegación a la app, servir el shell cacheado
-          if (event.request.mode === 'navigate') {
-            return caches.match('./index.html');
-          }
-          // Para otros recursos, retornar respuesta vacía
-          return new Response('', {
-            status: 503,
-            statusText: 'Service Unavailable'
-          });
-        });
-      })
-  );
+  // En este modo de depuración, simplemente dejamos que la red maneje todo.
+  // Esto evita cualquier problema de caché en GitHub Pages.
+  return; 
 });
 
 // ===== MENSAJES DESDE LA APP =====
