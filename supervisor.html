@@ -392,11 +392,12 @@
       <p>Ingresa tu Contraseña de Seguridad</p>
     </div>
     <div class="login-body">
-      <div class="form-group">
-        <label>Contraseña / PIN</label>
-        <input type="password" id="supPin" class="form-input" placeholder="••••" maxlength="6">
+      <div class="form-group" style="position:relative">
+        <label for="supPin" class="form-label">Contraseña / PIN</label>
+        <input type="password" id="supPin" class="form-input" placeholder="••••••••" maxlength="20" style="padding-right: 40px;" autocomplete="new-password" required>
+        <i class="fas fa-eye" id="togglePin" style="position:absolute; right:12px; top:38px; cursor:pointer; color:var(--g400)"></i>
       </div>
-      <button class="btn-login" onclick="intentarLoginSupervisor()">Ingresar al Panel</button>
+      <button class="btn-login" id="btnIngresarSup">Ingresar al Panel</button>
       <div id="login-error" class="error-msg hidden"></div>
     </div>
   </div>
@@ -2029,7 +2030,32 @@ document.getElementById('masivoModal').addEventListener('click', e => {
 });
 
 // Inicio
+console.log("🛠️ Iniciando Panel Supervisor...");
+if (!window.FirebaseBackend) {
+  console.error("❌ FirebaseBackend no cargado. Reintentando...");
+}
 verificarEstadoSupervisor();
+
+// Eventos Login
+if ($('supPin')) {
+  $('supPin').addEventListener('keypress', e => { if (e.key === 'Enter') intentarLoginSupervisor(); });
+  setTimeout(() => $('supPin').focus(), 500);
+  
+  // Asegurar que al hacer clic en cualquier parte del card se enfoque el input
+  document.querySelector('.login-card').addEventListener('click', () => $('supPin').focus());
+}
+if ($('btnIngresarSup')) $('btnIngresarSup').addEventListener('click', intentarLoginSupervisor);
+if ($('togglePin')) {
+  $('togglePin').addEventListener('click', (e) => {
+    e.stopPropagation(); // Evitar que el clic en el ojo desenfoque/enfoque raro
+    const inp = $('supPin');
+    const type = inp.getAttribute('type') === 'password' ? 'text' : 'password';
+    inp.setAttribute('type', type);
+    $('togglePin').classList.toggle('fa-eye');
+    $('togglePin').classList.toggle('fa-eye-slash');
+    inp.focus();
+  });
+}
 </script>
 </body>
 </html>
