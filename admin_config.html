@@ -327,7 +327,7 @@
         
         <div class="mb-3">
             <label class="form-label">Hora de Fin de Jornada</label>
-            <input type="time" class="form-control" id="configHoraFin" value="17:00">
+            <input type="time" class="form-control" id="configHoraFin" value="16:15">
             <div class="help-text">Hora oficial de fin de la jornada laboral</div>
         </div>
         
@@ -549,7 +549,7 @@
                 document.getElementById('configHoraAlmuerzo').value = res.horarios.hora_almuerzo || '09:30';
                 document.getElementById('configAlmuerzoActivo').checked = res.horarios.almuerzo_activo !== false;
                 document.getElementById('configHoraInicio').value = res.horarios.hora_inicio || '08:00';
-                document.getElementById('configHoraFin').value = res.horarios.hora_fin || '17:00';
+                document.getElementById('configHoraFin').value = res.horarios.hora_fin || '16:15';
                 document.getElementById('configMarcacionAutomatica').checked = res.horarios.marcacion_automatica || false;
                 document.getElementById('configTiempoAutomatico').value = res.horarios.tiempo_automatico || 10;
                 
