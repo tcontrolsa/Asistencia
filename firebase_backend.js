@@ -24,9 +24,10 @@ window.FirebaseBackend = {
     // ENRUTADOR PRINCIPAL (Imita procesarAccion)
     // ==========================================
     async procesarAccion(params) {
-        console.log("🔥 Firebase ejecutando acción:", params.accion);
+        const accion = (params.accion || "").trim();
+        console.log("🔥 Firebase ejecutando acción:", accion);
         try {
-            switch (params.accion) {
+            switch (accion) {
                 case 'verificarDispositivo':
                     return await this.verificarDispositivo(params);
                 case 'registrarDispositivo':
@@ -86,7 +87,8 @@ window.FirebaseBackend = {
                 case 'desvincularDispositivo':
                     return await this.desvincularDispositivo(params);
                 default:
-                    return { error: "Acción no soportada en Firebase: " + params.accion };
+                    console.warn("⚠️ Acción no reconocida:", accion);
+                    return { error: "Acción no soportada en Firebase: " + accion };
             }
         } catch (error) {
             console.error("🔥 Error en FirebaseBackend:", error);
@@ -180,7 +182,7 @@ window.FirebaseBackend = {
         }
 
         if (!empDoc) {
-            return { error: "PIN o Contraseña incorrecta", valido: false };
+            return { error: "Acceso denegado: PIN/Contraseña incorrecta o usuario no encontrado", valido: false };
         }
 
         if (empData.activo !== 'SI') {
