@@ -84,8 +84,9 @@ async function ejecutarMigracionAFirebase() {
         // 5. Subir Registros
         setStatus("Migrando Registros de Asistencia...", 50, "Esto tomará unos momentos...");
         for (const reg of data.registros) {
-            // Crear un ID único basado en empleadoId + timestamp para evitar duplicados si se corre 2 veces
-            const uniqueId = `${reg.empleadoId}_${reg.timestamp.replace(/[^a-zA-Z0-9]/g, '')}`;
+            // ID DETERMINÍSTICO: Coincide con la lógica de la App para evitar duplicados
+            const horaLimpia = (reg.hora || "").replace(/:/g, '');
+            const uniqueId = `${reg.empleadoId}_${reg.tipo}_${reg.fecha}_${horaLimpia}`;
             const ref = db.collection('registros').doc(uniqueId);
             
             // Convertir string ISO a Timestamp real de Firebase
@@ -106,8 +107,13 @@ async function ejecutarMigracionAFirebase() {
         }
 
         // Commitear últimos restos
-        if (batchCount > 0) {
-            await batchCommit(batch, batchCount);
+        // 6. Subir Configuración
+        if (data.configuracion) {
+            setStatus("Migrando Configuración...", 95, "Sincronizando parámetros globales...");
+            await db.collection('configuracion').doc('sistema').set({
+                valor: data.configuracion,
+                fecha_actualizacion: firebase.firestore.FieldValue.serverTimestamp()
+            });
         }
 
         setStatus("¡Migración Completada con Éxito!", 100, "La base de datos está lista para usar Firebase");
