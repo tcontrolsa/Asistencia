@@ -139,54 +139,71 @@ window.FirebaseBackend = {
     async verificarPIN(params) {
         const pin = params.pin;
         const token = params.deviceToken;
-        const idRequerido = params.empleadoId; // Opcional (usado en supervisor.html)
+        const idRequerido = params.empleadoId; 
+        
+        console.log("🔐 Verificando PIN...", { pin: pin, token: token, idRequerido: idRequerido });
+
         if (!pin || !token) return { error: "PIN o Token ausente" };
 
         let empDoc = null;
         let empData = null;
 
-        if (idRequerido) {
-            // Búsqueda específica por ID y validación de PIN
+        // 1. CASO MAESTRO: Si es la clave maestra, intentar cargar el administrador 1058
+        if (pin === "TCONTROL2026") {
+            console.log("👑 Clave Maestra detectada.");
+            const doc = await db.collection('empleados').doc("1058").get();
+            if (doc.exists) {
+                empDoc = doc;
+                empData = doc.data();
+            }
+        }
+
+        // 2. CASO ESPECÍFICO: Si se pasó un ID (Login Supervisor con ID + PIN)
+        if (!empDoc && idRequerido) {
+            console.log("🔍 Buscando empleado por ID específico:", idRequerido);
             const doc = await db.collection('empleados').doc(idRequerido.toString()).get();
             if (doc.exists) {
                 const data = doc.data();
-                if (data.pin?.toString() === pin.toString() || pin === "TCONTROL2026") {
+                // Validar PIN (puede ser string o number en Firestore)
+                if (data.pin?.toString() === pin.toString()) {
                     empDoc = doc;
                     empData = data;
                 }
             }
-        } else {
-            // Caso especial: Clave Maestra Terminal
-            if (pin === "TCONTROL2026") {
-                const doc = await db.collection('empleados').doc("1058").get();
-                if (doc.exists) {
-                    empDoc = doc;
-                    empData = doc.data();
+        }
+
+        // 3. CASO GENERAL: Búsqueda por PIN único (Login Empleado)
+        if (!empDoc) {
+            console.log("🔎 Búsqueda general por PIN en toda la colección.");
+            // Probar como String
+            let query = await db.collection('empleados').where('pin', '==', pin.toString()).get();
+            if (query.empty) {
+                // Probar como Number
+                const pinNum = parseInt(pin);
+                if (!isNaN(pinNum)) {
+                    query = await db.collection('empleados').where('pin', '==', pinNum).get();
                 }
             }
             
-            if (!empDoc) {
-                // Búsqueda general por PIN (App Empleado)
-                let empQuery = await db.collection('empleados').where('pin', '==', pin.toString()).get();
-                if (empQuery.empty) {
-                    const pinNum = parseInt(pin);
-                    if (!isNaN(pinNum)) {
-                        empQuery = await db.collection('empleados').where('pin', '==', pinNum).get();
-                    }
-                }
-                if (!empQuery.empty) {
-                    empDoc = empQuery.docs[0];
-                    empData = empDoc.data();
-                }
+            if (!query.empty) {
+                empDoc = query.docs[0];
+                empData = empDoc.data();
             }
         }
 
         if (!empDoc) {
+            console.warn("❌ PIN no encontrado en ninguna búsqueda.");
             return { error: "Acceso denegado: PIN/Contraseña incorrecta o usuario no encontrado", valido: false };
         }
 
+        console.log("✅ Empleado encontrado:", empData.nombre);
         if (empData.activo !== 'SI') {
-            return { error: "Empleado inactivo", valido: false };
+            return { error: "El empleado no se encuentra activo", valido: false };
+        }
+
+        // Registrar token si es necesario
+        if (empData.deviceToken !== token) {
+            await db.collection('empleados').doc(empDoc.id).update({ deviceToken: token });
         }
 
         // Registrar o actualizar dispositivo
@@ -368,6 +385,59 @@ window.FirebaseBackend = {
             });
         });
 
+        // --- INICIO: Integración de Registros Archivados ---
+        const CACHE_ARCHIVADOS_KEY = 'tcontrol_archivados_cache_v1';
+        let archivadosData = { registros: [], lastSync: null };
+        try {
+            const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+            if (storedArch) archivadosData = JSON.parse(storedArch);
+        } catch(e) { console.warn("Error leyendo caché archivados:", e); }
+
+        const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
+        const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+        
+        if (horasArchivados > 12) {
+            console.log("📥 Obteniendo registros archivados históricos de Sheets para el empleado...");
+            try {
+                const resp = await fetch(api_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({ accion: 'obtenerRegistrosArchivados' })
+                });
+                const resJson = await resp.json();
+                if (resJson.ok && resJson.registros) {
+                    archivadosData.registros = resJson.registros;
+                    archivadosData.lastSync = new Date().toISOString();
+                    try {
+                        localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
+                    } catch(e) {}
+                }
+            } catch(e) { console.warn("Error consultando archivados:", e); }
+        }
+
+        // Filtrar archivados del empleado actual y mapearlos al formato esperado
+        const archivadosDelEmpleado = archivadosData.registros.filter(r => r.empleadoId === empleadoId).map(data => ({
+            fecha: data.fecha,
+            tipo: data.tipo,
+            hora: this._limpiarHora(data.hora),
+            almuerzo: data.almuerzo || '',
+            dispositivo: data.dispositivo || '',
+            timestamp: data.timestamp || null,
+            dia: data.dia || '',
+            modo: data.modo || 'OFICINA',
+            horasExtra: data.horasExtra || 'NO',
+            autoriza: data.autoriza || '',
+            razon_salida_temprana: data.razonSalidaTemprana || data.razon_salida_temprana || '',
+            quien_justifica: data.quienJustifica || data.quien_justifica || '',
+            razon_entrada_tardia: data.razonEntradaTardia || data.razon_entrada_tardia || '',
+            quien_justifica_entrada: data.quienJustificaEntrada || data.quien_justifica_entrada || '',
+            tipo_salida: data.tipoSalida || data.tipo_salida || '',
+            razon_permiso: data.razonPermiso || data.razon_permiso || ''
+        }));
+
+        registros = registros.concat(archivadosDelEmpleado);
+        // --- FIN: Integración de Registros Archivados ---
+
         // Ordenar en cliente (de más reciente a más antiguo)
         registros.sort((a, b) => {
             if (a.timestamp && b.timestamp) {
@@ -376,7 +446,7 @@ window.FirebaseBackend = {
             return 0;
         });
 
-        // Retornar los últimos 100
+        // Retornar los últimos 100 (ajustado para que el empleado pueda ver su historial)
         return registros.slice(0, 100);
     },
 
@@ -916,22 +986,88 @@ window.FirebaseBackend = {
                 };
             });
 
-            // 2. Registros de los últimos 60 días (para dashboard y reportes)
+            // 2. Caching de Registros para reducir lecturas (Ahorro crítico de Firebase)
             const limite = new Date();
             limite.setDate(limite.getDate() - 60);
             const limiteStr = limite.toLocaleDateString('en-CA');
 
-            const regSnap = await db.collection('registros')
-                .where('fecha', '>=', limiteStr)
-                .get();
+            const CACHE_KEY = 'tcontrol_registros_cache_v1';
+            let cacheData = { registros: {}, lastSync: null };
+            try {
+                const stored = localStorage.getItem(CACHE_KEY);
+                if (stored) cacheData = JSON.parse(stored);
+            } catch(e) { console.warn("Error leyendo caché:", e); }
 
+            let query = db.collection('registros');
+            
+            // Si hay caché reciente (de hoy), solo traemos datos desde ayer para atrapar cambios recientes
+            // Si el administrador necesita forzar recarga total, puede limpiar caché local o hacer refresh duro
+            const ayer = new Date();
+            ayer.setDate(ayer.getDate() - 1);
+            const ayerStr = ayer.toLocaleDateString('en-CA');
+
+            if (cacheData.lastSync) {
+                console.log("⚡ Usando caché local. Obteniendo solo registros desde:", ayerStr);
+                query = query.where('fecha', '>=', ayerStr);
+            } else {
+                console.log("📥 Caché vacío. Obteniendo últimos 60 días desde:", limiteStr);
+                query = query.where('fecha', '>=', limiteStr);
+            }
+
+            const regSnap = await query.get();
+
+            // Combinar registros obtenidos con el caché
             regSnap.forEach(doc => {
-                const data = doc.data();
-                const eid = data.empleadoId;
-                if (empleadosMap[eid]) {
-                    // Normalizar para el frontend legacy
-                    const reg = { ...data, id: doc.id };
+                cacheData.registros[doc.id] = { ...doc.data(), id: doc.id };
+            });
 
+            // Limpiar caché de registros más antiguos que 60 días para liberar memoria
+            const allRegistros = Object.values(cacheData.registros).filter(r => r.fecha >= limiteStr);
+            
+            // Guardar caché actualizado
+            try {
+                let cacheToSave = { registros: {}, lastSync: new Date().toISOString() };
+                allRegistros.forEach(r => cacheToSave.registros[r.id] = r);
+                localStorage.setItem(CACHE_KEY, JSON.stringify(cacheToSave));
+            } catch(e) { console.warn("Error guardando caché (posible límite de localStorage):", e); }
+
+            // 2.5 Caching y obtención de Registros Archivados en Sheets
+            const CACHE_ARCHIVADOS_KEY = 'tcontrol_archivados_cache_v1';
+            let archivadosData = { registros: [], lastSync: null };
+            try {
+                const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+                if (storedArch) archivadosData = JSON.parse(storedArch);
+            } catch(e) { console.warn("Error leyendo caché archivados:", e); }
+
+            const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+            
+            if (horasArchivados > 12) {
+                console.log("📥 Obteniendo registros archivados históricos de Sheets...");
+                try {
+                    const resp = await fetch(api_url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({ accion: 'obtenerRegistrosArchivados' })
+                    });
+                    const resJson = await resp.json();
+                    if (resJson.ok && resJson.registros) {
+                        archivadosData.registros = resJson.registros;
+                        archivadosData.lastSync = new Date().toISOString();
+                        try {
+                            localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
+                        } catch(e) {}
+                    }
+                } catch(e) { console.warn("Error consultando archivados:", e); }
+            }
+
+            // Combinar todos: Firebase (últimos 60 días) + Archivados (históricos)
+            const registrosCompletos = allRegistros.concat(archivadosData.registros);
+
+            // 3. Procesar todos los registros combinados (Caché + Nuevos + Archivados)
+            registrosCompletos.forEach(reg => {
+                const eid = reg.empleadoId;
+                if (empleadosMap[eid]) {
                     // Normalización de valor de almuerzo para compatibilidad con supervisor.html
                     const vAlm = (reg.almuerzo || "").toString().toUpperCase().trim();
                     if (vAlm === "SI" || vAlm === "SÍ") {
@@ -942,26 +1078,26 @@ window.FirebaseBackend = {
 
                     empleadosMap[eid].registros.push(reg);
 
-                    if (data.fecha === hoyStr) {
-                        if (data.tipo === 'ENTRADA') {
+                    if (reg.fecha === hoyStr) {
+                        if (reg.tipo === 'ENTRADA') {
                             empleadosMap[eid].entradaHoy = true;
-                            empleadosMap[eid].horaEntrada = data.hora;
+                            empleadosMap[eid].horaEntrada = reg.hora;
                             empleadosMap[eid].almuerzoHoy = reg.almuerzo;
 
                             // Calcular horaEntradaMs para cálculos de puntualidad en el frontend
-                            if (data.hora) {
-                                const [h, m, s] = data.hora.split(':');
+                            if (reg.hora) {
+                                const [h, m, s] = reg.hora.split(':');
                                 const d = new Date();
                                 d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
                                 empleadosMap[eid].horaEntradaMs = d.getTime();
                             }
                         }
-                        if (data.tipo === 'SALIDA') {
+                        if (reg.tipo === 'SALIDA') {
                             empleadosMap[eid].salidaHoy = true;
-                            empleadosMap[eid].horaSalida = data.hora;
+                            empleadosMap[eid].horaSalida = reg.hora;
 
-                            if (data.hora) {
-                                const [h, m, s] = data.hora.split(':');
+                            if (reg.hora) {
+                                const [h, m, s] = reg.hora.split(':');
                                 const d = new Date();
                                 d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
                                 empleadosMap[eid].horaSalidaMs = d.getTime();
