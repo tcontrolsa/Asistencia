@@ -394,7 +394,7 @@ window.FirebaseBackend = {
         } catch(e) { console.warn("Error leyendo caché archivados:", e); }
 
         const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-        const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+        const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
         
         if (horasArchivados > 12) {
             console.log("📥 Obteniendo registros archivados históricos de Sheets para el empleado...");
@@ -1040,7 +1040,7 @@ window.FirebaseBackend = {
             } catch(e) { console.warn("Error leyendo caché archivados:", e); }
 
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
             
             if (horasArchivados > 12) {
                 console.log("📥 Obteniendo registros archivados históricos de Sheets...");
@@ -1062,49 +1062,103 @@ window.FirebaseBackend = {
             }
 
             // Combinar todos: Firebase (últimos 60 días) + Archivados (históricos)
-            const registrosCompletos = allRegistros.concat(archivadosData.registros);
+            // Normalizar campos de archivados al esquema estándar de Firebase
 
-            // 3. Procesar todos los registros combinados (Caché + Nuevos + Archivados)
+            // Helper: normaliza cualquier formato de fecha a YYYY-MM-DD
+            function normFecha(val) {
+                if (!val) return '';
+                const s = String(val).trim();
+                if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+                // DD/MM/YYYY
+                const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+                // Cualquier otro formato parseable
+                const d = new Date(s);
+                if (!isNaN(d.getTime())) {
+                    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                }
+                return s;
+            }
+
+            const archivadosNorm = archivadosData.registros.map(reg => ({
+                id: reg.id || `arch_${reg.empleadoId}_${reg.fecha}_${reg.tipo}`,
+                empleadoId: reg.empleadoId || reg.id_empleado || '',
+                fecha: normFecha(reg.fecha),
+                tipo: (reg.tipo || '').toUpperCase(),
+                hora: reg.hora || '',
+                almuerzo: reg.almuerzo || '',
+                modo: reg.modo || 'OFICINA',
+                lat: reg.lat || '',
+                lng: reg.lng || '',
+                dispositivo: reg.dispositivo || '',
+                timestamp: reg.timestamp || '',
+                // Mapear campos de Sheets → campos estándar
+                razon_salida: reg.razon_salida || reg.razonSalidaTemprana || '',
+                quien_justifica: reg.quien_justifica || reg.quienJustifica || '',
+                razon_entrada_tardia: reg.razon_entrada_tardia || reg.razonEntradaTardia || '',
+                quien_justifica_entrada: reg.quien_justifica_entrada || reg.quienJustificaEntrada || '',
+                tipo_salida: reg.tipo_salida || reg.tipoSalida || '',
+                razon_permiso: reg.razon_permiso || reg.razonPermiso || '',
+                horasExtra: reg.horasExtra || '',
+                autoriza: reg.autoriza || ''
+            })).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
+
+            // Registros de Firebase: también normalizar fecha por si acaso
+            const registrosFirebase = allRegistros.map(r => ({ ...r, fecha: normFecha(r.fecha) }));
+
+            // Fechas cubiertas por Firebase (para evitar duplicados con archivados)
+            const fechasEnFirebase = new Set(registrosFirebase.map(r => r.fecha).filter(Boolean));
+            // Solo incluir archivados de fechas que NO están en Firebase
+            const archivadosFiltrados = archivadosNorm.filter(r => r.fecha && !fechasEnFirebase.has(r.fecha));
+            const registrosCompletos = registrosFirebase.concat(archivadosFiltrados);
+
+            // 3. Procesar todos los registros combinados
             registrosCompletos.forEach(reg => {
                 const eid = reg.empleadoId;
-                if (empleadosMap[eid]) {
-                    // Normalización de valor de almuerzo para compatibilidad con supervisor.html
-                    const vAlm = (reg.almuerzo || "").toString().toUpperCase().trim();
-                    if (vAlm === "SI" || vAlm === "SÍ") {
-                        reg.almuerzo = "SI";
-                    } else {
-                        reg.almuerzo = "NO";
-                    }
+                if (!eid || !empleadosMap[eid]) return;
 
-                    empleadosMap[eid].registros.push(reg);
+                // Normalizar almuerzo: solo SI/NO si tiene valor, vacío si no
+                const vAlm = (reg.almuerzo || '').toString().trim().toUpperCase();
+                reg.almuerzo = (vAlm === 'SI' || vAlm === 'SÍ') ? 'SI' : (vAlm === 'NO' ? 'NO' : '');
 
-                    if (reg.fecha === hoyStr) {
-                        if (reg.tipo === 'ENTRADA') {
-                            empleadosMap[eid].entradaHoy = true;
-                            empleadosMap[eid].horaEntrada = reg.hora;
-                            empleadosMap[eid].almuerzoHoy = reg.almuerzo;
+                empleadosMap[eid].registros.push(reg);
 
-                            // Calcular horaEntradaMs para cálculos de puntualidad en el frontend
-                            if (reg.hora) {
-                                const [h, m, s] = reg.hora.split(':');
-                                const d = new Date();
-                                d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
-                                empleadosMap[eid].horaEntradaMs = d.getTime();
-                            }
+                if (reg.fecha === hoyStr) {
+                    if (reg.tipo === 'ENTRADA') {
+                        empleadosMap[eid].entradaHoy = true;
+                        empleadosMap[eid].horaEntrada = reg.hora;
+                        if (!empleadosMap[eid].almuerzoHoy) empleadosMap[eid].almuerzoHoy = reg.almuerzo;
+
+                        if (reg.hora) {
+                            const [h, m, s] = reg.hora.split(':');
+                            const d = new Date();
+                            d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
+                            empleadosMap[eid].horaEntradaMs = d.getTime();
                         }
-                        if (reg.tipo === 'SALIDA') {
-                            empleadosMap[eid].salidaHoy = true;
-                            empleadosMap[eid].horaSalida = reg.hora;
+                    }
+                    if (reg.tipo === 'SALIDA') {
+                        empleadosMap[eid].salidaHoy = true;
+                        empleadosMap[eid].horaSalida = reg.hora;
 
-                            if (reg.hora) {
-                                const [h, m, s] = reg.hora.split(':');
-                                const d = new Date();
-                                d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
-                                empleadosMap[eid].horaSalidaMs = d.getTime();
-                            }
+                        if (reg.hora) {
+                            const [h, m, s] = reg.hora.split(':');
+                            const d = new Date();
+                            d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
+                            empleadosMap[eid].horaSalidaMs = d.getTime();
                         }
                     }
                 }
+            });
+
+            // Eliminar duplicados por (empleadoId + fecha + tipo + hora)
+            Object.keys(empleadosMap).forEach(eid => {
+                const seen = new Set();
+                empleadosMap[eid].registros = empleadosMap[eid].registros.filter(r => {
+                    const key = `${r.fecha}|${r.tipo}|${(r.hora || '').slice(0, 5)}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
             });
 
             return {
