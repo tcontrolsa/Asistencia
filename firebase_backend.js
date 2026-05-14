@@ -366,7 +366,7 @@ window.FirebaseBackend = {
         querySnap.forEach(doc => {
             const data = doc.data();
             registros.push({
-                fecha: data.fecha,
+                fecha: this._normFecha(data.fecha),
                 tipo: data.tipo,
                 hora: this._limpiarHora(data.hora),
                 almuerzo: data.almuerzo || '',
@@ -386,23 +386,27 @@ window.FirebaseBackend = {
         });
 
         // --- INICIO: Integración de Registros Archivados ---
-        const CACHE_ARCHIVADOS_KEY = 'tcontrol_archivados_cache_v1';
+        const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${empleadoId}_v1`;
         let archivadosData = { registros: [], lastSync: null };
         try {
             const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
             if (storedArch) archivadosData = JSON.parse(storedArch);
         } catch(e) { console.warn("Error leyendo caché archivados:", e); }
 
+        // Cache por 30 minutos (antes era 12 horas) para evitar falsas faltas tras archivar
         const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
         const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
         
-        if (horasArchivados > 12) {
-            console.log("📥 Obteniendo registros archivados históricos de Sheets para el empleado...");
+        if (horasArchivados > 0.5) { 
+            console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
             try {
                 const resp = await fetch(api_url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({ accion: 'obtenerRegistrosArchivados' })
+                    body: JSON.stringify({ 
+                        accion: 'obtenerRegistrosArchivados',
+                        empleadoId: empleadoId 
+                    })
                 });
                 const resJson = await resp.json();
                 if (resJson.ok && resJson.registros) {
@@ -417,7 +421,7 @@ window.FirebaseBackend = {
 
         // Filtrar archivados del empleado actual y mapearlos al formato esperado
         const archivadosDelEmpleado = archivadosData.registros.filter(r => r.empleadoId === empleadoId).map(data => ({
-            fecha: data.fecha,
+            fecha: this._normFecha(data.fecha),
             tipo: data.tipo,
             hora: this._limpiarHora(data.hora),
             almuerzo: data.almuerzo || '',
@@ -1061,29 +1065,10 @@ window.FirebaseBackend = {
                 } catch(e) { console.warn("Error consultando archivados:", e); }
             }
 
-            // Combinar todos: Firebase (últimos 60 días) + Archivados (históricos)
-            // Normalizar campos de archivados al esquema estándar de Firebase
-
-            // Helper: normaliza cualquier formato de fecha a YYYY-MM-DD
-            function normFecha(val) {
-                if (!val) return '';
-                const s = String(val).trim();
-                if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-                // DD/MM/YYYY
-                const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-                if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-                // Cualquier otro formato parseable
-                const d = new Date(s);
-                if (!isNaN(d.getTime())) {
-                    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                }
-                return s;
-            }
-
             const archivadosNorm = archivadosData.registros.map(reg => ({
                 id: reg.id || `arch_${reg.empleadoId}_${reg.fecha}_${reg.tipo}`,
                 empleadoId: reg.empleadoId || reg.id_empleado || '',
-                fecha: normFecha(reg.fecha),
+                fecha: this._normFecha(reg.fecha),
                 tipo: (reg.tipo || '').toUpperCase(),
                 hora: reg.hora || '',
                 almuerzo: reg.almuerzo || '',
@@ -1104,7 +1089,7 @@ window.FirebaseBackend = {
             })).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
 
             // Registros de Firebase: también normalizar fecha por si acaso
-            const registrosFirebase = allRegistros.map(r => ({ ...r, fecha: normFecha(r.fecha) }));
+            const registrosFirebase = allRegistros.map(r => ({ ...r, fecha: this._normFecha(r.fecha) }));
 
             // Fechas cubiertas por Firebase (para evitar duplicados con archivados)
             const fechasEnFirebase = new Set(registrosFirebase.map(r => r.fecha).filter(Boolean));
@@ -1334,6 +1319,21 @@ window.FirebaseBackend = {
             return partes.split('.')[0].substring(0, 8); // Retorna HH:mm:ss
         }
         return hStr;
+    },
+
+    _normFecha(val) {
+        if (!val) return '';
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        // DD/MM/YYYY
+        const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+        // Cualquier otro formato parseable
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+        return s;
     }
 };
 
