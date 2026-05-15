@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>TCONTROL - Rastreo en Vivo</title>
+  <meta name="description" content="Monitoreo de ubicación premium para empleados">
+  
+  <!-- Modern premium fonts: Outfit for display, Inter for UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css">
+  
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    :root {
+      /* Brand */
+      --brand: #dc2626;
+      --brand-glow: rgba(220, 38, 38, 0.4);
+      --bg: #f3f4f6;
+      
+      /* Status Colors */
+      --c-empresa: #10b981;
+      --c-campo: #f59e0b;
+      --c-salida: #8b5cf6;
+      --c-sin: #94a3b8;
+      
+      /* UI Colors */
+      --surface: rgba(255, 255, 255, 0.85);
+      --surface-hover: rgba(255, 255, 255, 0.95);
+      --border: rgba(255, 255, 255, 0.4);
+      --border-dark: rgba(0, 0, 0, 0.08);
+      --text-main: #0f172a;
+      --text-sub: #64748b;
+      
+      --r-lg: 24px;
+      --r-md: 16px;
+      --r-sm: 10px;
+      
+      --shadow-glass: 0 10px 40px rgba(0,0,0,0.08);
+      --shadow-btn: 0 4px 14px rgba(0,0,0,0.1);
+      --shadow-pop: 0 20px 50px rgba(0,0,0,0.15);
+      
+      font-family: 'Inter', sans-serif;
+    }
+    
+    body { background: var(--bg); color: var(--text-main); height: 100vh; overflow: hidden; }
+
+    /* Estructura Principal flotante */
+    .app-wrapper {
+      position: relative;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: #e2e8f0;
+    }
+
+    /* GLASS SIDEBAR */
+    .sidebar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      bottom: 16px;
+      width: 380px;
+      z-index: 1000;
+      background: var(--surface);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-glass);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    
+    /* Header Navbar in Sidebar */
+    .sb-header {
+      padding: 24px 24px 20px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.7), rgba(255,255,255,0.2));
+      border-bottom: 1px solid var(--border-dark);
+      flex-shrink: 0;
+    }
+    .sb-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .sb-logo-box {
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--brand), #991b1b);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 20px;
+      box-shadow: 0 8px 16px var(--brand-glow);
+    }
+    .sb-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 20px;
+      letter-spacing: -0.5px;
+      color: var(--text-main);
+      line-height: 1.1;
+    }
+    .sb-sub {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-sub);
+    }
+
+    /* Grilla de Filtros Modernos (5 tabs now) */
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.3);
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border-dark);
+    }
+    .filter-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 10px 4px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: transparent;
+      border: 1px solid transparent;
+      position: relative;
+    }
+    .filter-btn.active {
+      background: white;
+      border-color: var(--border-dark);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      transform: translateY(-2px);
+    }
+    .f-val {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+    .f-lbl {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+    
+    /* Search Bar Premium */
+    .sb-search {
+      padding: 16px 20px;
+      flex-shrink: 0;
+    }
+    .search-input-wrapper {
+      position: relative;
+      width: 100%;
+    }
+    .search-input-wrapper i {
+      position: absolute;
+      left: 14px; top: 50%; transform: translateY(-50%);
+      color: #94a3b8; font-size: 14px;
+    }
+    .search-input {
+      width: 100%;
+      background: rgba(255,255,255,0.8);
+      border: 1px solid var(--border-dark);
+      padding: 12px 14px 12px 40px;
+      border-radius: 12px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.3s ease;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .search-input:focus {
+      background: white;
+      border-color: var(--brand);
+      box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
+    }
+
+    /* Employee List */
+    .emp-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 10px 10px;
+      scroll-behavior: smooth;
+    }
+    .emp-list::-webkit-scrollbar { width: 6px; }
+    .emp-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+
+    .emp-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border-radius: 14px;
+      background: transparent;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      position: relative;
+    }
+    .emp-card:hover {
+      background: rgba(255,255,255,0.6);
+    }
+    .emp-card.selected {
+      background: white;
+      border-color: var(--border-dark);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      transform: scale(1.02);
+    }
+
+    /* Avatars */
+    .avatar-wrapper {
+      position: relative;
+      width: 44px; height: 44px;
+      flex-shrink: 0;
+    }
+    .emp-avatar {
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .emp-avatar-ph {
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 16px;
+      border: 2px solid white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Indicator dot in avatar corner */
+    .status-ring {
+      position: absolute;
+      bottom: -2px; right: -2px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 2.5px solid white;
+      z-index: 2;
+    }
+
+    .emp-info {
+      flex: 1; min-width: 0;
+    }
+    .emp-name {
+      font-weight: 600; font-size: 14px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--text-main);
+    }
+    .emp-sub {
+      font-size: 12px; color: var(--text-sub); margin-top: 2px;
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .emp-time-box {
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .emp-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; font-weight: 700;
+      color: var(--text-main);
+      background: rgba(0,0,0,0.04);
+      padding: 4px 8px; border-radius: 6px;
+      display: inline-block; margin-bottom: 4px;
+    }
+    .emp-dist {
+      font-size: 10px; font-weight: 600; color: var(--text-sub);
+    }
+
+    /* Button Refresh */
+    .sb-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border-dark);
+      background: rgba(255,255,255,0.5);
+    }
+    .btn-action {
+      width: 100%;
+      background: var(--text-main);
+      color: white;
+      border: none;
+      padding: 14px;
+      border-radius: 12px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600; font-size: 14px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: all 0.3s;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+    }
+    .btn-action:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.3);
+      background: black;
+    }
+
+    /* LIVE STATUS BAR OVERLAY */
+    .live-status-overlay {
+      position: absolute;
+      bottom: 24px; left: 416px; /* Offset from sidebar */
+      background: var(--surface);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 12px 24px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-glass);
+      display: flex; align-items: center; gap: 16px;
+      z-index: 900;
+      font-size: 13px; font-weight: 500;
+      color: var(--text-main);
+    }
+    .live-pulse {
+      display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--c-empresa);
+    }
+    .live-pulse-dot {
+      width: 8px; height: 8px; background: var(--c-empresa); border-radius: 50%;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulse-dot 1.5s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+    .mono-data { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--brand); }
+
+    /* Floating Map Controls */
+    .map-fab-group {
+      position: absolute;
+      top: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 12px;
+      z-index: 900;
+    }
+    .map-fab {
+      width: 48px; height: 48px;
+      background: var(--surface);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--text-main);
+      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-btn);
+      transition: all 0.3s;
+    }
+    .map-fab:hover {
+      background: white; transform: translateY(-3px) scale(1.05); box-shadow: var(--shadow-pop);
+      color: var(--brand); border-color: rgba(220,38,38,0.2);
+    }
+
+    /* Map Legend Layered */
+    .modern-legend {
+      position: absolute; bottom: 24px; right: 24px; z-index: 900;
+      background: var(--surface); backdrop-filter: blur(16px);
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      padding: 16px; box-shadow: var(--shadow-glass);
+      min-width: 200px;
+    }
+    .leg-title { font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 12px; color: var(--text-main); }
+    .leg-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-sub); }
+    .leg-item:last-child { margin-bottom: 0; }
+    .leg-dot { width: 14px; height: 14px; border-radius: 5px; flex-shrink: 0; }
+
+    /* Map Elements Custom Styling */
+    .leaflet-popup-content-wrapper {
+      border-radius: var(--r-md) !important;
+      background: rgba(255,255,255,0.98) !important;
+      backdrop-filter: blur(12px) !important;
+      box-shadow: var(--shadow-pop) !important;
+      padding: 0 !important; overflow: hidden !important; border: 1px solid var(--border) !important;
+    }
+    .leaflet-popup-tip { background: rgba(255,255,255,0.98) !important; }
+    
+    .pop-modern { width: 260px; }
+    .pop-cover { height: 80px; background: linear-gradient(135deg, var(--bg) 0%, rgba(0,0,0,0.05) 100%); position: relative; }
+    .pop-avatar { 
+      width: 60px; height: 60px; border-radius: 50%; border: 3px solid white; object-fit: cover;
+      position: absolute; bottom: -30px; left: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white;
+      display: flex; align-items: center; justify-content: center; font-family:'Outfit',sans-serif;font-weight:800;font-size:20px;
+    }
+    .pop-badge {
+      position: absolute; top: 12px; right: 12px; padding: 4px 10px; border-radius: 100px;
+      font-size: 10px; font-weight: 800; letter-spacing:0.5px; text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: white;
+    }
+    .pop-details { padding: 40px 20px 20px; }
+    .pop-name { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 800; color: var(--text-main); leading-trim: both; outline-offset: 0; }
+    .pop-sub { font-size: 12px; color: var(--text-sub); margin-top: 2px; font-weight: 500; }
+    .pop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-dark); }
+    .pop-box { background: var(--bg); padding: 10px; border-radius: 10px; }
+    .pop-box-t { font-size: 9px; text-transform: uppercase; font-weight: 700; color: var(--text-sub); margin-bottom: 4px; }
+    .pop-box-v { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--text-main); }
+    .sin-gps-notice { margin-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--c-campo); background: rgba(245,158,11,0.1); padding: 8px 10px; border-radius: 8px; }
+
+    /* Custom Leaflet Markers */
+    .premium-marker { position:relative; display:flex; align-items:center; justify-content:center; }
+    .pm-pin { width:38px; height:38px; border-radius:50%; border:2px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.15); overflow:hidden; z-index:2; position:relative; background:white; }
+    .pm-pin img { width:100%; height:100%; object-fit:cover; }
+    .pm-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-family:'Outfit',sans-serif; font-weight:800; font-size:14px; color:white; }
+    /* Glow base under pin */
+    .pm-glow { position:absolute; width:100%; height:100%; border-radius:50%; z-index:1; animation: pm-pulse 2s infinite ease-in-out; }
+    .pm-glow.c-empresa { background: var(--c-empresa); }
+    .pm-glow.c-campo { background: var(--c-campo); }
+    .pm-glow.c-salida { background: var(--c-salida); }
+
+    .hq-marker { width:54px; height:54px; background: var(--text-main); border: 4px solid white; border-radius: 16px; display:flex; align-items:center; justify-content:center; font-size: 22px; color:white; box-shadow: 0 8px 24px rgba(0,0,0,0.25); transform: rotate(45deg); overflow: hidden; }
+    .hq-marker i { transform: rotate(-45deg); }
+
+    /* Animations */
+    @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+    @keyframes pm-pulse { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
+
+    /* Loader Modal */
+    .loader-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .loader-ring { width: 50px; height: 50px; border: 4px solid rgba(220,38,38,0.2); border-left-color: var(--brand); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+    .loader-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: var(--text-main); }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--text-main); color: white; padding: 12px 24px; border-radius: 100px; font-size: 14px; font-weight: 600; z-index: 10000; transition: all 0.3s cubic-bezier(0.2,0.8,0.2,1); box-shadow: var(--shadow-pop); }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-sub); }
+    .empty-state i { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
+    .empty-state p { font-size: 14px; font-weight: 500; }
+
+    /* Cluster Premium */
+    .cluster-premium {
+      background: var(--surface);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border: 3px solid white;
+      border-radius: 50%;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 800; color: var(--text-main);
+      transition: all 0.3s ease;
+    }
+    .cluster-premium:hover { transform: scale(1.1); box-shadow: 0 8px 24px rgba(0,0,0,0.3); color: var(--brand); }
+
+    /* Mobile Responsive */
+    .mob-btn { display: none; }
+    @media (max-width: 800px) {
+      .mob-btn { display: flex; position: absolute; top: 16px; left: 16px; width: 44px; height: 44px; background: white; border-radius: 12px; border:none; box-shadow: var(--shadow-btn); align-items: center; justify-content: center; font-size: 18px; color: var(--text-main); z-index: 2000; cursor: pointer; }
+      .sidebar { transform: translateX(-120%); left: 8px; top: 8px; bottom: 8px; width: calc(100% - 16px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+      .sidebar.open { transform: translateX(0); }
+      .live-status-overlay { display: none; } /* Hide on mobile to save space */
+      .modern-legend { display: none; }
+      .map-fab-group { top: 16px; right: 16px; }
+      .leaflet-control-zoom { display: none; } /* hide default zoom */
+    }
+  </style>
+  <!-- FIREBASE SDKS -->
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
+  <script src="./JS/firebase_backend.js"></script>
+  <script>window.USE_FIREBASE = true;</script>
+</head>
+<body>
+
+<!-- Global Loader -->
+<div class="loader-overlay" id="loader">
+  <div class="loader-ring"></div>
+  <div class="loader-text" id="loaderText">Sincronizando coordenadas...</div>
+</div>
+
+<button class="mob-btn" onclick="document.getElementById('sidebar').classList.toggle('open')"><i class="fas fa-bars"></i></button>
+
+<div class="app-wrapper">
+  
+  <div id="map"></div>
+
+  <!-- Controles Mapa Flotantes -->
+  <div class="map-fab-group">
+    <div class="map-fab" onclick="centrarEmpresa()" title="Ir a Centro de Control"><i class="fas fa-crosshairs"></i></div>
+    <div class="map-fab" onclick="fitAll()" title="Ver a Todo el Personal"><i class="fas fa-users-viewfinder"></i></div>
+    <div class="map-fab" id="btnRadio" onclick="toggleRadio()" title="Mostrar Geocerca"><i class="fas fa-draw-polygon"></i></div>
+  </div>
+
+  <!-- Overlay Estado en Vivo -->
+  <div class="live-status-overlay" id="liveBar">
+    <div class="live-pulse"><div class="live-pulse-dot"></div> TRANSMISIÓN ACTIVA</div>
+    <div style="width: 1px; height: 16px; background: var(--border-dark);"></div>
+    <div>Sincronizado: <span class="mono-data" id="ultimaAct">--:--:--</span></div>
+    <div style="width: 1px; height: 16px; background: var(--border-dark);"></div>
+    <div>Próxima recarga en <span class="mono-data" id="proxAct" style="color: var(--brand);">60s</span></div>
+  </div>
+
+  <!-- Leyenda Moderna -->
+  <div class="modern-legend">
+    <div class="leg-title">Indicadores GPS</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--c-empresa)"></div> Dentro del recinto</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--c-campo)"></div> En campo</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--c-salida)"></div> Fin de jornada</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--c-sin)"></div> Desconectado / Sin registro</div>
+  </div>
+
+  <!-- Panel Lateral Glass -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-header">
+      <div class="sb-brand">
+        <div class="sb-logo-box"><i class="fas fa-layer-group"></i></div>
+        <div>
+          <div class="sb-title">CONTROL DE CAMPO</div>
+          <div class="sb-sub">Radar en tiempo real interactivo</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grilla Filtros -->
+    <div class="filter-grid">
+      <div class="filter-btn active" id="f-todos" onclick="filtrar('todos')">
+        <div class="f-val" id="numTodos" style="color:var(--text-main)">-</div>
+        <div class="f-lbl">Total</div>
+      </div>
+      <div class="filter-btn" id="f-empresa" onclick="filtrar('empresa')">
+        <div class="f-val" id="numEmpresa" style="color:var(--c-empresa)">-</div>
+        <div class="f-lbl" style="color:var(--c-empresa)">Dentro</div>
+      </div>
+      <div class="filter-btn" id="f-campo" onclick="filtrar('campo')">
+        <div class="f-val" id="numCampo" style="color:var(--c-campo)">-</div>
+        <div class="f-lbl" style="color:var(--c-campo)">Campo</div>
+      </div>
+      <div class="filter-btn" id="f-salida" onclick="filtrar('salida')">
+        <div class="f-val" id="numSalida" style="color:var(--c-salida)">-</div>
+        <div class="f-lbl" style="color:var(--c-salida)">Salida</div>
+      </div>
+      <div class="filter-btn" id="f-sin" onclick="filtrar('sin')">
+        <div class="f-val" id="numSin" style="color:var(--c-sin)">-</div>
+        <div class="f-lbl" style="color:var(--text-sub)">Faltan</div>
+      </div>
+    </div>
+
+    <div class="sb-search">
+      <div class="search-input-wrapper">
+        <i class="fas fa-search"></i>
+        <input type="text" id="searchEmp" class="search-input" placeholder="Buscar por nombre o área..." oninput="renderLista()">
+      </div>
+    </div>
+
+    <div class="emp-list" id="empList">
+      <div class="empty-state"><i class="fas fa-satellite-dish fa-spin"></i><p>Conectando satélites...</p></div>
+    </div>
+
+    <div class="sb-footer">
+      <button class="btn-action" id="btnRefresh" onclick="cargar(false)">
+        <i class="fas fa-rotate" id="refreshIcon"></i> <span id="refreshText">Actualizar Radar</span>
+      </button>
+    </div>
+  </aside>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+<script>
+// ============================================
+// CORE CONFIG
+// ============================================
+const API_URL  = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+const LAT_EMP  = -0.1288771313385675;
+const LNG_EMP  = -78.47896772889067;
+const RADIO_M  = 250;
+const AUTO_SEC = 60;
+
+// Utilidad de fecha que usa padding para evitar errores de timezone si se usa YYYY-MM-DD
+const dateObj = new Date();
+const _yy = dateObj.getFullYear();
+const _mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+const _dd = String(dateObj.getDate()).padStart(2, '0');
+const hoyStr = `${_yy}-${_mm}-${_dd}`;
+
+const HOY_FORMATOS = [
+  hoyStr,
+  `${_dd}/${_mm}/${_yy}`,
+  `${_dd}-${_mm}-${_yy}`,
+  `${_yy}/${_mm}/${_dd}`,
+];
+
+let map, radioCircle, compMarker, markersGroup;
+let empleados = [];
+let markers = {};
+let filtroActual = 'todos';
+let timerInterval, timerSec = AUTO_SEC;
+let radioVisible = true;
+
+// Colores CSS variables mapeados
+const getC = (st) => ({ empresa: '#10b981', campo: '#f59e0b', salida: '#8b5cf6', sin: '#94a3b8' }[st] || '#94a3b8');
+
+// ============================================
+// AYUDANTES
+// ============================================
+function calcDist(la1, lo1, la2, lo2) {
+  const R = 6371000;
+  const dL = (la2 - la1) * Math.PI / 180;
+  const dO = (lo2 - lo1) * Math.PI / 180;
+  const a  = Math.sin(dL/2)**2 + Math.cos(la1*Math.PI/180) * Math.cos(la2*Math.PI/180) * Math.sin(dO/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function fmtHora(v) {
+  if (v == null || v === '') return '--:--';
+  if (typeof v === 'number' && v >= 0 && v < 1) {
+    const s = Math.round(v * 86400);
+    return String(Math.floor(s / 3600)).padStart(2,'0') + ':' + String(Math.floor((s % 3600) / 60)).padStart(2,'0');
+  }
+  if (typeof v === 'string') {
+    const m = v.match(/\d{1,2}:\d{2}/);
+    if (m) return m[0].padStart(5, '0');
+  }
+  return '--:--';
+}
+
+function ini(n) { return (n?.charAt(0) || '?').toUpperCase(); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+
+function getLat(r) { return r.lat ?? r.latitud ?? r.latitude ?? r.Lat ?? r.LAT ?? r.y ?? null; }
+function getLng(r) { return r.lng ?? r.lon ?? r.longitud ?? r.longitude ?? r.Lng ?? r.LNG ?? r.x ?? null; }
+
+// ============================================
+// LÓGICA DE ESTADO (Agregado estado SALIDA)
+// ============================================
+function statusEmp(emp) {
+  const registros = emp.registros || [];
+  const regsHoy = registros.filter(r => HOY_FORMATOS.includes(String(r.fecha || '').split('T')[0]));
+
+  if (!regsHoy.length) return { st: 'sin', lat: null, lng: null };
+
+  const regsGPS = regsHoy.filter(r => {
+    const la = getLat(r), lo = getLng(r);
+    return la != null && la !== '' && lo != null && lo !== '' && !isNaN(+la) && !isNaN(+lo);
+  });
+
+  const sortTime = (arr) => [...arr].sort((a,b) => {
+    const va = typeof a.hora==='number'?a.hora:parseFloat(a.hora)||0;
+    const vb = typeof b.hora==='number'?b.hora:parseFloat(b.hora)||0;
+    return isNaN(va)||isNaN(vb) ? String(a.hora).localeCompare(String(b.hora)) : va-vb;
+  });
+
+  const ultimaData = (arr) => {
+      const sorted = sortTime(arr);
+      return sorted[sorted.length - 1];
+  }
+
+  // Encontrar el último registro absoluto del día para prioridad de estado (Salida sobre todo)
+  const uTotal = ultimaData(regsHoy);
+  const typeOfTotal = String(uTotal.tipo).toUpperCase();
+
+  if (regsGPS.length) {
+    const uGPS = ultimaData(regsGPS);
+    const la = +getLat(uGPS), lo = +getLng(uGPS);
+    const d  = calcDist(LAT_EMP, LNG_EMP, la, lo);
+    
+    let estado = d <= RADIO_M ? 'empresa' : 'campo';
+    if (typeOfTotal === 'SALIDA') estado = 'salida';
+    
+    return { st: estado, lat: la, lng: lo, hora: uTotal.hora, tipo: uTotal.tipo, dist: Math.round(d), sinGPS: false };
+  } else {
+    // Registros sin GPS hoy (Web manual probable). 
+    let estado = 'empresa';
+    if (typeOfTotal === 'SALIDA') estado = 'salida';
+    
+    // Repartir aleatoriamente dentro del perímetro de la matriz (ej. 200 metros)
+    // 1 grado latitud = ~111320 metros.
+    const angulo = Math.random() * Math.PI * 2;
+    const radioGrados = Math.sqrt(Math.random()) * (180 / 111320); // Distribución circular uniforme ~180m
+    const jLat = radioGrados * Math.cos(angulo);
+    const jLng = (radioGrados * Math.sin(angulo)) / Math.cos(LAT_EMP * Math.PI / 180);
+    
+    return { st: estado, lat: LAT_EMP + jLat, lng: LNG_EMP + jLng, hora: uTotal.hora, tipo: uTotal.tipo, dist: 0, sinGPS: true, tipoAc: 'Manual' };
+  }
+}
+
+// ============================================
+// JSONP BRIDGE
+// ============================================
+// ============================================
+// JSONP BRIDGE (INTERCEPTOR FIREBASE)
+// ============================================
+function jsonp(params) {
+  if (window.USE_FIREBASE && window.FirebaseBackend) {
+    return window.FirebaseBackend.procesarAccion(params);
+  }
+  return new Promise((res, rej) => {
+    const cb = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const t  = setTimeout(() => { delete window[cb]; rej(new Error('Timeout de API')); }, 25000);
+    const sc = document.createElement('script');
+    
+    window[cb] = data => {
+      clearTimeout(t); delete window[cb];
+      if (sc.parentNode) sc.parentNode.removeChild(sc);
+      res(data);
+    };
+
+    const url = new URL(API_URL);
+    url.searchParams.set('callback', cb);
+    Object.entries(params).forEach(([k, v]) => { if (v != null) url.searchParams.set(k, String(v)); });
+
+    sc.src = url.toString();
+    sc.onerror = () => { clearTimeout(t); delete window[cb]; rej(new Error('Error de conexión a servidor. Revise permisos de Google Apps Script.')); };
+    document.body.appendChild(sc);
+  });
+}
+
+// ============================================
+// FUNCIONES DE UI VISUAL
+// ============================================
+function showToast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast show';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => { el.classList.remove('show'); setTimeout(()=>el.remove(),300); }, 3500);
+}
+
+// ============================================
+// MAPA PREMIUM
+// ============================================
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([LAT_EMP, LNG_EMP], 16);
+
+  // Mapa Clásico OpenStreetMap 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // Inicializar Cluster Premium
+  markersGroup = L.markerClusterGroup({
+    showCoverageOnHover: false,
+    maxClusterRadius: 45,
+    spiderfyOnMaxZoom: true,
+    iconCreateFunction: function (cluster) {
+      return L.divIcon({ 
+        html: '<div class="cluster-premium">' + cluster.getChildCount() + '</div>', 
+        className: '', iconSize: [44, 44], iconAnchor: [22, 22] 
+      });
+    }
+  });
+  map.addLayer(markersGroup);
+
+  // Central Hub (TCONTROL)
+  compMarker = L.marker([LAT_EMP, LNG_EMP], {
+    icon: L.divIcon({ html: '<div class="hq-marker"><i class="fas fa-building-user"></i></div>', className:'', iconSize:[54,54], iconAnchor:[27,27], popupAnchor:[0,-28] }),
+    zIndexOffset: -100
+  }).addTo(map).bindPopup(`
+    <div style="font-family:'Inter',sans-serif; text-align:center; padding:12px;">
+        <div style="font-family:'Outfit',sans-serif; font-size:18px; font-weight:800; color:var(--text-main);">TCONTROL S.A.</div>
+        <div style="font-size:12px; color:var(--text-sub); margin-top:4px;">Recinto operativo (${RADIO_M}m)</div>
+    </div>
+  `);
+
+  radioCircle = L.circle([LAT_EMP, LNG_EMP], {
+    radius: RADIO_M, color: 'var(--c-empresa)', fillColor: 'var(--c-empresa)',
+    fillOpacity: 0.05, weight: 1.5, dashArray: '4 4'
+  }).addTo(map);
+}
+
+// Generador Marcador Premium (HTML)
+function uiMarker(emp, info) {
+  const bg = getC(info.st);
+  const eid = esc(String(emp.id).replace(/[^a-zA-Z0-9_-]/g, '_'));
+  
+  const initialDiv = `<div class="pm-ph" id="pmh-${eid}" style="background:${bg}; ${emp.foto_url?'display:none':''}">${ini(emp.nombre)}</div>`;
+  const imgDiv = emp.foto_url ? `<img src="${esc(emp.foto_url)}" onerror="this.style.display='none';document.getElementById('pmh-${eid}').style.display='flex'">` : '';
+  
+  // Agregar anillo luminoso solo si tienen estado activo y sí tienen GPS (para evitar apilamiento visual)
+  const glow = (info.st !== 'sin' && !info.sinGPS) ? `<div class="pm-glow c-${info.st}"></div>` : '';
+
+  return `
+    <div class="premium-marker">
+      ${glow}
+      <div class="pm-pin" style="border-color:${bg}">${imgDiv}${initialDiv}</div>
+    </div>
+  `;
+}
+
+// Generador PopUp Premium (HTML)
+function uiPopup(emp, info) {
+  const bg = getC(info.st);
+  const ph = `<div class="pop-avatar" style="color:${bg}; border-color:${bg}">${ini(emp.nombre)}</div>`;
+  const img = emp.foto_url ? `<img class="pop-avatar" src="${esc(emp.foto_url)}" style="border-color:${bg}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">${ph}` : ph;
+
+  const bLbl = { 'empresa': 'En Área', 'campo': 'En Campo', 'salida': 'Jornada Fin', 'sin': 'Ausente' }[info.st];
+  
+  const distHtml = info.dist != null ? `${info.dist}m` : '—';
+  
+  return `
+    <div class="pop-modern">
+      <div class="pop-cover">
+        <div class="pop-badge" style="background:${bg}">${bLbl}</div>
+        ${img}
+      </div>
+      <div class="pop-details">
+        <div class="pop-name">${esc(emp.nombre)}</div>
+        <div class="pop-sub"><i class="fas fa-briefcase"></i> ${esc(emp.area||'Sin área')}</div>
+        
+        <div class="pop-grid">
+          <div class="pop-box">
+             <div class="pop-box-t">HORA REG.</div>
+             <div class="pop-box-v">${fmtHora(info.hora)}</div>
+          </div>
+          <div class="pop-box">
+             <div class="pop-box-t">DISTANCIA</div>
+             <div class="pop-box-v">${distHtml}</div>
+          </div>
+        </div>
+        ${info.sinGPS ? `<div class="sin-gps-notice"><i class="fas fa-satellite-slash"></i> Posición teórica (Sin GPS)</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderMapPoints(lista) {
+  if (markersGroup) markersGroup.clearLayers();
+  markers = {};
+
+  // Traer los zIndex correctos: Salidas abajo, Empresa medio, Campo arriba
+  const zIdx = { 'campo': 300, 'empresa': 200, 'salida': 100, 'sin': 0 };
+
+  lista.forEach(emp => {
+    const info = emp._info;
+    if (info.lat == null) return; 
+    
+    const mk = L.marker([info.lat, info.lng], {
+      icon: L.divIcon({ html: uiMarker(emp, info), className:'', iconSize:[42,42], iconAnchor:[21,21], popupAnchor:[0,-20] }),
+      zIndexOffset: zIdx[info.st] || 0
+    }).bindPopup(uiPopup(emp, info));
+
+    mk.on('click', () => { resaltarTarjeta(emp.id); });
+    markersGroup.addLayer(mk);
+    markers[emp.id] = mk;
+  });
+}
+
+// ============================================
+// PANEL Y TABLAS FRONTEND
+// ============================================
+function updateStats() {
+  const count = (str) => empleados.filter(e => e._info.st === str).length;
+  document.getElementById('numTodos').textContent = empleados.length;
+  document.getElementById('numEmpresa').textContent = count('empresa');
+  document.getElementById('numCampo').textContent = count('campo');
+  document.getElementById('numSalida').textContent = count('salida');
+  document.getElementById('numSin').textContent = count('sin');
+}
+
+function filtrar(tipo) {
+  filtroActual = tipo;
+  ['todos', 'empresa', 'campo', 'salida', 'sin'].forEach(t => {
+    const el = document.getElementById('f-' + t);
+    if(el) el.classList.toggle('active', t === tipo);
+  });
+  renderLista();
+}
+
+function renderLista() {
+  const q = (document.getElementById('searchEmp').value||'').toLowerCase();
+  const sortMap = { 'empresa':1, 'campo':2, 'salida':3, 'sin':4 };
+  
+  const d = empleados.filter(e => {
+    if (q && !e.nombre.toLowerCase().includes(q) && !(e.area||'').toLowerCase().includes(q)) return false;
+    if (filtroActual !== 'todos' && e._info.st !== filtroActual) return false;
+    return true;
+  }).sort((a,b) => (sortMap[a._info.st]??99) - (sortMap[b._info.st]??99) || a.nombre.localeCompare(b.nombre));
+
+  const lst = document.getElementById('empList');
+  if (!d.length) {
+    lst.innerHTML = `<div class="empty-state"><i class="fas fa-ghost"></i><p>No se encontraron<br>resultados en radar.</p></div>`;
+    return;
+  }
+
+  lst.innerHTML = d.map(emp => {
+    const i = emp._info;
+    const bg = getC(i.st);
+    const eid = esc(String(emp.id).replace(/[^a-zA-Z0-9_-]/g, '_'));
+    const tIcon = i.tipo === 'ENTRADA' ? 'right-to-bracket' : i.tipo === 'SALIDA' ? 'right-from-bracket' : 'minus';
+    
+    const ph = `<div class="emp-avatar-ph" id="ap-${eid}" style="background-color:${bg}; ${emp.foto_url?'display:none':''}">${ini(emp.nombre)}</div>`;
+    const im = emp.foto_url ? `<img class="emp-avatar" id="ai-${eid}" src="${esc(emp.foto_url)}" onerror="this.style.display='none';document.getElementById('ap-${eid}').style.display='flex'">` : '';
+
+    return `
+      <div class="emp-card" id="card-${esc(emp.id)}" onclick="focarPunto('${esc(emp.id)}')">
+        <div class="avatar-wrapper">
+          ${im}${ph}
+          <div class="status-ring" style="background:${bg}"></div>
+        </div>
+        <div class="emp-info">
+          <div class="emp-name">${esc(emp.nombre)}</div>
+          <div class="emp-sub"><i class="fas fa-layer-group"></i> ${esc(emp.area||'Sin área')}</div>
+        </div>
+        <div class="emp-time-box">
+          <div class="emp-time"><i class="fas fa-${tIcon}" style="color:${bg};margin-right:3px;"></i> ${fmtHora(i.hora)}</div>
+          <div class="emp-dist"><i class="fas fa-location-dot"></i> ${i.dist!=null?i.dist+'m':(i.sinGPS?'Apox.':'—')}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function focarPunto(id) {
+  const emp = empleados.find(e => String(e.id) === String(id));
+  if (!emp) return;
+  const i = emp._info;
+  
+  if (i.lat == null) { showToast('Ubicación no disponible para este usuario hoy.'); return; }
+  
+  map.flyTo([i.lat, i.lng], 18, { duration: 1.5, easeLinearity: 0.1 });
+  setTimeout(() => { if (markers[emp.id]) markers[emp.id].openPopup(); }, 1600);
+  
+  resaltarTarjeta(id);
+  if (window.innerWidth <= 800) document.getElementById('sidebar').classList.remove('open');
+}
+
+function resaltarTarjeta(id) {
+  document.querySelectorAll('.emp-card').forEach(c => c.classList.remove('selected'));
+  const c = document.getElementById('card-' + id);
+  if (c) {
+    c.classList.add('selected');
+    c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+// ============================================
+// CONTROLADORES GLOBALES
+// ============================================
+function centrarEmpresa() { map.flyTo([LAT_EMP, LNG_EMP], 16, { duration:1.5 }); }
+function fitAll() {
+  const mks = Object.values(markers);
+  if (!mks.length) { centrarEmpresa(); return; }
+  map.fitBounds(L.featureGroup(mks).getBounds().pad(0.3));
+}
+function toggleRadio() {
+  radioVisible = !radioVisible;
+  radioVisible ? radioCircle.addTo(map) : map.removeLayer(radioCircle);
+  const btn = document.getElementById('btnRadio');
+  btn.style.color = radioVisible ? 'var(--text-main)' : 'var(--text-sub)';
+}
+
+async function cargar(silent = false) {
+  if (!silent) {
+    document.getElementById('loader').style.display = 'flex';
+    document.getElementById('loaderText').textContent = 'Sincronizando satélites y empleados...';
+  }
+  
+  const btnI = document.getElementById('refreshIcon');
+  btnI.classList.add('fa-spin');
+  
+  try {
+    const res = await jsonp({ accion: 'obtenerDatosSupervisor' });
+    if (!res || res.error) throw new Error(res?.error || 'Falló la conexión al servidor matriz');
+
+    empleados = (res.empleados || []).map(e => { e._info = statusEmp(e); return e; });
+    
+    renderMapPoints(empleados);
+    renderLista();
+    updateStats();
+
+    const nw = new Date();
+    document.getElementById('ultimaAct').textContent = nw.toLocaleTimeString('es', { hour12: false });
+    
+    iniciarRotacion();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message);
+  } finally {
+    document.getElementById('loader').style.opacity = '0';
+    setTimeout(() => document.getElementById('loader').style.display = 'none', 300);
+    btnI.classList.remove('fa-spin');
+  }
+}
+
+function iniciarRotacion() {
+  clearInterval(timerInterval);
+  timerSec = AUTO_SEC;
+  timerInterval = setInterval(() => {
+    timerSec--;
+    document.getElementById('proxAct').textContent = timerSec + 's';
+    if(timerSec <= 0) cargar(true);
+  }, 1000);
+}
+
+// Iniciar aplicación
+initMap();
+cargar(false);
+
+</script>
+</body>
+</html>

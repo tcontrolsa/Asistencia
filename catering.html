@@ -309,13 +309,47 @@
             border-top: 1px solid #e2e8f0;
         }
 
-        /* Ocultar errores de consola no deseados */
-        .no-display {
-            display: none;
-        }
+        /* LOGIN CATERING */
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f1f5f9; z-index: 10000; display: flex; align-items: center; justify-content: center; }
+        .login-card { background: white; padding: 2.5rem; border-radius: 1.5rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; margin: 20px; }
+        .login-header { text-align: center; margin-bottom: 2rem; }
+        .login-header i { font-size: 3rem; color: #dc2626; margin-bottom: 1rem; }
+        .login-header h2 { font-size: 1.5rem; font-weight: 800; color: #1e293b; margin: 0; }
+        .login-header p { color: #64748b; font-size: 0.875rem; }
+        .btn-login { width: 100%; padding: 1rem; background: #dc2626; color: white; border: none; border-radius: 0.75rem; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 1rem; }
+        .btn-login:hover { background: #b91c1c; transform: translateY(-2px); }
+        .error-msg { color: #ef4444; font-size: 0.875rem; text-align: center; margin-top: 1rem; padding: 0.75rem; background: #fef2f2; border-radius: 0.5rem; }
+        .hidden { display: none !important; }
     </style>
+    <!-- FIREBASE SDKS -->
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
+    <script src="./JS/firebase_backend.js"></script>
+    <script>window.USE_FIREBASE = true;</script>
 </head>
 <body>
+
+<div id="login-catering" class="login-overlay hidden">
+    <div class="login-card">
+        <div class="login-header">
+            <i class="bi bi-shield-lock-fill"></i>
+            <h2>Acceso Catering</h2>
+            <p>ID y PIN de Supervisor</p>
+        </div>
+        <div class="login-body">
+            <div class="mb-3">
+                <label class="form-label">ID Empleado</label>
+                <input type="text" id="supId" class="form-control" placeholder="Ej: 123">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">PIN</label>
+                <input type="password" id="supPin" class="form-control" placeholder="••••" maxlength="4">
+            </div>
+            <button class="btn-login" onclick="intentarLoginCatering()">Ingresar</button>
+            <div id="login-error" class="error-msg hidden"></div>
+        </div>
+    </div>
+</div>
 
 <div class="app-container">
     <div class="header">
@@ -363,7 +397,7 @@
 // ============================================================
 //  CONFIGURACIÓN
 // ============================================================
-const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
 
 // Estado global
 let empleados = [];
@@ -448,9 +482,12 @@ function actualizarHoraActualizacion() {
 }
 
 // ============================================================
-//  JSONP REQUEST CORREGIDO - SIN ERRORES DE CALLBACK
+//  JSONP REQUEST (INTERCEPTOR FIREBASE)
 // ============================================================
 function jsonpRequest(params) {
+    if (window.USE_FIREBASE && window.FirebaseBackend) {
+        return window.FirebaseBackend.procesarAccion(params);
+    }
     return new Promise((resolve, reject) => {
         // Generar callback único
         const callbackName = `jsonp_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
@@ -478,13 +515,21 @@ function jsonpRequest(params) {
             resolve(response);
         };
         
-        // Construir URL
         const url = new URL(API_URL);
         url.searchParams.append('callback', callbackName);
+
+        // Inyectar credenciales de sesión si existen
+        const session = localStorage.getItem('SUPERVISOR_SESSION');
+        if (session) {
+            const data = JSON.parse(session);
+            url.searchParams.append('empleadoId', data.id);
+            url.searchParams.append('deviceToken', data.token);
+        }
         
         Object.keys(params).forEach(key => {
             const value = params[key];
             if (value !== undefined && value !== null) {
+                if (key === 'empleadoId' || key === 'deviceToken') return;
                 url.searchParams.append(key, safeString(value));
             }
         });
@@ -789,14 +834,77 @@ window.manualRefresh = function() {
 };
 
 // ============================================================
-//  INICIALIZACIÓN
+//  GESTIÓN DE SESIÓN
 // ============================================================
+async function intentarLoginCatering() {
+    const id = $('supId').value.trim();
+    const pin = $('supPin').value.trim();
+    
+    if (!id || !pin) {
+        mostrarError('Ingrese ID y PIN');
+        return;
+    }
+    
+    $('login-error').classList.add('hidden');
+    const loading = document.querySelector('.btn-login');
+    loading.disabled = true;
+    loading.textContent = 'Verificando...';
+    
+    try {
+        const deviceToken = generarDeviceToken();
+        const res = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken, empleadoId: id });
+        
+        if (res.error) {
+            mostrarError(res.error);
+        } else if (res.valido) {
+            if (res.empleado.esSupervisor) {
+                const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
+                localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
+                $('login-catering').classList.add('hidden');
+                cargarDatos();
+            } else {
+                mostrarError('Rango insuficiente.');
+            }
+        } else {
+            mostrarError('PIN incorrecto.');
+        }
+    } catch(e) {
+        mostrarError('Error de conexión');
+    } finally {
+        loading.disabled = false;
+        loading.textContent = 'Ingresar';
+    }
+}
+
+function mostrarError(msg) {
+    const el = $('login-error');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+function generarDeviceToken() {
+    let token = localStorage.getItem('DEVICE_TOKEN_CATERING');
+    if (!token) {
+        token = 'CAT_' + Math.random().toString(36).substr(2, 9).toUpperCase();
+        localStorage.setItem('DEVICE_TOKEN_CATERING', token);
+    }
+    return token;
+}
+
+function verificarEstadoSesion() {
+    const session = localStorage.getItem('SUPERVISOR_SESSION');
+    if (session) {
+        $('login-catering').classList.add('hidden');
+        cargarDatos();
+    } else {
+        $('login-catering').classList.remove('hidden');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 App de Catering v2.0 iniciada');
-    console.log(`📍 API URL: ${API_URL.substring(0, 80)}...`);
-    
     restaurarPreferencias();
-    cargarDatos();
+    verificarEstadoSesion();
     iniciarRecargaAutomatica();
     
     document.addEventListener('visibilitychange', () => {

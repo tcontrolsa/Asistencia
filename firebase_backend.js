@@ -395,7 +395,7 @@ window.FirebaseBackend = {
 
         // Cache por 30 minutos (antes era 12 horas) para evitar falsas faltas tras archivar
         const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-        const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+        const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
         
         if (horasArchivados > 0.5 || params.force) { 
             console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...${params.force ? ' (FORZADO)' : ''}`);
@@ -789,7 +789,7 @@ window.FirebaseBackend = {
 
         // Caso 1: ID explícitamente de Sheets
         if (docId && String(docId).startsWith('arch_')) {
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             try {
                 const resp = await fetch(api_url, {
                     method: 'POST',
@@ -832,7 +832,7 @@ window.FirebaseBackend = {
             const fechaRegistro = new Date(fecha + 'T12:00:00');
 
             if (fechaRegistro < limiteFirebase) {
-                const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+                const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
                 try {
                     const resp = await fetch(api_url, {
                         method: 'POST',
@@ -903,7 +903,7 @@ window.FirebaseBackend = {
         const tipo = params.tipo;
 
         if (docId && String(docId).startsWith('arch_')) {
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             try {
                 const resp = await fetch(api_url, {
                     method: 'POST',
@@ -1112,7 +1112,7 @@ window.FirebaseBackend = {
             } catch(e) { console.warn("Error leyendo caché archivados:", e); }
 
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             
             if (horasArchivados > 12) {
                 console.log("📥 Obteniendo registros archivados históricos de Sheets...");
