@@ -2225,6 +2225,7 @@
       // Feriados nacionales y locales (Quito)
       const feriados = [
         '1/1',   // Año Nuevo
+        '4/30',  // Feriado decretado
         '5/1',   // Día del Trabajo
         '5/24',  // Batalla del Pichincha
         '8/10',  // Primer Grito de Independencia
@@ -2321,8 +2322,12 @@
       let fecha = new Date(inicio + 'T12:00:00');
       let fFin = new Date(fin + 'T12:00:00');
       while (fecha <= fFin) {
+        let fStr = fecha.toISOString().split('T')[0];
         let dia = fecha.getDay();
-        if (dia >= 1 && dia <= 5) dias.push(fecha.toISOString().split('T')[0]);
+        // Lunes a Viernes (1-5) que no sean feriados
+        if (dia >= 1 && dia <= 5 && !esFeriadoODomingo(fStr)) {
+          dias.push(fStr);
+        }
         fecha.setDate(fecha.getDate() + 1);
       }
       return dias;
@@ -2703,11 +2708,17 @@
       }
     }
 
-    async function eliminarRegistroSupervisor(docId, empleadoId) {
+    async function eliminarRegistroSupervisor(docId, empleadoId, fecha, tipo) {
       if (!confirm('¿Está seguro de eliminar este registro permanentemente?')) return;
       mostrarLoader(true);
       try {
-        const res = await jsonpRequest({ accion: 'eliminarRegistro', docId: docId });
+        const res = await jsonpRequest({ 
+          accion: 'eliminarRegistro', 
+          docId: docId,
+          empleadoId: empleadoId,
+          fecha: fecha,
+          tipo: tipo
+        });
         if (res.ok) {
           mostrarToast('Registro eliminado', 'success');
           await cargarDatosCompletos();
@@ -3199,7 +3210,7 @@
         let horaE = periodos.map(p => {
           const valor = p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--';
           if (esAdminMaster && p.entrada) {
-            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}')"><i class="fas fa-trash"></i></button></div>`;
+            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
           if (esAdminMaster && !p.entrada) {
             return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'ENTRADA', '07:30:00', '${f}')"><i class="fas fa-plus"></i> 07:30</button>`;
@@ -3210,7 +3221,7 @@
         let horaS = periodos.map(p => {
           const valor = p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--';
           if (esAdminMaster && p.salida) {
-            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}')"><i class="fas fa-trash"></i></button></div>`;
+            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
           if (esAdminMaster && !p.salida) {
             return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'SALIDA', '16:15:00', '${f}')"><i class="fas fa-plus"></i> 16:15</button>`;
@@ -3482,12 +3493,18 @@
       }
     }
 
-    async function eliminarRegistroSupervisor(docId, empleadoId) {
+    async function eliminarRegistroSupervisor(docId, empleadoId, fecha, tipo) {
       if (!confirm('¿Estás seguro de eliminar este registro permanentemente?')) return;
 
       mostrarLoader(true);
       try {
-        const res = await jsonpRequest({ accion: 'eliminarRegistro', docId: docId });
+        const res = await jsonpRequest({ 
+          accion: 'eliminarRegistro', 
+          docId: docId,
+          empleadoId: empleadoId,
+          fecha: fecha,
+          tipo: tipo
+        });
         if (res.ok) {
           mostrarToast('Registro eliminado', 'success');
           localStorage.removeItem('tcontrol_registros_cache_v1');
@@ -3587,13 +3604,22 @@
         const registrosToArchive = [];
         snap.forEach(doc => {
           let data = doc.data();
-          // Formatear el timestamp de Firebase (seconds/nanoseconds) a fecha legible
+          // Formatear el timestamp de Firebase (seconds/nanoseconds) a fecha legible estándar (24h)
           let ts = data.timestamp;
           if (ts) {
-            if (typeof ts.toDate === 'function') {
-              ts = ts.toDate().toLocaleString('es-EC');
-            } else if (ts.seconds) {
-              ts = new Date(ts.seconds * 1000).toLocaleString('es-EC');
+            let dateObj;
+            if (ts && typeof ts.toDate === 'function') dateObj = ts.toDate();
+            else if (ts && ts.seconds) dateObj = new Date(ts.seconds * 1000);
+            else dateObj = new Date(ts);
+
+            if (dateObj && !isNaN(dateObj.getTime())) {
+              const d = dateObj.getDate();
+              const m = dateObj.getMonth() + 1;
+              const y = dateObj.getFullYear();
+              const hh = String(dateObj.getHours()).padStart(2, '0');
+              const mm = String(dateObj.getMinutes()).padStart(2, '0');
+              const ss = String(dateObj.getSeconds()).padStart(2, '0');
+              ts = `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
             } else {
               ts = String(ts);
             }

@@ -397,8 +397,8 @@ window.FirebaseBackend = {
         const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
         const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
         
-        if (horasArchivados > 0.5) { 
-            console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
+        if (horasArchivados > 0.5 || params.force) { 
+            console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...${params.force ? ' (FORZADO)' : ''}`);
             try {
                 const resp = await fetch(api_url, {
                     method: 'POST',
@@ -443,15 +443,15 @@ window.FirebaseBackend = {
         // --- FIN: Integración de Registros Archivados ---
 
         // Ordenar en cliente (de más reciente a más antiguo)
+        // Usar timestamp si existe, sino fecha y hora combinados
         registros.sort((a, b) => {
-            if (a.timestamp && b.timestamp) {
-                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-            }
-            return 0;
+            const timeA = a.timestamp ? new Date(a.timestamp).getTime() : new Date(a.fecha + 'T' + (a.hora || '00:00:00')).getTime();
+            const timeB = b.timestamp ? new Date(b.timestamp).getTime() : new Date(b.fecha + 'T' + (b.hora || '00:00:00')).getTime();
+            return timeB - timeA;
         });
 
-        // Retornar los últimos 100 (ajustado para que el empleado pueda ver su historial)
-        return registros.slice(0, 100);
+        // Retornar hasta 1000 para asegurar que cubrimos el rango de faltas
+        return registros.slice(0, 1000);
     },
 
     async guardarRegistro(params) {
@@ -787,7 +787,27 @@ window.FirebaseBackend = {
 
         if (!campo) return { error: "Falta el campo a actualizar" };
 
-        // Si no hay docId, intentamos buscarlo por empleadoId/fecha/tipo
+        // Caso 1: ID explícitamente de Sheets
+        if (docId && String(docId).startsWith('arch_')) {
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+            try {
+                const resp = await fetch(api_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        accion: 'actualizarRegistroArchivado',
+                        empleadoId: empleadoId,
+                        fecha: fecha,
+                        tipo: tipo,
+                        campo: campo,
+                        valor: valor
+                    })
+                });
+                return await resp.json();
+            } catch (e) { return { error: "Error de conexión con Sheets" }; }
+        }
+
+        // Si no hay docId, intentamos buscarlo por empleadoId/fecha/tipo en Firebase
         if (!docId && empleadoId) {
             const query = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
@@ -805,7 +825,32 @@ window.FirebaseBackend = {
             await db.collection('registros').doc(docId).update(updateData);
             return { ok: true };
         } else if (empleadoId && campo === 'hora') {
-            // Crear registro nuevo si no existía (ej: poner hora a un ausente)
+            // Si el registro no está en Firebase y la fecha es antigua (ej: > 2 días), enviar a Sheets
+            const hoy = new Date();
+            const limiteFirebase = new Date();
+            limiteFirebase.setDate(limiteFirebase.getDate() - 2);
+            const fechaRegistro = new Date(fecha + 'T12:00:00');
+
+            if (fechaRegistro < limiteFirebase) {
+                const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+                try {
+                    const resp = await fetch(api_url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({
+                            accion: 'actualizarRegistroArchivado',
+                            empleadoId: empleadoId,
+                            fecha: fecha,
+                            tipo: tipo,
+                            campo: campo,
+                            valor: valor
+                        })
+                    });
+                    return await resp.json();
+                } catch (e) { return { error: "Error de conexión con Sheets" }; }
+            }
+
+            // Crear registro nuevo en Firebase
             const empDoc = await db.collection('empleados').doc(empleadoId).get();
             if (!empDoc.exists) return { error: "Empleado no existe" };
             const empData = empDoc.data();
@@ -853,9 +898,32 @@ window.FirebaseBackend = {
 
     async eliminarRegistro(params) {
         const docId = params.docId;
-        if (!docId) return { error: "Falta ID del registro" };
-        await db.collection('registros').doc(docId).delete();
-        return { ok: true };
+        const empleadoId = params.empleadoId;
+        const fecha = params.fecha;
+        const tipo = params.tipo;
+
+        if (docId && String(docId).startsWith('arch_')) {
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
+            try {
+                const resp = await fetch(api_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        accion: 'eliminarRegistroArchivado',
+                        empleadoId: empleadoId,
+                        fecha: fecha,
+                        tipo: tipo
+                    })
+                });
+                return await resp.json();
+            } catch (e) { return { error: "Error de conexión con Sheets" }; }
+        }
+
+        if (docId) {
+            await db.collection('registros').doc(docId).delete();
+            return { ok: true };
+        }
+        return { error: "ID de documento faltante" };
     },
 
     async guardarConfiguraciones(params) {
