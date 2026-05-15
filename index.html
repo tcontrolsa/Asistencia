@@ -190,6 +190,7 @@
         body {
             background: linear-gradient(160deg, #f0f4f8 0%, #dce4ed 100%);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 1.15rem; /* Aumento del 15% en fuente base */
             overflow: hidden;
             position: fixed;
             top: 0;
@@ -475,21 +476,26 @@
         .area-icon-pill {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            background: white;
-            border: 1.5px solid #e2e8f0;
+            gap: 8px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
             border-radius: 50px;
-            padding: 4px 12px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #475569;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-            margin-top: 6px;
+            padding: 7px 18px;
+            font-size: clamp(12px, 3.5vw, 14px);
+            font-weight: 700;
+            color: white;
+            box-shadow: 0 4px 16px rgba(15,23,42,0.25), 0 0 0 3px rgba(220,38,38,0.15);
+            margin-top: 8px;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
         }
 
         .area-icon-pill .area-emoji {
-            font-size: 16px;
+            font-size: 20px;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
         }
+
+
+
 
         .splash-logo {
             width: min(100px, 25vw);
@@ -548,44 +554,76 @@
         .credencial-header-profesional {
             background: #0f172a;
             background-image: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);
-            padding: clamp(20px, 6vw, 28px) clamp(20px, 6vw, 24px);
-            position: relative;
+            padding: clamp(15px, 5vw, 20px) clamp(20px, 6vw, 24px);
+            position: sticky;
+            top: -16px; /* Compensa el padding del main-content */
+            margin: -16px -16px 0 -16px;
+            z-index: 1000;
             overflow: hidden;
             border-bottom: 4px solid var(--primary);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
 
-        .credencial-header-profesional::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(circle at 10% 20%, rgba(220, 38, 38, 0.15) 0%, transparent 50%);
-            pointer-events: none;
+        .header-logo-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .credencial-title {
-            color: white;
-            font-size: clamp(20px, 7vw, 26px);
+        .header-logo-icon {
+            width: 32px;
+            height: 32px;
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+            font-size: 18px;
             font-weight: 900;
-            letter-spacing: -0.5px;
-            margin-bottom: 2px;
-            position: relative;
-            z-index: 1;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
-        .credencial-subtitle {
-            color: var(--primary-light);
-            font-size: clamp(10px, 3vw, 11px);
-            font-weight: 600;
+        .header-text-main {
+            color: white;
+            font-size: 18px;
+            font-weight: 800;
             letter-spacing: 1px;
             text-transform: uppercase;
-            position: relative;
-            z-index: 1;
+        }
+
+        .header-text-sub {
+            color: rgba(255,255,255,0.7);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            display: block;
+            margin-top: -2px;
+        }
+
+        .header-date-section {
+            text-align: right;
+            color: white;
+        }
+
+        .header-date-day {
+            font-size: 14px;
+            font-weight: 800;
+            display: block;
+            line-height: 1;
+        }
+
+        .header-date-month {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.8);
+            display: block;
+            margin-top: 2px;
         }
 
         .photo-name-section {
@@ -601,9 +639,9 @@
         }
 
         .employee-photo-profesional {
-            width: clamp(80px, 25vw, 110px);
-            height: clamp(80px, 25vw, 110px);
-            border-radius: clamp(20px, 6vw, 28px);
+            width: clamp(115px, 36vw, 159px);
+            height: clamp(115px, 36vw, 159px);
+            border-radius: clamp(28px, 8vw, 36px);
             object-fit: cover;
             border: 4px solid white;
             box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
@@ -612,9 +650,9 @@
         }
 
         .employee-photo-placeholder-profesional {
-            width: clamp(80px, 25vw, 110px);
-            height: clamp(80px, 25vw, 110px);
-            border-radius: clamp(20px, 6vw, 28px);
+            width: clamp(115px, 36vw, 159px);
+            height: clamp(115px, 36vw, 159px);
+            border-radius: clamp(28px, 8vw, 36px);
             background: linear-gradient(145deg, var(--gray-100), var(--gray-200));
             display: flex;
             align-items: center;
@@ -628,8 +666,8 @@
 
         .photo-verified {
             position: absolute;
-            bottom: -8px;
-            right: -8px;
+            top: -5px;
+            right: -5px;
             background: var(--success);
             color: white;
             border-radius: 50%;
@@ -639,6 +677,26 @@
             align-items: center;
             justify-content: center;
             border: 3px solid white;
+            z-index: 10;
+        }
+
+        .employee-id-badge {
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0f172a;
+            color: white;
+            padding: 6px 20px;
+            border-radius: 20px;
+            font-size: clamp(13px, 4vw, 15px);
+            font-weight: 950;
+            border: 2px solid white;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+            z-index: 15;
+            white-space: nowrap;
+            letter-spacing: 1.2px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
         }
 
         .photo-verified i {
@@ -741,27 +799,118 @@
             border-left: 3px solid var(--danger);
         }
 
+        .status-card.unified {
+            flex: 1;
+            min-width: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 10px;
+            border-left: 4px solid #3b82f6;
+            background: white;
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        .status-card.lunch {
+            flex: 1.2;
+            min-width: 140px;
+            border-left: 3px solid var(--warning);
+            background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
+            border: 2px solid var(--warning);
+            box-shadow: 0 4px 12px rgba(234, 179, 8, 0.2);
+            transition: all 0.4s ease;
+        }
+
+        .unified-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            padding: 4px 0;
+        }
+
+        .unified-divider {
+            height: 1px;
+            background: var(--gray-100);
+            width: 100%;
+            margin: 4px 0;
+        }
+
+        .unified-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+        }
+
+        .unified-value {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--gray-800);
+        }
+
+        .unified-value.success {
+            color: var(--success);
+        }
+
+        .unified-value.pending {
+            color: var(--gray-300);
+        }
+
         .status-card.lunch {
             border-left: 3px solid var(--warning);
             background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
             border: 2px solid var(--warning);
             box-shadow: 0 4px 12px rgba(234, 179, 8, 0.2);
-            transform: scale(1.02);
+            transition: all 0.4s ease;
+        }
+
+        /* Almuerzo en Planta - animación verde */
+        .status-card.lunch.lunch-animated-si {
+            background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%) !important;
+            border: 2px solid #10b981 !important;
+            animation: lunch-pulse-green 2s ease-in-out infinite !important;
+            transform: scale(1.04);
+        }
+        /* Almuerzo Fuera - animación azul */
+        .status-card.lunch.lunch-animated-no {
+            background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%) !important;
+            border: 2px solid #3b82f6 !important;
+            animation: lunch-pulse-blue 2s ease-in-out infinite !important;
+            transform: scale(1.04);
+        }
+
+        @keyframes lunch-pulse-green {
+            0%   { box-shadow: 0 4px 12px rgba(16,185,129,0.20); }
+            50%  { box-shadow: 0 6px 28px rgba(16,185,129,0.55), 0 0 0 5px rgba(16,185,129,0.10); }
+            100% { box-shadow: 0 4px 12px rgba(16,185,129,0.20); }
+        }
+        @keyframes lunch-pulse-blue {
+            0%   { box-shadow: 0 4px 12px rgba(59,130,246,0.20); }
+            50%  { box-shadow: 0 6px 28px rgba(59,130,246,0.50), 0 0 0 5px rgba(59,130,246,0.10); }
+            100% { box-shadow: 0 4px 12px rgba(59,130,246,0.20); }
         }
 
         .status-card.lunch .status-icon i {
             color: var(--warning);
         }
+        .status-card.lunch.lunch-animated-si .status-icon i { color: #059669 !important; }
+        .status-card.lunch.lunch-animated-no .status-icon i { color: #2563eb !important; }
 
         .status-card.lunch .status-label {
             color: #92400e;
             font-weight: 700;
         }
+        .status-card.lunch.lunch-animated-si .status-label { color: #065f46 !important; }
+        .status-card.lunch.lunch-animated-no .status-label { color: #1e3a8a !important; }
 
         .status-card.lunch .status-value {
             color: #78350f;
             font-weight: 800;
         }
+        .status-card.lunch.lunch-animated-si .status-value { color: #059669 !important; font-weight: 900 !important; }
+        .status-card.lunch.lunch-animated-no .status-value { color: #2563eb !important; font-weight: 900 !important; }
 
         .status-icon {
             font-size: clamp(18px, 5.5vw, 20px);
@@ -854,16 +1003,64 @@
             cursor: not-allowed;
         }
 
-        .btn-entrada {
-            background: linear-gradient(135deg, #22c55e, #16a34a);
+        .btn-main-action {
+            width: 100%;
+            padding: 18px;
+            border-radius: 50px;
+            border: none;
             color: white;
-            box-shadow: 0 6px 16px rgba(34, 197, 94, 0.3);
+            font-weight: 800;
+            font-size: clamp(16px, 4.5vw, 19px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.2;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: 10px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
         }
 
-        .btn-salida {
-            background: linear-gradient(135deg, var(--danger), #b91c1c);
-            color: white;
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        .btn-main-action:active {
+            transform: scale(0.96);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .btn-main-action .btn-type {
+            font-size: clamp(13px, 3.8vw, 15px);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.9;
+        }
+
+        .btn-main-action .btn-time {
+            font-size: clamp(20px, 6vw, 24px);
+            font-weight: 900;
+            letter-spacing: 1px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .btn-main-action.bg-entrada {
+            background: linear-gradient(135deg, #10b981, #059669);
+            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3), 0 0 0 4px rgba(16, 185, 129, 0.1);
+        }
+
+        .btn-main-action.bg-salida {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3), 0 0 0 4px rgba(239, 68, 68, 0.1);
+        }
+
+        .btn-main-action.bg-reentrada {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3), 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn-main-action.bg-campo {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3), 0 0 0 4px rgba(245, 158, 11, 0.1);
         }
 
         .btn-supervisor {
@@ -888,6 +1085,11 @@
             padding: clamp(12px, 4vw, 14px);
             font-weight: 700;
             font-size: clamp(12px, 3.8vw, 14px);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .fab-whatsapp {
@@ -2161,7 +2363,7 @@
 
     <script>
         // ========== CONFIGURACIÓN ==========
-        const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxOW-1OCyZIfhmG8yTqsbPqx3-ARQbcvEBP4sA5ekkIipGRnSAYPJX7avlu4R_sJTdT/exec';
 
         let LAT_EMPRESA = -0.1288771313385675;
         let LNG_EMPRESA = -78.47896772889067;
@@ -2688,8 +2890,8 @@
             return jsonpRequest({ accion: 'guardarRegistro', ...data });
         }
 
-        async function obtenerRegistrosEmpleadoAPI(empleadoId) {
-            return jsonpRequest({ accion: 'obtenerRegistros', empleadoId });
+        async function obtenerRegistrosEmpleadoAPI(empleadoId, force = false) {
+            return jsonpRequest({ accion: 'obtenerRegistros', empleadoId: empleadoId, force: force });
         }
 
         async function desvincularDispositivoAPI(empleadoId, deviceToken) {
@@ -2697,10 +2899,10 @@
         }
 
         // ========== FUNCIONES DE REGISTRO ==========
-        async function obtenerRegistrosEmpleado() {
+        async function obtenerRegistrosEmpleado(force = false) {
             if (!empleado.id) return;
             try {
-                const registros = await obtenerRegistrosEmpleadoAPI(empleado.id);
+                const registros = await obtenerRegistrosEmpleadoAPI(empleado.id, force);
 
                 // Prevenir crash si el backend devuelve un error (ej: falta de índice en Firebase)
                 if (registros && registros.error) {
@@ -2823,7 +3025,13 @@
                             <div class="razon-icon">✅</div>
                             <div class="razon-label">Salida Justificada</div>
                         </div>
-                    </div>
+                        
+                        ${(empleado.cargo || '').toLowerCase() === 'pasante' ? `
+                        <div class="razon-item" onclick="procesarRazonSalida('salida_pasante', 'Salida Pasante')" style="border: 2px solid #7c3aed; background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); box-shadow: 0 4px 16px rgba(124,58,237,0.10);">
+                            <div class="razon-icon">🎓</div>
+                            <div class="razon-label" style="color:#6d28d9; font-weight:700;">Salida Pasante</div>
+                        </div>
+                        ` : ''}
                     
                     <div class="d-grid gap-2" style="margin-top: 16px;">
                         <button class="btn btn-outline-secondary" onclick="renderHomePage()">
@@ -2902,11 +3110,14 @@
                 empleado.tipo_salida = 'TRABAJO_CAMPO';
             } else if (razon === 'cumpleanos') {
                 empleado.tipo_salida = 'CUMPLEAÑOS';
+            } else if (razon === 'salida_pasante') {
+                empleado.tipo_salida = 'SALIDA_PASANTE';
             } else {
                 empleado.tipo_salida = 'SALIDA_TEMPRANA_JUSTIFICADA';
             }
 
             // Solo preguntar si va a regresar para razones de PERMISO y SALIDA JUSTIFICADA
+            // Salida pasante es siempre salida final (no regresa)
             if (razon === 'permiso_medico' || razon === 'permiso_personal' || razon === 'salida_justificada') {
                 mostrarModalTipoSalidaTemprana();
             } else {
@@ -3547,7 +3758,15 @@
 
                     isAuthenticated = true;
                     await obtenerRegistrosEmpleado();
-                    const faltas = obtenerDiasFaltantes();
+                    let faltas = obtenerDiasFaltantes();
+                    
+                    // MECANISMO DE AUTO-SANACIÓN: Si hay faltas, forzar refresco de archivados una vez para descartar cache vieja
+                    if (faltas.length > 0) {
+                        console.log("⚠️ Detectadas faltas. Re-verificando con refresco forzado...");
+                        await obtenerRegistrosEmpleado(true); 
+                        faltas = obtenerDiasFaltantes();
+                    }
+
                     if (faltas.length > 0) {
                         mostrarModalFaltasPasadas(faltas);
                     } else {
@@ -3772,6 +3991,28 @@
             ajustarLayout();
         }
 
+        function esFeriado(fechaStr) {
+            if (!fechaStr) return false;
+            let fecha = new Date(fechaStr + 'T12:00:00');
+            const m = fecha.getMonth() + 1;
+            const d = fecha.getDate();
+            const md = `${m}/${d}`;
+
+            const feriados = [
+                '1/1',   // Año Nuevo
+                '4/30',  // Feriado decretado
+                '5/1',   // Día del Trabajo
+                '5/24',  // Batalla del Pichincha
+                '8/10',  // Primer Grito de Independencia
+                '10/9',  // Independencia de Guayaquil
+                '11/2',  // Día de los Difuntos
+                '11/3',  // Independencia de Cuenca
+                '12/6',  // Fundación de Quito
+                '12/25'  // Navidad
+            ];
+            return feriados.includes(md);
+        }
+
         // ========== JUSTIFICAR FALTAS ANTERIORES ==========
         function obtenerDiasFaltantes() {
             const faltas = [];
@@ -3807,12 +4048,12 @@
 
             // Limpiar timezone behavior asegurando horas locales en 0
             for (let d = new Date(startDate); d < hoy; d.setDate(d.getDate() + 1)) {
-                if (d.getDay() === 0 || d.getDay() === 6) continue; // Skip Sat/Sun
-
                 // Format YYYY-MM-DD reliably using offset
                 const tzDate = new Date(d);
                 tzDate.setMinutes(tzDate.getMinutes() - tzDate.getTimezoneOffset());
                 const dateStr = tzDate.toISOString().split('T')[0];
+
+                if (d.getDay() === 0 || d.getDay() === 6 || esFeriado(dateStr)) continue; // Skip Sat/Sun/Holidays
 
                 const tieneRegistro = registrosCompletos.some(r => {
                     const rFecha = getVal(r, 'fecha', 0);
@@ -4119,19 +4360,22 @@
             }
 
             mainContent.innerHTML = `
+            <div class="credencial-header-profesional">
+                <div class="header-logo-section">
+                    <div class="header-logo-icon">T</div>
+                    <div>
+                        <div class="header-text-main">TCONTROL</div>
+                        <div class="header-text-sub">Asistencia Premium</div>
+                    </div>
+                </div>
+                <div class="header-date-section">
+                    <div class="header-date-day">${new Date().getDate()}</div>
+                    <div class="header-date-month">${new Date().toLocaleDateString('es-EC', { month: 'short' })}</div>
+                </div>
+            </div>
+
             <div class="credencial-wrapper">
                 <div class="credencial-profesional ${esCumpleanosHoy ? 'birthday-glow' : ''}">
-                    <div class="credencial-header-profesional">
-                        <div>
-                            <div class="credencial-title">TCONTROL</div>
-                            <div class="credencial-subtitle">Sistema de Asistencia</div>
-                        </div>
-                        <div style="background: rgba(255,255,255,0.08); padding: 10px 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); text-align: center; backdrop-filter: blur(8px); flex-shrink: 0; position: relative; z-index: 1;">
-                            <div id="liveClock" style="font-size: clamp(20px, 6vw, 24px); font-weight: 700; color: white; line-height: 1; font-variant-numeric: tabular-nums;">--:--</div>
-                            <div id="liveDate" style="font-size: clamp(9px, 2.5vw, 10px); color: rgba(255,255,255,0.7); margin-top: 4px; font-weight: 600; text-transform: uppercase;"></div>
-                        </div>
-                    </div>
-                    
                     <div class="photo-name-section">
                         <div class="photo-frame" style="position: relative;">
                             ${esCumpleanosHoy ? `
@@ -4140,120 +4384,133 @@
                             </div>` : ''}
                             <div onclick="showPhotoModal('${empleado.foto_url || ''}')">
                                 ${empleado.foto_url && empleado.foto_url.trim() ?
-                    `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto">` :
-                    `<div class="employee-photo-placeholder-profesional">👤</div>`
-                }
+                                     `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto">` :
+                                     `<div class="employee-photo-placeholder-profesional">👤</div>`
+                                 }
                             </div>
                             <div class="photo-verified">
                                 <i class="fas fa-check"></i>
                             </div>
+                            <div class="employee-id-badge">ID: ${empleado.id || '---'}</div>
                         </div>
-                        <div class="employee-name-profesional">${primerNombre} ${apellido}</div>
-
-                        <!-- Icono de Área de Trabajo -->
-                        <div class="area-icon-pill" style="margin-top: 4px; margin-bottom: 8px;">
-                            <span class="area-emoji">${areaInfo.emoji}</span>
-                            <span>${areaInfo.label || empleado.area || 'General'}</span>
+                        <div style="margin-top: 35px; margin-bottom: 6px;">
+                            <div style="color: #64748b; font-size: clamp(12px, 3.5vw, 14px); font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+                                ${(() => {
+                                    const h = new Date().getHours();
+                                    if (h >= 5 && h < 12) return 'Buenos días';
+                                    if (h >= 12 && h < 18) return 'Buenas tardes';
+                                    return 'Buenas noches';
+                                })()}
+                            </div>
+                            <div class="employee-name-profesional" style="margin-top: 2px;">${primerNombre} ${apellido}</div>
+                        </div>
+                        <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
+                            <div style="color: #64748b; font-size: clamp(12px, 3.5vw, 14px); font-weight: 600;">${empleado.area || 'General'}</div>
+                            <div style="color: #1e293b; font-size: clamp(11px, 3vw, 12px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">${empleado.cargo || 'Empleado'}</div>
                         </div>
 
-                        <!-- Badge de Puntualidad (solo extremos) -->
-                        ${insignia ? `
-                        <div class="punctuality-badge ${insignia.tipo}">
-                            ${insignia.icono} ${insignia.texto}
-                        </div>` : ''}
-
-                        <!-- Status Laboral Dinámico (Solo Lectura) -->
-                        <div style="margin-top: 15px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <div id="statusPill" style="background: ${statusActual.color}15; border: 1px solid ${statusActual.color}; color: ${statusActual.color}; padding: 6px 16px; border-radius: 100px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px ${statusActual.color}10;">
-                                <span>${statusActual.icon}</span> ${statusActual.label}
+                        <!-- Selector de Modo de Trabajo Compacto -->
+                        <div class="mode-selector-premium" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                            <div onclick="cambiarModo('OFICINA')" style="cursor: pointer; padding: 8px 16px; border-radius: 100px; border: 2px solid ${currentMode === 'OFICINA' ? '#10b981' : '#f1f5f9'}; background: ${currentMode === 'OFICINA' ? '#f0fdf4' : 'white'}; color: ${currentMode === 'OFICINA' ? '#166534' : '#94a3b8'}; font-size: 11px; font-weight: 800; transition: all 0.3s; display: flex; align-items: center; gap: 6px; box-shadow: ${currentMode === 'OFICINA' ? '0 4px 10px rgba(16,185,129,0.15)' : 'none'};">
+                                <i class="fas fa-building" style="font-size: 12px;"></i> OFICINA
+                            </div>
+                            <div onclick="cambiarModo('CAMPO')" style="cursor: pointer; padding: 8px 16px; border-radius: 100px; border: 2px solid ${currentMode === 'CAMPO' ? '#f59e0b' : '#f1f5f9'}; background: ${currentMode === 'CAMPO' ? '#fffbeb' : 'white'}; color: ${currentMode === 'CAMPO' ? '#92400e' : '#94a3b8'}; font-size: 11px; font-weight: 800; transition: all 0.3s; display: flex; align-items: center; gap: 6px; box-shadow: ${currentMode === 'CAMPO' ? '0 4px 10px rgba(245,158,11,0.15)' : 'none'};">
+                                <i class="fas fa-map-marker-alt" style="font-size: 12px;"></i> CAMPO
                             </div>
                         </div>
 
-                        <!-- Selector de Modo de Trabajo -->
-                        <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 16px; border: 1px solid #e2e8f0;">
-                            <div style="font-size: clamp(12px, 3.5vw, 14px); font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 10px;">Modo de Trabajo</div>
-                            <div style="display: flex; gap: 8px;">
-                                <button onclick="cambiarModo('OFICINA')" style="flex: 1; padding: 10px; border-radius: 10px; border: 2px solid ${currentMode === 'OFICINA' ? '#dc2626' : '#e2e8f0'}; background: ${currentMode === 'OFICINA' ? '#fee2e2' : 'white'}; color: ${currentMode === 'OFICINA' ? '#b91c1c' : '#64748b'}; font-weight: 800; font-size: clamp(13px, 3.8vw, 15px); transition: all 0.2s;">
-                                    <i class="fas fa-building"></i> Oficina
-                                </button>
-                                <button onclick="cambiarModo('CAMPO')" style="flex: 1; padding: 10px; border-radius: 10px; border: 2px solid ${currentMode === 'CAMPO' ? '#dc2626' : '#e2e8f0'}; background: ${currentMode === 'CAMPO' ? '#fee2e2' : 'white'}; color: ${currentMode === 'CAMPO' ? '#b91c1c' : '#64748b'}; font-weight: 800; font-size: clamp(13px, 3.8vw, 15px); transition: all 0.2s;">
-                                    <i class="fas fa-map-marked-alt"></i> Campo
+                        ${currentMode === 'CAMPO' ? `
+                            <div style="margin-top: 10px; animation: fadeIn 0.3s ease;">
+                                <button onclick="fijarBaseCampo()" style="padding: 8px 16px; border-radius: 12px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11px; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(3,105,161,0.2);">
+                                    <i class="fas fa-location-arrow"></i> ${empleado.baseLat ? 'ACTUALIZAR PROYECTO' : 'FIJAR UBICACIÓN PROYECTO'}
                                 </button>
                             </div>
-                            ${currentMode === 'CAMPO' ? `
-                                <div style="margin-top: 12px;">
-                                    <button onclick="fijarBaseCampo()" style="width: 100%; padding: 12px; border-radius: 10px; background: #0284c7; color: white; border: none; font-weight: 700; font-size: clamp(12px, 3.5vw, 14px); display: flex; align-items: center; justify-content: center; gap: 6px;">
-                                        <i class="fas fa-location-arrow"></i> ${empleado.baseLat ? 'Actualizar Ubicación Proyecto' : 'Fijar Ubicación Proyecto'}
-                                    </button>
-                                    ${empleado.baseLat ? `<div style="font-size: clamp(11px, 3vw, 12px); color: #64748b; text-align: center; margin-top: 6px;">📍 Ubicación base registrada</div>` : ''}
-                                </div>
-                            ` : ''}
-                        </div>
+                        ` : ''}
                     </div>
                     
-                    <div class="info-grid-profesional">
-                        <div class="info-item-profesional">
-                            <div class="info-label-profesional">ID EMPLEADO</div>
-                            <div class="info-value-profesional">${empleado.id || '---'}</div>
-                        </div>
-                        <div class="info-item-profesional">
-                            <div class="info-label-profesional">FECHA INGRESO</div>
-                            <div class="info-value-small">2024</div>
-                        </div>
-                        <div class="info-item-profesional">
-                            <div class="info-label-profesional">TIPO</div>
-                            <div class="info-value-small">${estado.esSupervisor ? 'Supervisor' : 'Colaborador'}</div>
-                        </div>
-                    </div>
+
                     
                     <div class="status-section">
                         <div class="status-title">ESTADO DE ASISTENCIA - HOY</div>
                         <div class="status-grid">
-                            <div class="status-card entry ${tieneEntrada && !tieneSalida ? 'active-entry' : ''}">
-                                <div class="status-icon"><i class="fas fa-sign-in-alt"></i></div>
-                                <div class="status-label">ENTRADA</div>
-                                <div class="status-value ${tieneEntrada ? 'success' : ''}">
-                                    ${horaEntradaMostrar}
+                            <!-- Tarjeta Unificada de Entrada y Salida -->
+                            <div class="status-card unified">
+                                <div class="unified-item">
+                                    <div class="unified-label">ENTRADA</div>
+                                    <div class="unified-value ${tieneEntrada ? 'success' : 'pending'}" style="font-size: 17px;">${horaEntradaMostrar}</div>
+                                </div>
+                                <div class="unified-divider"></div>
+                                <div class="unified-item">
+                                    <div class="unified-label">SALIDA</div>
+                                    <div class="unified-value ${tieneSalida ? 'success' : 'pending'}" style="font-size: 17px;">${horaSalidaMostrar}</div>
                                 </div>
                             </div>
-                            <div class="status-card exit">
-                                <div class="status-icon"><i class="fas fa-sign-out-alt"></i></div>
-                                <div class="status-label">SALIDA</div>
-                                <div class="status-value ${tieneSalida ? 'success' : ''}">
-                                    ${horaSalidaMostrar}
+                            <!-- Tarjeta de Almuerzo -->
+                            <!-- Tarjeta de Almuerzo: Ahora proporcional e integrada en el grid -->
+                            <div class="status-card lunch ${almuerzo === 'SI' ? 'lunch-animated-si' : almuerzo === 'NO' ? 'lunch-animated-no' : ''}" 
+                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px;">
+                                
+                                <div class="status-icon" style="height: 70px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; position: relative;">
+                                    ${almuerzo === 'SI' 
+                                        ? `
+                                        <div style="position: absolute; width: 60px; height: 60px; background: radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
+                                        <img src="almuerzo.gif" alt="Almuerzo" style="width: 90px; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)); animation: float-img 3s ease-in-out infinite;">
+                                        ` 
+                                        : `
+                                        <i class="fas fa-utensils" style="font-size: 24px; color: var(--warning);"></i>
+                                        `
+                                    }
                                 </div>
-                            </div>
-                            <div class="status-card lunch">
-                                <div class="status-icon"><i class="fas fa-utensils"></i></div>
-                                <div class="status-label">ALMUERZO</div>
-                                <div class="status-value">
-                                    ${almuerzo === 'SI' ? '🏢 Planta' : almuerzo === 'NO' ? '🏠 Fuera' : '---'}
+
+                                <div class="status-label" style="font-size: 10px;">ALMUERZO</div>
+                                <div class="status-value" style="font-size: clamp(12px, 3.5vw, 14px); font-weight: 800; ${almuerzo === 'SI' ? 'color:#059669;' : almuerzo === 'NO' ? 'color:#2563eb;' : ''}">
+                                    ${almuerzo === 'SI' ? 'Planta' : almuerzo === 'NO' ? 'Fuera' : '---'}
                                 </div>
+
+                                <style>
+                                    @keyframes pulse-glow {
+                                        0% { transform: scale(0.8); opacity: 0.5; }
+                                        50% { transform: scale(1.2); opacity: 0.8; }
+                                        100% { transform: scale(0.8); opacity: 0.5; }
+                                    }
+                                    @keyframes float-img {
+                                        0% { transform: translateY(0px); }
+                                        50% { transform: translateY(-5px); }
+                                        100% { transform: translateY(0px); }
+                                    }
+                                </style>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="credencial-footer-profesional">
-                        <div class="validity-date">
-                            <div class="validity-label">VIGENTE HASTA</div>
-                            <div class="validity-value">${fechaVigencia.toLocaleDateString('es-EC')}</div>
-                        </div>
+                    <!-- Footer simplificado -->
+                    <div class="credencial-footer-profesional" style="padding: 15px; border-top: 1px solid #f1f5f9; background: #f8fafc;">
+                         <div style="text-align: center; width: 100%; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 1px;">TCONTROL S.A. © 2026</div>
                     </div>
                 </div>
                 
-                <div class="action-buttons-profesional">
-                    ${statusActual.label.includes('CAMPO') ? `
-                        <button class="btn-action btn-field" onclick="iniciarRegistro('RETORNO_CAMPO')" id="btnRetorno" style="background: #10b981;">
-                            <i class="fas fa-undo"></i> RETORNO DE CAMPO
+                <!-- Botón de Acción Único y Dinámico -->
+                <div class="main-action-wrapper">
+                    ${(() => {
+                        let btn = { type: 'ENTRADA', label: 'REGISTRAR ENTRADA', class: 'bg-entrada', icon: 'fa-sign-in-alt', disabled: '' };
+                        if (statusActual.label.includes('CAMPO')) {
+                            btn = { type: 'RETORNO_CAMPO', label: 'RETORNO DE CAMPO', class: 'bg-campo', icon: 'fa-undo', disabled: '' };
+                        } else if (tieneEntrada && !tieneSalida) {
+                            if (statusActual.label.includes('PERMISO')) {
+                                btn = { type: 'ENTRADA', label: 'REGISTRAR RE-ENTRADA', class: 'bg-reentrada', icon: 'fa-door-open', disabled: '' };
+                            } else {
+                                btn = { type: 'SALIDA', label: 'REGISTRAR SALIDA', class: 'bg-salida', icon: 'fa-sign-out-alt', disabled: '' };
+                            }
+                        } else if (tieneSalida) {
+                            btn = { type: 'NONE', label: 'JORNADA FINALIZADA', class: 'bg-salida', icon: 'fa-check-circle', disabled: 'disabled' };
+                        }
+                        return `
+                        <button class="btn-main-action ${btn.class}" onclick="${btn.type !== 'NONE' ? `iniciarRegistro('${btn.type}')` : ''}" ${btn.disabled}>
+                            <div class="btn-type"><i class="fas ${btn.icon}"></i> ${btn.label}</div>
+                            <div id="btnTime" class="btn-time">--:--:--</div>
                         </button>
-                    ` : `
-                        <button class="btn-action btn-entrada" onclick="iniciarRegistro('ENTRADA')" id="btnEntrada" ${(tieneEntrada && !statusActual.label.includes('PERMISO')) ? 'disabled' : ''}>
-                            <i class="fas fa-sign-in-alt"></i> ${statusActual.label.includes('PERMISO') ? 'RE-ENTRADA' : 'ENTRADA'}
-                        </button>
-                    `}
-                    <button class="btn-action btn-salida" onclick="iniciarRegistro('SALIDA')" id="btnSalida" ${(statusActual.label === 'OFICINA' || statusActual.label === 'EN ACTIVIDAD') ? '' : 'disabled'}>
-                        <i class="fas fa-sign-out-alt"></i> SALIDA
-                    </button>
+                        `;
+                    })()}
                 </div>
                 
                 ${esCumpleanosHoy ? `
@@ -4292,12 +4549,19 @@
             function actualizarReloj() {
                 const clockEl = document.getElementById('liveClock');
                 const dateEl = document.getElementById('liveDate');
-                if (!clockEl) { clearInterval(window._clockInterval); return; }
+                const btnTime = document.getElementById('btnTime');
+                
+                if (!clockEl && !btnTime) return; // No cortamos el intervalo para permitir que se recupere si volvemos a la home
+                
                 const ahora = new Date();
                 const hh = String(ahora.getHours()).padStart(2, '0');
                 const mm = String(ahora.getMinutes()).padStart(2, '0');
                 const ss = String(ahora.getSeconds()).padStart(2, '0');
-                clockEl.textContent = `${hh}:${mm}:${ss}`;
+                const timeStr = `${hh}:${mm}:${ss}`;
+                
+                if (clockEl) clockEl.textContent = timeStr;
+                if (btnTime) btnTime.textContent = timeStr;
+                
                 if (dateEl) {
                     const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
                     const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -4345,59 +4609,11 @@
 
             mainContent.innerHTML = `
             <div class="page">
-                <!-- RESUMEN HOY -->
+                <!-- SECCIÓN PAUSADA: RESUMEN HOY 
                 <div class="glass-card">
-                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                        <h5 class="fw-bold mb-0" style="font-size: clamp(14px, 4.5vw, 18px);"><i class="fas fa-calendar-day"></i> Mi Jornada Hoy</h5>
-                        <span class="badge bg-light" style="font-size: clamp(11px, 3.2vw, 13px);">${formatearFechaCorta()}</span>
-                    </div>
-                    
-                    <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-light rounded-3 flex-wrap">
-                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; font-size: 24px; flex-shrink: 0;">${empleado.nombre?.charAt(0) || '?'}</div>
-                        <div>
-                            <h6 class="fw-bold mb-0" style="font-size: clamp(13px, 4vw, 15px);">${empleado.nombre || 'Empleado'}</h6>
-                            <small class="text-muted" style="font-size: clamp(11px, 3.2vw, 13px);"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</small>
-                        </div>
-                    </div>
-                    
-                    <div class="row g-3 mb-3">
-                        <div class="col-6">
-                            <div class="time-card entry">
-                                <div class="time-icon">⏰</div>
-                                <div class="time-label" style="font-size: clamp(12px, 3.5vw, 14px);">ENTRADA</div>
-                                <div class="time-value" style="font-size: clamp(18px, 5vw, 22px);">${entradaHora}</div>
-                                <div class="time-status ${entrada ? 'completed' : 'pending'}" style="font-size: clamp(11px, 3.2vw, 13px);">
-                                    <i class="fas ${entrada ? 'fa-check-circle' : 'fa-hourglass-half'}"></i>
-                                    ${entrada ? 'Completada' : 'Pendiente'}
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="time-card exit">
-                                <div class="time-icon">🚪</div>
-                                <div class="time-label" style="font-size: clamp(12px, 3.5vw, 14px);">SALIDA</div>
-                                <div class="time-value" style="font-size: clamp(18px, 5vw, 22px);">${salidaHora}</div>
-                                <div class="time-status ${salida ? 'completed' : 'pending'}" style="font-size: clamp(11px, 3.2vw, 13px);">
-                                    <i class="fas ${salida ? 'fa-check-circle' : 'fa-hourglass-half'}"></i>
-                                    ${salida ? 'Completada' : 'Pendiente'}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="lunch-info" style="font-size: clamp(12px, 3.8vw, 14px);">
-                        <i class="fas fa-utensils fa-2x text-warning"></i>
-                        <div class="flex-grow-1">
-                            <div class="small text-muted">Opción de almuerzo</div>
-                            <div class="fw-bold">${almuerzoText}</div>
-                        </div>
-                    </div>
-                    
-                    <div class="p-3 rounded-3 text-center ${!entrada ? 'bg-danger bg-opacity-10 text-danger' : (entrada && !salida ? 'bg-warning bg-opacity-10 text-warning' : 'bg-success bg-opacity-10 text-success')}" style="font-size: clamp(12px, 3.8vw, 14px);">
-                        <i class="fas ${!entrada ? 'fa-clock' : (entrada && !salida ? 'fa-play-circle' : 'fa-check-circle')}"></i>
-                        <span class="fw-bold ms-2">${!entrada ? 'Jornada pendiente' : (entrada && !salida ? 'Jornada en curso' : 'Jornada completada')}</span>
-                    </div>
+                    ...
                 </div>
+                -->
                 
                 <!-- ESTADÍSTICAS GENERALES -->
                 <div class="glass-card mt-3">
@@ -4438,7 +4654,7 @@
                     <!-- Segunda fila: Horas de trabajo -->
                     <div class="row g-3 mb-3">
                         <div class="col-12">
-                            <div style="font-size: clamp(11px, 3.2vw, 13px); font-weight: 600; color: #333; margin-bottom: 8px;">⏳ HORAS DE TRABAJO (en desarrollo)</div>
+                            <div style="font-size: clamp(11px, 3.2vw, 13px); font-weight: 600; color: #333; margin-bottom: 8px;">⏳ HORAS DE TRABAJO</div>
                         </div>
                         <div class="col-4">
                             <div class="stat-card bg-success bg-opacity-10 border border-success" style="font-size: clamp(11px, 3.2vw, 13px);">
@@ -4456,9 +4672,9 @@
                         </div>
                         <div class="col-4">
                             <div class="stat-card bg-danger bg-opacity-10 border border-danger" style="font-size: clamp(11px, 3.2vw, 13px);">
-                                <div class="stat-label" style="color: #d32f2f; font-size: clamp(10px, 3vw, 12px);">🔴 Atrasos (PROXIMAMENTE)</div>
+                                <div class="stat-label" style="color: #d32f2f; font-size: clamp(10px, 3vw, 12px);">🔴 Atrasos</div>
                                 <div class="stat-value text-danger" style="font-size: clamp(18px, 5vw, 22px);">+${stats.minutosAtrasoTotal}m</div>
-                                <small class="text-muted">(minutos totales, valor no real)</small>
+                                <small class="text-muted">(minutos totales)</small>
                             </div>
                         </div>
                     </div>
@@ -4519,6 +4735,59 @@
             return (typeof reg === 'object' && key in reg) ? reg[key] : (Array.isArray(reg) ? reg[idx] : null);
         }
 
+        /**
+         * Parsea una fecha de forma segura soportando múltiples formatos
+         * (ISO, D/M/YYYY HH:mm:ss, strings con AM/PM, etc.)
+         */
+        function parseDateSafe(ts) {
+            if (!ts) return null;
+            if (ts instanceof Date) return ts;
+            
+            // Si es un objeto de Firebase (seconds/nanoseconds)
+            if (ts && typeof ts.toDate === 'function') return ts.toDate();
+            if (ts && ts.seconds) return new Date(ts.seconds * 1000);
+
+            let d = new Date(ts);
+            if (!isNaN(d.getTime())) return d;
+            
+            // Intentar parsear formatos manuales (ej: 14/5/2026 16:20:25 o con p. m.)
+            try {
+                let s = String(ts).replace(',', '').trim();
+                // Normalizar p. m. / a. m. a PM/AM para que el motor de JS lo entienda mejor si es posible
+                s = s.replace(/p\.\s*m\./i, 'PM').replace(/a\.\s*m\./i, 'AM');
+                
+                const parts = s.split(' ');
+                if (parts.length >= 1) {
+                    const dateParts = parts[0].split('/');
+                    if (dateParts.length === 3) {
+                        const day = parseInt(dateParts[0]);
+                        const month = parseInt(dateParts[1]) - 1;
+                        const year = parseInt(dateParts[2]);
+                        
+                        let hour = 0, min = 0, sec = 0;
+                        if (parts[1]) {
+                            const timeParts = parts[1].split(':');
+                            hour = parseInt(timeParts[0]) || 0;
+                            min = parseInt(timeParts[1]) || 0;
+                            sec = parseInt(timeParts[2]) || 0;
+                            
+                            // Ajuste manual de PM/AM
+                            if (s.toUpperCase().includes('PM')) {
+                                if (hour < 12) hour += 12;
+                            } else if (s.toUpperCase().includes('AM')) {
+                                if (hour === 12) hour = 0;
+                            }
+                        }
+                        
+                        d = new Date(year, month, day, hour, min, sec);
+                        if (!isNaN(d.getTime())) return d;
+                    }
+                }
+            } catch(e) { console.error("Error parseando fecha manual:", ts, e); }
+            
+            return null;
+        }
+
         // Calcular minutos de atraso respecto a HORA_INICIO_ESPERADA (desde configuración)
         function calcularMinutosAtraso(horaEntrada, fechaEntrada) {
             try {
@@ -4545,7 +4814,29 @@
 
         // ========== CALCULAR ESTADÍSTICAS ==========
         function calcularEstadisticas() {
-            if (!registrosCompletos || registrosCompletos.length === 0) {
+            // Obtener periodo fiscal (26 al 25)
+            const hoy = new Date();
+            const dia = hoy.getDate();
+            let inicioPeriodo, finPeriodo;
+            
+            if (dia >= 26) {
+                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
+                finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 25);
+            } else {
+                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
+                finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 25);
+            }
+            
+            const iniStr = inicioPeriodo.toISOString().split('T')[0];
+            const finStr = finPeriodo.toISOString().split('T')[0];
+
+            // Filtrar registros por el periodo actual
+            const registrosFiltrados = registrosCompletos.filter(r => {
+                const f = getVal(r, 'fecha', 0) || r[0];
+                return f && f >= iniStr && f <= finStr;
+            });
+
+            if (!registrosFiltrados || registrosFiltrados.length === 0) {
                 return {
                     diasTrabajados: 0,
                     atrasos: 0,
@@ -4562,7 +4853,7 @@
 
             // Agrupar por día para cálculos más precisos
             const grupos = {};
-            registrosCompletos.forEach(reg => {
+            registrosFiltrados.forEach(reg => {
                 const fecha = getVal(reg, 'fecha', 0) || reg[0];
                 if (fecha) {
                     if (!grupos[fecha]) {
@@ -4616,24 +4907,34 @@
                 // Calcular horas trabajadas
                 if (entrada && salida) {
                     try {
-                        const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
-                        const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
+                        const f = getVal(entrada, 'fecha', 0) || entrada[0];
+                        const hE = getVal(entrada, 'hora', 5) || entrada[5];
+                        const hS = getVal(salida, 'hora', 5) || salida[5];
 
-                        const entradaDate = new Date(entradaTs);
-                        const salidaDate = new Date(salidaTs);
+                        if (f && hE && hS) {
+                            // Crear fechas robustas combinando fecha + hora, o usando el timestamp directo
+                            const entradaTs = getVal(entrada, 'timestamp', 2) || `${f}T${hE}`;
+                            const salidaTs = getVal(salida, 'timestamp', 2) || `${f}T${hS}`;
+                            
+                            const entradaDate = parseDateSafe(entradaTs);
+                            const salidaDate = parseDateSafe(salidaTs);
 
-                        if (!isNaN(entradaDate.getTime()) && !isNaN(salidaDate.getTime())) {
-                            const minutos = (salidaDate - entradaDate) / (1000 * 60);
-                            horasPorDia.push(minutos);
+                            if (!isNaN(entradaDate.getTime()) && !isNaN(salidaDate.getTime()) && salidaDate > entradaDate) {
+                                let minutosBrutos = (salidaDate - entradaDate) / (1000 * 60);
+                                // Restar 30m almuerzo + 15m descanso = 45m
+                                let minutosNetos = Math.max(0, minutosBrutos - 45);
+                                
+                                horasPorDia.push(minutosNetos);
 
-                            if (minutos <= 480) { // 8 horas = 480 minutos
-                                totalMinutos += minutos;
-                            } else {
-                                totalMinutos += 480;
-                                totalMinutosExtras50 += (minutos - 480);
+                                if (minutosNetos <= 480) { // 8 horas = 480 minutos
+                                    totalMinutos += minutosNetos;
+                                } else {
+                                    totalMinutos += 480;
+                                    totalMinutosExtras50 += (minutosNetos - 480);
+                                }
                             }
                         }
-                    } catch (e) { }
+                    } catch (e) { console.warn("Error calculando horas para día:", fechaKey, e); }
                 }
             });
 
@@ -4728,8 +5029,16 @@
                         try {
                             const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
                             const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
-                            const horas = (new Date(salidaTs) - new Date(entradaTs)) / (1000 * 60 * 60);
-                            data.stats.horas += horas;
+                            
+                            const dEntrada = parseDateSafe(entradaTs);
+                            const dSalida = parseDateSafe(salidaTs);
+                            
+                            if (dEntrada && dSalida) {
+                                let horasBrutas = (dSalida - dEntrada) / (1000 * 60 * 60);
+                                // Restar 45 min (0.75 h)
+                                let horasNetas = Math.max(0, horasBrutas - 0.75);
+                                data.stats.horas += horasNetas;
+                            }
                         } catch (e) { }
                     }
                 });
@@ -4783,11 +5092,22 @@
                         try {
                             const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
                             const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
-                            const ms = new Date(salidaTs) - new Date(entradaTs);
-                            if (ms > 0) {
-                                const h = Math.floor(ms / (1000 * 60 * 60));
-                                const m = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-                                duracion = h + 'h ' + m + 'm';
+                            
+                            const dE = parseDateSafe(entradaTs);
+                            const dS = parseDateSafe(salidaTs);
+                            
+                            if (dE && dS) {
+                                let msBrutos = dS - dE;
+                                // Restar 45 min = 45 * 60 * 1000 ms
+                                let msNetos = Math.max(0, msBrutos - (45 * 60 * 1000));
+                                
+                                if (msNetos > 0) {
+                                    const h = Math.floor(msNetos / (1000 * 60 * 60));
+                                    const m = Math.floor((msNetos % (1000 * 60 * 60)) / (1000 * 60));
+                                    duracion = h + 'h ' + m + 'm';
+                                } else {
+                                    duracion = '0h 0m';
+                                }
                             }
                         } catch (e) { }
                     }
