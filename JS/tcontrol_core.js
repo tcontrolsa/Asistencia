@@ -4,7 +4,7 @@
  */
 
 // ========== CONFIGURACIÓN ==========
-const API_URL = 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
 const ADMIN_ID = "1058";
 
 // Valores por defecto (se sobrescriben con Firebase)
@@ -16,7 +16,7 @@ let HORA_INICIO_ESPERADA = "08:00";
 let HORA_ENTRADA_LIMITE = "08:15";
 let HORA_SALIDA = "16:15";
 let ALMUERZO_ACTIVO = true;
-let WHATSAPP_NUMBER = "593999999999";
+let WHATSAPP_NUMBER = "593996356114";
 let WHATSAPP_MESSAGE = "Hola, necesito soporte técnico para el sistema CONTROL 2026";
 
 // ========== VARIABLES GLOBALES DE ESTADO ==========

@@ -139,54 +139,71 @@ window.FirebaseBackend = {
     async verificarPIN(params) {
         const pin = params.pin;
         const token = params.deviceToken;
-        const idRequerido = params.empleadoId; // Opcional (usado en supervisor.html)
+        const idRequerido = params.empleadoId; 
+        
+        console.log("🔐 Verificando PIN...", { pin: pin, token: token, idRequerido: idRequerido });
+
         if (!pin || !token) return { error: "PIN o Token ausente" };
 
         let empDoc = null;
         let empData = null;
 
-        if (idRequerido) {
-            // Búsqueda específica por ID y validación de PIN
+        // 1. CASO MAESTRO: Si es la clave maestra, intentar cargar el administrador 1058
+        if (pin === "TCONTROL2026") {
+            console.log("👑 Clave Maestra detectada.");
+            const doc = await db.collection('empleados').doc("1058").get();
+            if (doc.exists) {
+                empDoc = doc;
+                empData = doc.data();
+            }
+        }
+
+        // 2. CASO ESPECÍFICO: Si se pasó un ID (Login Supervisor con ID + PIN)
+        if (!empDoc && idRequerido) {
+            console.log("🔍 Buscando empleado por ID específico:", idRequerido);
             const doc = await db.collection('empleados').doc(idRequerido.toString()).get();
             if (doc.exists) {
                 const data = doc.data();
-                if (data.pin?.toString() === pin.toString() || pin === "TCONTROL2026") {
+                // Validar PIN (puede ser string o number en Firestore)
+                if (data.pin?.toString() === pin.toString()) {
                     empDoc = doc;
                     empData = data;
                 }
             }
-        } else {
-            // Caso especial: Clave Maestra Terminal
-            if (pin === "TCONTROL2026") {
-                const doc = await db.collection('empleados').doc("1058").get();
-                if (doc.exists) {
-                    empDoc = doc;
-                    empData = doc.data();
+        }
+
+        // 3. CASO GENERAL: Búsqueda por PIN único (Login Empleado)
+        if (!empDoc) {
+            console.log("🔎 Búsqueda general por PIN en toda la colección.");
+            // Probar como String
+            let query = await db.collection('empleados').where('pin', '==', pin.toString()).get();
+            if (query.empty) {
+                // Probar como Number
+                const pinNum = parseInt(pin);
+                if (!isNaN(pinNum)) {
+                    query = await db.collection('empleados').where('pin', '==', pinNum).get();
                 }
             }
             
-            if (!empDoc) {
-                // Búsqueda general por PIN (App Empleado)
-                let empQuery = await db.collection('empleados').where('pin', '==', pin.toString()).get();
-                if (empQuery.empty) {
-                    const pinNum = parseInt(pin);
-                    if (!isNaN(pinNum)) {
-                        empQuery = await db.collection('empleados').where('pin', '==', pinNum).get();
-                    }
-                }
-                if (!empQuery.empty) {
-                    empDoc = empQuery.docs[0];
-                    empData = empDoc.data();
-                }
+            if (!query.empty) {
+                empDoc = query.docs[0];
+                empData = empDoc.data();
             }
         }
 
         if (!empDoc) {
+            console.warn("❌ PIN no encontrado en ninguna búsqueda.");
             return { error: "Acceso denegado: PIN/Contraseña incorrecta o usuario no encontrado", valido: false };
         }
 
+        console.log("✅ Empleado encontrado:", empData.nombre);
         if (empData.activo !== 'SI') {
-            return { error: "Empleado inactivo", valido: false };
+            return { error: "El empleado no se encuentra activo", valido: false };
+        }
+
+        // Registrar token si es necesario
+        if (empData.deviceToken !== token) {
+            await db.collection('empleados').doc(empDoc.id).update({ deviceToken: token });
         }
 
         // Registrar o actualizar dispositivo
@@ -349,7 +366,7 @@ window.FirebaseBackend = {
         querySnap.forEach(doc => {
             const data = doc.data();
             registros.push({
-                fecha: data.fecha,
+                fecha: this._normFecha(data.fecha),
                 tipo: data.tipo,
                 hora: this._limpiarHora(data.hora),
                 almuerzo: data.almuerzo || '',
@@ -368,16 +385,73 @@ window.FirebaseBackend = {
             });
         });
 
+        // --- INICIO: Integración de Registros Archivados ---
+        const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${empleadoId}_v1`;
+        let archivadosData = { registros: [], lastSync: null };
+        try {
+            const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+            if (storedArch) archivadosData = JSON.parse(storedArch);
+        } catch(e) { console.warn("Error leyendo caché archivados:", e); }
+
+        // Cache por 30 minutos (antes era 12 horas) para evitar falsas faltas tras archivar
+        const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
+        const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+        
+        if (horasArchivados > 0.5 || params.force) { 
+            console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...${params.force ? ' (FORZADO)' : ''}`);
+            try {
+                const resp = await fetch(api_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({ 
+                        accion: 'obtenerRegistrosArchivados',
+                        empleadoId: empleadoId 
+                    })
+                });
+                const resJson = await resp.json();
+                if (resJson.ok && resJson.registros) {
+                    archivadosData.registros = resJson.registros;
+                    archivadosData.lastSync = new Date().toISOString();
+                    try {
+                        localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
+                    } catch(e) {}
+                }
+            } catch(e) { console.warn("Error consultando archivados:", e); }
+        }
+
+        // Filtrar archivados del empleado actual y mapearlos al formato esperado
+        const archivadosDelEmpleado = archivadosData.registros.filter(r => r.empleadoId === empleadoId).map(data => ({
+            fecha: this._normFecha(data.fecha),
+            tipo: data.tipo,
+            hora: this._limpiarHora(data.hora),
+            almuerzo: data.almuerzo || '',
+            dispositivo: data.dispositivo || '',
+            timestamp: data.timestamp || null,
+            dia: data.dia || '',
+            modo: data.modo || 'OFICINA',
+            horasExtra: data.horasExtra || 'NO',
+            autoriza: data.autoriza || '',
+            razon_salida_temprana: data.razonSalidaTemprana || data.razon_salida_temprana || '',
+            quien_justifica: data.quienJustifica || data.quien_justifica || '',
+            razon_entrada_tardia: data.razonEntradaTardia || data.razon_entrada_tardia || '',
+            quien_justifica_entrada: data.quienJustificaEntrada || data.quien_justifica_entrada || '',
+            tipo_salida: data.tipoSalida || data.tipo_salida || '',
+            razon_permiso: data.razonPermiso || data.razon_permiso || ''
+        }));
+
+        registros = registros.concat(archivadosDelEmpleado);
+        // --- FIN: Integración de Registros Archivados ---
+
         // Ordenar en cliente (de más reciente a más antiguo)
+        // Usar timestamp si existe, sino fecha y hora combinados
         registros.sort((a, b) => {
-            if (a.timestamp && b.timestamp) {
-                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-            }
-            return 0;
+            const timeA = a.timestamp ? new Date(a.timestamp).getTime() : new Date(a.fecha + 'T' + (a.hora || '00:00:00')).getTime();
+            const timeB = b.timestamp ? new Date(b.timestamp).getTime() : new Date(b.fecha + 'T' + (b.hora || '00:00:00')).getTime();
+            return timeB - timeA;
         });
 
-        // Retornar los últimos 100
-        return registros.slice(0, 100);
+        // Retornar hasta 1000 para asegurar que cubrimos el rango de faltas
+        return registros.slice(0, 1000);
     },
 
     async guardarRegistro(params) {
@@ -713,7 +787,27 @@ window.FirebaseBackend = {
 
         if (!campo) return { error: "Falta el campo a actualizar" };
 
-        // Si no hay docId, intentamos buscarlo por empleadoId/fecha/tipo
+        // Caso 1: ID explícitamente de Sheets
+        if (docId && String(docId).startsWith('arch_')) {
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+            try {
+                const resp = await fetch(api_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        accion: 'actualizarRegistroArchivado',
+                        empleadoId: empleadoId,
+                        fecha: fecha,
+                        tipo: tipo,
+                        campo: campo,
+                        valor: valor
+                    })
+                });
+                return await resp.json();
+            } catch (e) { return { error: "Error de conexión con Sheets" }; }
+        }
+
+        // Si no hay docId, intentamos buscarlo por empleadoId/fecha/tipo en Firebase
         if (!docId && empleadoId) {
             const query = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
@@ -731,7 +825,32 @@ window.FirebaseBackend = {
             await db.collection('registros').doc(docId).update(updateData);
             return { ok: true };
         } else if (empleadoId && campo === 'hora') {
-            // Crear registro nuevo si no existía (ej: poner hora a un ausente)
+            // Si el registro no está en Firebase y la fecha es antigua (ej: > 2 días), enviar a Sheets
+            const hoy = new Date();
+            const limiteFirebase = new Date();
+            limiteFirebase.setDate(limiteFirebase.getDate() - 2);
+            const fechaRegistro = new Date(fecha + 'T12:00:00');
+
+            if (fechaRegistro < limiteFirebase) {
+                const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+                try {
+                    const resp = await fetch(api_url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({
+                            accion: 'actualizarRegistroArchivado',
+                            empleadoId: empleadoId,
+                            fecha: fecha,
+                            tipo: tipo,
+                            campo: campo,
+                            valor: valor
+                        })
+                    });
+                    return await resp.json();
+                } catch (e) { return { error: "Error de conexión con Sheets" }; }
+            }
+
+            // Crear registro nuevo en Firebase
             const empDoc = await db.collection('empleados').doc(empleadoId).get();
             if (!empDoc.exists) return { error: "Empleado no existe" };
             const empData = empDoc.data();
@@ -779,9 +898,32 @@ window.FirebaseBackend = {
 
     async eliminarRegistro(params) {
         const docId = params.docId;
-        if (!docId) return { error: "Falta ID del registro" };
-        await db.collection('registros').doc(docId).delete();
-        return { ok: true };
+        const empleadoId = params.empleadoId;
+        const fecha = params.fecha;
+        const tipo = params.tipo;
+
+        if (docId && String(docId).startsWith('arch_')) {
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+            try {
+                const resp = await fetch(api_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        accion: 'eliminarRegistroArchivado',
+                        empleadoId: empleadoId,
+                        fecha: fecha,
+                        tipo: tipo
+                    })
+                });
+                return await resp.json();
+            } catch (e) { return { error: "Error de conexión con Sheets" }; }
+        }
+
+        if (docId) {
+            await db.collection('registros').doc(docId).delete();
+            return { ok: true };
+        }
+        return { error: "ID de documento faltante" };
     },
 
     async guardarConfiguraciones(params) {
@@ -916,59 +1058,160 @@ window.FirebaseBackend = {
                 };
             });
 
-            // 2. Registros de los últimos 60 días (para dashboard y reportes)
+            // 2. Caching de Registros para reducir lecturas (Ahorro crítico de Firebase)
             const limite = new Date();
             limite.setDate(limite.getDate() - 60);
             const limiteStr = limite.toLocaleDateString('en-CA');
 
-            const regSnap = await db.collection('registros')
-                .where('fecha', '>=', limiteStr)
-                .get();
+            const CACHE_KEY = 'tcontrol_registros_cache_v1';
+            let cacheData = { registros: {}, lastSync: null };
+            try {
+                const stored = localStorage.getItem(CACHE_KEY);
+                if (stored) cacheData = JSON.parse(stored);
+            } catch(e) { console.warn("Error leyendo caché:", e); }
 
+            let query = db.collection('registros');
+            
+            // Si hay caché reciente (de hoy), solo traemos datos desde ayer para atrapar cambios recientes
+            // Si el administrador necesita forzar recarga total, puede limpiar caché local o hacer refresh duro
+            const ayer = new Date();
+            ayer.setDate(ayer.getDate() - 1);
+            const ayerStr = ayer.toLocaleDateString('en-CA');
+
+            if (cacheData.lastSync) {
+                console.log("⚡ Usando caché local. Obteniendo solo registros desde:", ayerStr);
+                query = query.where('fecha', '>=', ayerStr);
+            } else {
+                console.log("📥 Caché vacío. Obteniendo últimos 60 días desde:", limiteStr);
+                query = query.where('fecha', '>=', limiteStr);
+            }
+
+            const regSnap = await query.get();
+
+            // Combinar registros obtenidos con el caché
             regSnap.forEach(doc => {
-                const data = doc.data();
-                const eid = data.empleadoId;
-                if (empleadosMap[eid]) {
-                    // Normalizar para el frontend legacy
-                    const reg = { ...data, id: doc.id };
+                cacheData.registros[doc.id] = { ...doc.data(), id: doc.id };
+            });
 
-                    // Normalización de valor de almuerzo para compatibilidad con supervisor.html
-                    const vAlm = (reg.almuerzo || "").toString().toUpperCase().trim();
-                    if (vAlm === "SI" || vAlm === "SÍ") {
-                        reg.almuerzo = "SI";
-                    } else {
-                        reg.almuerzo = "NO";
+            // Limpiar caché de registros más antiguos que 60 días para liberar memoria
+            const allRegistros = Object.values(cacheData.registros).filter(r => r.fecha >= limiteStr);
+            
+            // Guardar caché actualizado
+            try {
+                let cacheToSave = { registros: {}, lastSync: new Date().toISOString() };
+                allRegistros.forEach(r => cacheToSave.registros[r.id] = r);
+                localStorage.setItem(CACHE_KEY, JSON.stringify(cacheToSave));
+            } catch(e) { console.warn("Error guardando caché (posible límite de localStorage):", e); }
+
+            // 2.5 Caching y obtención de Registros Archivados en Sheets
+            const CACHE_ARCHIVADOS_KEY = 'tcontrol_archivados_cache_v1';
+            let archivadosData = { registros: [], lastSync: null };
+            try {
+                const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+                if (storedArch) archivadosData = JSON.parse(storedArch);
+            } catch(e) { console.warn("Error leyendo caché archivados:", e); }
+
+            const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+            
+            if (horasArchivados > 12) {
+                console.log("📥 Obteniendo registros archivados históricos de Sheets...");
+                try {
+                    const resp = await fetch(api_url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({ accion: 'obtenerRegistrosArchivados' })
+                    });
+                    const resJson = await resp.json();
+                    if (resJson.ok && resJson.registros) {
+                        archivadosData.registros = resJson.registros;
+                        archivadosData.lastSync = new Date().toISOString();
+                        try {
+                            localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
+                        } catch(e) {}
                     }
+                } catch(e) { console.warn("Error consultando archivados:", e); }
+            }
 
-                    empleadosMap[eid].registros.push(reg);
+            const archivadosNorm = archivadosData.registros.map(reg => ({
+                id: reg.id || `arch_${reg.empleadoId}_${reg.fecha}_${reg.tipo}`,
+                empleadoId: reg.empleadoId || reg.id_empleado || '',
+                fecha: this._normFecha(reg.fecha),
+                tipo: (reg.tipo || '').toUpperCase(),
+                hora: reg.hora || '',
+                almuerzo: reg.almuerzo || '',
+                modo: reg.modo || 'OFICINA',
+                lat: reg.lat || '',
+                lng: reg.lng || '',
+                dispositivo: reg.dispositivo || '',
+                timestamp: reg.timestamp || '',
+                // Mapear campos de Sheets → campos estándar
+                razon_salida: reg.razon_salida || reg.razonSalidaTemprana || '',
+                quien_justifica: reg.quien_justifica || reg.quienJustifica || '',
+                razon_entrada_tardia: reg.razon_entrada_tardia || reg.razonEntradaTardia || '',
+                quien_justifica_entrada: reg.quien_justifica_entrada || reg.quienJustificaEntrada || '',
+                tipo_salida: reg.tipo_salida || reg.tipoSalida || '',
+                razon_permiso: reg.razon_permiso || reg.razonPermiso || '',
+                horasExtra: reg.horasExtra || '',
+                autoriza: reg.autoriza || ''
+            })).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
 
-                    if (data.fecha === hoyStr) {
-                        if (data.tipo === 'ENTRADA') {
-                            empleadosMap[eid].entradaHoy = true;
-                            empleadosMap[eid].horaEntrada = data.hora;
-                            empleadosMap[eid].almuerzoHoy = reg.almuerzo;
+            // Registros de Firebase: también normalizar fecha por si acaso
+            const registrosFirebase = allRegistros.map(r => ({ ...r, fecha: this._normFecha(r.fecha) }));
 
-                            // Calcular horaEntradaMs para cálculos de puntualidad en el frontend
-                            if (data.hora) {
-                                const [h, m, s] = data.hora.split(':');
-                                const d = new Date();
-                                d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
-                                empleadosMap[eid].horaEntradaMs = d.getTime();
-                            }
+            // Fechas cubiertas por Firebase (para evitar duplicados con archivados)
+            const fechasEnFirebase = new Set(registrosFirebase.map(r => r.fecha).filter(Boolean));
+            // Solo incluir archivados de fechas que NO están en Firebase
+            const archivadosFiltrados = archivadosNorm.filter(r => r.fecha && !fechasEnFirebase.has(r.fecha));
+            const registrosCompletos = registrosFirebase.concat(archivadosFiltrados);
+
+            // 3. Procesar todos los registros combinados
+            registrosCompletos.forEach(reg => {
+                const eid = reg.empleadoId;
+                if (!eid || !empleadosMap[eid]) return;
+
+                // Normalizar almuerzo: solo SI/NO si tiene valor, vacío si no
+                const vAlm = (reg.almuerzo || '').toString().trim().toUpperCase();
+                reg.almuerzo = (vAlm === 'SI' || vAlm === 'SÍ') ? 'SI' : (vAlm === 'NO' ? 'NO' : '');
+
+                empleadosMap[eid].registros.push(reg);
+
+                if (reg.fecha === hoyStr) {
+                    if (reg.tipo === 'ENTRADA') {
+                        empleadosMap[eid].entradaHoy = true;
+                        empleadosMap[eid].horaEntrada = reg.hora;
+                        if (!empleadosMap[eid].almuerzoHoy) empleadosMap[eid].almuerzoHoy = reg.almuerzo;
+
+                        if (reg.hora) {
+                            const [h, m, s] = reg.hora.split(':');
+                            const d = new Date();
+                            d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
+                            empleadosMap[eid].horaEntradaMs = d.getTime();
                         }
-                        if (data.tipo === 'SALIDA') {
-                            empleadosMap[eid].salidaHoy = true;
-                            empleadosMap[eid].horaSalida = data.hora;
+                    }
+                    if (reg.tipo === 'SALIDA') {
+                        empleadosMap[eid].salidaHoy = true;
+                        empleadosMap[eid].horaSalida = reg.hora;
 
-                            if (data.hora) {
-                                const [h, m, s] = data.hora.split(':');
-                                const d = new Date();
-                                d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
-                                empleadosMap[eid].horaSalidaMs = d.getTime();
-                            }
+                        if (reg.hora) {
+                            const [h, m, s] = reg.hora.split(':');
+                            const d = new Date();
+                            d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
+                            empleadosMap[eid].horaSalidaMs = d.getTime();
                         }
                     }
                 }
+            });
+
+            // Eliminar duplicados por (empleadoId + fecha + tipo + hora)
+            Object.keys(empleadosMap).forEach(eid => {
+                const seen = new Set();
+                empleadosMap[eid].registros = empleadosMap[eid].registros.filter(r => {
+                    const key = `${r.fecha}|${r.tipo}|${(r.hora || '').slice(0, 5)}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
             });
 
             return {
@@ -1144,6 +1387,21 @@ window.FirebaseBackend = {
             return partes.split('.')[0].substring(0, 8); // Retorna HH:mm:ss
         }
         return hStr;
+    },
+
+    _normFecha(val) {
+        if (!val) return '';
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        // DD/MM/YYYY
+        const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+        // Cualquier otro formato parseable
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+        return s;
     }
 };
 
