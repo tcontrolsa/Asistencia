@@ -3978,8 +3978,24 @@
     if ($('supPin')) {
       $('supPin').addEventListener('keypress', e => { if (e.key === 'Enter') intentarLoginSupervisor(); });
       setTimeout(() => $('supPin').focus(), 500);
+    }
 
-      // Asegurar que al hacer clic en cualquier parte del card se enfoque el input
+    // Escuchar actualización de datos en segundo plano
+    window.addEventListener('archivadosActualizados', async () => {
+      const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+      if (sessionStr) {
+        console.log("🔄 Actualizando dashboard con nuevos datos históricos...");
+        // Cargar sin mostrar loader para que sea transparente al usuario
+        const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor' });
+        if (res && res.empleados) {
+            empCache = res.empleados;
+            renderAll();
+        }
+      }
+    });
+
+    // Asegurar que al hacer clic en cualquier parte del card se enfoque el input
+    if (document.querySelector('.login-card')) {
       document.querySelector('.login-card').addEventListener('click', () => $('supPin').focus());
     }
     if ($('btnIngresarSup')) $('btnIngresarSup').addEventListener('click', intentarLoginSupervisor);

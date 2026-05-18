@@ -395,28 +395,30 @@ window.FirebaseBackend = {
 
         // Cache por 30 minutos (antes era 12 horas) para evitar falsas faltas tras archivar
         const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-        const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
-        
-        if (horasArchivados > 0.5 || params.force) { 
-            console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...${params.force ? ' (FORZADO)' : ''}`);
+        const _fetchArchivados = async () => {
             try {
-                const resp = await fetch(api_url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({ 
-                        accion: 'obtenerRegistrosArchivados',
-                        empleadoId: empleadoId 
-                    })
+                const resJson = await this._jsonp({ 
+                    accion: 'obtenerRegistrosArchivados',
+                    empleadoId: empleadoId 
                 });
-                const resJson = await resp.json();
                 if (resJson.ok && resJson.registros) {
                     archivadosData.registros = resJson.registros;
                     archivadosData.lastSync = new Date().toISOString();
                     try {
                         localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
+                        console.log("✅ Registros archivados de Sheets actualizados para el empleado.");
+                        window.dispatchEvent(new Event('archivadosActualizados'));
                     } catch(e) {}
                 }
             } catch(e) { console.warn("Error consultando archivados:", e); }
+        };
+
+        if (params.force) {
+            console.log(`📥 Forzando sincronización de registros archivados de Sheets para empleado ${empleadoId}...`);
+            await _fetchArchivados();
+        } else if (horasArchivados > 0.5) { 
+            console.log(`📥 Sincronizando registros archivados de Sheets en segundo plano para empleado ${empleadoId}...`);
+            _fetchArchivados(); // Sin await
         }
 
         // Filtrar archivados del empleado actual y mapearlos al formato esperado
@@ -789,22 +791,16 @@ window.FirebaseBackend = {
 
         // Caso 1: ID explícitamente de Sheets
         if (docId && String(docId).startsWith('arch_')) {
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             try {
-                const resp = await fetch(api_url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({
-                        accion: 'actualizarRegistroArchivado',
-                        empleadoId: empleadoId,
-                        fecha: fecha,
-                        tipo: tipo,
-                        campo: campo,
-                        valor: valor
-                    })
+                return await this._jsonp({
+                    accion: 'actualizarRegistroArchivado',
+                    empleadoId: empleadoId,
+                    fecha: fecha,
+                    tipo: tipo,
+                    campo: campo,
+                    valor: valor
                 });
-                return await resp.json();
-            } catch (e) { return { error: "Error de conexión con Sheets" }; }
+            } catch (e) { return { error: "Error de conexión con Sheets: " + e.message }; }
         }
 
         // Si no hay docId, intentamos buscarlo por empleadoId/fecha/tipo en Firebase
@@ -832,22 +828,16 @@ window.FirebaseBackend = {
             const fechaRegistro = new Date(fecha + 'T12:00:00');
 
             if (fechaRegistro < limiteFirebase) {
-                const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
                 try {
-                    const resp = await fetch(api_url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify({
-                            accion: 'actualizarRegistroArchivado',
-                            empleadoId: empleadoId,
-                            fecha: fecha,
-                            tipo: tipo,
-                            campo: campo,
-                            valor: valor
-                        })
+                    return await this._jsonp({
+                        accion: 'actualizarRegistroArchivado',
+                        empleadoId: empleadoId,
+                        fecha: fecha,
+                        tipo: tipo,
+                        campo: campo,
+                        valor: valor
                     });
-                    return await resp.json();
-                } catch (e) { return { error: "Error de conexión con Sheets" }; }
+                } catch (e) { return { error: "Error de conexión con Sheets: " + e.message }; }
             }
 
             // Crear registro nuevo en Firebase
@@ -903,20 +893,14 @@ window.FirebaseBackend = {
         const tipo = params.tipo;
 
         if (docId && String(docId).startsWith('arch_')) {
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             try {
-                const resp = await fetch(api_url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({
-                        accion: 'eliminarRegistroArchivado',
-                        empleadoId: empleadoId,
-                        fecha: fecha,
-                        tipo: tipo
-                    })
+                return await this._jsonp({
+                    accion: 'eliminarRegistroArchivado',
+                    empleadoId: empleadoId,
+                    fecha: fecha,
+                    tipo: tipo
                 });
-                return await resp.json();
-            } catch (e) { return { error: "Error de conexión con Sheets" }; }
+            } catch (e) { return { error: "Error de conexión con Sheets: " + e.message }; }
         }
 
         if (docId) {
@@ -1039,7 +1023,7 @@ window.FirebaseBackend = {
         return { ok: true };
     },
 
-    async obtenerDatosSupervisor() {
+    async obtenerDatosSupervisor(params = {}) {
         try {
             const hoy = new Date();
             const hoyStr = hoy.toLocaleDateString('en-CA');
@@ -1112,25 +1096,27 @@ window.FirebaseBackend = {
             } catch(e) { console.warn("Error leyendo caché archivados:", e); }
 
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
-            
-            if (horasArchivados > 12) {
-                console.log("📥 Obteniendo registros archivados históricos de Sheets...");
+            const _fetchArchivados = async () => {
                 try {
-                    const resp = await fetch(api_url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify({ accion: 'obtenerRegistrosArchivados' })
-                    });
-                    const resJson = await resp.json();
+                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' });
                     if (resJson.ok && resJson.registros) {
                         archivadosData.registros = resJson.registros;
                         archivadosData.lastSync = new Date().toISOString();
                         try {
                             localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
+                            console.log("✅ Registros archivados de Sheets actualizados en caché.");
+                            window.dispatchEvent(new Event('archivadosActualizados'));
                         } catch(e) {}
                     }
                 } catch(e) { console.warn("Error consultando archivados:", e); }
+            };
+            
+            if (params.force) {
+                console.log("📥 Forzando obtención de registros archivados de Sheets (Bloqueante)...");
+                await _fetchArchivados();
+            } else if (horasArchivados > 12) {
+                console.log("📥 Obteniendo registros archivados históricos de Sheets (En segundo plano)...");
+                _fetchArchivados(); // Sin await para no bloquear la carga inicial
             }
 
             const archivadosNorm = archivadosData.registros.map(reg => ({
@@ -1354,7 +1340,44 @@ window.FirebaseBackend = {
         }
     },
 
-    // Auxiliares
+    // ==========================================
+    // AUXILIARES
+    // ==========================================
+    _jsonp(params) {
+        return new Promise((resolve, reject) => {
+            const callbackName = 'cb_' + Math.floor(Math.random() * 1000000);
+            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+            
+            const timeout = setTimeout(() => {
+                delete window[callbackName];
+                reject(new Error("Timeout en la conexión con Sheets"));
+            }, 25000);
+
+            window[callbackName] = (data) => {
+                clearTimeout(timeout);
+                delete window[callbackName];
+                resolve(data);
+            };
+
+            const url = new URL(api_url);
+            url.searchParams.set('callback', callbackName);
+            for (let key in params) {
+                url.searchParams.set(key, params[key]);
+            }
+
+            const script = document.createElement('script');
+            script.src = url.toString();
+            script.onerror = () => {
+                clearTimeout(timeout);
+                delete window[callbackName];
+                reject(new Error("Error de red al conectar con Sheets"));
+            };
+            document.body.appendChild(script);
+            // Limpiar script tag después de carga
+            script.onload = () => script.remove();
+        });
+    },
+
     _obtenerDiaSemana(fecha) {
         const dias = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
         return dias[fecha.getDay()];

@@ -190,7 +190,8 @@
         body {
             background: linear-gradient(160deg, #f0f4f8 0%, #dce4ed 100%);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            font-size: 1.15rem; /* Aumento del 15% en fuente base */
+            font-size: 1.15rem;
+            /* Aumento del 15% en fuente base */
             overflow: hidden;
             position: fixed;
             top: 0;
@@ -483,7 +484,7 @@
             font-size: clamp(12px, 3.5vw, 14px);
             font-weight: 700;
             color: white;
-            box-shadow: 0 4px 16px rgba(15,23,42,0.25), 0 0 0 3px rgba(220,38,38,0.15);
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.25), 0 0 0 3px rgba(220, 38, 38, 0.15);
             margin-top: 8px;
             letter-spacing: 0.3px;
             text-transform: uppercase;
@@ -491,7 +492,7 @@
 
         .area-icon-pill .area-emoji {
             font-size: 20px;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
         }
 
 
@@ -556,7 +557,8 @@
             background-image: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);
             padding: clamp(15px, 5vw, 20px) clamp(20px, 6vw, 24px);
             position: sticky;
-            top: -16px; /* Compensa el padding del main-content */
+            top: -16px;
+            /* Compensa el padding del main-content */
             margin: -16px -16px 0 -16px;
             z-index: 1000;
             overflow: hidden;
@@ -564,7 +566,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
 
         .header-logo-section {
@@ -584,7 +586,7 @@
             color: var(--primary);
             font-size: 18px;
             font-weight: 900;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
 
         .header-text-main {
@@ -596,7 +598,7 @@
         }
 
         .header-text-sub {
-            color: rgba(255,255,255,0.7);
+            color: rgba(255, 255, 255, 0.7);
             font-size: 10px;
             font-weight: 600;
             letter-spacing: 0.5px;
@@ -621,7 +623,7 @@
             font-size: 10px;
             font-weight: 600;
             text-transform: uppercase;
-            color: rgba(255,255,255,0.8);
+            color: rgba(255, 255, 255, 0.8);
             display: block;
             margin-top: 2px;
         }
@@ -692,11 +694,11 @@
             font-size: clamp(13px, 4vw, 15px);
             font-weight: 950;
             border: 2px solid white;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
             z-index: 15;
             white-space: nowrap;
             letter-spacing: 1.2px;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
         }
 
         .photo-verified i {
@@ -873,6 +875,7 @@
             animation: lunch-pulse-green 2s ease-in-out infinite !important;
             transform: scale(1.04);
         }
+
         /* Almuerzo Fuera - animación azul */
         .status-card.lunch.lunch-animated-no {
             background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%) !important;
@@ -882,35 +885,72 @@
         }
 
         @keyframes lunch-pulse-green {
-            0%   { box-shadow: 0 4px 12px rgba(16,185,129,0.20); }
-            50%  { box-shadow: 0 6px 28px rgba(16,185,129,0.55), 0 0 0 5px rgba(16,185,129,0.10); }
-            100% { box-shadow: 0 4px 12px rgba(16,185,129,0.20); }
+            0% {
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.20);
+            }
+
+            50% {
+                box-shadow: 0 6px 28px rgba(16, 185, 129, 0.55), 0 0 0 5px rgba(16, 185, 129, 0.10);
+            }
+
+            100% {
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.20);
+            }
         }
+
         @keyframes lunch-pulse-blue {
-            0%   { box-shadow: 0 4px 12px rgba(59,130,246,0.20); }
-            50%  { box-shadow: 0 6px 28px rgba(59,130,246,0.50), 0 0 0 5px rgba(59,130,246,0.10); }
-            100% { box-shadow: 0 4px 12px rgba(59,130,246,0.20); }
+            0% {
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.20);
+            }
+
+            50% {
+                box-shadow: 0 6px 28px rgba(59, 130, 246, 0.50), 0 0 0 5px rgba(59, 130, 246, 0.10);
+            }
+
+            100% {
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.20);
+            }
         }
 
         .status-card.lunch .status-icon i {
             color: var(--warning);
         }
-        .status-card.lunch.lunch-animated-si .status-icon i { color: #059669 !important; }
-        .status-card.lunch.lunch-animated-no .status-icon i { color: #2563eb !important; }
+
+        .status-card.lunch.lunch-animated-si .status-icon i {
+            color: #059669 !important;
+        }
+
+        .status-card.lunch.lunch-animated-no .status-icon i {
+            color: #2563eb !important;
+        }
 
         .status-card.lunch .status-label {
             color: #92400e;
             font-weight: 700;
         }
-        .status-card.lunch.lunch-animated-si .status-label { color: #065f46 !important; }
-        .status-card.lunch.lunch-animated-no .status-label { color: #1e3a8a !important; }
+
+        .status-card.lunch.lunch-animated-si .status-label {
+            color: #065f46 !important;
+        }
+
+        .status-card.lunch.lunch-animated-no .status-label {
+            color: #1e3a8a !important;
+        }
 
         .status-card.lunch .status-value {
             color: #78350f;
             font-weight: 800;
         }
-        .status-card.lunch.lunch-animated-si .status-value { color: #059669 !important; font-weight: 900 !important; }
-        .status-card.lunch.lunch-animated-no .status-value { color: #2563eb !important; font-weight: 900 !important; }
+
+        .status-card.lunch.lunch-animated-si .status-value {
+            color: #059669 !important;
+            font-weight: 900 !important;
+        }
+
+        .status-card.lunch.lunch-animated-no .status-value {
+            color: #2563eb !important;
+            font-weight: 900 !important;
+        }
 
         .status-icon {
             font-size: clamp(18px, 5.5vw, 20px);
@@ -1016,7 +1056,7 @@
             align-items: center;
             justify-content: center;
             line-height: 1.2;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             margin-top: 10px;
             cursor: pointer;
@@ -1026,7 +1066,7 @@
 
         .btn-main-action:active {
             transform: scale(0.96);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
         }
 
         .btn-main-action .btn-type {
@@ -1088,8 +1128,15 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .fab-whatsapp {
@@ -3759,11 +3806,11 @@
                     isAuthenticated = true;
                     await obtenerRegistrosEmpleado();
                     let faltas = obtenerDiasFaltantes();
-                    
+
                     // MECANISMO DE AUTO-SANACIÓN: Si hay faltas, forzar refresco de archivados una vez para descartar cache vieja
                     if (faltas.length > 0) {
                         console.log("⚠️ Detectadas faltas. Re-verificando con refresco forzado...");
-                        await obtenerRegistrosEmpleado(true); 
+                        await obtenerRegistrosEmpleado(true);
                         faltas = obtenerDiasFaltantes();
                     }
 
@@ -4365,7 +4412,7 @@
                     <div class="header-logo-icon">T</div>
                     <div>
                         <div class="header-text-main">TCONTROL</div>
-                        <div class="header-text-sub">Asistencia Premium</div>
+                        <div class="header-text-sub">Asistencia</div>
                     </div>
                 </div>
                 <div class="header-date-section">
@@ -4384,9 +4431,9 @@
                             </div>` : ''}
                             <div onclick="showPhotoModal('${empleado.foto_url || ''}')">
                                 ${empleado.foto_url && empleado.foto_url.trim() ?
-                                     `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto">` :
-                                     `<div class="employee-photo-placeholder-profesional">👤</div>`
-                                 }
+                    `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto">` :
+                    `<div class="employee-photo-placeholder-profesional">👤</div>`
+                }
                             </div>
                             <div class="photo-verified">
                                 <i class="fas fa-check"></i>
@@ -4396,11 +4443,11 @@
                         <div style="margin-top: 35px; margin-bottom: 6px;">
                             <div style="color: #64748b; font-size: clamp(12px, 3.5vw, 14px); font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
                                 ${(() => {
-                                    const h = new Date().getHours();
-                                    if (h >= 5 && h < 12) return 'Buenos días';
-                                    if (h >= 12 && h < 18) return 'Buenas tardes';
-                                    return 'Buenas noches';
-                                })()}
+                    const h = new Date().getHours();
+                    if (h >= 5 && h < 12) return 'Buenos días';
+                    if (h >= 12 && h < 18) return 'Buenas tardes';
+                    return 'Buenas noches';
+                })()}
                             </div>
                             <div class="employee-name-profesional" style="margin-top: 2px;">${primerNombre} ${apellido}</div>
                         </div>
@@ -4451,15 +4498,15 @@
                                  style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px;">
                                 
                                 <div class="status-icon" style="height: 70px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; position: relative;">
-                                    ${almuerzo === 'SI' 
-                                        ? `
+                                    ${almuerzo === 'SI'
+                    ? `
                                         <div style="position: absolute; width: 60px; height: 60px; background: radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
                                         <img src="almuerzo.gif" alt="Almuerzo" style="width: 90px; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)); animation: float-img 3s ease-in-out infinite;">
-                                        ` 
-                                        : `
+                                        `
+                    : `
                                         <i class="fas fa-utensils" style="font-size: 24px; color: var(--warning);"></i>
                                         `
-                                    }
+                }
                                 </div>
 
                                 <div class="status-label" style="font-size: 10px;">ALMUERZO</div>
@@ -4492,25 +4539,25 @@
                 <!-- Botón de Acción Único y Dinámico -->
                 <div class="main-action-wrapper">
                     ${(() => {
-                        let btn = { type: 'ENTRADA', label: 'REGISTRAR ENTRADA', class: 'bg-entrada', icon: 'fa-sign-in-alt', disabled: '' };
-                        if (statusActual.label.includes('CAMPO')) {
-                            btn = { type: 'RETORNO_CAMPO', label: 'RETORNO DE CAMPO', class: 'bg-campo', icon: 'fa-undo', disabled: '' };
-                        } else if (tieneEntrada && !tieneSalida) {
-                            if (statusActual.label.includes('PERMISO')) {
-                                btn = { type: 'ENTRADA', label: 'REGISTRAR RE-ENTRADA', class: 'bg-reentrada', icon: 'fa-door-open', disabled: '' };
-                            } else {
-                                btn = { type: 'SALIDA', label: 'REGISTRAR SALIDA', class: 'bg-salida', icon: 'fa-sign-out-alt', disabled: '' };
-                            }
-                        } else if (tieneSalida) {
-                            btn = { type: 'NONE', label: 'JORNADA FINALIZADA', class: 'bg-salida', icon: 'fa-check-circle', disabled: 'disabled' };
+                    let btn = { type: 'ENTRADA', label: 'REGISTRAR ENTRADA', class: 'bg-entrada', icon: 'fa-sign-in-alt', disabled: '' };
+                    if (statusActual.label.includes('CAMPO')) {
+                        btn = { type: 'RETORNO_CAMPO', label: 'RETORNO DE CAMPO', class: 'bg-campo', icon: 'fa-undo', disabled: '' };
+                    } else if (tieneEntrada && !tieneSalida) {
+                        if (statusActual.label.includes('PERMISO')) {
+                            btn = { type: 'ENTRADA', label: 'REGISTRAR RE-ENTRADA', class: 'bg-reentrada', icon: 'fa-door-open', disabled: '' };
+                        } else {
+                            btn = { type: 'SALIDA', label: 'REGISTRAR SALIDA', class: 'bg-salida', icon: 'fa-sign-out-alt', disabled: '' };
                         }
-                        return `
+                    } else if (tieneSalida) {
+                        btn = { type: 'NONE', label: 'JORNADA FINALIZADA', class: 'bg-salida', icon: 'fa-check-circle', disabled: 'disabled' };
+                    }
+                    return `
                         <button class="btn-main-action ${btn.class}" onclick="${btn.type !== 'NONE' ? `iniciarRegistro('${btn.type}')` : ''}" ${btn.disabled}>
                             <div class="btn-type"><i class="fas ${btn.icon}"></i> ${btn.label}</div>
                             <div id="btnTime" class="btn-time">--:--:--</div>
                         </button>
                         `;
-                    })()}
+                })()}
                 </div>
                 
                 ${esCumpleanosHoy ? `
@@ -4550,18 +4597,18 @@
                 const clockEl = document.getElementById('liveClock');
                 const dateEl = document.getElementById('liveDate');
                 const btnTime = document.getElementById('btnTime');
-                
+
                 if (!clockEl && !btnTime) return; // No cortamos el intervalo para permitir que se recupere si volvemos a la home
-                
+
                 const ahora = new Date();
                 const hh = String(ahora.getHours()).padStart(2, '0');
                 const mm = String(ahora.getMinutes()).padStart(2, '0');
                 const ss = String(ahora.getSeconds()).padStart(2, '0');
                 const timeStr = `${hh}:${mm}:${ss}`;
-                
+
                 if (clockEl) clockEl.textContent = timeStr;
                 if (btnTime) btnTime.textContent = timeStr;
-                
+
                 if (dateEl) {
                     const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
                     const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -4742,20 +4789,20 @@
         function parseDateSafe(ts) {
             if (!ts) return null;
             if (ts instanceof Date) return ts;
-            
+
             // Si es un objeto de Firebase (seconds/nanoseconds)
             if (ts && typeof ts.toDate === 'function') return ts.toDate();
             if (ts && ts.seconds) return new Date(ts.seconds * 1000);
 
             let d = new Date(ts);
             if (!isNaN(d.getTime())) return d;
-            
+
             // Intentar parsear formatos manuales (ej: 14/5/2026 16:20:25 o con p. m.)
             try {
                 let s = String(ts).replace(',', '').trim();
                 // Normalizar p. m. / a. m. a PM/AM para que el motor de JS lo entienda mejor si es posible
                 s = s.replace(/p\.\s*m\./i, 'PM').replace(/a\.\s*m\./i, 'AM');
-                
+
                 const parts = s.split(' ');
                 if (parts.length >= 1) {
                     const dateParts = parts[0].split('/');
@@ -4763,14 +4810,14 @@
                         const day = parseInt(dateParts[0]);
                         const month = parseInt(dateParts[1]) - 1;
                         const year = parseInt(dateParts[2]);
-                        
+
                         let hour = 0, min = 0, sec = 0;
                         if (parts[1]) {
                             const timeParts = parts[1].split(':');
                             hour = parseInt(timeParts[0]) || 0;
                             min = parseInt(timeParts[1]) || 0;
                             sec = parseInt(timeParts[2]) || 0;
-                            
+
                             // Ajuste manual de PM/AM
                             if (s.toUpperCase().includes('PM')) {
                                 if (hour < 12) hour += 12;
@@ -4778,13 +4825,13 @@
                                 if (hour === 12) hour = 0;
                             }
                         }
-                        
+
                         d = new Date(year, month, day, hour, min, sec);
                         if (!isNaN(d.getTime())) return d;
                     }
                 }
-            } catch(e) { console.error("Error parseando fecha manual:", ts, e); }
-            
+            } catch (e) { console.error("Error parseando fecha manual:", ts, e); }
+
             return null;
         }
 
@@ -4818,7 +4865,7 @@
             const hoy = new Date();
             const dia = hoy.getDate();
             let inicioPeriodo, finPeriodo;
-            
+
             if (dia >= 26) {
                 inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
                 finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 25);
@@ -4826,7 +4873,7 @@
                 inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
                 finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 25);
             }
-            
+
             const iniStr = inicioPeriodo.toISOString().split('T')[0];
             const finStr = finPeriodo.toISOString().split('T')[0];
 
@@ -4915,7 +4962,7 @@
                             // Crear fechas robustas combinando fecha + hora, o usando el timestamp directo
                             const entradaTs = getVal(entrada, 'timestamp', 2) || `${f}T${hE}`;
                             const salidaTs = getVal(salida, 'timestamp', 2) || `${f}T${hS}`;
-                            
+
                             const entradaDate = parseDateSafe(entradaTs);
                             const salidaDate = parseDateSafe(salidaTs);
 
@@ -4923,7 +4970,7 @@
                                 let minutosBrutos = (salidaDate - entradaDate) / (1000 * 60);
                                 // Restar 30m almuerzo + 15m descanso = 45m
                                 let minutosNetos = Math.max(0, minutosBrutos - 45);
-                                
+
                                 horasPorDia.push(minutosNetos);
 
                                 if (minutosNetos <= 480) { // 8 horas = 480 minutos
@@ -5029,10 +5076,10 @@
                         try {
                             const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
                             const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
-                            
+
                             const dEntrada = parseDateSafe(entradaTs);
                             const dSalida = parseDateSafe(salidaTs);
-                            
+
                             if (dEntrada && dSalida) {
                                 let horasBrutas = (dSalida - dEntrada) / (1000 * 60 * 60);
                                 // Restar 45 min (0.75 h)
@@ -5092,15 +5139,15 @@
                         try {
                             const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
                             const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
-                            
+
                             const dE = parseDateSafe(entradaTs);
                             const dS = parseDateSafe(salidaTs);
-                            
+
                             if (dE && dS) {
                                 let msBrutos = dS - dE;
                                 // Restar 45 min = 45 * 60 * 1000 ms
                                 let msNetos = Math.max(0, msBrutos - (45 * 60 * 1000));
-                                
+
                                 if (msNetos > 0) {
                                     const h = Math.floor(msNetos / (1000 * 60 * 60));
                                     const m = Math.floor((msNetos % (1000 * 60 * 60)) / (1000 * 60));
@@ -5843,6 +5890,21 @@
                 }
             });
         })();
+
+        // Escuchar actualización de archivados en segundo plano
+        window.addEventListener('archivadosActualizados', async () => {
+            if (typeof isAuthenticated !== 'undefined' && isAuthenticated) {
+                console.log("🔄 Actualizando vista con nuevos datos históricos...");
+                await obtenerRegistrosEmpleado();
+                renderHomePage();
+                if (typeof obtenerDiasFaltantes === 'function') {
+                    let faltas = obtenerDiasFaltantes();
+                    if (faltas.length > 0) {
+                        mostrarModalFaltasPasadas(faltas);
+                    }
+                }
+            }
+        });
         // ========================================================
     </script>
 </body>
