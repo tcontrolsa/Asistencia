@@ -417,8 +417,8 @@ window.FirebaseBackend = {
             console.log(`📥 Forzando sincronización de registros archivados de Sheets para empleado ${empleadoId}...`);
             await _fetchArchivados();
         } else if (horasArchivados > 0.5) { 
-            console.log(`📥 Sincronizando registros archivados de Sheets en segundo plano para empleado ${empleadoId}...`);
-            _fetchArchivados(); // Sin await
+            console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
+            await _fetchArchivados(); // Ahora espera para no generar faltas falsas en la UI
         }
 
         // Filtrar archivados del empleado actual y mapearlos al formato esperado
@@ -1115,8 +1115,8 @@ window.FirebaseBackend = {
                 console.log("📥 Forzando obtención de registros archivados de Sheets (Bloqueante)...");
                 await _fetchArchivados();
             } else if (horasArchivados > 12) {
-                console.log("📥 Obteniendo registros archivados históricos de Sheets (En segundo plano)...");
-                _fetchArchivados(); // Sin await para no bloquear la carga inicial
+                console.log("📥 Obteniendo registros archivados históricos de Sheets...");
+                await _fetchArchivados();
             }
 
             const archivadosNorm = archivadosData.registros.map(reg => ({
@@ -1361,6 +1361,7 @@ window.FirebaseBackend = {
 
             const url = new URL(api_url);
             url.searchParams.set('callback', callbackName);
+    url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
             for (let key in params) {
                 url.searchParams.set(key, params[key]);
             }

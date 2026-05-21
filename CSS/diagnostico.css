@@ -1,0 +1,91 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .container {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h1, h2 { color: #58a6ff; margin-bottom: 15px; }
+        .log-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .log-entry {
+            padding: 8px;
+            border-left: 3px solid #30363d;
+            margin: 5px 0;
+        }
+        .log-entry.success {
+            border-left-color: #3fb950;
+            color: #3fb950;
+        }
+        .log-entry.error {
+            border-left-color: #f85149;
+            color: #f85149;
+        }
+        .log-entry.info {
+            border-left-color: #58a6ff;
+            color: #58a6ff;
+        }
+        .log-entry.warning {
+            border-left-color: #d29922;
+            color: #d29922;
+        }
+        button {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px 5px 10px 0;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        button:hover { background: #2ea043; }
+        button:active { transform: scale(0.98); }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: #0d1117;
+            color: #00ff00;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.ok { background: #0f3c1a; color: #3fb950; }
+        .status.error { background: #3d0e0a; color: #f85149; }
+        .status.warning { background: #3d2a0a; color: #d29922; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+        pre {
+            background: #0d1117;
+            color: #79c0ff;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 11px;
+        }

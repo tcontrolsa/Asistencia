@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.3';
+const CACHE_NAME = 'tcontrol-v1.5';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -13,6 +13,8 @@ const PRECACHE_URLS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './CSS/index.css',
+  './JS/index_core.js',
   './JS/firebase_backend.js',
   // CDNs críticos (Bootstrap, FontAwesome)
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
@@ -31,7 +33,10 @@ self.addEventListener('install', event => {
         './index.html',
         './manifest.json',
         './icon-192.png',
-        './icon-512.png'
+        './icon-512.png',
+        './CSS/index.css',
+        './JS/index_core.js',
+        './JS/firebase_backend.js'
       ]).then(() => {
         // Intentar cachear CDNs pero no fallar si no hay internet
         return Promise.allSettled(
@@ -64,6 +69,11 @@ self.addEventListener('activate', event => {
 // ===== ESTRATEGIA DE FETCH =====
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+
+  // ── 0. Ignorar extensiones de Chrome y esquemas no soportados ──
+  if (!url.protocol.startsWith('http')) {
+    return;
+  }
 
   // ── 1. Solicitudes a la API de Google Apps Script ──
   // SIEMPRE network — los datos de asistencia deben ser en tiempo real
