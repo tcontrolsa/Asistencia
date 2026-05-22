@@ -328,23 +328,31 @@
     // DASHBOARD
     // ============================================================
     function cargarDashboard() {
-      cargarResumenMensual();
-      cargarAnalisisTardanzas();
-
-      let hoyP = empCache.filter(e => e.entradaHoy).length;
-      let hoyA = empCache.length - hoyP;
-      let hoyT = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > HORA_ENTRADA_REF; }).length;
-      let hoySalieron = empCache.filter(e => e.salidaHoy).length;
-
-      let circ = 2 * Math.PI * 42;
-      let pctH = calcularPct(hoyP, empCache.length);
+      let hoy = new Date().toISOString().split('T')[0];
+      let circ = 2 * Math.PI * 54;
       let dc = document.getElementById('donutCircle');
+      if (dc) { dc.style.strokeDasharray = circ; dc.style.strokeDashoffset = circ; }
+
+      let hoyP = 0, hoyA = 0, hoyT = 0, hoySalieron = 0;
+      empCache.forEach(e => {
+        let entr = (e.registros || []).find(r => r.fecha === hoy && r.tipo === 'ENTRADA');
+        let sal = (e.registros || []).find(r => r.fecha === hoy && r.tipo === 'SALIDA');
+        if (entr) {
+          hoyP++;
+          let m = obtenerMinutos(entr.hora);
+          if (m !== null && m > HORA_ENTRADA_REF) hoyT++;
+          if (sal) hoySalieron++;
+        } else {
+          hoyA++;
+        }
+      });
+      let pctH = calcularPct(hoyP, empCache.length);
       if (dc) dc.style.strokeDashoffset = circ * (1 - pctH / 100);
-      $('donutPorcentaje').textContent = pctH + '%';
-      $('legendPresentes').textContent = hoyP;
-      $('legendTardanzas').textContent = hoyT;
-      $('legendAusentes').textContent = hoyA;
-      $('legendSalieron').textContent = hoySalieron;
+      if($('donutPorcentaje')) $('donutPorcentaje').textContent = pctH + '%';
+      if($('legendPresentes')) $('legendPresentes').textContent = hoyP;
+      if($('legendTardanzas')) $('legendTardanzas').textContent = hoyT;
+      if($('legendAusentes')) $('legendAusentes').textContent = hoyA;
+      if($('legendSalieron')) $('legendSalieron').textContent = hoySalieron;
 
       const hoy_ = new Date().toISOString().split('T')[0];
       let periodo = periodos[0];
@@ -367,29 +375,65 @@
         let aPct = calcularPct(asist, totalPos);
         let pPct = asist ? Math.round((1 - tard / asist) * 100) : 0;
         let almPct = asist ? calcularPct(almP, asist) : 0;
-        $('dashAsistencia').textContent = aPct + '%';
-        $('dashPuntualidad').textContent = pPct + '%';
-        $('dashAlmPlanta').textContent = almPct + '%';
-        $('dashTotalEmpleados').textContent = empCache.length;
-        $('tasaAlmuerzoPlanta').textContent = almPct + '%';
+        if($('dashAsistencia')) $('dashAsistencia').textContent = aPct + '%';
+        if($('dashPuntualidad')) $('dashPuntualidad').textContent = pPct + '%';
+        if($('dashAlmPlanta')) $('dashAlmPlanta').textContent = almPct + '%';
+        if($('dashTotalEmpleados')) $('dashTotalEmpleados').textContent = empCache.length;
+        if($('tasaAlmuerzoPlanta')) $('tasaAlmuerzoPlanta').textContent = almPct + '%';
 
-        let puntMap = {}, tardMap = {};
+        let puntMap = {}, tardMap = {}, sinSalidaMap = {};
         empCache.forEach(e => {
           let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= hoy_);
-          let tardE = 0, nE = 0;
+          let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= hoy_);
+          
+          let entradasPorDia = {};
           entradas.forEach(r => {
-            let m = obtenerMinutos(r.hora);
-            if (m === null) return;
-            nE++;
-            if (m > HORA_ENTRADA_REF) tardE++;
+            if (!entradasPorDia[r.fecha]) entradasPorDia[r.fecha] = [];
+            entradasPorDia[r.fecha].push(r);
           });
-          if (nE > 0) puntMap[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id };
-          if (tardE > 0) tardMap[e.id] = { nombre: e.nombre, area: e.area, tardanzas: tardE, id: e.id };
+
+          let tardE = 0, nE = 0, faltasS = 0;
+          
+          Object.keys(entradasPorDia).forEach(fecha => {
+            let regs = entradasPorDia[fecha];
+            // Tomar la primera entrada del día
+            regs.sort((a, b) => obtenerMinutos(a.hora) - obtenerMinutos(b.hora));
+            let firstE = regs[0];
+            
+            let m = obtenerMinutos(firstE.hora);
+            if (m !== null) {
+              nE++;
+              if (m > HORA_ENTRADA_REF) tardE++;
+            }
+            
+            // Exceptuar el día de hoy ya que aún no termina
+            if (fecha !== hoy_) {
+              let tieneSalida = salidas.some(s => s.fecha === fecha);
+              if (!tieneSalida) faltasS++;
+            }
+          });
+
+          if (nE > 0) puntMap[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE };
+          if (tardE > 0) tardMap[e.id] = { nombre: e.nombre, area: e.area, tardanzas: tardE, id: e.id, asist: nE };
+          if (faltasS > 0) sinSalidaMap[e.id] = { nombre: e.nombre, area: e.area, faltasSalida: faltasS, id: e.id };
         });
-        let topP = Object.values(puntMap).sort((a, b) => b.p - a.p).slice(0, 5);
-        $('topPuntuales').innerHTML = topP.length ? topP.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value">${e.p}%</div></div>`).join('') : '<div class="empty-state">Sin datos</div>';
-        let topTard = Object.values(tardMap).sort((a, b) => b.tardanzas - a.tardanzas).slice(0, 5);
-        $('topTardanzasRanking').innerHTML = topTard.length ? topTard.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value">${e.tardanzas} tard.</div></div>`).join('') : '<div class="empty-state">Sin tardanzas</div>';
+
+        let topP = Object.values(puntMap).sort((a, b) => {
+          if (b.p !== a.p) return b.p - a.p;
+          return b.asist - a.asist; // Desempate: mayor asistencia
+        }).slice(0, 10);
+        if($('topPuntuales')) $('topPuntuales').innerHTML = topP.length ? topP.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--g400);font-weight:600;margin-bottom:-2px">${e.asist} asist.</span><span>${e.p}%</span></div></div>`).join('') : '<div class="empty-state">Sin datos</div>';
+        
+        let topTard = Object.values(tardMap).sort((a, b) => {
+          if (b.tardanzas !== a.tardanzas) return b.tardanzas - a.tardanzas;
+          return b.asist - a.asist; // Desempate: mayor asistencia
+        }).slice(0, 10);
+        if($('topTardanzasRanking')) $('topTardanzasRanking').innerHTML = topTard.length ? topTard.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--g400);font-weight:600;margin-bottom:-2px">en ${e.asist} asis.</span><span>${e.tardanzas} tard.</span></div></div>`).join('') : '<div class="empty-state">Sin tardanzas</div>';
+        
+        let sinSList = Object.values(sinSalidaMap).sort((a, b) => b.faltasSalida - a.faltasSalida).slice(0, 10);
+        if ($('sinSalidaRanking')) {
+          $('sinSalidaRanking').innerHTML = sinSList.length ? sinSList.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="color:var(--purple);font-weight:700;display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--purple-lt);font-weight:600;margin-bottom:-2px">faltas</span><span>${e.faltasSalida} sin salida</span></div></div>`).join('') : '<div class="empty-state">Todos han registrado su salida</div>';
+        }
 
         let sumDiaria = 0, diasExc = 0;
         let cntDia = {};
@@ -403,8 +447,8 @@
           if (calcularPct(c, empCache.length) >= 90) diasExc++;
         });
         let promDia = diasHab.length ? Math.round(sumDiaria / diasHab.length) : 0;
-        $('promedioDiario').textContent = promDia;
-        $('diasExcelente').textContent = diasExc;
+        if($('promedioDiario')) $('promedioDiario').textContent = promDia;
+        if($('diasExcelente')) $('diasExcelente').textContent = diasExc;
 
         // Horas extra: solo autorizadas, dentro del período
         let extraTotal = 0;
@@ -414,7 +458,10 @@
             if (m !== null && m - HORA_SALIDA_REF > 1) extraTotal += m - HORA_SALIDA_REF;
           });
         });
-        $('horasExtraTotal').textContent = formatearMinutos(extraTotal);
+        if($('horasExtraTotal')) $('horasExtraTotal').textContent = formatearMinutos(extraTotal);
+
+        cargarResumenMensual();
+        cargarAnalisisTardanzas();
       }
     }
 
@@ -482,6 +529,7 @@
       let ausentes = total - pres;
       let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > HORA_ENTRADA_REF; }).length;
       let salieron = empCache.filter(e => e.salidaHoy).length;
+      let sinSalida = pres - salieron;
       let almPlanta = empCache.filter(e => e.entradaHoy && e.almuerzoHoy === 'SI').length;
       let almFuera = empCache.filter(e => e.entradaHoy && e.almuerzoHoy === 'NO').length;
 
@@ -490,6 +538,7 @@
       $('asisAusentes').textContent = ausentes;
       $('asisTardanzas').textContent = tards;
       $('asisSalieron').textContent = salieron;
+      if ($('asisSinSalida')) $('asisSinSalida').textContent = sinSalida;
       $('asisAlmuerzoPlanta').textContent = almPlanta;
       $('asisAlmuerzoFuera').textContent = almFuera;
 
@@ -648,6 +697,7 @@
         if (filtroAsistenciaActual === 'almuerzo_si' && e._almuerzoHoy !== 'SI') return false;
         if (filtroAsistenciaActual === 'almuerzo_no' && e._almuerzoHoy !== 'NO') return false;
         if (filtroAsistenciaActual === 'salieron' && !e._salidaHoy) return false;
+        if (filtroAsistenciaActual === 'sin_salida' && (!e._entradaHoy || e._salidaHoy)) return false;
         return true;
       });
       // Mantener orden alfabético
@@ -987,13 +1037,12 @@
         wrap.addEventListener('mousemove', e => { if (!isDown) return; e.preventDefault(); const x = e.pageX - wrap.offsetLeft; wrap.scrollLeft = scrollLeft - (x - startX); });
       }
     }
-
     function volverAAsistencia() { cambiarPanel('asistencia'); cargarAsistencia(); }
 
     // ============================================================
     // DETALLE
     // ============================================================
-    function mostrarDetalle(id) {
+    function mostrarDetalle(id, indexPeriodo = 0) {
       const ADMIN_ID = "1058";
       let sessionData = {};
       try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
@@ -1005,11 +1054,14 @@
 
       let e = empCache.find(x => x.id === id);
       if (!e) return;
-      // Filtrar registros al período en curso (26 del mes anterior al 25 del mes actual)
-      const periodoCurso = periodos[0];
-      const periodoCursoLabel = periodoCurso ? periodoCurso.label.replace('⭐ ', '') : '';
-      // Usamos TODOS los registros para el historial (sin límite de 30)
-      let regs = [...(e.registros || [])].sort((a, b) => b.fecha.localeCompare(a.fecha));
+      
+      // Obtener el período seleccionado o el actual por defecto
+      let periodoSeleccionado = periodos[indexPeriodo] || periodos[0];
+      
+      // Filtrar registros al período seleccionado
+      let todosRegs = e.registros || [];
+      let regs = todosRegs.filter(r => r.fecha >= periodoSeleccionado.inicio && r.fecha <= periodoSeleccionado.fin)
+                          .sort((a, b) => b.fecha.localeCompare(a.fecha));
 
       let entT = regs.filter(r => r.tipo === 'ENTRADA').length;
       let salT = regs.filter(r => r.tipo === 'SALIDA').length;
@@ -1076,12 +1128,12 @@
         tSegs += minutosDia * 60;
       });
 
-      // Mostrar todos los días del período en curso (no solo 30)
+      // Mostrar todos los días del período
       let filas = fechasOrdenadas.map(f => {
         let d = porDia[f];
         let regsDia = d.registros;
 
-        let periodos = [];
+        let periodosDia = [];
         let entradaPendiente = null;
         let minutosPermisoHoy = 0;
         let ultimoSalidaMins = null;
@@ -1096,18 +1148,18 @@
             entradaPendiente = r;
           } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
             if (entradaPendiente) {
-              periodos.push({ entrada: entradaPendiente, salida: r });
+              periodosDia.push({ entrada: entradaPendiente, salida: r });
               ultimoSalidaMins = obtenerMinutos(r.hora);
               entradaPendiente = null;
             } else {
-              periodos.push({ entrada: null, salida: r });
+              periodosDia.push({ entrada: null, salida: r });
             }
           }
         });
-        if (entradaPendiente) periodos.push({ entrada: entradaPendiente, salida: null });
+        if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
 
         // Mostrar todos los tramos de horas con capacidad de edición y borrado para Admin
-        let horaE = periodos.map(p => {
+        let horaE = periodosDia.map(p => {
           const valor = p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--';
           if (esAdminMaster && p.entrada) {
             return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
@@ -1118,7 +1170,7 @@
           return valor;
         }).join('<br>');
 
-        let horaS = periodos.map(p => {
+        let horaS = periodosDia.map(p => {
           const valor = p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--';
           if (esAdminMaster && p.salida) {
             return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
@@ -1183,7 +1235,7 @@
         let esFestivo = esFeriadoODomingo(f);
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
 
-        periodos.forEach(p => {
+        periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
           let mE = obtenerMinutos(p.entrada.hora);
           let mS = obtenerMinutos(p.salida.hora);
@@ -1244,35 +1296,71 @@
       let tpH = Math.floor(tPermisoSegs / 3600) || 0,
         tpM = Math.floor((tPermisoSegs % 3600) / 60) || 0;
 
+      let optionsPeriodos = periodos.map((p, i) => `<option value="${i}" ${i === indexPeriodo ? 'selected' : ''}>${p.label}</option>`).join('');
+
       $('detalleContent').innerHTML = `
     <div class="detail-view">
-      <div class="detail-header">
-        ${photoCell(e, 'large')}
-        <div class="detail-info">
-          <div class="detail-name" ${esAdminMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')"` : ''}>${escapeHtml(e.nombre)}</div>
-          <div class="detail-meta">
-            <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')"` : ''}><i class="fas fa-id-card"></i> ${escapeHtml(e.id)}</span>
-            <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')"` : ''}><i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}</span>
-            ${tardT > 0 ? `<span style="color:var(--amber)"><i class="fas fa-clock"></i> ${tardT} tard.</span>` : '<span style="color:var(--green)"><i class="fas fa-check-circle"></i> Puntual</span>'}
-          </div>
-          <div class="detail-stats">
-            <div class="detail-stat"><div class="detail-stat-value">${dias}</div><div class="kpi-label">Días</div></div>
-            <div class="detail-stat"><div class="detail-stat-value">${entT}</div><div class="kpi-label">Entradas</div></div>
-            <div class="detail-stat"><div class="detail-stat-value">${salT}</div><div class="kpi-label">Salidas</div></div>
-            <div class="detail-stat"><div class="detail-stat-value">${almP}</div><div class="kpi-label">Alm.Planta</div></div>
+      <div class="detail-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+        <div style="display:flex; gap:16px; align-items:center;">
+          ${photoCell(e, 'large')}
+          <div class="detail-info">
+            <div class="detail-name" ${esAdminMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')"` : ''}>${escapeHtml(e.nombre)}</div>
+            <div class="detail-meta">
+              <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')"` : ''}><i class="fas fa-id-card"></i> ${escapeHtml(e.id)}</span>
+              <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')"` : ''}><i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}</span>
+              ${tardT > 0 ? `<span class="pill late" style="margin-left:8px"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` : '<span class="pill ok" style="margin-left:8px"><i class="fas fa-check-circle"></i> Puntual</span>'}
+            </div>
           </div>
         </div>
+        <div class="periodo-selector" style="background:var(--white); padding:8px 16px; border-radius:8px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <label style="font-size:12px; font-weight:600; color:var(--g600); margin-right:8px;"><i class="fas fa-calendar-alt"></i> Período:</label>
+          <select id="filtroPeriodoDetalle" class="filter-select" onchange="mostrarDetalle('${e.id}', parseInt(this.value))" style="font-size:13px; font-weight:500;">
+            ${optionsPeriodos}
+          </select>
+        </div>
       </div>
+      
       <div style="padding:var(--pad);background:var(--g50);border-bottom:1px solid var(--g200)">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center">
-          <div><div class="kpi-label"><i class="fas fa-hourglass-start"></i> Promedio entrada</div><div class="detail-stat-value" style="font-size:var(--fxl)">${minsToHHMM(pE)}</div></div>
-          <div><div class="kpi-label"><i class="fas fa-hourglass-end"></i> Promedio salida</div><div class="detail-stat-value" style="font-size:var(--fxl)">${minsToHHMM(pS)}</div></div>
-          <div><div class="kpi-label"><i class="fas fa-chart-line"></i> Horas totales</div><div class="detail-stat-value" style="font-size:var(--fxl); color:var(--green)">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}:${String(thS).padStart(2, '0')}</div></div>
-          <div><div class="kpi-label"><i class="fas fa-user-clock"></i> Horas Permiso</div><div class="detail-stat-value" style="font-size:var(--fxl); color:var(--indigo)">${String(tpH).padStart(2, '0')}:${String(tpM).padStart(2, '0')}</div></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:12px;">
+            <div class="kpi-card" style="--card-color:var(--blue); padding:12px; display:flex; flex-direction:column; justify-content:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-calendar-check"></i> Días Trabajados</div>
+              <div class="detail-stat-value" style="font-size:var(--fxl)">${dias}</div>
+            </div>
+            <div class="kpi-card" style="--card-color:var(--green); padding:12px; display:flex; flex-direction:column; justify-content:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-sign-in-alt"></i> Total Entradas</div>
+              <div class="detail-stat-value" style="font-size:var(--fxl)">${entT}</div>
+            </div>
+            <div class="kpi-card" style="--card-color:var(--amber); padding:12px; display:flex; flex-direction:column; justify-content:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-sign-out-alt"></i> Total Salidas</div>
+              <div class="detail-stat-value" style="font-size:var(--fxl)">${salT}</div>
+            </div>
+            <div class="kpi-card" style="--card-color:var(--purple); padding:12px; display:flex; flex-direction:column; justify-content:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-utensils"></i> Alm. en Planta</div>
+              <div class="detail-stat-value" style="font-size:var(--fxl)">${almP}</div>
+            </div>
+            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-hourglass-start"></i> Prom. entrada</div>
+              <div class="detail-stat-value" style="font-size:var(--flg); margin-top:4px;">${minsToHHMM(pE)}</div>
+            </div>
+            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-hourglass-end"></i> Prom. salida</div>
+              <div class="detail-stat-value" style="font-size:var(--flg); margin-top:4px;">${minsToHHMM(pS)}</div>
+            </div>
+            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-chart-line"></i> Horas totales</div>
+              <div class="detail-stat-value" style="font-size:var(--flg); color:var(--green); margin-top:4px;">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}:${String(thS).padStart(2, '0')}</div>
+            </div>
+            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
+              <div class="kpi-label" style="font-size:11px"><i class="fas fa-user-clock"></i> Horas Permiso</div>
+              <div class="detail-stat-value" style="font-size:var(--flg); color:var(--indigo); margin-top:4px;">${String(tpH).padStart(2, '0')}:${String(tpM).padStart(2, '0')}</div>
+            </div>
         </div>
       </div>
       <div style="padding:var(--pad)">
-        <div class="metric-title" style="margin-bottom:12px"><i class="fas fa-history"></i> Historial — Período: <span style="color:var(--red);font-weight:400;font-size:var(--fxs)">${periodoCursoLabel}</span></div>
+        <div class="metric-title" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <span><i class="fas fa-history"></i> Historial del período</span>
+          <span style="color:var(--indigo);font-weight:600;font-size:13px;background:#e0e7ff;padding:4px 10px;border-radius:12px;">${periodoSeleccionado ? periodoSeleccionado.label : ''}</span>
+        </div>
         <div class="table-wrapper">
           <div class="table-scroll-wrap">
             <table class="employee-table table-compact">

@@ -100,6 +100,15 @@
         </div>
 
         <div class="metricas-row">
+          <div class="metric-card" style="flex:1">
+            <div class="metric-title"><i class="fas fa-user-clock"></i> Sin Salida en el Período</div>
+            <div id="sinSalidaRanking" class="ranking-list" style="max-height: 250px; overflow-y: auto;">
+              <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="metricas-row">
           <div class="metric-card">
             <div class="metric-title"><i class="fas fa-chart-pie"></i> Asistencia hoy</div>
             <div id="donutContainer" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
@@ -343,6 +352,16 @@
             </div>
             <div class="kpi-sub">con salida registrada</div>
           </div>
+          <div class="kpi-card" style="--card-color:var(--purple)" onclick="setFiltroAsistencia('sin_salida')">
+            <div class="kpi-header">
+              <div class="kpi-icon purple"><i class="fas fa-user-clock"></i></div>
+              <div>
+                <div class="kpi-value" id="asisSinSalida">--</div>
+                <div class="kpi-label">Falta salida</div>
+              </div>
+            </div>
+            <div class="kpi-sub">presentes sin salida</div>
+          </div>
         </div>
 
         <div class="search-box" style="display:flex; gap:12px; align-items:center;">
@@ -497,7 +516,7 @@
     </div>
   </div>
 
-  <script src="./JS/supervisor_core.js"></script>
+  <script src="./JS/supervisor_core.js?v=202605223"></script>
 </body>
 
 </html>

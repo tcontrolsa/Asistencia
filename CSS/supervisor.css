@@ -864,23 +864,23 @@
     }
 
     .detail-photo {
-      width: 70px;
-      height: 70px;
+      width: 105px;
+      height: 105px;
       border-radius: 50%;
       object-fit: cover;
       border: 3px solid white
     }
 
     .detail-photo-placeholder {
-      width: 70px;
-      height: 70px;
+      width: 105px;
+      height: 105px;
       border-radius: 50%;
       background: linear-gradient(135deg, var(--red), var(--red-dk));
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
-      font-size: 28px;
+      font-size: 42px;
       font-weight: 700
     }
 
