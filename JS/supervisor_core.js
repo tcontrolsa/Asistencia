@@ -125,7 +125,7 @@
         '1/1',   // Año Nuevo
         '4/30',  // Feriado decretado
         '5/1',   // Día del Trabajo
-        '5/24',  // Batalla del Pichincha
+        '5/25',  // Batalla del Pichincha
         '8/10',  // Primer Grito de Independencia
         '10/9',  // Independencia de Guayaquil
         '11/2',  // Día de los Difuntos
