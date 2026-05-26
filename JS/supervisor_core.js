@@ -658,6 +658,7 @@
     }
 
     async function eliminarRegistroSupervisor(docId, empleadoId, fecha, tipo) {
+      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       if (!confirm('¿Está seguro de eliminar este registro permanentemente?')) return;
       mostrarLoader(true);
       try {
@@ -1482,6 +1483,7 @@
     }
 
     async function eliminarRegistroSupervisor(docId, empleadoId, fecha, tipo) {
+      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       if (!confirm('¿Estás seguro de eliminar este registro permanentemente?')) return;
 
       mostrarLoader(true);
@@ -1533,6 +1535,7 @@
     // ARCHIVADO A GOOGLE SHEETS
     // ============================================================
     async function iniciarArchivadoFirebase() {
+      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       mostrarLoader(true);
       let infoDias = "No se pudo determinar el registro más antiguo.";
       let diasSugeridos = 60;
@@ -1688,11 +1691,15 @@
     }
 
     async function guardarRegistroManual() {
+      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       const eid = $('manEmpleadoId').value;
       const fecha = $('manFecha').value;
       const tipo = $('manTipo').value;
       const hora = $('manHora').value;
       const modo = $('manModo').value;
+      const almuerzo = $('manAlmuerzo').value;
+      const horasExtra = $('manHorasExtra').value;
+      const observacion = $('manObservacion').value;
 
       if (!fecha || !hora) { mostrarToast('Complete fecha y hora', 'error'); return; }
 
@@ -1706,7 +1713,10 @@
           fecha: fecha,
           campo: 'hora',
           valor: hora,
-          modo: modo
+          modo: modo,
+          almuerzo: almuerzo,
+          horasExtra: horasExtra,
+          observacion: observacion
         });
 
         if (res.ok) {
@@ -1728,6 +1738,7 @@
 
     // --- FUNCIONES DE EDICIÓN ADMIN ---
     async function editarValorRegistro(empleadoId, tipo, docId, campo, valorActual, fecha) {
+      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       let nuevo = prompt(`Editar ${campo} para ${tipo} (${fecha || 'Hoy'}):`, valorActual);
       if (nuevo === null || nuevo === valorActual) return;
 
@@ -1759,6 +1770,7 @@
     }
 
     async function editarMetaEmpleado(empleadoId, campo, valorActual) {
+      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       let nuevo = prompt(`Editar ${campo} del empleado:`, valorActual);
       if (nuevo === null || nuevo === valorActual) return;
 
@@ -1786,6 +1798,7 @@
     }
 
     function mostrarModalMasivo() {
+      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       const modal = $('masivoModal');
       $('masFecha').value = hoy;
       modal.classList.remove('hidden');

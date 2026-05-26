@@ -818,6 +818,7 @@ window.FirebaseBackend = {
         if (docId) {
             const updateData = {};
             updateData[campo] = valor;
+            updateData.timestamp = typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB');
             await db.collection('registros').doc(docId).update(updateData);
             return { ok: true };
         } else if (empleadoId && campo === 'hora') {
@@ -835,7 +836,11 @@ window.FirebaseBackend = {
                         fecha: fecha,
                         tipo: tipo,
                         campo: campo,
-                        valor: valor
+                        valor: valor,
+                        almuerzo: params.almuerzo,
+                        modo: params.modo,
+                        horasExtra: params.horasExtra,
+                        observacion: params.observacion
                     });
                 } catch (e) { return { error: "Error de conexión con Sheets: " + e.message }; }
             }
@@ -851,10 +856,11 @@ window.FirebaseBackend = {
                 fecha: fecha,
                 tipo: tipo,
                 hora: valor,
-                almuerzo: "NO",
-                modo: "OFICINA",
-                horasExtra: "NO",
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                almuerzo: params.almuerzo || "NO",
+                modo: params.modo || "OFICINA",
+                horasExtra: params.horasExtra || "NO",
+                observacion: params.observacion || "",
+                timestamp: typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB')
             });
             return { ok: true };
         }
