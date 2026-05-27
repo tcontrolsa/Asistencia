@@ -1,5 +1,12 @@
-// ========== CONFIGURACIÓN ==========
-        const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+// ========== CONFIGURACIÓN GLOBAL ==========
+        const CONFIG = window.TCONTROL_CONFIG || {
+            API_URL: 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec',
+            HORA_LIMITE_ALMUERZO: "09:30",
+            HORA_INICIO_ESPERADA: "07:30",
+            HORA_ENTRADA_LIMITE: "07:45",
+            HORA_SALIDA: "16:15"
+        };
+        const API_URL = CONFIG.API_URL;
 
         // ========== FUNCIONES DE UI ==========
         function showLoading(show) {
@@ -126,11 +133,11 @@
 
                 // Cargar horarios
                 if (res.horarios) {
-                    document.getElementById('configHoraInicio').value = res.horarios.hora_inicio || '08:00';
-                    document.getElementById('configHoraFin').value = res.horarios.hora_fin || '16:15';
-                    document.getElementById('configHoraAlmuerzo').value = res.horarios.hora_almuerzo || '09:30';
-                    document.getElementById('configHoraEntradaLimite').value = res.horarios.hora_entrada_limite || '08:15';
-                    document.getElementById('configHoraSalida').value = res.horarios.hora_salida || '16:15';
+                    document.getElementById('configHoraInicio').value = res.horarios.hora_inicio || CONFIG.HORA_INICIO_ESPERADA;
+                    document.getElementById('configHoraFin').value = res.horarios.hora_fin || CONFIG.HORA_SALIDA;
+                    document.getElementById('configHoraAlmuerzo').value = res.horarios.hora_almuerzo || CONFIG.HORA_LIMITE_ALMUERZO;
+                    document.getElementById('configHoraEntradaLimite').value = res.horarios.hora_entrada_limite || CONFIG.HORA_ENTRADA_LIMITE;
+                    document.getElementById('configHoraSalida').value = res.horarios.hora_salida || CONFIG.HORA_SALIDA;
                     document.getElementById('configAlmuerzoActivo').checked = res.horarios.almuerzo_activo !== false;
                     document.getElementById('configMarcacionAutomatica').checked = res.horarios.marcacion_automatica || false;
                     document.getElementById('configTiempoAutomatico').value = res.horarios.tiempo_automatico || 10;
@@ -140,11 +147,11 @@
                     if (divAuto) divAuto.style.display = res.horarios.marcacion_automatica ? 'block' : 'none';
                 } else {
                     // Valores por defecto
-                    document.getElementById('configHoraInicio').value = '08:00';
-                    document.getElementById('configHoraFin').value = '16:15';
-                    document.getElementById('configHoraAlmuerzo').value = '09:30';
-                    document.getElementById('configHoraEntradaLimite').value = '08:15';
-                    document.getElementById('configHoraSalida').value = '16:15';
+                    document.getElementById('configHoraInicio').value = CONFIG.HORA_INICIO_ESPERADA;
+                    document.getElementById('configHoraFin').value = CONFIG.HORA_SALIDA;
+                    document.getElementById('configHoraAlmuerzo').value = CONFIG.HORA_LIMITE_ALMUERZO;
+                    document.getElementById('configHoraEntradaLimite').value = CONFIG.HORA_ENTRADA_LIMITE;
+                    document.getElementById('configHoraSalida').value = CONFIG.HORA_SALIDA;
                     document.getElementById('configAlmuerzoActivo').checked = true;
                     document.getElementById('configMarcacionAutomatica').checked = false;
                     document.getElementById('configTiempoAutomatico').value = 10;

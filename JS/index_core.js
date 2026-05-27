@@ -1,18 +1,31 @@
-// ========== CONFIGURACIÓN ==========
-        const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+// ========== CONFIGURACIÓN GLOBAL ==========
+        const CONFIG = window.TCONTROL_CONFIG || {
+            API_URL: 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec',
+            ADMIN_ID: "1058",
+            LAT_EMPRESA: -0.1288771313385675,
+            LNG_EMPRESA: -78.47896772889067,
+            RADIO_METROS: 250,
+            HORA_LIMITE_ALMUERZO: "09:30",
+            HORA_INICIO_ESPERADA: "07:30",
+            HORA_ENTRADA_LIMITE: "07:45",
+            HORA_SALIDA: "16:15",
+            ALMUERZO_ACTIVO: true,
+            WHATSAPP_NUMBER: "593996356114",
+            WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
+        };
 
-        let LAT_EMPRESA = -0.1288771313385675;
-        let LNG_EMPRESA = -78.47896772889067;
-        let RADIO_METROS = 250;
-        let HORA_LIMITE_ALMUERZO = "09:30";
-        let HORA_INICIO_ESPERADA = "08:00";
-        let HORA_ENTRADA_LIMITE = "08:15";
-        let HORA_SALIDA = "16:15";
-        let ALMUERZO_ACTIVO = true;
-        let WHATSAPP_NUMBER = "593999999999";
-        let WHATSAPP_MESSAGE = "Hola, necesito soporte técnico para el sistema CONTROL 2026";
-
-        const ADMIN_ID = "1058";
+        const API_URL = CONFIG.API_URL;
+        const ADMIN_ID = CONFIG.ADMIN_ID;
+        let LAT_EMPRESA = CONFIG.LAT_EMPRESA;
+        let LNG_EMPRESA = CONFIG.LNG_EMPRESA;
+        let RADIO_METROS = CONFIG.RADIO_METROS;
+        let HORA_LIMITE_ALMUERZO = CONFIG.HORA_LIMITE_ALMUERZO;
+        let HORA_INICIO_ESPERADA = CONFIG.HORA_INICIO_ESPERADA;
+        let HORA_ENTRADA_LIMITE = CONFIG.HORA_ENTRADA_LIMITE;
+        let HORA_SALIDA = CONFIG.HORA_SALIDA;
+        let ALMUERZO_ACTIVO = CONFIG.ALMUERZO_ACTIVO;
+        let WHATSAPP_NUMBER = CONFIG.WHATSAPP_NUMBER;
+        let WHATSAPP_MESSAGE = CONFIG.WHATSAPP_MESSAGE;
 
 
         // ========== VARIABLES GLOBALES ==========
@@ -118,10 +131,10 @@
                         RADIO_METROS = res.ubicacion.radio || RADIO_METROS;
                     }
                     if (res.horarios) {
-                        HORA_LIMITE_ALMUERZO = res.horarios.hora_almuerzo || "09:30";
-                        HORA_INICIO_ESPERADA = res.horarios.hora_inicio || "08:00";
-                        HORA_ENTRADA_LIMITE = res.horarios.hora_entrada_limite || "08:15";
-                        HORA_SALIDA = res.horarios.hora_salida || "16:15";
+                        HORA_LIMITE_ALMUERZO = res.horarios.hora_almuerzo || CONFIG.HORA_LIMITE_ALMUERZO;
+                        HORA_INICIO_ESPERADA = res.horarios.hora_inicio || CONFIG.HORA_INICIO_ESPERADA;
+                        HORA_ENTRADA_LIMITE = res.horarios.hora_entrada_limite || CONFIG.HORA_ENTRADA_LIMITE;
+                        HORA_SALIDA = res.horarios.hora_salida || CONFIG.HORA_SALIDA;
                         ALMUERZO_ACTIVO = res.horarios.almuerzo_activo !== false;
                     }
                     if (res.otras) {
@@ -615,7 +628,7 @@
 
         function obtenerHoraSalidaConfigrada() {
             // Usar variable global HORA_SALIDA si existe, sino del localStorage, sino default
-            return HORA_SALIDA || localStorage.getItem('HORA_SALIDA') || '16:15';
+            return HORA_SALIDA || localStorage.getItem('HORA_SALIDA') || CONFIG.HORA_SALIDA;
         }
 
         function esAntesDeSalida(horaSalida) {
@@ -770,6 +783,30 @@
 
         async function procederConRegistro() {
             if (!verificarDistanciaEmpresa()) return;
+
+            // Advertencia para marcación sospechosa (Entrada muy reciente y marcando Salida)
+            if (empleado.tipoRegistro === 'SALIDA' && Array.isArray(registrosCompletos)) {
+                const hoyStr = new Date().toISOString().split('T')[0];
+                const entradaHoy = registrosCompletos.find(r => r.fecha === hoyStr && r.tipo === 'ENTRADA');
+                if (entradaHoy) {
+                    const tsEntrada = entradaHoy.timestamp || entradaHoy.hora;
+                    const dEntrada = parseDateSafe(tsEntrada);
+                    if (dEntrada) {
+                        const diferenciaMinutos = (new Date() - dEntrada) / (1000 * 60);
+                        if (diferenciaMinutos < 15) {
+                            const confirmarSalidaSospechosa = confirm(
+                                "🚨 ADVERTENCIA IMPORTANTE:\n\n" +
+                                "Has registrado tu ENTRADA hace menos de 15 minutos.\n" +
+                                "Si olvidaste marcar tu Entrada por la mañana, marcar la Salida ahora causará que tu jornada sea calculada en SEGUNDOS.\n\n" +
+                                "¿Deseas continuar de todas formas? Debes comunicar este olvido al área respectiva de inmediato para su corrección."
+                            );
+                            if (!confirmarSalidaSospechosa) {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
 
             showLoading(true);
 
@@ -2855,8 +2892,6 @@
                 return '--';
             }
         }
-
-        // ========== RENDER PROFILE (PERFIL) ==========
         function renderProfilePage() {
             const mainContent = document.getElementById('mainContent');
             const totalDias = new Set(registrosCompletos.map(r => r.fecha)).size;
@@ -2873,57 +2908,83 @@
             const diasTrabajadosMes = new Set(registrosMes.map(r => r.fecha)).size;
 
             mainContent.innerHTML = `
-            <div class="page">
-                <div class="glass-card text-center">
-                    <div class="photo-container-premium d-inline-block" onclick="showPhotoModal('${empleado.foto_url || ''}')">
-                        ${empleado.foto_url && empleado.foto_url.trim() ?
-                    `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto" style="border-radius: 50%; width: min(100px, 25vw); height: min(100px, 25vw);">` :
-                    `<div class="employee-photo-placeholder-profesional" style="border-radius: 50%; width: min(100px, 25vw); height: min(100px, 25vw); display: inline-flex;">👤</div>`
-                }
-                    </div>
-                    <h3 class="fw-bold mt-3" style="font-size: clamp(18px, 5vw, 22px);">${empleado.nombre || 'Empleado'}</h3>
-                    <p class="text-primary fw-bold mb-1" style="font-size: clamp(14px, 4vw, 16px);">${empleado.cargo || 'Sin Cargo'}</p>
-                    <p class="text-muted small" style="font-size: clamp(11px, 3.2vw, 13px);">${empleado.area || 'Área'}</p>
-                    <div class="d-flex justify-content-center gap-2 mt-2 flex-wrap">
-                        <span class="badge bg-secondary" style="font-size: clamp(10px, 3vw, 12px);"><i class="fas fa-id-card"></i> ID: ${empleado.id || '-'}</span>
-                        ${estado.esSupervisor ? '<span class="badge bg-info text-white" style="font-size: clamp(10px, 3vw, 12px);"><i class="fas fa-chart-line"></i> Supervisor</span>' : ''}
-                    </div>
-                </div>
-                
-                <div class="glass-card mt-3">
-                    <h5 class="fw-bold mb-3" style="font-size: clamp(14px, 4.5vw, 16px);"><i class="fas fa-info-circle"></i> Información del dispositivo</h5>
-                    <div class="small text-muted mb-2" style="font-size: clamp(10px, 3vw, 12px);">
-                        <i class="fas fa-mobile-alt me-1"></i> Token: <span class="font-monospace">${deviceToken || '--'}</span>
-                    </div>
-                    <div class="small text-muted" style="font-size: clamp(10px, 3vw, 12px);">
-                        <i class="fas fa-map-marker-alt me-1"></i> Ubicación: ${gpsActivo && posicion.lat ? `${posicion.lat.toFixed(6)}, ${posicion.lng.toFixed(6)}` : 'No disponible'}
-                    </div>
-                </div>
-                
-                <div class="glass-card mt-3">
-                    <h5 class="fw-bold mb-3" style="font-size: clamp(14px, 4.5vw, 16px);"><i class="fas fa-cog"></i> Configuración</h5>
+            <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
+                <!-- Tarjeta Principal de Perfil Premium -->
+                <div class="glass-card text-center" style="background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.85) 100%); border-radius: 24px; padding: 30px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); border: 1px solid rgba(255, 255, 255, 0.7); position: relative; overflow: hidden;">
+                    <!-- Decoración estética de fondo -->
+                    <div style="position: absolute; top: -50px; right: -50px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(220,38,38,0.08) 0%, transparent 70%); pointer-events: none;"></div>
                     
+                    <div class="photo-container-premium d-inline-block" onclick="showPhotoModal('${empleado.foto_url || ''}')" style="position: relative; border-radius: 50%; padding: 4px; background: linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%); box-shadow: 0 10px 28px rgba(220,38,38,0.2); cursor: pointer; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); display: inline-block;">
+                        ${empleado.foto_url && empleado.foto_url.trim() ?
+                            `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto" style="border-radius: 50%; width: 110px; height: 110px; object-fit: cover; border: 4px solid white;">` :
+                            `<div class="employee-photo-placeholder-profesional" style="border-radius: 50%; width: 110px; height: 110px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%); font-size: 40px; border: 4px solid white; color: #475569;">👤</div>`
+                        }
+                    </div>
+                    
+                    <h3 class="fw-bold mt-3 mb-1" style="font-size: 22px; color: #0f172a; letter-spacing: -0.5px;">${empleado.nombre || 'Empleado'}</h3>
+                    <p class="text-primary fw-bold mb-0" style="font-size: 14px; color: var(--primary); letter-spacing: 0.8px; text-transform: uppercase;">${empleado.cargo || 'Sin Cargo'}</p>
+                    <p class="text-muted small mb-2" style="font-size: 12px; font-weight: 500; background: rgba(100,116,139,0.06); display: inline-block; padding: 3px 12px; border-radius: 20px; margin-top: 5px;">Área: ${empleado.area || 'Área'}</p>
+                    
+                    <div class="d-flex justify-content-center gap-2 mt-2 flex-wrap">
+                        <span class="badge" style="background: rgba(15, 23, 42, 0.05); color: #1e293b; font-size: 11.5px; padding: 6px 12px; border-radius: 8px; font-weight: 600; border: 1px solid rgba(15,23,42,0.05);"><i class="fas fa-id-card me-1" style="color: #64748b;"></i> ID: ${empleado.id || '-'}</span>
+                        ${estado.esSupervisor ? '<span class="badge" style="background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(37,99,235,0.15)); color: #1d4ed8; font-size: 11.5px; padding: 6px 12px; border-radius: 8px; font-weight: 700; border: 1px solid rgba(37,99,235,0.1);"><i class="fas fa-crown me-1" style="color: #3b82f6;"></i> Supervisor</span>' : ''}
+                    </div>
 
-                    <button class="btn btn-outline-primary w-100 mb-2" onclick="toggleFirebase()" style="font-size: clamp(12px, 3.8vw, 14px); padding: clamp(10px, 3.5vw, 12px);">
-                        <i class="fas fa-bolt"></i> ${window.USE_FIREBASE ? 'Desactivar' : 'Activar'} Firebase
-                    </button>
-
-                    <button class="btn btn-outline-danger w-100 mb-2" onclick="cerrarSesion()" style="font-size: clamp(12px, 3.8vw, 14px); padding: clamp(10px, 3.5vw, 12px);">
-                        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
-                    </button>
-                    <button class="btn btn-outline-secondary w-100 mb-2" onclick="location.reload()" style="font-size: clamp(12px, 3.8vw, 14px); padding: clamp(10px, 3.5vw, 12px);">
-                        <i class="fas fa-sync-alt"></i> Actualizar Datos
-                    </button>
-                    <button class="btn btn-outline-primary w-100" onclick="verificarDistanciaEmpresa()" style="font-size: clamp(12px, 3.8vw, 14px); padding: clamp(10px, 3.5vw, 12px);">
-                        <i class="fas fa-map-marker-alt"></i> Verificar ubicación actual
-                    </button>
+                    <!-- Estadísticas de Asistencia Recientes -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px dashed rgba(148,163,184,0.3);">
+                        <div style="text-align: center; background: rgba(22,163,74,0.04); padding: 10px 5px; border-radius: 12px; border: 1px solid rgba(22,163,74,0.06);">
+                            <div style="font-size: 20px; font-weight: 800; color: #16a34a; line-height: 1;">${totalEntradas}</div>
+                            <div style="font-size: 9.5px; color: #16a34a; font-weight: 700; text-transform: uppercase; margin-top: 6px; letter-spacing: 0.3px;">Entradas</div>
+                        </div>
+                        <div style="text-align: center; background: rgba(59,130,246,0.04); padding: 10px 5px; border-radius: 12px; border: 1px solid rgba(59,130,246,0.06);">
+                            <div style="font-size: 20px; font-weight: 800; color: #2563eb; line-height: 1;">${diasTrabajadosMes}</div>
+                            <div style="font-size: 9.5px; color: #2563eb; font-weight: 700; text-transform: uppercase; margin-top: 6px; letter-spacing: 0.3px;">Días (Mes)</div>
+                        </div>
+                        <div style="text-align: center; background: rgba(220,38,38,0.04); padding: 10px 5px; border-radius: 12px; border: 1px solid rgba(220,38,38,0.06);">
+                            <div style="font-size: 20px; font-weight: 800; color: #dc2626; line-height: 1;">${totalSalidas}</div>
+                            <div style="font-size: 9.5px; color: #dc2626; font-weight: 700; text-transform: uppercase; margin-top: 6px; letter-spacing: 0.3px;">Salidas</div>
+                        </div>
+                    </div>
                 </div>
                 
-                <div class="text-center text-muted small py-3" style="font-size: clamp(10px, 3vw, 12px);">
-                    <i class="fas fa-shield-alt"></i> CONTROL 2026 v2.0
+                <!-- Tarjeta de Información del Dispositivo -->
+                <div class="glass-card mt-3" style="padding: 20px 18px; border-radius: 20px; background: rgba(255,255,255,0.85); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(255,255,255,0.7);">
+                    <h5 class="fw-bold mb-3" style="font-size: 14.5px; color: #1e293b; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-shield-alt" style="color: #64748b;"></i> Seguridad y Conectividad</h5>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(248,250,252,0.8); padding: 10px 14px; border-radius: 10px; border: 1px solid #f1f5f9; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
+                            <span style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;"><i class="fas fa-fingerprint me-1"></i> TOKEN:</span>
+                            <span class="font-monospace" style="font-size: 11px; color: #334155; font-weight: 600; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #e2e8f0; padding: 2px 8px; border-radius: 4px;">${deviceToken || '--'}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(248,250,252,0.8); padding: 10px 14px; border-radius: 10px; border: 1px solid #f1f5f9; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
+                            <span style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;"><i class="fas fa-location-crosshairs me-1"></i> GPS:</span>
+                            <span style="font-size: 11px; color: #334155; font-weight: 700;">${gpsActivo && posicion.lat ? `<i class="fas fa-circle text-success me-1" style="font-size: 8px;"></i> ${posicion.lat.toFixed(6)}, ${posicion.lng.toFixed(6)}` : '<span style="color:#ef4444;"><i class="fas fa-triangle-exclamation me-1"></i> No disponible</span>'}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tarjeta de Acciones / Ajustes -->
+                <div class="glass-card mt-3" style="padding: 20px 18px; border-radius: 20px; background: rgba(255,255,255,0.85); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(255,255,255,0.7);">
+                    <h5 class="fw-bold mb-3" style="font-size: 14.5px; color: #1e293b; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-sliders" style="color: #64748b;"></i> Acciones y Soporte</h5>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button class="btn btn-outline-secondary w-100" onclick="location.reload()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; transition: all 0.2s; border-color: #cbd5e1; color: #334155; background: white;">
+                            <i class="fas fa-arrows-rotate" style="color: #64748b;"></i> Sincronizar Datos
+                        </button>
+                        <button class="btn btn-outline-primary w-100" onclick="verificarDistanciaEmpresa()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; transition: all 0.2s; border-color: rgba(59,130,246,0.5); color: #2563eb; background: rgba(59,130,246,0.02);">
+                            <i class="fas fa-location-dot" style="color: #3b82f6;"></i> Probar Rango de Ubicación
+                        </button>
+                        <button class="btn btn-outline-danger w-100" onclick="cerrarSesion()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; transition: all 0.2s; border-color: #fca5a5; background: #fff5f5; color: #dc2626;">
+                            <i class="fas fa-right-from-bracket"></i> Cerrar Sesión en Dispositivo
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="text-center text-muted small py-4" style="font-size: 11.5px; font-weight: 500; opacity: 0.7;">
+                    <i class="fas fa-shield-halved"></i> CONTROL 2026 v2.0
                 </div>
             </div>
-        `;
+            `;
 
             ajustarLayout();
         }
@@ -3147,16 +3208,20 @@
 
             console.log('Cargo normalizado:', cargoNormalizado);
 
-            // Búsqueda más flexible
+            // Búsqueda más flexible: Coordinador/Jefe/Supervisor de Producción/Taller o Asistente de Producción
             const esCoordinador = (
-                cargoNormalizado.includes('produccion') ||
-                cargoNormalizado.includes('taller')
-            ) && (
+                (
+                    cargoNormalizado.includes('produccion') ||
+                    cargoNormalizado.includes('taller')
+                ) && (
                     cargoNormalizado.includes('coordinador') ||
                     cargoNormalizado.includes('coodinador') ||
                     cargoNormalizado.includes('jefe') ||
                     cargoNormalizado.includes('supervisor')
-                );
+                )
+            ) || (
+                cargoNormalizado.includes('asistente') && cargoNormalizado.includes('produccion')
+            );
 
             console.log('¿Acceso a pestaña Extras?:', esCoordinador);
 
@@ -3176,16 +3241,42 @@
             ajustarLayout();
         }
 
+
+
+        let tallerEmpleadosCache = [];
+
         async function renderHorasExtrasPage() {
             const mainContent = document.getElementById('mainContent');
             mainContent.innerHTML = `
-            <div class="page">
-                <div class="glass-card">
-                    <h3 class="fw-bold mb-1" style="font-size: 22px;">Autorización Extras</h3>
-                    <p class="text-muted small">Personal del área TALLER</p>
+            <div class="page" style="padding-top: 0;">
+                <div class="glass-card" style="position: sticky; top: -16px; z-index: 100; margin-bottom: 16px; padding: 16px; border-radius: 0 0 16px 16px; border-top: none; margin-left: -16px; margin-right: -16px; margin-top: -16px; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 32px rgba(0,0,0,0.06); border-bottom: 1px solid rgba(226, 232, 240, 0.8);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <h3 class="fw-bold mb-0" style="font-size: 20px; color: #1e293b;">Autorización Extras</h3>
+                            <p class="text-muted small mb-0" style="font-size: 11px; font-weight: 500;">Área TALLER / PRODUCCIÓN</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-primary btn-sm" onclick="toggleTodosFiltrados(true)" style="border-radius: 8px; padding: 6px 12px; font-size: 11px; font-weight:600; background-color: var(--primary); border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                <i class="fas fa-check-double me-1"></i> Autorizar Filtrados
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="toggleTodosFiltrados(false)" style="border-radius: 8px; padding: 6px 12px; font-size: 11px; font-weight:600; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                <i class="fas fa-times me-1"></i> Quitar Filtrados
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <input type="text" id="buscarExtras" class="form-input" placeholder="🔍 Buscar por nombre o ID..." oninput="aplicarFiltrosExtras()" style="border-radius: 8px; font-size: 12.5px; padding: 8px 12px; width: 100%; border: 1px solid #cbd5e1; background: #ffffff;">
+                        </div>
+                        <div class="col-6">
+                            <select id="filtroCargoExtras" class="form-select" onchange="aplicarFiltrosExtras()" style="border-radius: 8px; font-size: 12.5px; padding: 8px 12px; width: 100%; border: 1px solid #cbd5e1; background: #ffffff; height: 37px;">
+                                <option value="TODOS">-- Todos los Cargos --</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
                 
-                <div id="listaTaller" class="mt-3">
+                <div id="listaTaller" class="mt-2" style="display: flex; flex-direction: column; gap: 10px; padding: 0 4px 24px 4px;">
                     <div class="text-center py-5">
                         <div class="spinner-border text-primary" role="status"></div>
                         <p class="mt-2 text-muted">Cargando personal...</p>
@@ -3213,28 +3304,155 @@
                     return;
                 }
 
-                let html = '';
-                res.empleados.sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(per => {
-                    const isChecked = per.authExtras === 'SI';
-                    const isCampo = per.ubicacion === 'CAMPO';
-                    html += `
-                    <div class="taller-item" style="${isCampo ? 'border-left: 4px solid #3b82f6; background: #f0f9ff;' : ''}">
-                        <div class="taller-info">
-                            <h4>${per.nombre} ${isCampo ? '<span class="badge bg-primary" style="font-size: 10px;">CAMPO</span>' : ''}</h4>
-                            <p>ID: ${per.id}</p>
-                        </div>
-                        <label class="switch-container">
-                            <input type="checkbox" ${isCampo || isChecked ? 'checked' : ''} ${isCampo ? 'disabled' : ''} onchange="toggleAutorizacionExtra('${per.id}', this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                `;
-                });
-                container.innerHTML = html;
+                tallerEmpleadosCache = res.empleados.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+                // Populate filter select
+                const selectCargo = document.getElementById('filtroCargoExtras');
+                if (selectCargo) {
+                    const cargos = [...new Set(tallerEmpleadosCache.map(p => p.cargo || 'OPERARIO'))].sort();
+                    selectCargo.innerHTML = `<option value="TODOS">-- Todos los Cargos (${tallerEmpleadosCache.length}) --</option>` +
+                        cargos.map(c => `<option value="${c}">${c} (${tallerEmpleadosCache.filter(p => (p.cargo || 'OPERARIO') === c).length})</option>`).join('');
+                }
+
+                dibujarEmpleadosTaller(tallerEmpleadosCache);
             } catch (e) {
                 mostrarToast('Error al cargar personal: ' + e.message, 'error');
             }
         }
+
+        window.dibujarEmpleadosTaller = function(lista) {
+            const container = document.getElementById('listaTaller');
+            const selectCargo = document.getElementById('filtroCargoExtras');
+            const cargoFiltro = selectCargo ? selectCargo.value : 'TODOS';
+            const buscador = document.getElementById('buscarExtras');
+            const busqueda = buscador ? buscador.value.toLowerCase().trim() : '';
+
+            const filtrados = lista.filter(per => {
+                const cumpleCargo = (cargoFiltro === 'TODOS') || ((per.cargo || 'OPERARIO') === cargoFiltro);
+                const cumpleBusqueda = !busqueda || 
+                                       (per.nombre || '').toLowerCase().includes(busqueda) || 
+                                       (per.id || '').toString().includes(busqueda);
+                return cumpleCargo && cumpleBusqueda;
+            });
+
+            if (filtrados.length === 0) {
+                container.innerHTML = `<div class="text-center py-4 text-muted"><i class="fas fa-user-slash d-block mb-2"></i>No hay personal que coincida</div>`;
+                return;
+            }
+
+            let html = '';
+            filtrados.forEach(per => {
+                const isChecked = per.authExtras === 'SI';
+                const isCampo = per.ubicacion === 'CAMPO';
+                
+                // Normalizar URL en frontend por seguridad si viniera sin normalizar
+                const fotoUrlNormalizada = (per.foto_url && per.foto_url.trim()) ? 
+                    (per.foto_url.includes('drive.google.com') && !per.foto_url.includes('thumbnail') ? 
+                        `https://drive.google.com/thumbnail?id=${per.foto_url.includes('/file/d/') ? per.foto_url.split('/file/d/')[1].split('/')[0] : per.foto_url.split('id=')[1].split('&')[0]}&sz=w200` : 
+                        per.foto_url) : 
+                    '';
+
+                const photoHTML = fotoUrlNormalizada ?
+                    `<img class="taller-photo" src="${fotoUrlNormalizada}" alt="Foto" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` :
+                    `<div class="taller-photo-placeholder" style="width: 44px; height: 44px; border-radius: 50%; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 2px solid #e2e8f0; color: #94a3b8;">👤</div>`;
+
+                // Toda la tarjeta es clickeable para activar/desactivar de manera simplificada
+                html += `
+                <div class="taller-item glass-card" 
+                     onclick="${isCampo ? '' : `toggleCardAutorizacion(this, '${per.id}')`}" 
+                     style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 4px 6px rgba(0,0,0,0.02); transition: all 0.2s; cursor: ${isCampo ? 'default' : 'pointer'}; ${isCampo ? 'border-left: 4px solid #3b82f6; background: rgba(59, 130, 246, 0.04);' : ''}">
+                    <div style="display: flex; align-items: center; gap: 12px; pointer-events: none;">
+                        ${photoHTML}
+                        <div class="taller-info">
+                            <h4 style="margin: 0; font-size: 13.5px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                ${per.nombre} 
+                                ${isCampo ? '<span class="badge bg-primary" style="font-size: 9px; padding: 2px 6px; border-radius: 4px;">CAMPO</span>' : ''}
+                            </h4>
+                            <p style="margin: 2px 0 0 0; font-size: 11px; color: #64748b; font-weight: 500;">
+                                ID: ${per.id} • <span style="color: var(--primary); font-weight: 600;">${per.cargo || 'OPERARIO'}</span>
+                            </p>
+                        </div>
+                    </div>
+                    <label class="switch-container" style="margin: 0;" onclick="event.stopPropagation();">
+                        <input type="checkbox" id="chk-${per.id}" ${isCampo || isChecked ? 'checked' : ''} ${isCampo ? 'disabled' : ''} onchange="toggleAutorizacionExtraLocal('${per.id}', this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
+            });
+            container.innerHTML = html;
+        };
+
+        window.toggleCardAutorizacion = function(element, empleadoId) {
+            const chk = document.getElementById(`chk-${empleadoId}`);
+            if (chk && !chk.disabled) {
+                chk.checked = !chk.checked;
+                toggleAutorizacionExtraLocal(empleadoId, chk.checked);
+            }
+        };
+
+        window.aplicarFiltrosExtras = function() {
+            dibujarEmpleadosTaller(tallerEmpleadosCache);
+        };
+
+        window.toggleAutorizacionExtraLocal = async function(empleadoId, autorizado) {
+            const emp = tallerEmpleadosCache.find(p => p.id === empleadoId);
+            if (emp) {
+                emp.authExtras = autorizado ? 'SI' : 'NO';
+            }
+            await toggleAutorizacionExtra(empleadoId, autorizado);
+        };
+
+        window.toggleTodosFiltrados = async function(autorizado) {
+            const selectCargo = document.getElementById('filtroCargoExtras');
+            const cargo = selectCargo ? selectCargo.value : 'TODOS';
+            const buscador = document.getElementById('buscarExtras');
+            const busqueda = buscador ? buscador.value.toLowerCase().trim() : '';
+
+            const filtrados = tallerEmpleadosCache.filter(per => {
+                if (per.ubicacion === 'CAMPO') return false;
+                const cumpleCargo = (cargo === 'TODOS') || ((per.cargo || 'OPERARIO') === cargo);
+                const cumpleBusqueda = !busqueda || 
+                                       (per.nombre || '').toLowerCase().includes(busqueda) || 
+                                       (per.id || '').toString().includes(busqueda);
+                return cumpleCargo && cumpleBusqueda;
+            });
+
+            if (filtrados.length === 0) {
+                mostrarToast('No hay empleados modificables en este filtro', 'info');
+                return;
+            }
+
+            const confirmacion = confirm(`¿Deseas ${autorizado ? 'AUTORIZAR' : 'DESAUTORIZAR'} horas extras a los ${filtrados.length} empleados de la lista actual?`);
+            if (!confirmacion) return;
+
+            showLoading(true);
+            let exitos = 0;
+            let fallidos = 0;
+
+            for (let per of filtrados) {
+                try {
+                    const res = await jsonpRequest({
+                        accion: 'actualizarAutorizacionExtras',
+                        empleadoId: per.id,
+                        autorizado: autorizado ? 'SI' : 'NO',
+                        autorizaNombre: empleado.nombre
+                    });
+                    if (res.ok) {
+                        per.authExtras = autorizado ? 'SI' : 'NO';
+                        exitos++;
+                    } else {
+                        fallidos++;
+                    }
+                } catch (e) {
+                    fallidos++;
+                }
+            }
+
+            showLoading(false);
+            mostrarToast(`Proceso completo. Éxito: ${exitos}, Fallidos: ${fallidos}`, exitos > 0 ? 'success' : 'error');
+            dibujarEmpleadosTaller(tallerEmpleadosCache);
+        };
 
         async function toggleAutorizacionExtra(empleadoId, autorizado) {
             const valor = autorizado ? 'SI' : 'NO';

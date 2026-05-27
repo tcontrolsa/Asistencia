@@ -623,6 +623,8 @@ window.FirebaseBackend = {
                     taller.push({
                         id: doc.id,
                         nombre: data.nombre,
+                        cargo: data.cargo || "OPERARIO",
+                        foto_url: this._normalizarUrlFoto(data.foto_url || data.fotoUrl || ""),
                         authExtras: infoAuth.autorizado,
                         ubicacion: infoAuth.ubicacion === "CAMPO" ? "CAMPO" : "EMPRESA"
                     });
@@ -687,7 +689,7 @@ window.FirebaseBackend = {
             // Valores por defecto base
             const configDefault = {
                 ubicacion: { lat: -0.128877, lng: -78.478967, radio: 250 },
-                horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "08:15", hora_salida: "16:15", almuerzo_activo: true, hora_inicio: "08:00", hora_fin: "16:15", marcacion_automatica: false, tiempo_automatico: 10 },
+                horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "07:45", hora_salida: "16:15", almuerzo_activo: true, hora_inicio: "07:30", hora_fin: "16:15", marcacion_automatica: false, tiempo_automatico: 10 },
                 registro: { tolerancia_gps: 50, requiere_foto: false, permite_registro_manual: true },
                 otras: { whatsapp_number: "593999999999", mensaje_soporte: "Hola, necesito soporte técnico", modo_mantenimiento: false }
             };

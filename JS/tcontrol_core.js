@@ -1,66 +1,30 @@
 /**
  * TCONTROL 2026 - Core & Configuration
- * Centraliza variables globales, configuración y utilidades básicas.
+ * Centraliza el objeto de configuración maestro, fallbacks y utilidades globales.
  */
 
-// ========== CONFIGURACIÓN ==========
-const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
-const ADMIN_ID = "1058";
-
-// Valores por defecto (se sobrescriben con Firebase)
-let LAT_EMPRESA = -0.1288771313385675;
-let LNG_EMPRESA = -78.47896772889067;
-let RADIO_METROS = 250;
-let HORA_LIMITE_ALMUERZO = "09:30";
-let HORA_INICIO_ESPERADA = "08:00";
-let HORA_ENTRADA_LIMITE = "08:15";
-let HORA_SALIDA = "16:15";
-let ALMUERZO_ACTIVO = true;
-let WHATSAPP_NUMBER = "593996356114";
-let WHATSAPP_MESSAGE = "Hola, necesito soporte técnico para el sistema CONTROL 2026";
-
-// ========== VARIABLES GLOBALES DE ESTADO ==========
-let deviceToken = null;
-let posicion = { lat: null, lng: null };
-let currentMode = 'OFICINA';
-let gpsActivo = false;
-let registrosCompletos = [];
-let intervaloGPS = null;
-let currentPage = 'home';
-let isAuthenticated = false;
-let configuracionesSistema = null;
-
-let estado = {
-    tieneEntrada: false,
-    tieneSalida: false,
-    horaEntrada: null,
-    horaSalida: null,
-    almuerzo: null,
-    esSupervisor: false
+// ========== CONFIGURACIÓN GLOBAL MAESTRA (FUENTE ÚNICA DE VERDAD) ==========
+window.TCONTROL_CONFIG = {
+    API_URL: 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec',
+    ADMIN_ID: "1058",
+    LAT_EMPRESA: -0.1288771313385675,
+    LNG_EMPRESA: -78.47896772889067,
+    RADIO_METROS: 250,
+    HORA_LIMITE_ALMUERZO: "09:30",
+    HORA_INICIO_ESPERADA: "07:30", // Homologado
+    HORA_ENTRADA_LIMITE: "07:45",  // Homologado
+    HORA_SALIDA: "16:15",          // Homologado
+    ALMUERZO_ACTIVO: true,
+    WHATSAPP_NUMBER: "593996356114",
+    WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
 };
 
-let empleado = {
-    id: '', nombre: '', area: '', foto_url: '', cargo: '',
-    baseLat: null, baseLng: null, authExtras: 'NO'
-};
-
-// Variables de UI/Formularios
-let lugarSeleccionado = null;
-let razonEntradaTardia = null;
-let detalleRazonEntrada = null;
-let razonSalidaTemprana = null;
-let detalleRazonSalida = null;
-let esPermisoIntermedio = false;
-let razonPermiso = null;
-
-// ========== COMUNICACIÓN API (SIMPLIFICADA) ==========
+// ========== COMUNICACIÓN API (SIMPLIFICADA / FALLBACK GLOBAL) ==========
 async function jsonpRequest(params) {
-    // Si Firebase está activo, usamos el motor de Firebase directamente
     if (window.USE_FIREBASE && window.FirebaseBackend) {
         return await window.FirebaseBackend.procesarAccion(params);
     }
 
-    // Fallback Legacy (GAS) - Solo si Firebase fallara
     return new Promise((resolve) => {
         const callback = `cb_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         window[callback] = (data) => {
@@ -69,7 +33,7 @@ async function jsonpRequest(params) {
         };
         const script = document.createElement('script');
         const query = Object.keys(params).map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
-        script.src = `${API_URL}?${query}&callback=${callback}`;
+        script.src = `${window.TCONTROL_CONFIG.API_URL}?${query}&callback=${callback}`;
         document.head.appendChild(script);
         setTimeout(() => { if (script.parentNode) script.remove(); }, 10000);
     });
@@ -89,32 +53,90 @@ function formatearHora(fecha) {
     } catch (e) { return '--:--'; }
 }
 
-function formatearFechaCorta() {
-    const d = new Date();
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+// Formato de fecha estricto dd/mm/yyyy hh:mm:ss
+function obtenerFechaHoraEstricta(dateObj = new Date()) {
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const y = dateObj.getFullYear();
+    const hh = String(dateObj.getHours()).padStart(2, '0');
+    const mm = String(dateObj.getMinutes()).padStart(2, '0');
+    const ss = String(dateObj.getSeconds()).padStart(2, '0');
+    return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
 }
 
-function showLoading(show) {
-    const loading = document.getElementById('loadingOverlay');
-    if (loading) {
-        if (show) loading.classList.remove('hidden');
-        else loading.classList.add('hidden');
+// ========== PULL TO REFRESH ==========
+document.addEventListener('DOMContentLoaded', () => {
+    let startY = 0;
+    let currentY = 0;
+    let isPulling = false;
+    
+    const scrollContainer = document.querySelector('.main-content');
+    if (!scrollContainer) {
+        return;
     }
-}
 
-function mostrarToast(msg, tipo = 'info') {
-    if (navigator.vibrate) {
-        if (tipo === 'success') navigator.vibrate(50);
-        else if (tipo === 'error') navigator.vibrate([80, 40, 80]);
-    }
-    document.querySelectorAll('.custom-toast').forEach(t => t.remove());
-    const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
-    const toast = document.createElement('div');
-    toast.className = `custom-toast ${tipo}-toast`;
-    toast.innerHTML = `<span class="toast-icon">${icons[tipo] || 'ℹ️'}</span><span>${msg}</span>`;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-        toast.style.animation = 'toastOut 0.3s ease forwards';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
+    let pptrIndicator = document.createElement('div');
+    pptrIndicator.id = 'ptr-indicator';
+    pptrIndicator.innerHTML = '<i class="fas fa-sync-alt" style="color:var(--red); font-size: 20px;"></i>';
+    Object.assign(pptrIndicator.style, {
+        position: 'fixed',
+        top: '-60px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '40px',
+        height: '40px',
+        backgroundColor: 'white',
+        borderRadius: '50%',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: '10000',
+        transition: 'top 0.2s ease, transform 0.2s ease'
+    });
+    document.body.appendChild(pptrIndicator);
+
+    scrollContainer.addEventListener('touchstart', (e) => {
+        if (scrollContainer.scrollTop <= 2) {
+            startY = e.touches[0].clientY;
+            currentY = startY;
+            isPulling = true;
+            pptrIndicator.style.transition = 'none';
+        }
+    }, { passive: true });
+
+    scrollContainer.addEventListener('touchmove', (e) => {
+        if (!isPulling) return;
+        
+        currentY = e.touches[0].clientY;
+        let diff = currentY - startY;
+
+        if (diff > 0 && scrollContainer.scrollTop <= 2) {
+            if (e.cancelable) e.preventDefault();
+            let pullDistance = Math.min(diff * 0.4, 90);
+            pptrIndicator.style.top = `${-60 + pullDistance}px`;
+            pptrIndicator.style.transform = `translateX(-50%) rotate(${pullDistance * 4}deg)`;
+        } else if (diff < 0) {
+            isPulling = false;
+            pptrIndicator.style.transition = 'top 0.3s ease, transform 0.3s ease';
+            pptrIndicator.style.top = '-60px';
+        }
+    }, { passive: false });
+
+    scrollContainer.addEventListener('touchend', (e) => {
+        if (!isPulling) return;
+        isPulling = false;
+        let diff = currentY - startY;
+        if (diff > 100 && scrollContainer.scrollTop <= 2) {
+            pptrIndicator.style.transition = 'top 0.3s ease, transform 0.3s ease';
+            pptrIndicator.style.top = '20px';
+            pptrIndicator.innerHTML = '<i class="fas fa-spinner fa-spin" style="color:var(--red); font-size: 20px;"></i>';
+            setTimeout(() => {
+                location.reload();
+            }, 600);
+        } else {
+            pptrIndicator.style.transition = 'top 0.3s ease, transform 0.3s ease';
+            pptrIndicator.style.top = '-60px';
+        }
+    });
+});

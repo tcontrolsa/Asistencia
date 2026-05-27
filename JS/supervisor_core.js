@@ -176,13 +176,26 @@
       let lista = [];
       let ahora = new Date();
       // El período en curso va del 26 del mes anterior al 25 del mes actual
+      // Si la fecha actual ya es 26 o superior, entramos al período del mes siguiente
+      let baseMonth = ahora.getMonth();
+      if (ahora.getDate() >= 26) {
+        baseMonth += 1;
+      }
+      
+      function formatearFechaLocal(d) {
+        let y = d.getFullYear();
+        let m = String(d.getMonth() + 1).padStart(2, '0');
+        let day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+
       for (let i = 0; i < 12; i++) {
-        let iniDate = new Date(ahora.getFullYear(), ahora.getMonth() - i - 1, 26);
-        let finDate = new Date(ahora.getFullYear(), ahora.getMonth() - i, 25);
+        let iniDate = new Date(ahora.getFullYear(), baseMonth - i - 1, 26);
+        let finDate = new Date(ahora.getFullYear(), baseMonth - i, 25);
         let label = iniDate.getDate() + ' ' + iniDate.toLocaleDateString('es', { month: 'short' }) + ' — ' + finDate.getDate() + ' ' + finDate.toLocaleDateString('es', { month: 'short', year: 'numeric' });
         lista.push({
-          inicio: iniDate.toISOString().split('T')[0],
-          fin: finDate.toISOString().split('T')[0],
+          inicio: formatearFechaLocal(iniDate),
+          fin: formatearFechaLocal(finDate),
           label: i === 0 ? '⭐ ' + label + ' (Actual)' : label
         });
       }
@@ -381,7 +394,7 @@
         if($('dashTotalEmpleados')) $('dashTotalEmpleados').textContent = empCache.length;
         if($('tasaAlmuerzoPlanta')) $('tasaAlmuerzoPlanta').textContent = almPct + '%';
 
-        let puntMap = {}, tardMap = {}, sinSalidaMap = {};
+        let puntMap = {}, tardMap = {}, sinSalidaMap = {}, puntMapBackup = {};
         empCache.forEach(e => {
           let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= hoy_);
           let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= hoy_);
@@ -392,47 +405,75 @@
             entradasPorDia[r.fecha].push(r);
           });
 
-          let tardE = 0, nE = 0, faltasS = 0;
+          let tardE = 0, nE = 0, faltasS = 0, minutosTardE = 0;
+          let detallesTardanzas = [];
+          let detallesFaltasSalida = [];
           
           Object.keys(entradasPorDia).forEach(fecha => {
             let regs = entradasPorDia[fecha];
-            // Tomar la primera entrada del día
             regs.sort((a, b) => obtenerMinutos(a.hora) - obtenerMinutos(b.hora));
             let firstE = regs[0];
             
             let m = obtenerMinutos(firstE.hora);
             if (m !== null) {
               nE++;
-              if (m > HORA_ENTRADA_REF) tardE++;
+              if (m > HORA_ENTRADA_REF) {
+                tardE++;
+                let diffMin = m - HORA_ENTRADA_REF;
+                minutosTardE += diffMin;
+                let fechaLegible = `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
+                detallesTardanzas.push(`${fechaLegible} (${firstE.hora.slice(0, 5)})`);
+              }
             }
             
-            // Exceptuar el día de hoy ya que aún no termina
             if (fecha !== hoy_) {
               let tieneSalida = salidas.some(s => s.fecha === fecha);
-              if (!tieneSalida) faltasS++;
+              if (!tieneSalida) {
+                faltasS++;
+                let fechaLegible = `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
+                detallesFaltasSalida.push(fechaLegible);
+              }
             }
           });
 
-          if (nE > 0) puntMap[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE };
-          if (tardE > 0) tardMap[e.id] = { nombre: e.nombre, area: e.area, tardanzas: tardE, id: e.id, asist: nE };
-          if (faltasS > 0) sinSalidaMap[e.id] = { nombre: e.nombre, area: e.area, faltasSalida: faltasS, id: e.id };
+          if (nE >= 3) {
+            puntMap[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE, tardanzas: tardE, minutosTard: minutosTardE, fechas: detallesTardanzas };
+          } else if (nE > 0) {
+            puntMapBackup[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE, tardanzas: tardE, minutosTard: minutosTardE, fechas: detallesTardanzas };
+          }
+          if (tardE > 0) tardMap[e.id] = { nombre: e.nombre, area: e.area, tardanzas: tardE, id: e.id, asist: nE, minutosTard: minutosTardE, fechas: detallesTardanzas };
+          if (faltasS > 0) sinSalidaMap[e.id] = { nombre: e.nombre, area: e.area, faltasSalida: faltasS, id: e.id, totalEntradas: nE, fechas: detallesFaltasSalida };
         });
 
-        let topP = Object.values(puntMap).sort((a, b) => {
+        let sourcePunt = Object.keys(puntMap).length > 0 ? puntMap : puntMapBackup;
+        let topP = Object.values(sourcePunt).sort((a, b) => {
           if (b.p !== a.p) return b.p - a.p;
-          return b.asist - a.asist; // Desempate: mayor asistencia
+          if (b.minutosTard !== a.minutosTard) return a.minutosTard - b.minutosTard; // Tie-breaker 1: menos minutos de atraso primero
+          return b.asist - a.asist; // Tie-breaker 2: más días de asistencia
         }).slice(0, 10);
-        if($('topPuntuales')) $('topPuntuales').innerHTML = topP.length ? topP.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--g400);font-weight:600;margin-bottom:-2px">${e.asist} asist.</span><span>${e.p}%</span></div></div>`).join('') : '<div class="empty-state">Sin datos</div>';
+        if($('topPuntuales')) $('topPuntuales').innerHTML = topP.length ? topP.map((e, i) => {
+          let datesTooltip = e.fechas && e.fechas.length ? `title="Tardanzas: ${e.fechas.join(', ')} (Total: ${e.minutosTard} min)"` : `title="100% Puntual"`;
+          return `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')" ${datesTooltip} style="cursor:pointer;"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--g400);font-weight:600;margin-bottom:-2px">${e.asist - e.tardanzas} de ${e.asist} punt.</span><span>${e.p}%</span></div></div>`;
+        }).join('') : '<div class="empty-state">Sin datos</div>';
         
         let topTard = Object.values(tardMap).sort((a, b) => {
           if (b.tardanzas !== a.tardanzas) return b.tardanzas - a.tardanzas;
-          return b.asist - a.asist; // Desempate: mayor asistencia
+          return b.minutosTard - a.minutosTard; // Tie-breaker: más minutos de retraso acumulados primero
         }).slice(0, 10);
-        if($('topTardanzasRanking')) $('topTardanzasRanking').innerHTML = topTard.length ? topTard.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--g400);font-weight:600;margin-bottom:-2px">en ${e.asist} asis.</span><span>${e.tardanzas} tard.</span></div></div>`).join('') : '<div class="empty-state">Sin tardanzas</div>';
+        if($('topTardanzasRanking')) $('topTardanzasRanking').innerHTML = topTard.length ? topTard.map((e, i) => {
+          let datesTooltip = e.fechas && e.fechas.length ? `title="Tardanzas: ${e.fechas.join(', ')}"` : '';
+          return `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')" ${datesTooltip} style="cursor:pointer;"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--g400);font-weight:600;margin-bottom:-2px">${e.tardanzas} de ${e.asist} asis.</span><span style="color:var(--red); font-weight:bold;">${e.tardanzas} tard. (${e.minutosTard}m)</span></div></div>`;
+        }).join('') : '<div class="empty-state">Sin tardanzas</div>';
         
-        let sinSList = Object.values(sinSalidaMap).sort((a, b) => b.faltasSalida - a.faltasSalida).slice(0, 10);
+        let sinSList = Object.values(sinSalidaMap).sort((a, b) => {
+          if (b.faltasSalida !== a.faltasSalida) return b.faltasSalida - a.faltasSalida;
+          return b.totalEntradas - a.totalEntradas; // Tie-breaker: más entradas
+        }).slice(0, 10);
         if ($('sinSalidaRanking')) {
-          $('sinSalidaRanking').innerHTML = sinSList.length ? sinSList.map((e, i) => `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="color:var(--purple);font-weight:700;display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--purple-lt);font-weight:600;margin-bottom:-2px">faltas</span><span>${e.faltasSalida} sin salida</span></div></div>`).join('') : '<div class="empty-state">Todos han registrado su salida</div>';
+          $('sinSalidaRanking').innerHTML = sinSList.length ? sinSList.map((e, i) => {
+            let datesTooltip = e.fechas && e.fechas.length ? `title="Fechas sin salida: ${e.fechas.join(', ')}"` : '';
+            return `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')" ${datesTooltip} style="cursor:pointer;"><div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div><div class="ranking-info"><div class="ranking-name">${escapeHtml(e.nombre)}</div><div class="ranking-area">${escapeHtml(e.area || 'Sin área')}</div></div><div class="ranking-value" style="color:var(--purple);font-weight:700;display:flex; flex-direction:column; align-items:flex-end"><span style="font-size:10px;color:var(--purple-lt);font-weight:600;margin-bottom:-2px">${e.faltasSalida} de ${e.totalEntradas || '?'} entr.</span><span>${e.faltasSalida} sin salida</span></div></div>`;
+          }).join('') : '<div class="empty-state">Todos han registrado su salida</div>';
         }
 
         let sumDiaria = 0, diasExc = 0;
@@ -759,8 +800,13 @@
 
     function renderizadorSelectorColumnas() {
       const columnasVisibles = obtenerColumnasVisibles();
+      const allChecked = COLUMNAS_DISPONIBLES.every(col => columnasVisibles.includes(col.id));
+      
       let html = '<div style="margin-bottom:16px;padding:12px;background:var(--g50);border-radius:12px;border:1px solid var(--g200)">';
-      html += '<div style="font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px"><i class="fas fa-sliders-h"></i> Columnas visibles</div>';
+      html += '<div style="font-weight:600;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;gap:8px;">';
+      html += '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-sliders-h"></i> Columnas visibles</div>';
+      html += `<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:500;cursor:pointer;user-select:none;color:var(--red);"><input type="checkbox" ${allChecked ? 'checked' : ''} onchange="toggleTodasLasColumnas(this.checked)" style="cursor:pointer"> Seleccionar Todo</label>`;
+      html += '</div>';
       html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">';
 
       COLUMNAS_DISPONIBLES.forEach(col => {
@@ -774,6 +820,15 @@
       html += '</div></div>';
       return html;
     }
+
+    window.toggleTodasLasColumnas = function(checked) {
+      let columnas = [];
+      if (checked) {
+        columnas = COLUMNAS_DISPONIBLES.map(c => c.id);
+      }
+      guardarColumnasVisibles(columnas);
+      filtrarTablaReportes();
+    };
 
     function cambiarVisibilidadColumna(colId) {
       let columnasVisibles = obtenerColumnasVisibles();
@@ -1236,6 +1291,16 @@
         let esFestivo = esFeriadoODomingo(f);
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
 
+        let extBadgeVal = autorizadoGlobal ? 'SI' : 'NO';
+        let extBadge = autorizadoGlobal ? '<span class="pill ok">SI</span>' : '<span class="pill dim">NO</span>';
+        if (regsDia.some(r => (r.autoriza || '').includes('CAMPO'))) {
+          extBadge = '<span class="pill ok" title="Auto-autorizado por Campo">CAMPO</span>';
+        }
+        let extBadgeHtml = extBadge;
+        if (esAdminMaster && regsDia.length > 0) {
+          extBadgeHtml = `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', '${extBadgeVal}', '${f}')">${extBadge}</span>`;
+        }
+
         periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
           let mE = obtenerMinutos(p.entrada.hora);
@@ -1278,6 +1343,7 @@
       <td style="text-align:center; color:var(--indigo)">${minutosPermisoHoy > 0 ? minutosAHHMMSS(minutosPermisoHoy) : '—'}</td>
       <td style="text-align:center; color:var(--green); font-weight:600;">${minutosTrabajadosHoy > 0 ? minutosAHHMMSS(minutosTrabajadosHoy) : '—'}</td>
       <td>${aBadge}</td>
+      <td>${extBadgeHtml}</td>
       <td>${razonesCompletas}</td>
       <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
       <td style="text-align:center">${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
@@ -1373,6 +1439,7 @@
                   <th>TIEMPO PERMISO</th>
                   <th>TOTAL HORAS</th>
                   <th>Almuerzo</th>
+                  <th>Autoriz. H.E.</th>
                   <th>Razón</th>
                   <th>ATRASOS</th>
                   <th>HORAS EXTRA (A)</th>
@@ -1384,7 +1451,7 @@
                   <th>TOTAL EXTRAS 100% (B+D)</th>
                 </tr>
               </thead>
-              <tbody>${filas || '<tr><td colspan="15" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tbody>${filas || '<tr><td colspan="16" class="empty-state">Sin registros</td></tr>'}</tbody>
             </table>
           </div>
         </div>
@@ -1402,11 +1469,17 @@
       panelActual = panel;
       document.querySelectorAll('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.panel === panel));
       document.querySelectorAll('.panel').forEach(x => x.classList.toggle('active', x.id === 'panel-' + panel));
-      let titles = { dashboard: 'Dashboard Ejecutivo', asistencia: 'Control de Asistencia', detalle: 'Detalle de Empleado' };
+      let titles = { 
+        dashboard: 'Dashboard Ejecutivo', 
+        asistencia: 'Control de Asistencia', 
+        detalle: 'Detalle de Empleado',
+        reportes: 'Creador Interactivo de Reportes'
+      };
       $('pageTitle').textContent = titles[panel] || 'Supervisor';
       if (panel !== 'detalle') {
         if (panel === 'dashboard') cargarDashboard();
         else if (panel === 'asistencia') cargarAsistencia();
+        else if (panel === 'reportes') inicializarReporteInteractivo();
       }
     }
 
@@ -1962,7 +2035,11 @@
     document.querySelectorAll('.nav-item').forEach(item => {
       item.addEventListener('click', () => cambiarPanel(item.dataset.panel));
     });
-    $('btnRefresh').addEventListener('click', cargarDatosCompletos);
+    $('btnRefresh').addEventListener('click', async () => {
+      localStorage.removeItem('tcontrol_registros_cache_v1');
+      mostrarToast('Borrando caché local de registros...', 'info');
+      await cargarDatosCompletos();
+    });
     $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
     $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
     $('btnMasivo').addEventListener('click', mostrarModalMasivo);
@@ -2022,3 +2099,632 @@
         inp.focus();
       });
     }
+
+    // ============================================================
+    // CREADOR INTERACTIVO DE REPORTES CUSTOM
+    // ============================================================
+    let columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+    let _sortCustomReport = { col: 'nombre', dir: 'asc' };
+    let _reportesCustomData = [];
+
+    window.inicializarReporteInteractivo = function() {
+      const selectPeriodo = $('periodoCustomReportes');
+      if (selectPeriodo && periodos.length) {
+        selectPeriodo.innerHTML = periodos.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
+      }
+      actualizarReporteInteractivo();
+    };
+
+    window.actualizarReporteInteractivo = function() {
+      const selectPeriodo = $('periodoCustomReportes');
+      const idx = parseInt(selectPeriodo?.value || 0);
+      let periodo = periodos[idx];
+      if (!periodo || !empCache.length) return;
+
+      const hoyRep = new Date().toISOString().split('T')[0];
+      
+      // Calcular estadísticas de manera idéntica a cargarReportes()
+      _reportesCustomData = empCache.map(e => {
+        let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
+        let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
+        let diasLaborablesTotal = obtenerDiasHabiles(periodo.inicio, periodo.fin);
+        let diasLaborables = diasLaborablesTotal.filter(d => d <= hoyRep);
+        let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f)).size;
+
+        let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
+
+        let permisoMedico = 0, permisoPersonal = 0;
+        salidas.forEach(r => {
+          const rs = (r.razon_salida || r.razonSalidaTemprana || '').toLowerCase();
+          if (rs.includes('medico') || rs === 'permiso_medico') permisoMedico++;
+          else if (rs.includes('personal') || rs === 'permiso_personal') permisoPersonal++;
+        });
+
+        let atrasos = 0;
+        let minutosAtrasos = 0;
+        let almPlanta = 0, almFuera = 0;
+        entradas.forEach(r => {
+          let m = obtenerMinutos(r.hora);
+          if (m !== null && m > HORA_ENTRADA_REF) {
+            atrasos++;
+            minutosAtrasos += m - HORA_ENTRADA_REF;
+          }
+          if (r.almuerzo === 'SI') almPlanta++;
+          if (r.almuerzo === 'NO') almFuera++;
+        });
+        let puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
+
+        let horasExtra50 = 0;
+        let horasExtra100 = 0;
+        let horasCampoNormales = 0;
+        let horasCampo50 = 0;
+        let horasCampo100 = 0;
+
+        const diasUnicos = [...new Set((e.registros || []).map(r => r.fecha))].filter(f => f >= periodo.inicio && f <= periodo.fin);
+
+        diasUnicos.forEach(fecha => {
+          const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
+          const entrada = regsDia.find(r => r.tipo === 'ENTRADA');
+          const salida = regsDia.find(r => r.tipo === 'SALIDA');
+          if (!entrada || !salida) return;
+
+          const esFestivo = esFeriadoODomingo(fecha);
+          const mEnt = obtenerMinutos(entrada.hora);
+          const mSal = obtenerMinutos(salida.hora);
+          if (mEnt === null || mSal === null || mSal <= mEnt) return;
+
+          const enCampo = entrada.modo === 'CAMPO' || salida.modo === 'CAMPO';
+          const autorizado = (entrada.horasExtra === 'SI' || salida.horasExtra === 'SI');
+
+          if (esFestivo) {
+            if (autorizado) {
+              if (enCampo) horasCampo100 += (mSal - mEnt);
+              else horasExtra100 += (mSal - mEnt);
+            }
+          } else {
+            const H_INI = HORA_ENTRADA_REF;
+            const H_FIN = HORA_SALIDA_REF;
+
+            let normal = 0, extra50 = 0;
+
+            if (mEnt < H_INI) {
+              if (enCampo) extra50 += (H_INI - mEnt);
+              else if (autorizado) extra50 += (H_INI - mEnt);
+              normal += (Math.min(mSal, H_FIN) - H_INI);
+            } else {
+              normal += (Math.min(mSal, H_FIN) - mEnt);
+            }
+
+            if (mSal > H_FIN) {
+              if (autorizado) extra50 += (mSal - H_FIN);
+            }
+
+            if (enCampo) {
+              horasCampoNormales += Math.max(0, normal);
+              horasCampo50 += Math.max(0, extra50);
+            } else {
+              horasExtra50 += Math.max(0, extra50);
+            }
+          }
+        });
+
+        return {
+          id: e.id,
+          nombre: e.nombre,
+          area: e.area,
+          foto_url: e.foto_url,
+          asistencias: diasAsistidos,
+          faltas: faltas,
+          permisoMedico: permisoMedico,
+          permisoPersonal: permisoPersonal,
+          atrasos: atrasos,
+          minutosAtrasos: minutosAtrasos,
+          almPlanta: almPlanta,
+          almFuera: almFuera,
+          puntualidad: puntualidad,
+          horasExtra50: horasExtra50,
+          horasExtra100: horasExtra100,
+          horasCampoNormales: horasCampoNormales,
+          horasCampo50: horasCampo50,
+          horasCampo100: horasCampo100,
+          totalExtras50: horasExtra50 + horasCampo50,
+          totalExtras100: horasExtra100 + horasCampo100,
+          totalHorasExtra: (horasExtra50 + horasExtra100 + horasCampo50 + horasCampo100)
+        };
+      });
+
+      renderizarColumnasInteractivas();
+      filtrarReporteInteractivo();
+    };
+
+    window.renderizarColumnasInteractivas = function() {
+      const containerDisponibles = $('columnasDisponibles');
+      const containerActivas = $('columnasActivas');
+      if (!containerDisponibles || !containerActivas) return;
+
+      containerDisponibles.innerHTML = '';
+      containerActivas.innerHTML = '';
+
+      COLUMNAS_DISPONIBLES.forEach(col => {
+        const isActiva = columnasCustomActivas.includes(col.id);
+        const chip = document.createElement('div');
+        chip.className = `chip-item ${isActiva ? 'activa' : 'disponible'}`;
+        chip.setAttribute('draggable', 'true');
+        chip.setAttribute('id', `chip-${col.id}`);
+        chip.innerHTML = `${isActiva ? '<i class="fas fa-check"></i>' : '<i class="fas fa-plus"></i>'} ${col.label}`;
+        
+        chip.addEventListener('dragstart', (e) => dragCustom(e, col.id));
+        chip.addEventListener('click', () => {
+          if (isActiva) quitarColumnaCustom(col.id);
+          else agregarColumnaCustom(col.id);
+        });
+
+        if (isActiva) {
+          containerActivas.appendChild(chip);
+        } else {
+          containerDisponibles.appendChild(chip);
+        }
+      });
+
+      if (!columnasCustomActivas.length) {
+        containerActivas.innerHTML = '<div style="color:var(--g400); font-size:11.5px; padding:10px; width:100%; text-align:center;"><i class="fas fa-info-circle"></i> No hay columnas en el reporte. Selecciona algunas de la izquierda.</div>';
+      }
+      if (columnasCustomActivas.length === COLUMNAS_DISPONIBLES.length) {
+        containerDisponibles.innerHTML = '<div style="color:var(--g400); font-size:11.5px; padding:10px; width:100%; text-align:center;"><i class="fas fa-check-circle"></i> Todas las columnas añadidas.</div>';
+      }
+    };
+
+    window.agregarColumnaCustom = function(colId) {
+      if (!columnasCustomActivas.includes(colId)) {
+        columnasCustomActivas.push(colId);
+        renderizarColumnasInteractivas();
+        filtrarReporteInteractivo();
+      }
+    };
+
+    window.quitarColumnaCustom = function(colId) {
+      const idx = columnasCustomActivas.indexOf(colId);
+      if (idx > -1) {
+        columnasCustomActivas.splice(idx, 1);
+        renderizarColumnasInteractivas();
+        filtrarReporteInteractivo();
+      }
+    };
+
+    // Drag and Drop helpers
+    window.allowDropCustom = function(e) {
+      e.preventDefault();
+    };
+
+    window.dragCustom = function(e, colId) {
+      e.dataTransfer.setData("text/plain", colId);
+    };
+
+    window.dropCustom = function(e, target) {
+      e.preventDefault();
+      const colId = e.dataTransfer.getData("text/plain");
+      if (!colId) return;
+      
+      if (target === 'activas') {
+        agregarColumnaCustom(colId);
+      } else {
+        quitarColumnaCustom(colId);
+      }
+    };
+
+    window.sortReporteCustom = function(colId) {
+      if (_sortCustomReport.col === colId) {
+        _sortCustomReport.dir = _sortCustomReport.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        _sortCustomReport.col = colId;
+        _sortCustomReport.dir = 'asc';
+      }
+      filtrarReporteInteractivo();
+    };
+
+    window.filtrarReporteInteractivo = function() {
+      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
+      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+
+      // Ordenar
+      if (_sortCustomReport.col) {
+        data = [...data].sort((a, b) => {
+          let va = a[_sortCustomReport.col] ?? 0;
+          let vb = b[_sortCustomReport.col] ?? 0;
+          if (typeof va === 'string') return _sortCustomReport.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+          return _sortCustomReport.dir === 'asc' ? va - vb : vb - va;
+        });
+      }
+
+      // Headers
+      function sortIconCustom(colId) {
+        if (_sortCustomReport.col !== colId) return '<i class="fas fa-sort" style="opacity:.2;margin-left:4px;font-size:9px"></i>';
+        return _sortCustomReport.dir === 'asc'
+          ? '<i class="fas fa-sort-up" style="color:var(--red);margin-left:4px;font-size:9px"></i>'
+          : '<i class="fas fa-sort-down" style="color:var(--red);margin-left:4px;font-size:9px"></i>';
+      }
+
+      let headersHtml = `<th onclick="sortReporteCustom('nombre')">Empleado ${sortIconCustom('nombre')}</th><th onclick="sortReporteCustom('area')">Área ${sortIconCustom('area')}</th>`;
+      COLUMNAS_DISPONIBLES.forEach(col => {
+        if (columnasCustomActivas.includes(col.id)) {
+          headersHtml += `<th onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer;">${col.label} ${sortIconCustom(col.id)}</th>`;
+        }
+      });
+
+      const headerTr = $('reporteCustomHeaders');
+      if (headerTr) headerTr.innerHTML = headersHtml;
+
+      // Body
+      const bodyT = $('reporteCustomBody');
+      if (!bodyT) return;
+
+      if (!data.length) {
+        bodyT.innerHTML = `<tr><td colspan="${columnasCustomActivas.length + 2}" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No se encontraron resultados.</td></tr>`;
+        if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = 'Mostrando 0 empleados';
+        return;
+      }
+
+      bodyT.innerHTML = data.map(e => {
+        let rowHtml = `<tr><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td><td>${escapeHtml(e.area || '—')}</td>`;
+
+        COLUMNAS_DISPONIBLES.forEach(col => {
+          if (columnasCustomActivas.includes(col.id)) {
+            const valor = e[col.id];
+            let contenido = '';
+            if (col.tipo === 'tiempo') {
+              contenido = `<span style="font-family:'DM Mono',monospace;font-size:11px">${minutosAHHMMSS(valor)}</span>`;
+            } else if (col.tipo === 'pct') {
+              let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
+              contenido = `<span class="pill ${pc}" style="font-size:11px;padding:2px 7px">${valor}%</span>`;
+            } else if (col.id === 'faltas') {
+              contenido = `<span class="pill ${valor > 0 ? 'miss' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
+            } else if (col.id === 'atrasos') {
+              contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
+            } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
+              contenido = `<strong style="font-family:'DM Mono',monospace;font-size:11px">${valor}</strong>`;
+            } else {
+              contenido = `<span style="font-family:'DM Mono',monospace;font-size:11px">${valor}</span>`;
+            }
+            rowHtml += `<td style="text-align:center">${contenido}</td>`;
+          }
+        });
+
+        rowHtml += '</tr>';
+        return rowHtml;
+      }).join('');
+
+      if ($('reporteCustomInfo')) {
+        $('reporteCustomInfo').textContent = `Mostrando ${data.length} empleados de ${empCache.length}`;
+      }
+    };
+
+    window.restablecerColumnasDefault = function() {
+      columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+      renderizarColumnasInteractivas();
+      filtrarReporteInteractivo();
+      mostrarToast('Columnas restablecidas por defecto', 'info');
+    };
+
+    window.exportarExcelReporteCustom = function() {
+      if (!_reportesCustomData.length) {
+        mostrarToast('No hay datos para exportar', 'warning');
+        return;
+      }
+
+      const selectPeriodo = $('periodoCustomReportes');
+      const idx = parseInt(selectPeriodo?.value || 0);
+      let periodo = periodos[idx];
+      let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
+
+      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
+      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+
+      let headersHtml = '<th>Empleado</th><th>Área</th>';
+      COLUMNAS_DISPONIBLES.forEach(col => {
+        if (columnasCustomActivas.includes(col.id)) {
+          headersHtml += `<th>${col.label}</th>`;
+        }
+      });
+
+      let bodyHtml = data.map(e => {
+        let rowHtml = `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
+        COLUMNAS_DISPONIBLES.forEach(col => {
+          if (columnasCustomActivas.includes(col.id)) {
+            const valor = e[col.id];
+            let contenido = '';
+            if (col.tipo === 'tiempo') {
+              contenido = minutosAHHMMSS(valor);
+            } else if (col.tipo === 'pct') {
+              contenido = `${valor}%`;
+            } else {
+              contenido = valor;
+            }
+            rowHtml += `<td style="text-align:center;">${contenido}</td>`;
+          }
+        });
+        rowHtml += '</tr>';
+        return rowHtml;
+      }).join('');
+
+      // Formato HTML premium nativo para Excel
+      let excelHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <!--[if gte mso 9]>
+          <xml>
+            <x:ExcelWorkbook>
+              <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                  <x:Name>Reporte Asistencia</x:Name>
+                  <x:WorksheetOptions>
+                    <x:DisplayGridlines/>
+                  </x:WorksheetOptions>
+                </x:ExcelWorksheet>
+              </x:ExcelWorksheets>
+            </x:ExcelWorkbook>
+          </xml>
+          <![endif]-->
+          <style>
+            table { border-collapse:collapse; font-family:Arial, sans-serif; }
+            th { background-color:#1e40af; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #cbd5e1; font-size:11px; text-transform:uppercase; }
+            td { border:0.5pt solid #cbd5e1; height:26px; font-size:11px; }
+            .title-cell { font-size:16px; font-weight:bold; color:#1e40af; height:45px; text-align:left; }
+            .meta-cell { font-size:10px; color:#64748b; height:20px; text-align:left; }
+          </style>
+        </head>
+        <body>
+          <table>
+            <tr><td colspan="${columnasCustomActivas.length + 2}" class="title-cell">TCONTROL S.A. - REPORTE DE ASISTENCIA</td></tr>
+            <tr><td colspan="${columnasCustomActivas.length + 2}" class="meta-cell">Periodo: ${periodoStr} | Generado: ${new Date().toLocaleString('es')}</td></tr>
+            <tr><td colspan="${columnasCustomActivas.length + 2}" style="height:15px;"></td></tr>
+            <thead>
+              <tr>${headersHtml}</tr>
+            </thead>
+            <tbody>
+              ${bodyHtml}
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Reporte_Asistencia_${periodoStr.replace(/ /g, '_')}.xls`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      mostrarToast('Reporte exportado a Excel con éxito', 'success');
+    };
+
+    window.exportarGoogleSheetsReporteCustom = async function() {
+      if (!_reportesCustomData.length) {
+        mostrarToast('No hay datos para exportar', 'warning');
+        return;
+      }
+
+      const selectPeriodo = $('periodoCustomReportes');
+      const idx = parseInt(selectPeriodo?.value || 0);
+      let periodo = periodos[idx];
+      let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
+      
+      // Nombre de hoja seguro (max 30 chars, sin caracteres ilegales)
+      let nombreHoja = `Rep_${periodoStr.replace(/ — /g, '_').replace(/ /g, '_')}`;
+      
+      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
+      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+
+      // Construir cabeceras
+      let headers = ['Empleado', 'Área'];
+      COLUMNAS_DISPONIBLES.forEach(col => {
+        if (columnasCustomActivas.includes(col.id)) {
+          headers.push(col.label);
+        }
+      });
+
+      // Construir filas
+      let filas = data.map(e => {
+        let fila = [e.nombre, e.area || ''];
+        COLUMNAS_DISPONIBLES.forEach(col => {
+          if (columnasCustomActivas.includes(col.id)) {
+            const valor = e[col.id];
+            if (col.tipo === 'tiempo') {
+              fila.push(minutosAHHMMSS(valor));
+            } else if (col.tipo === 'pct') {
+              fila.push(`${valor}%`);
+            } else {
+              fila.push(valor);
+            }
+          }
+        });
+        return fila;
+      });
+
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({
+          accion: 'crearReporteGoogleSheets',
+          nombreReporte: nombreHoja,
+          headers: JSON.stringify(headers),
+          filas: JSON.stringify(filas)
+        });
+        mostrarLoader(false);
+        if (res && res.ok) {
+          mostrarToast('¡Reporte exportado a Google Sheets con éxito!', 'success');
+          // Abrir la pestaña del Google Sheet directamente en una pestaña nueva
+          if (res.url) {
+            window.open(res.url, '_blank');
+          }
+        } else {
+          mostrarToast(res?.error || 'Error al exportar a Google Sheets', 'error');
+        }
+      } catch (err) {
+        mostrarLoader(false);
+        mostrarToast('Error de red al conectar con Google Sheets: ' + err.message, 'error');
+      }
+    };
+
+    window.imprimirReporteCustom = function() {
+      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
+      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+      if (!data.length) {
+        mostrarToast('No hay datos para imprimir', 'warning');
+        return;
+      }
+
+      const selectPeriodo = $('periodoCustomReportes');
+      const idx = parseInt(selectPeriodo?.value || 0);
+      let periodo = periodos[idx];
+      let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
+
+      let printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        mostrarToast('Error al abrir la ventana de impresión. Por favor habilite los pop-ups.', 'error');
+        return;
+      }
+
+      // Generar headers de impresión
+      let headersHtml = '<th>Empleado</th><th>Área</th>';
+      COLUMNAS_DISPONIBLES.forEach(col => {
+        if (columnasCustomActivas.includes(col.id)) {
+          headersHtml += `<th>${col.label}</th>`;
+        }
+      });
+
+      // Generar filas de impresión
+      let bodyHtml = data.map(e => {
+        let rowHtml = `<tr><td style="font-weight:600;">${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
+        COLUMNAS_DISPONIBLES.forEach(col => {
+          if (columnasCustomActivas.includes(col.id)) {
+            const valor = e[col.id];
+            let contenido = '';
+            if (col.tipo === 'tiempo') {
+              contenido = minutosAHHMMSS(valor);
+            } else if (col.tipo === 'pct') {
+              contenido = `${valor}%`;
+            } else {
+              contenido = valor;
+            }
+            rowHtml += `<td style="text-align:center;">${contenido}</td>`;
+          }
+        });
+        rowHtml += '</tr>';
+        return rowHtml;
+      }).join('');
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Reporte de Asistencia - ${periodoStr}</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              color: #333;
+              padding: 20px;
+              margin: 0;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 25px;
+              border-bottom: 3px solid #1e40af;
+              padding-bottom: 12px;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 22px;
+              color: #0f172a;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .header p {
+              margin: 6px 0 0 0;
+              font-size: 13px;
+              color: #4b5563;
+              font-weight: bold;
+            }
+            .info-meta {
+              display: flex;
+              justify-content: space-between;
+              font-size: 11px;
+              color: #64748b;
+              margin-bottom: 15px;
+              font-weight: 600;
+              background: #f8fafc;
+              padding: 8px 12px;
+              border-radius: 6px;
+              border: 1px solid #e2e8f0;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 10px;
+            }
+            th {
+              background-color: #1e40af;
+              color: #ffffff;
+              font-weight: bold;
+              text-align: left;
+              padding: 8px 6px;
+              font-size: 10px;
+              text-transform: uppercase;
+              border: 1px solid #cbd5e1;
+            }
+            td {
+              padding: 7px 6px;
+              font-size: 10px;
+              border: 1px solid #cbd5e1;
+            }
+            tr:nth-child(even) {
+              background-color: #f8fafc;
+            }
+            .footer {
+              margin-top: 40px;
+              text-align: center;
+              font-size: 10px;
+              color: #94a3b8;
+              border-top: 1px dashed #cbd5e1;
+              padding-top: 15px;
+            }
+            @page {
+              size: A4 landscape;
+              margin: 12mm;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>TCONTROL S.A. - REPORTE OFICIAL DE ASISTENCIA</h1>
+            <p>Período de Consulta: ${periodoStr}</p>
+          </div>
+          <div class="info-meta">
+            <div>Generado el: ${new Date().toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+            <div>Total Empleados Evaluados: ${data.length}</div>
+          </div>
+          <table>
+            <thead>
+              <tr>${headersHtml}</tr>
+            </thead>
+            <tbody>
+              ${bodyHtml}
+            </tbody>
+          </table>
+          <div class="footer">
+            Sistema de Gestión de Asistencia CONTROL 2026 - Reporte Oficial Impreso Autorizado
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 600);
+            };
+          </script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    };
