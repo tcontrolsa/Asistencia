@@ -71,7 +71,7 @@
 
             <div class="mb-3">
                 <label class="form-label">Hora de Inicio de Jornada</label>
-                <input type="time" class="form-control" id="configHoraInicio" value="08:00">
+                <input type="time" class="form-control" id="configHoraInicio" value="07:30">
                 <div class="help-text">Hora oficial de inicio de la jornada laboral</div>
             </div>
 
@@ -102,7 +102,7 @@
 
             <div class="mb-3">
                 <label class="form-label">Hora Límite de Entrada Tardía</label>
-                <input type="time" class="form-control" id="configHoraEntradaLimite" value="08:15">
+                <input type="time" class="form-control" id="configHoraEntradaLimite" value="07:45">
                 <div class="help-text">Hora después de la cual se considera entrada tardía</div>
             </div>
 
@@ -233,6 +233,15 @@
                 </button>
                 <div class="help-text mt-2 text-center text-danger fw-bold"><i class="fas fa-exclamation-triangle"></i> Usar solo una vez para trasladar datos desde Sheets a Firestore.</div>
             </div>
+
+            <hr>
+
+            <div class="mb-3">
+                <button id="btnToggleFirebaseAdmin" class="btn btn-outline-primary w-100 fw-bold shadow-sm" onclick="toggleFirebaseAdmin()">
+                    <i class="fas fa-bolt"></i> <span id="toggleFirebaseText">Activar/Desactivar Firebase Local</span>
+                </button>
+                <div class="help-text mt-2">Activa o desactiva la conexión en tiempo real con Firebase en este dispositivo (fallback a Sheets).</div>
+            </div>
         </div>
 
         <!-- Botones de acción -->
@@ -258,6 +267,7 @@
         <div class="loading-spinner"></div>
     </div>
 
+    <script src="./JS/tcontrol_core.js"></script>
     <script src="./JS/admin_config_core.js"></script>
 
 </body>

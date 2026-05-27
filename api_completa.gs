@@ -168,8 +168,15 @@ function doPost(e) {
         for (var i = 0; i < registros.length; i++) {
           var r = registros[i];
           var tsStr = r.timestamp ? String(r.timestamp) : new Date().toISOString();
+          var r_razonSalidaTemprana = r.razon_salida_temprana || r.razonSalidaTemprana || r.razon_salida || '';
+          var r_quienJustifica = r.quien_justifica || r.quienJustifica || '';
+          var r_razonEntradaTardia = r.razon_entrada_tardia || r.razonEntradaTardia || '';
+          var r_quienJustificaEntrada = r.quien_justifica_entrada || r.quienJustificaEntrada || '';
+          var r_tipoSalida = r.tipo_salida || r.tipoSalida || '';
+          var r_razonPermiso = r.razon_permiso || r.razonPermiso || '';
+          
           filas.push([
-            r.fecha||'', r.empleadoId||'', r.nombre||'', r.tipo||'', r.almuerzo||'', r.hora||'', r.lat||'', r.lng||'', r.dispositivo||'', tsStr, r.dia||'', r.modo||'', r.horasExtra||'', r.autoriza||'', r.razonSalidaTemprana||'', r.quienJustifica||'', r.razonEntradaTardia||'', r.quienJustificaEntrada||'', r.tipoSalida||'', r.razonPermiso||''
+            r.fecha||'', r.empleadoId||'', r.nombre||'', r.tipo||'', r.almuerzo||'', r.hora||'', r.lat||'', r.lng||'', r.dispositivo||'', tsStr, r.dia||'', r.modo||'', r.horasExtra||'', r.autoriza||'', r_razonSalidaTemprana, r_quienJustifica, r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso
           ]);
         }
         sheet.getRange(sheet.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
@@ -219,8 +226,40 @@ function doPost(e) {
             horaStr = horaVal ? String(horaVal) : '';
           }
           
+          var r14 = r[14]?String(r[14]):'';
+          var r15 = r[15]?String(r[15]):'';
+          var r16 = r[16]?String(r[16]):'';
+          var r17 = r[17]?String(r[17]):'';
+          var r18 = r[18]?String(r[18]):'';
+          var r19 = r[19]?String(r[19]):'';
           registros.push({
-            fecha: fechaStr, empleadoId: r[1]?String(r[1]):'', nombre: r[2]?String(r[2]):'', tipo: r[3]?String(r[3]):'', almuerzo: r[4]?String(r[4]):'', hora: horaStr, lat: r[6]?String(r[6]):'', lng: r[7]?String(r[7]):'', dispositivo: r[8]?String(r[8]):'', timestamp: r[9]?String(r[9]):'', dia: r[10]?String(r[10]):'', modo: r[11]?String(r[11]):'', horasExtra: r[12]?String(r[12]):'', autoriza: r[13]?String(r[13]):'', razonSalidaTemprana: r[14]?String(r[14]):'', quienJustifica: r[15]?String(r[15]):'', razonEntradaTardia: r[16]?String(r[16]):'', quienJustificaEntrada: r[17]?String(r[17]):'', tipoSalida: r[18]?String(r[18]):'', razonPermiso: r[19]?String(r[19]):''
+            fecha: fechaStr, 
+            empleadoId: r[1]?String(r[1]):'', 
+            nombre: r[2]?String(r[2]):'', 
+            tipo: r[3]?String(r[3]):'', 
+            almuerzo: r[4]?String(r[4]):'', 
+            hora: horaStr, 
+            lat: r[6]?String(r[6]):'', 
+            lng: r[7]?String(r[7]):'', 
+            dispositivo: r[8]?String(r[8]):'', 
+            timestamp: r[9]?String(r[9]):'', 
+            dia: r[10]?String(r[10]):'', 
+            modo: r[11]?String(r[11]):'', 
+            horasExtra: r[12]?String(r[12]):'', 
+            autoriza: r[13]?String(r[13]):'', 
+            razonSalidaTemprana: r14,
+            razon_salida_temprana: r14,
+            razon_salida: r14,
+            quienJustifica: r15,
+            quien_justifica: r15,
+            razonEntradaTardia: r16,
+            razon_entrada_tardia: r16,
+            quienJustificaEntrada: r17,
+            quien_justifica_entrada: r17,
+            tipoSalida: r18,
+            tipo_salida: r18,
+            razonPermiso: r19,
+            razon_permiso: r19
           });
         }
         return ContentService.createTextOutput(JSON.stringify({ok: true, registros: registros})).setMimeType(ContentService.MimeType.JSON);
@@ -374,8 +413,82 @@ function procesarAccion(params) {
     case 'actualizarAutorizacionExtras':
       return actualizarAutorizacionExtras(params.empleadoId, params.autorizado);
       
+    case 'crearReporteGoogleSheets':
+      return crearReporteGoogleSheets(params);
+      
     default:
       return { error: `AcciÃ³n no reconocida: ${accion}` };
+  }
+}
+
+function crearReporteGoogleSheets(params) {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    let nombreReporte = params.nombreReporte || "Reporte_Personalizado";
+    // Limitar longitud del nombre de la hoja (max 30 caracteres) y caracteres ilegales
+    nombreReporte = nombreReporte.replace(/[\/\\\?\*\[\]:]/g, '_').substring(0, 30);
+
+    let headers = [];
+    let filas = [];
+    
+    if (params.headers) {
+      try {
+        headers = JSON.parse(params.headers);
+      } catch(e) {
+        headers = String(params.headers).split(',');
+      }
+    }
+    
+    if (params.filas) {
+      try {
+        filas = JSON.parse(params.filas);
+      } catch(e) {
+        return { error: "Formato de filas inválido" };
+      }
+    }
+
+    if (!headers.length || !filas.length) {
+      return { error: "No se proporcionaron datos suficientes para el reporte" };
+    }
+
+    // Si ya existe una hoja con el mismo nombre, eliminarla para sobrescribir
+    let sheetExistente = ss.getSheetByName(nombreReporte);
+    if (sheetExistente) {
+      ss.deleteSheet(sheetExistente);
+    }
+
+    const sheet = ss.insertSheet(nombreReporte);
+    
+    // Escribir cabeceras
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    
+    // Estilizar cabeceras (Fondo Azul, Letras Blancas, Negrita, Centrado)
+    const headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setFontWeight("bold")
+               .setBackground("#1e40af")
+               .setFontColor("#ffffff")
+               .setHorizontalAlignment("center");
+               
+    // Escribir datos
+    sheet.getRange(2, 1, filas.length, headers.length).setValues(filas);
+    
+    // Estilizar alineación de datos
+    const dataRange = sheet.getRange(2, 1, filas.length, headers.length);
+    dataRange.setFontFamily("Arial");
+    
+    // Auto-ajustar columnas
+    for (let col = 1; col <= headers.length; col++) {
+      sheet.autoResizeColumn(col);
+    }
+
+    return { 
+      ok: true, 
+      mensaje: "Reporte creado exitosamente en Google Sheets", 
+      url: ss.getUrl() + "#gid=" + sheet.getSheetId() 
+    };
+  } catch (error) {
+    console.error("Error en crearReporteGoogleSheets:", error);
+    return { error: error.toString() };
   }
 }
 
@@ -1214,7 +1327,7 @@ function obtenerConfiguraciones() {
       sheet = ss.insertSheet(HOJA_CONFIGURACION);
       const configDefault = {
         ubicacion: { lat: LAT_EMPRESA, lng: LNG_EMPRESA, radio: RADIO_METROS },
-        horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "08:15", hora_salida: "16:15", almuerzo_activo: true, hora_inicio: "08:00", hora_fin: "16:15", marcacion_automatica: false, tiempo_automatico: 10 },
+        horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "07:45", hora_salida: "16:15", almuerzo_activo: true, hora_inicio: "07:30", hora_fin: "16:15", marcacion_automatica: false, tiempo_automatico: 10 },
         registro: { tolerancia_gps: 50, requiere_foto: false, permite_registro_manual: true },
         otras: { whatsapp_number: "593999999999", mensaje_soporte: "Hola, necesito soporte tÃ©cnico para el sistema CONTROL 2026", modo_mantenimiento: false, mensaje_mantenimiento: "Sistema en mantenimiento. Intente mÃ¡s tarde." }
       };
