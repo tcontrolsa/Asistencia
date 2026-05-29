@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspector y Simulador de Empleados - CONTROL 2026</title>
+    
+    <!-- Google Fonts & FontAwesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- FIREBASE SDKS -->
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
+    <script src="./JS/firebase_backend.js"></script>
+    <script>window.USE_FIREBASE = true;</script>
+    
+    <style>
+        :root {
+            --space-bg: #0b0f19;
+            --slate-800: #1e293b;
+            --slate-700: #334155;
+            --blue-glow: rgba(59, 130, 246, 0.15);
+            --blue: #2563eb;
+            --blue-light: #60a5fa;
+            --green: #10b981;
+            --amber: #f59e0b;
+            --rose: #f43f5e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-glass: rgba(255, 255, 255, 0.05);
+            --bg-glass: rgba(15, 23, 42, 0.6);
+            --font-main: 'Plus Jakarta Sans', sans-serif;
+            --font-title: 'Outfit', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            scrollbar-width: thin;
+            scrollbar-color: #334155 #0f172a;
+        }
+
+        *::-webkit-scrollbar {
+            width: 6px;
+        }
+        *::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        *::-webkit-scrollbar-thumb {
+            background-color: #334155;
+            border-radius: 10px;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--space-bg);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(30, 58, 138, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Header Premium */
+        header {
+            padding: 16px 32px;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-glass);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, var(--blue), #4f46e5);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 800;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+        }
+
+        .logo-text {
+            font-family: var(--font-title);
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+
+        .logo-text span {
+            color: var(--blue-light);
+            font-weight: 400;
+        }
+
+        .header-badge {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            color: var(--blue-light);
+            padding: 6px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-badge i {
+            font-size: 12px;
+        }
+
+        /* Layout Grid */
+        .workspace {
+            flex: 1;
+            display: grid;
+            grid-template-columns: clamp(350px, 35vw, 420px) 1fr;
+            padding: 24px;
+            gap: 24px;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* Sidebar / Panel de Control */
+        .panel-control {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 20px;
+            backdrop-filter: blur(16px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-glass);
+        }
+
+        .panel-title {
+            font-family: var(--font-title);
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-main);
+        }
+
+        .panel-title i {
+            color: var(--blue-light);
+        }
+
+        /* Buscador */
+        .search-container {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 16px 10px 40px;
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid var(--border-glass);
+            border-radius: 10px;
+            color: var(--text-main);
+            font-size: 13px;
+            font-family: var(--font-main);
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--blue);
+            box-shadow: 0 0 0 3px var(--blue-glow);
+            background: rgba(30, 41, 59, 0.8);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Lista de Empleados */
+        .employee-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 380px;
+            border-bottom: 1px solid var(--border-glass);
+        }
+
+        .emp-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            background: rgba(30, 41, 59, 0.15);
+        }
+
+        .emp-item:hover {
+            background: rgba(30, 41, 59, 0.4);
+            border-color: rgba(255, 255, 255, 0.05);
+            transform: translateY(-1px);
+        }
+
+        .emp-item.active {
+            background: rgba(37, 99, 235, 0.12);
+            border-color: rgba(37, 99, 235, 0.3);
+            box-shadow: inset 0 0 12px rgba(37, 99, 235, 0.05);
+        }
+
+        .emp-avatar {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--slate-700), #475569);
+            border-radius: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-family: var(--font-title);
+            font-size: 14px;
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .emp-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .emp-name {
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .emp-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .emp-status-badge {
+            font-size: 8.5px;
+            font-weight: 800;
+            padding: 3px 6px;
+            border-radius: 100px;
+            letter-spacing: 0.5px;
+        }
+
+        .emp-status-badge.active {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--green);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .emp-status-badge.inactive {
+            background: rgba(244, 63, 94, 0.1);
+            color: var(--rose);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+        }
+
+        /* Detalle / Meta Card */
+        .meta-card {
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.4);
+            display: none;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .meta-item {
+            background: rgba(30, 41, 59, 0.3);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 8px 12px;
+        }
+
+        .meta-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .meta-val {
+            font-size: 12.5px;
+            font-weight: 600;
+            margin-top: 3px;
+            font-family: var(--font-title);
+        }
+
+        .meta-val.code {
+            font-family: 'Fira Code', monospace;
+            font-size: 12px;
+            color: var(--blue-light);
+        }
+
+        /* Botones Acción */
+        .btn-simular {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, var(--blue), #1d4ed8);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-family: var(--font-main);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.25);
+        }
+
+        .btn-simular:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+        }
+
+        .btn-simular:active {
+            transform: translateY(0);
+        }
+
+        /* Visor de Dispositivo Simulator */
+        .phone-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 10px;
+        }
+
+        .sim-indicator {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 8px 16px;
+            border-radius: 100px;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--green);
+            display: none;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .pulse-active {
+            width: 8px;
+            height: 8px;
+            background-color: var(--green);
+            border-radius: 100px;
+            display: inline-block;
+            box-shadow: 0 0 8px var(--green);
+            animation: pulseGlow 1.5s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px var(--green); }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        /* iPhone Mockup Frame */
+        .phone-mockup {
+            position: relative;
+            width: 375px;
+            height: 812px;
+            background: #000;
+            border-radius: 44px;
+            padding: 10px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 0 4px #27272a, inset 0 0 0 2px rgba(255,255,255,0.1);
+            border: 4px solid #3f3f46;
+            animation: floatPhone 6s ease-in-out infinite;
+        }
+
+        @keyframes floatPhone {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #f8fafc;
+            border-radius: 36px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .phone-notch {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 110px;
+            height: 24px;
+            background: #000;
+            border-bottom-left-radius: 14px;
+            border-bottom-right-radius: 14px;
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .phone-notch::before {
+            content: '';
+            width: 40px;
+            height: 4px;
+            background: #1c1c1e;
+            border-radius: 20px;
+            margin-bottom: 2px;
+        }
+
+        .phone-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #f1f5f9;
+        }
+
+        /* Mockup Home Indicator bar */
+        .phone-home-indicator {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        /* Empty / Welcome State */
+        .empty-mockup-state {
+            position: absolute;
+            inset: 0;
+            background: #0f172a;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+            text-align: center;
+            color: var(--text-muted);
+            z-index: 5;
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            color: var(--blue-light);
+            text-shadow: 0 0 20px var(--blue-glow);
+            animation: bounceIcon 3s infinite;
+        }
+
+        @keyframes bounceIcon {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .empty-title {
+            font-family: var(--font-title);
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 6px;
+        }
+
+        .empty-text {
+            font-size: 11.5px;
+            line-height: 1.5;
+        }
+
+        /* Loader */
+        .loader {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top-color: var(--blue);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .toast-msg {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: #1e293b;
+            border: 1px solid var(--border-glass);
+            padding: 12px 20px;
+            border-radius: 10px;
+            color: white;
+            font-size: 13px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 10000;
+        }
+
+        .toast-msg.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast-msg.success {
+            border-color: rgba(16, 185, 129, 0.3);
+            background: #064e3b;
+        }
+
+        .toast-msg.error {
+            border-color: rgba(244, 63, 94, 0.3);
+            background: #4c0519;
+        }
+
+        /* Grid header list */
+        .list-header {
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 8px 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Controls Simulator */
+        .sim-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-outline {
+            flex: 1;
+            padding: 8px;
+            background: transparent;
+            border: 1px solid var(--slate-700);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .btn-outline:hover {
+            border-color: var(--text-muted);
+            color: var(--text-main);
+            background: rgba(255,255,255,0.03);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header principal -->
+    <header>
+        <div class="header-logo">
+            <div class="logo-icon"><i class="fas fa-mobile-screen-button"></i></div>
+            <div class="logo-text">CONTROL <span>Inspector</span></div>
+        </div>
+        <div id="simulatedUserHeader" class="sim-indicator">
+            <span class="pulse-active"></span>
+            <span id="simulatedUserHeaderText">Simulando a: Ninguno</span>
+        </div>
+        <div class="header-badge">
+            <i class="fas fa-circle-info"></i> Modo Supervisor Activo
+        </div>
+    </header>
+
+    <!-- Workspace principal -->
+    <div class="workspace">
+        
+        <!-- Sidebar / Panel de Control -->
+        <div class="panel-control">
+            <div class="panel-header">
+                <h3 class="panel-title"><i class="fas fa-search"></i> Selector de Personal</h3>
+                <div class="search-container">
+                    <i class="fas fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="txtSearch" class="search-input" placeholder="Buscar por Nombre, Cédula o Área..." onkeyup="filtrarLista()">
+                </div>
+            </div>
+
+            <div class="list-header">
+                <span>Personal</span>
+                <span id="txtListCount">Cargando...</span>
+            </div>
+
+            <!-- Lista de empleados -->
+            <div class="employee-list" id="employeeList">
+                <div style="display:flex; justify-content:center; align-items:center; height:100px; flex-direction:column; gap:10px;">
+                    <div class="loader"></div>
+                    <span style="font-size:12px; color:var(--text-muted);">Conectando a Firebase...</span>
+                </div>
+            </div>
+
+            <!-- Inspector de metadatos del empleado seleccionado -->
+            <div class="meta-card" id="metaCard">
+                <h3 class="panel-title" style="margin:0;"><i class="fas fa-id-badge"></i> Ficha del Empleado</h3>
+                <div class="meta-grid">
+                    <div class="meta-item">
+                        <div class="meta-label">ID / Cédula</div>
+                        <div class="meta-val code" id="valId">---</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">PIN Credencial</div>
+                        <div class="meta-val code" id="valPin" style="color:var(--amber);">---</div>
+                    </div>
+                </div>
+                <div class="meta-grid">
+                    <div class="meta-item">
+                        <div class="meta-label">Cargo</div>
+                        <div class="meta-val" id="valCargo">---</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Área</div>
+                        <div class="meta-val" id="valArea">---</div>
+                    </div>
+                </div>
+                <div class="meta-grid">
+                    <div class="meta-item">
+                        <div class="meta-label">Supervisor</div>
+                        <div class="meta-val" id="valSup">---</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Ubicación Base</div>
+                        <div class="meta-val" id="valCoords" style="font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">---</div>
+                    </div>
+                </div>
+                
+                <button class="btn-simular" id="btnSimularAccion" onclick="activarSimulacionActual()">
+                    <i class="fas fa-play"></i> Simular Credencial de Usuario
+                </button>
+            </div>
+        </div>
+
+        <!-- Phone Simulator Container -->
+        <div class="phone-container">
+            
+            <!-- Controles rápidos del simulador -->
+            <div class="sim-controls" id="simQuickControls" style="display:none; width:375px;">
+                <button class="btn-outline" onclick="reiniciarSimulacion()">
+                    <i class="fas fa-rotate-right"></i> Reiniciar
+                </button>
+                <button class="btn-outline" onclick="detenerSimulacion()" style="border-color:rgba(244,63,94,0.3); color:var(--rose);">
+                    <i class="fas fa-power-off"></i> Detener Simulación
+                </button>
+            </div>
+
+            <!-- Dispositivo iPhone Mockup -->
+            <div class="phone-mockup">
+                <div class="phone-notch"></div>
+                <div class="phone-screen">
+                    
+                    <!-- Estado de Bienvenida / Vacío -->
+                    <div class="empty-mockup-state" id="emptySimState">
+                        <div class="empty-icon"><i class="fas fa-mobile-button"></i></div>
+                        <h4 class="empty-title">Simulador Inactivo</h4>
+                        <p class="empty-text">Selecciona un empleado de la lista y presiona "Simular Credencial" para ver qué se le refleja en su aplicación móvil.</p>
+                    </div>
+                    
+                    <iframe class="phone-iframe" id="simFrame" src="about:blank"></iframe>
+                    <div class="phone-home-indicator"></div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast" class="toast-msg">
+        <i class="fas fa-info-circle"></i>
+        <span id="toastText">Mensaje</span>
+    </div>
+
+    <script>
+        window.allEmpleados = [];
+        window.selectedIdx = -1;
+        window.simulatedEmpId = null;
+
+        // Cargar datos al cargar la página
+        window.onload = async function() {
+            try {
+                const querySnap = await db.collection('empleados').get();
+                window.allEmpleados = [];
+                querySnap.forEach(doc => {
+                    window.allEmpleados.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Ordenar por nombre
+                window.allEmpleados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+                
+                filtrarLista();
+                mostrarToast('Base de datos cargada correctamente.', 'success');
+            } catch (err) {
+                mostrarToast('Error al conectar con Firestore: ' + err.message, 'error');
+                document.getElementById('employeeList').innerHTML = `
+                    <div style="padding:20px; text-align:center; color:var(--rose); font-size:12px;">
+                        <i class="fas fa-exclamation-triangle" style="font-size:24px; margin-bottom:8px; display:block;"></i>
+                        Fallo al cargar personal: <br>${err.message}
+                    </div>
+                `;
+            }
+        };
+
+        // Filtrar lista
+        function filtrarLista() {
+            const q = document.getElementById('txtSearch').value.toLowerCase().trim();
+            const listContainer = document.getElementById('employeeList');
+            const countEl = document.getElementById('txtListCount');
+            
+            const filtered = window.allEmpleados.filter(emp => {
+                return (emp.nombre || '').toLowerCase().includes(q) || 
+                       (emp.id || '').includes(q) || 
+                       (emp.area || '').toLowerCase().includes(q) ||
+                       (emp.cargo || '').toLowerCase().includes(q);
+            });
+
+            countEl.textContent = `${filtered.length} usuarios`;
+
+            if (filtered.length === 0) {
+                listContainer.innerHTML = `
+                    <div style="padding:30px; text-align:center; color:var(--text-muted); font-size:12.5px;">
+                        <i class="fas fa-users-slash" style="font-size:24px; margin-bottom:8px; display:block; color:var(--slate-700);"></i>
+                        No se encontraron usuarios
+                    </div>
+                `;
+                return;
+            }
+
+            listContainer.innerHTML = filtered.map(emp => {
+                const globalIdx = window.allEmpleados.findIndex(x => x.id === emp.id);
+                const isActiveIdx = window.selectedIdx === globalIdx ? ' active' : '';
+                return `
+                    <div class="emp-item${isActiveIdx}" onclick="seleccionarEmpleado(${globalIdx})" id="emp_item_${emp.id}">
+                        <div class="emp-avatar">${(emp.nombre || '?').charAt(0).toUpperCase()}</div>
+                        <div class="emp-info">
+                            <div class="emp-name">${emp.nombre}</div>
+                            <div class="emp-sub">ID: ${emp.id} | ${emp.area || 'General'}</div>
+                        </div>
+                        <span class="emp-status-badge ${emp.activo === 'SI' ? 'active' : 'inactive'}">${emp.activo === 'SI' ? 'ACTIVO' : 'INACTIVO'}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Seleccionar empleado de la lista
+        function seleccionarEmpleado(idx) {
+            window.selectedIdx = idx;
+            const emp = window.allEmpleados[idx];
+            
+            // Actualizar clase activa
+            document.querySelectorAll('.emp-item').forEach(el => el.classList.remove('active'));
+            const activeItem = document.getElementById(`emp_item_${emp.id}`);
+            if (activeItem) activeItem.classList.add('active');
+
+            // Renderizar ficha de metadatos
+            document.getElementById('valId').textContent = emp.id;
+            document.getElementById('valPin').textContent = emp.pin || '---';
+            document.getElementById('valCargo').textContent = emp.cargo || '---';
+            document.getElementById('valArea').textContent = emp.area || '---';
+            document.getElementById('valSup').textContent = emp.supervisor === 'SI' ? 'SÍ (SUPERVISOR)' : 'NO';
+            
+            const lat = emp.baseLat !== undefined && emp.baseLat !== null ? emp.baseLat : '';
+            const lng = emp.baseLng !== undefined && emp.baseLng !== null ? emp.baseLng : '';
+            document.getElementById('valCoords').textContent = lat ? `${lat}, ${lng}` : 'No fijada';
+            
+            document.getElementById('metaCard').style.display = 'flex';
+            
+            // Si ya estamos simulando a este usuario, actualizar botón
+            const btnSim = document.getElementById('btnSimularAccion');
+            if (window.simulatedEmpId === emp.id) {
+                btnSim.innerHTML = '<i class="fas fa-arrows-rotate"></i> Recargar Simulación Activa';
+                btnSim.style.background = 'linear-gradient(135deg, var(--green), #047857)';
+                btnSim.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.25)';
+            } else {
+                btnSim.innerHTML = '<i class="fas fa-play"></i> Simular Credencial de Usuario';
+                btnSim.style.background = 'linear-gradient(135deg, var(--blue), #1d4ed8)';
+                btnSim.style.boxShadow = '0 4px 15px rgba(37, 99, 235, 0.25)';
+            }
+        }
+
+        // Activar la simulación para el usuario seleccionado
+        function activarSimulacionActual() {
+            if (window.selectedIdx === -1) return;
+            const emp = window.allEmpleados[window.selectedIdx];
+            
+            mostrarToast(`Iniciando simulación de credencial para: ${emp.nombre}...`, 'success');
+            
+            // Backup por seguridad (aunque no interfiere con SUPERVISOR_SESSION, es buena práctica)
+            window.simulatedEmpId = emp.id;
+            
+            // Preparar las variables del local storage en este navegador
+            // Esto permite que el index.html abierto en el iframe del mismo dominio cargue como este empleado!
+            const simulatedToken = 'SIM_' + emp.id;
+            localStorage.setItem('DEVICE_TOKEN', simulatedToken);
+            localStorage.setItem('SESSION_DATA', JSON.stringify({
+                empleadoId: emp.id,
+                token: simulatedToken
+            }));
+
+            // Ocultar pantalla de bienvenida
+            document.getElementById('emptySimState').style.display = 'none';
+            
+            // Actualizar iframe
+            const iframe = document.getElementById('simFrame');
+            iframe.src = 'index.html?t=' + Date.now();
+            
+            // Mostrar indicadores superiores de simulación
+            document.getElementById('simulatedUserHeaderText').innerHTML = `Simulando a: <strong>${emp.nombre}</strong> (ID: ${emp.id})`;
+            document.getElementById('simulatedUserHeader').style.display = 'flex';
+            document.getElementById('simQuickControls').style.display = 'flex';
+            
+            // Actualizar botón
+            const btnSim = document.getElementById('btnSimularAccion');
+            btnSim.innerHTML = '<i class="fas fa-arrows-rotate"></i> Recargar Simulación Activa';
+            btnSim.style.background = 'linear-gradient(135deg, var(--green), #047857)';
+            btnSim.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.25)';
+        }
+
+        // Reiniciar la simulación del iframe
+        function reiniciarSimulacion() {
+            if (!window.simulatedEmpId) return;
+            const iframe = document.getElementById('simFrame');
+            iframe.src = 'index.html?t=' + Date.now();
+            mostrarToast('Simulador recargado.', 'success');
+        }
+
+        // Detener la simulación de credencial
+        function detenerSimulacion() {
+            localStorage.removeItem('DEVICE_TOKEN');
+            localStorage.removeItem('SESSION_DATA');
+            
+            window.simulatedEmpId = null;
+            
+            // Limpiar iframe e interfaces
+            document.getElementById('simFrame').src = 'about:blank';
+            document.getElementById('emptySimState').style.display = 'flex';
+            document.getElementById('simulatedUserHeader').style.display = 'none';
+            document.getElementById('simQuickControls').style.display = 'none';
+            
+            // Restaurar botón de selección si corresponde
+            if (window.selectedIdx !== -1) {
+                const emp = window.allEmpleados[window.selectedIdx];
+                seleccionarEmpleado(window.selectedIdx);
+            }
+            
+            mostrarToast('Simulación detenida correctamente.', 'info');
+        }
+
+        // Toasts elegantes
+        let toastTimeout;
+        function mostrarToast(msg, tipo = '') {
+            const toast = document.getElementById('toast');
+            const txt = document.getElementById('toastText');
+            
+            toast.className = 'toast-msg' + (tipo ? ' ' + tipo : '');
+            txt.innerHTML = msg;
+            
+            // Cambiar icono según el tipo
+            const icon = toast.querySelector('i');
+            if (tipo === 'success') {
+                icon.className = 'fas fa-circle-check';
+                icon.style.color = '#10b981';
+            } else if (tipo === 'error') {
+                icon.className = 'fas fa-circle-exclamation';
+                icon.style.color = '#f43f5e';
+            } else {
+                icon.className = 'fas fa-circle-info';
+                icon.style.color = '#60a5fa';
+            }
+
+            toast.classList.add('show');
+            
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 4000);
+        }
+    </script>
+</body>
+</html>

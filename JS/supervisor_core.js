@@ -860,11 +860,16 @@
       if (!periodo || !empCache.length) return;
 
       const hoyRep = new Date().toISOString().split('T')[0];
+      const fechaFiltro = $('filtroFechaReportes')?.value;
+
       let stats = empCache.map(e => {
-        let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
-        let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
+        const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
+        const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
+
+        let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
+        let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
         // Días laborables solo hasta hoy (no días futuros del período)
-        let diasLaborablesTotal = obtenerDiasHabiles(periodo.inicio, periodo.fin);
+        let diasLaborablesTotal = obtenerDiasHabiles(R_INI, R_FIN);
         let diasLaborables = diasLaborablesTotal.filter(d => d <= hoyRep);
         let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f)).size;
 
@@ -901,7 +906,7 @@
         let horasCampo50 = 0;
         let horasCampo100 = 0;
 
-        const diasUnicos = [...new Set((e.registros || []).map(r => r.fecha))].filter(f => f >= periodo.inicio && f <= periodo.fin);
+        const diasUnicos = [...new Set((e.registros || []).map(r => r.fecha))].filter(f => f >= R_INI && f <= R_FIN);
 
         diasUnicos.forEach(fecha => {
           const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
@@ -1010,6 +1015,25 @@
       }
       filtrarTablaReportes();
     }
+
+    window.cargarReportesConFiltroFecha = function() {
+      const inputFecha = $('filtroFechaReportes');
+      const btnLimpiar = $('btnLimpiarFechaRep');
+      if (inputFecha && inputFecha.value) {
+        if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+      } else {
+        if (btnLimpiar) btnLimpiar.style.display = 'none';
+      }
+      cargarReportes();
+    };
+
+    window.limpiarFiltroFechaReportes = function() {
+      const inputFecha = $('filtroFechaReportes');
+      const btnLimpiar = $('btnLimpiarFechaRep');
+      if (inputFecha) inputFecha.value = '';
+      if (btnLimpiar) btnLimpiar.style.display = 'none';
+      cargarReportes();
+    };
 
     function filtrarTablaReportes() {
       let q = ($('searchReportes')?.value || '').toLowerCase();
