@@ -266,7 +266,7 @@
     .stat-card {
       background: white;
       border-radius: var(--r);
-      padding: var(--pad);
+      padding: 10px 14px;
       border: 1px solid var(--g200);
       box-shadow: var(--sh);
       transition: all .3s ease;
@@ -299,17 +299,17 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 12px
+      margin-bottom: 4px
     }
 
     .stat-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px
+      font-size: 16px
     }
 
     .stat-icon.green {
@@ -333,15 +333,15 @@
     }
 
     .stat-value {
-      font-size: var(--f3xl);
+      font-size: 20px;
       font-weight: 900;
       font-family: 'DM Mono', monospace;
       line-height: 1;
-      margin-bottom: 4px
+      margin-bottom: 2px
     }
 
     .stat-label {
-      font-size: var(--fsm);
+      font-size: 11px;
       color: var(--g500);
       font-weight: 600
     }
@@ -349,15 +349,15 @@
     /* KPI Cards */
     .cards-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: var(--gap);
-      margin-bottom: var(--gap)
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px
     }
 
     .kpi-card {
       background: white;
       border-radius: var(--r);
-      padding: var(--pad);
+      padding: 8px 12px;
       border: 1px solid var(--g200);
       cursor: pointer;
       position: relative;
@@ -388,18 +388,18 @@
     .kpi-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 12px
+      gap: 8px;
+      margin-bottom: 4px
     }
 
     .kpi-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px
+      font-size: 16px
     }
 
     .kpi-icon.amber {
@@ -423,22 +423,22 @@
     }
 
     .kpi-value {
-      font-size: var(--f3xl);
+      font-size: 18px;
       font-weight: 900;
       font-family: 'DM Mono', monospace;
       line-height: 1
     }
 
     .kpi-label {
-      font-size: var(--fsm);
+      font-size: 11px;
       color: var(--g500);
       font-weight: 600
     }
 
     .kpi-sub {
-      font-size: var(--fxs);
+      font-size: 10px;
       color: var(--g400);
-      margin-top: 4px
+      margin-top: 2px
     }
 
     /* Metric Cards */
@@ -934,7 +934,7 @@
     .reporte-card {
       background: white;
       border-radius: var(--r);
-      padding: var(--pad);
+      padding: 8px 12px;
       border: 1px solid var(--g200);
       box-shadow: var(--sh);
       transition: all .3s ease
@@ -946,14 +946,14 @@
     }
 
     .reporte-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
-      margin-bottom: 12px
+      font-size: 15px;
+      margin-bottom: 4px
     }
 
     .reporte-icon.red {
@@ -987,22 +987,22 @@
     }
 
     .reporte-value {
-      font-size: var(--f2xl);
+      font-size: 16px;
       font-weight: 900;
       font-family: 'DM Mono', monospace;
-      margin-bottom: 4px
+      margin-bottom: 2px
     }
 
     .reporte-label {
-      font-size: var(--fsm);
+      font-size: 10px;
       color: var(--g500);
       font-weight: 600
     }
 
     .reporte-period {
-      font-size: var(--fxs);
+      font-size: 9px;
       color: var(--g400);
-      margin-top: 6px
+      margin-top: 2px
     }
 
     /* Modal */

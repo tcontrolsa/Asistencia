@@ -264,6 +264,11 @@ function doPost(e) {
         }
         return ContentService.createTextOutput(JSON.stringify({ok: true, registros: registros})).setMimeType(ContentService.MimeType.JSON);
       }
+      
+      if (data.accion === 'escribirHojaActualizar') {
+        var res = escribirHojaActualizar(data);
+        return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
+      }
     }
   } catch(e) {}
   
@@ -416,8 +421,190 @@ function procesarAccion(params) {
     case 'crearReporteGoogleSheets':
       return crearReporteGoogleSheets(params);
       
+    case 'escribirHojaActualizar':
+      return escribirHojaActualizar(params);
+      
+    case 'leerHojaActualizar':
+      return leerHojaActualizar();
+      
     default:
-      return { error: `AcciÃ³n no reconocida: ${accion}` };
+      return { error: `Acción no reconocida: ${accion}` };
+  }
+}
+
+function normalizarHeaderAKey(header) {
+  var clean = String(header).trim().toUpperCase();
+  
+  if (clean === "ID/CÉDULA" || clean === "ID/CEDULA" || clean === "ID" || clean === "CEDULA" || clean === "CÉDULA") return "id";
+  if (clean === "NOMBRE COMPLETO" || clean === "NOMBRE") return "nombre";
+  if (clean === "ÁREA" || clean === "AREA") return "area";
+  if (clean === "CARGO") return "cargo";
+  if (clean === "PIN") return "pin";
+  if (clean === "SUPERVISOR (SI/NO)" || clean === "SUPERVISOR") return "supervisor";
+  if (clean === "ACTIVO (SI/NO)" || clean === "ACTIVO") return "activo";
+  if (clean === "URL FOTO" || clean === "FOTO" || clean === "FOTO URL" || clean === "FOTO_URL") return "foto_url";
+  if (clean === "LATITUD BASE" || clean === "LATITUD" || clean === "BASELAT" || clean === "LATITUD_BASE") return "baseLat";
+  if (clean === "LONGITUD BASE" || clean === "LONGITUD" || clean === "BASELNG" || clean === "LONGITUD_BASE") return "baseLng";
+  if (clean === "FECHA NACIMIENTO" || clean === "FECHA_NACIMIENTO" || clean === "F. NACIMIENTO" || clean === "FECHANACIMIENTO") return "fechaNacimiento";
+  
+  // Normalizar encabezados personalizados a camelCase
+  var conAcentos = "ÁÉÍÓÚÜÑáéíóúüñ";
+  var sinAcentos = "AEIOUUNaeiouun";
+  var h = "";
+  for (var i = 0; i < clean.length; i++) {
+    var char = clean.charAt(i);
+    var idx = conAcentos.indexOf(char);
+    h += idx !== -1 ? sinAcentos.charAt(idx) : char;
+  }
+  
+  h = h.toLowerCase().replace(/[^a-z0-9_ ]/g, "");
+  var parts = h.split(/[\s_]+/);
+  var key = parts[0];
+  for (var j = 1; j < parts.length; j++) {
+    if (parts[j]) {
+      key += parts[j].charAt(0).toUpperCase() + parts[j].slice(1);
+    }
+  }
+  return key;
+}
+
+function escribirHojaActualizar(params) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName("ACTUALIZAR");
+    if (sheet) {
+      sheet.clear();
+    } else {
+      sheet = ss.insertSheet("ACTUALIZAR");
+    }
+    
+    let empleados = [];
+    if (params.empleados) {
+      try {
+        empleados = typeof params.empleados === 'string' ? JSON.parse(params.empleados) : params.empleados;
+      } catch(e) {
+        return { error: "Formato de empleados inválido: " + e.toString() };
+      }
+    }
+    
+    let columnas = [];
+    if (params.columnas) {
+      try {
+        columnas = typeof params.columnas === 'string' ? JSON.parse(params.columnas) : params.columnas;
+      } catch(e) {}
+    }
+    
+    let encabezados = [];
+    if (params.encabezados) {
+      try {
+        encabezados = typeof params.encabezados === 'string' ? JSON.parse(params.encabezados) : params.encabezados;
+      } catch(e) {}
+    }
+    
+    // Fallback en caso de que no se envíen columnas o encabezados
+    if (columnas.length === 0) {
+      columnas = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+      encabezados = ['ID/Cédula', 'Nombre completo', 'Área', 'Cargo', 'PIN', 'Supervisor (SI/NO)', 'Activo (SI/NO)', 'URL Foto', 'Latitud Base', 'Longitud Base', 'Fecha Nacimiento'];
+    }
+    
+    // Escribir cabecera
+    sheet.getRange(1, 1, 1, encabezados.length).setValues([encabezados]);
+    sheet.getRange(1, 1, 1, encabezados.length).setFontWeight("bold")
+               .setBackground("#1e3a8a")
+               .setFontColor("#ffffff")
+               .setHorizontalAlignment("center");
+    
+    if (empleados.length > 0) {
+      const filas = empleados.map(function(e) {
+        return columnas.map(function(col) {
+          var val = e[col];
+          return val !== null && val !== undefined ? String(val) : '';
+        });
+      });
+      
+      sheet.getRange(2, 1, filas.length, encabezados.length).setValues(filas);
+      sheet.getRange(2, 1, filas.length, encabezados.length).setHorizontalAlignment("left");
+    }
+    
+    // Auto ajustar
+    for (let col = 1; col <= encabezados.length; col++) {
+      sheet.autoResizeColumn(col);
+    }
+    
+    return { ok: true, url: ss.getUrl() + "#gid=" + sheet.getSheetId() };
+  } catch(e) {
+    return { error: e.toString() };
+  }
+}
+
+function leerHojaActualizar() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName("ACTUALIZAR");
+    if (!sheet) {
+      return { error: "La hoja 'ACTUALIZAR' no existe. Primero debe descargar la información." };
+    }
+    
+    const dataRange = sheet.getDataRange().getValues();
+    if (dataRange.length <= 1) {
+      return { error: "La hoja 'ACTUALIZAR' está vacía o solo contiene cabeceras." };
+    }
+    
+    // Obtener cabeceras y mapearlas a keys camelCase
+    const headers = dataRange[0];
+    const keys = headers.map(function(h) {
+      return normalizarHeaderAKey(h);
+    });
+    
+    const idxId = keys.indexOf("id");
+    const idxNombre = keys.indexOf("nombre");
+    
+    if (idxId === -1 || idxNombre === -1) {
+      return { error: "La hoja 'ACTUALIZAR' debe contener al menos las columnas 'ID/Cédula' y 'Nombre completo'." };
+    }
+    
+    const empleados = [];
+    // Omitir cabecera (i = 0)
+    for (let i = 1; i < dataRange.length; i++) {
+      const r = dataRange[i];
+      const id = r[idxId] ? String(r[idxId]).trim() : '';
+      const nombre = r[idxNombre] ? String(r[idxNombre]).trim() : '';
+      
+      if (!id || !nombre) continue; // Saltar filas vacías o sin ID/Nombre
+      
+      const emp = {};
+      for (let colIdx = 0; colIdx < keys.length; colIdx++) {
+        const key = keys[colIdx];
+        if (!key) continue;
+        
+        let val = r[colIdx];
+        
+        // Formatear/Limpiar campos específicos
+        if (key === "id") {
+          val = id;
+        } else if (key === "nombre") {
+          val = nombre;
+        } else if (key === "supervisor") {
+          val = String(val || 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO';
+        } else if (key === "activo") {
+          val = String(val || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI';
+        } else if (key === "baseLat" || key === "baseLng") {
+          val = val !== null && val !== undefined ? String(val).trim() : '';
+        } else if (val instanceof Date) {
+          // Formato fecha legible para fechas normales
+          val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        } else {
+          val = val !== null && val !== undefined ? String(val).trim() : '';
+        }
+        
+        emp[key] = val;
+      }
+      empleados.push(emp);
+    }
+    
+    return { ok: true, empleados: empleados };
+  } catch(e) {
+    return { error: e.toString() };
   }
 }
 

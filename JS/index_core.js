@@ -3127,7 +3127,11 @@
 
                         if (estadoRes && !estadoRes.error) {
                             const hoyStr = new Date().toISOString().split('T')[0];
-                            const registroHoy = registros.filter(r => r.fecha === hoyStr);
+                            const listaRegistros = Array.isArray(registros) ? registros : [];
+                            if (registros && registros.error) {
+                                console.error('Error al recuperar registros iniciales:', registros.error);
+                            }
+                            const registroHoy = listaRegistros.filter(r => r.fecha === hoyStr);
                             const entradaHoy = registroHoy.find(r => r.tipo === 'ENTRADA');
                             const salidaHoy = registroHoy.find(r => r.tipo === 'SALIDA');
 
@@ -3155,7 +3159,7 @@
                             };
 
                             actualizarInterfazSegunCargo();
-                            registrosCompletos = registros;
+                            registrosCompletos = listaRegistros;
                             isAuthenticated = true;
 
                             if (esCumpleanos(empleado.fechaNacimiento)) {

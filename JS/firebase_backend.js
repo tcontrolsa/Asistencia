@@ -78,6 +78,8 @@ window.FirebaseBackend = {
                     return await this.actualizarRegistroGeneral(params);
                 case 'actualizarEmpleado':
                     return await this.actualizarEmpleado(params);
+                case 'actualizarMasivoEmpleados':
+                    return await this.actualizarMasivoEmpleados(params);
                 case 'eliminarRegistro':
                     return await this.eliminarRegistro(params);
                 case 'depurarDuplicados':
@@ -86,6 +88,10 @@ window.FirebaseBackend = {
                     return await this.regularizacionMasiva(params);
                 case 'desvincularDispositivo':
                     return await this.desvincularDispositivo(params);
+                case 'escribirHojaActualizar':
+                    return await this._post(params);
+                case 'leerHojaActualizar':
+                    return await this._jsonp(params);
                 default:
                     console.warn("⚠️ Acción no reconocida:", accion);
                     return { error: "Acción no soportada en Firebase: " + accion };
@@ -365,13 +371,24 @@ window.FirebaseBackend = {
         let registros = [];
         querySnap.forEach(doc => {
             const data = doc.data();
+            let tsVal = null;
+            if (data.timestamp) {
+                if (typeof data.timestamp.toDate === 'function') {
+                    tsVal = data.timestamp.toDate().toISOString();
+                } else if (data.timestamp instanceof Date) {
+                    tsVal = data.timestamp.toISOString();
+                } else {
+                    const parsedD = new Date(data.timestamp);
+                    tsVal = !isNaN(parsedD.getTime()) ? parsedD.toISOString() : String(data.timestamp);
+                }
+            }
             registros.push({
                 fecha: this._normFecha(data.fecha),
                 tipo: data.tipo,
                 hora: this._limpiarHora(data.hora),
                 almuerzo: data.almuerzo || '',
                 dispositivo: data.dispositivo || '',
-                timestamp: data.timestamp ? data.timestamp.toDate().toISOString() : null,
+                timestamp: tsVal,
                 dia: data.dia || '',
                 modo: data.modo || 'OFICINA',
                 horasExtra: data.horasExtra || 'NO',
@@ -967,6 +984,79 @@ window.FirebaseBackend = {
         return { ok: true };
     },
 
+    async actualizarMasivoEmpleados(params) {
+        try {
+            if (!params.empleados) return { error: "No se proporcionaron datos de empleados" };
+            const lista = typeof params.empleados === 'string' ? JSON.parse(params.empleados) : params.empleados;
+            
+            console.log(`⚡ Iniciando importación masiva y dinámica de ${lista.length} empleados...`);
+            
+            let batch = db.batch();
+            let count = 0;
+            let guardados = 0;
+            
+            for (const emp of lista) {
+                if (!emp.id) continue;
+                const docRef = db.collection('empleados').doc(emp.id.toString());
+                
+                const dataObj = {};
+                
+                // Mapear dinámicamente todas las propiedades recibidas
+                for (const key in emp) {
+                    if (emp.hasOwnProperty(key)) {
+                        if (key === 'id') continue; // ID es el doc id, no va en el cuerpo del doc
+                        
+                        let val = emp[key];
+                        
+                        // Conversión de tipos segura
+                        if (key === 'baseLat' || key === 'baseLng') {
+                            if (val !== undefined && val !== null && val !== '') {
+                                const num = Number(val);
+                                if (!isNaN(num)) {
+                                    dataObj[key] = num;
+                                }
+                            }
+                        } else if (key === 'pin') {
+                            if (val !== undefined && val !== null && val !== '') {
+                                dataObj[key] = val.toString();
+                            }
+                        } else if (key === 'supervisor') {
+                            dataObj[key] = val || 'NO';
+                        } else if (key === 'activo') {
+                            dataObj[key] = val || 'SI';
+                        } else {
+                            dataObj[key] = val !== undefined && val !== null ? val.toString() : '';
+                        }
+                    }
+                }
+                
+                // Asegurar campos mínimos obligatorios por si no estuvieran presentes
+                if (dataObj.activo === undefined) dataObj.activo = 'SI';
+                if (dataObj.supervisor === undefined) dataObj.supervisor = 'NO';
+                
+                batch.set(docRef, dataObj, { merge: true });
+                count++;
+                guardados++;
+                
+                if (count === 400) {
+                    await batch.commit();
+                    batch = db.batch();
+                    count = 0;
+                }
+            }
+            
+            if (count > 0) {
+                await batch.commit();
+            }
+            
+            console.log(`✅ Importación masiva completada: ${guardados} empleados procesados.`);
+            return { ok: true, procesados: guardados };
+        } catch (error) {
+            console.error("🔥 Error en actualizarMasivoEmpleados:", error);
+            return { error: error.message || error.toString() };
+        }
+    },
+
     async obtenerListaCatering() {
         try {
             const hoy = new Date();
@@ -1340,7 +1430,6 @@ window.FirebaseBackend = {
                 await batch.commit();
                 total += count;
             }
-
             return { ok: true, procesados: total };
         } catch (e) {
             console.error("❌ Error en regularización masiva:", e);
@@ -1351,10 +1440,32 @@ window.FirebaseBackend = {
     // ==========================================
     // AUXILIARES
     // ==========================================
+    async _post(params) {
+        try {
+            const api_url = (window.TCONTROL_CONFIG && window.TCONTROL_CONFIG.API_URL) || window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+            let payload = { ...params };
+            payload.apiKey = 'TCONTROL_SECURE_2026_XYZ';
+            if (payload.empleados && typeof payload.empleados === 'string') {
+                try {
+                    payload.empleados = JSON.parse(payload.empleados);
+                } catch(e) {}
+            }
+            const res = await fetch(api_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(payload)
+            });
+            return await res.json();
+        } catch (error) {
+            console.error("❌ Error en _post a Sheets:", error);
+            return { error: "Error de red al conectar con Sheets: " + error.message };
+        }
+    },
+
     _jsonp(params) {
         return new Promise((resolve, reject) => {
             const callbackName = 'cb_' + Math.floor(Math.random() * 1000000);
-            const api_url = window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+            const api_url = (window.TCONTROL_CONFIG && window.TCONTROL_CONFIG.API_URL) || window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             
             const timeout = setTimeout(() => {
                 delete window[callbackName];
@@ -1382,7 +1493,6 @@ window.FirebaseBackend = {
                 reject(new Error("Error de red al conectar con Sheets"));
             };
             document.body.appendChild(script);
-            // Limpiar script tag después de carga
             script.onload = () => script.remove();
         });
     },

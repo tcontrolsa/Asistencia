@@ -30,9 +30,9 @@
       const container = document.getElementById('toast-container');
       const el = document.createElement('div');
       el.className = 'toast-msg' + (tipo ? ' ' + tipo : '');
-      el.textContent = msg;
+      el.innerHTML = msg;
       container.appendChild(el);
-      setTimeout(() => el.remove(), 3000);
+      setTimeout(() => el.remove(), 5000);
     }
 
     function mostrarLoader(show) {
@@ -1473,7 +1473,8 @@
         dashboard: 'Dashboard Ejecutivo', 
         asistencia: 'Control de Asistencia', 
         detalle: 'Detalle de Empleado',
-        reportes: 'Creador Interactivo de Reportes'
+        reportes: 'Creador Interactivo de Reportes',
+        opciones: 'Opciones adicionales'
       };
       $('pageTitle').textContent = titles[panel] || 'Supervisor';
       if (panel !== 'detalle') {
@@ -1984,7 +1985,13 @@
             // Estado global de permisos
             window.isMaster = esMaster;
 
-            if (esMaster && $('navItemReportes')) $('navItemReportes').style.display = 'flex';
+            if (esMaster) {
+              if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
+              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'flex';
+            } else {
+              if ($('navItemReportes')) $('navItemReportes').style.display = 'none';
+              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'none';
+            }
 
             $('login-supervisor').classList.add('hidden');
             cargarDatosCompletos();
@@ -1997,7 +2004,7 @@
       } catch (e) {
         mostrarError('Error de conexión');
       } finally {
-        mostrarLoader(false);
+        window.mostrarLoader(false); // Evitar error si no está bindeado, usando global
       }
     }
 
@@ -2022,7 +2029,13 @@
         try {
           const session = JSON.parse(sessionStr);
           window.isMaster = (session.id === "1058");
-          if (window.isMaster && $('navItemReportes')) $('navItemReportes').style.display = 'flex';
+          if (window.isMaster) {
+            if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
+            if ($('navItemOpciones')) $('navItemOpciones').style.display = 'flex';
+          } else {
+            if ($('navItemReportes')) $('navItemReportes').style.display = 'none';
+            if ($('navItemOpciones')) $('navItemOpciones').style.display = 'none';
+          }
         } catch (e) { }
         $('login-supervisor').classList.add('hidden');
         cargarDatosCompletos();
@@ -2103,7 +2116,19 @@
     // ============================================================
     // CREADOR INTERACTIVO DE REPORTES CUSTOM
     // ============================================================
-    let columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+    function obtenerColumnasCustomActivas() {
+      const saved = localStorage.getItem('columnasCustomActivasReporte');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) { }
+      }
+      return ['asistencias', 'faltas', 'atrasos', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+    }
+
+    function guardarColumnasCustomActivas(columnas) {
+      localStorage.setItem('columnasCustomActivasReporte', JSON.stringify(columnas));
+    }
+
+    let columnasCustomActivas = obtenerColumnasCustomActivas();
     let _sortCustomReport = { col: 'nombre', dir: 'asc' };
     let _reportesCustomData = [];
 
@@ -2277,6 +2302,7 @@
     window.agregarColumnaCustom = function(colId) {
       if (!columnasCustomActivas.includes(colId)) {
         columnasCustomActivas.push(colId);
+        guardarColumnasCustomActivas(columnasCustomActivas);
         renderizarColumnasInteractivas();
         filtrarReporteInteractivo();
       }
@@ -2286,6 +2312,7 @@
       const idx = columnasCustomActivas.indexOf(colId);
       if (idx > -1) {
         columnasCustomActivas.splice(idx, 1);
+        guardarColumnasCustomActivas(columnasCustomActivas);
         renderizarColumnasInteractivas();
         filtrarReporteInteractivo();
       }
@@ -2400,6 +2427,7 @@
 
     window.restablecerColumnasDefault = function() {
       columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+      guardarColumnasCustomActivas(columnasCustomActivas);
       renderizarColumnasInteractivas();
       filtrarReporteInteractivo();
       mostrarToast('Columnas restablecidas por defecto', 'info');
@@ -2554,10 +2582,15 @@
         });
         mostrarLoader(false);
         if (res && res.ok) {
-          mostrarToast('¡Reporte exportado a Google Sheets con éxito!', 'success');
-          // Abrir la pestaña del Google Sheet directamente en una pestaña nueva
           if (res.url) {
-            window.open(res.url, '_blank');
+            mostrarToast('¡Reporte exportado con éxito! <a href="' + res.url + '" target="_blank" style="text-decoration:underline;color:white;font-weight:bold;margin-left:6px;">Abrir Google Sheets <i class="fas fa-external-link-alt"></i></a>', 'success');
+            try {
+              window.open(res.url, '_blank');
+            } catch(e) {
+              console.log("window.open blocked by popup blocker:", e);
+            }
+          } else {
+            mostrarToast('¡Reporte exportado a Google Sheets con éxito!', 'success');
           }
         } else {
           mostrarToast(res?.error || 'Error al exportar a Google Sheets', 'error');
@@ -2727,4 +2760,526 @@
         </html>
       `);
       printWindow.document.close();
+    };
+
+    // ============================================================
+    // ACTUALIZACIÓN MASIVA DE EMPLEADOS (EXCEL, SHEETS, FORMULARIO)
+    // ============================================================
+    let _vistaPreviaMasivaCache = [];
+
+    window.cambiarModoGestion = function(modo) {
+      const contSheets = $('contModoSheets');
+      const contManual = $('contModoManual');
+      const contPasted = $('contModoPasted');
+      
+      if (contSheets) contSheets.style.display = modo === 'sheets' ? 'block' : 'none';
+      if (contManual) contManual.style.display = modo === 'manual' ? 'block' : 'none';
+      if (contPasted) contPasted.style.display = modo === 'pasted' ? 'flex' : 'none';
+      
+      // Actualizar estilos activos de los botones de pestaña
+      document.querySelectorAll('.tab-gestion').forEach(btn => {
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--g500)';
+      });
+      
+      let modoCapitalized = modo.charAt(0).toUpperCase() + modo.slice(1);
+      const activeBtn = $('btnModo' + modoCapitalized);
+      if (activeBtn) {
+        activeBtn.style.background = 'white';
+        activeBtn.style.color = 'var(--g800)';
+        activeBtn.style.boxShadow = 'var(--sh)';
+      }
+    };
+
+    function normalizarHeaderAKeyJS(header) {
+      var clean = String(header).trim().toUpperCase();
+      
+      if (clean === "ID/CÉDULA" || clean === "ID/CEDULA" || clean === "ID" || clean === "CEDULA" || clean === "CÉDULA") return "id";
+      if (clean === "NOMBRE COMPLETO" || clean === "NOMBRE") return "nombre";
+      if (clean === "ÁREA" || clean === "AREA") return "area";
+      if (clean === "CARGO") return "cargo";
+      if (clean === "PIN") return "pin";
+      if (clean === "SUPERVISOR (SI/NO)" || clean === "SUPERVISOR") return "supervisor";
+      if (clean === "ACTIVO (SI/NO)" || clean === "ACTIVO") return "activo";
+      if (clean === "URL FOTO" || clean === "FOTO" || clean === "FOTO URL" || clean === "FOTO_URL") return "foto_url";
+      if (clean === "LATITUD BASE" || clean === "LATITUD" || clean === "BASELAT" || clean === "LATITUD_BASE") return "baseLat";
+      if (clean === "LONGITUD BASE" || clean === "LONGITUD" || clean === "BASELNG" || clean === "LONGITUD_BASE") return "baseLng";
+      if (clean === "FECHA NACIMIENTO" || clean === "FECHA_NACIMIENTO" || clean === "F. NACIMIENTO" || clean === "FECHANACIMIENTO") return "fechaNacimiento";
+      
+      // Normalizar encabezados personalizados a camelCase
+      var conAcentos = "ÁÉÍÓÚÜÑáéíóúüñ";
+      var sinAcentos = "AEIOUUNaeiouun";
+      var h = "";
+      for (var i = 0; i < clean.length; i++) {
+        var char = clean.charAt(i);
+        var idx = conAcentos.indexOf(char);
+        h += idx !== -1 ? sinAcentos.charAt(idx) : char;
+      }
+      
+      h = h.toLowerCase().replace(/[^a-z0-9_ ]/g, "");
+      var parts = h.split(/[\s_]+/);
+      var key = parts[0];
+      for (var j = 1; j < parts.length; j++) {
+        if (parts[j]) {
+          key += parts[j].charAt(0).toUpperCase() + parts[j].slice(1);
+        }
+      }
+      return key;
+    }
+
+    function renderVistaPreviaMasiva(empleados) {
+      const tbody = $('tbodyVistaPreviaEmpleados');
+      if (!tbody) return;
+      
+      if (!empleados || !empleados.length) {
+        tbody.innerHTML = '';
+        return;
+      }
+      
+      // 1. Obtener todas las propiedades únicas (keys) presentes en todos los empleados
+      const ignoreKeys = new Set([
+        'registros', 'entradaHoy', 'salidaHoy', 'almuerzoHoy', 
+        'horaEntrada', 'horaSalida', 'horaEntradaMs', 'horaSalidaMs', 
+        'deviceToken', 'id_dispositivo'
+      ]);
+      const keysEncontradas = new Set();
+      
+      empleados.forEach(emp => {
+        Object.keys(emp).forEach(key => {
+          if (!key.startsWith('_') && !ignoreKeys.has(key)) {
+            keysEncontradas.add(key);
+          }
+        });
+      });
+      
+      // 2. Ordenar las columnas para que las estándar vayan primero y luego las custom
+      const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+      const finalKeys = [];
+      
+      COLUMNAS_ORDENADAS.forEach(k => {
+        if (keysEncontradas.has(k)) {
+          finalKeys.push(k);
+          keysEncontradas.delete(k);
+        }
+      });
+      
+      keysEncontradas.forEach(k => {
+        finalKeys.push(k);
+      });
+      
+      // 3. Traducir keys a cabeceras en español
+      const MAPA_COLUMNAS_ESTANDAR = {
+        id: "ID / Cédula",
+        nombre: "Nombre completo",
+        area: "Área",
+        cargo: "Cargo",
+        pin: "PIN",
+        supervisor: "Supervisor",
+        activo: "Activo",
+        foto_url: "URL Foto",
+        baseLat: "Latitud",
+        baseLng: "Longitud",
+        fechaNacimiento: "F. Nacimiento"
+      };
+      
+      function camelCaseToTitle(key) {
+        const result = key.replace(/([A-Z])/g, " $1");
+        return result.charAt(0).toUpperCase() + result.slice(1);
+      }
+      
+      function keyToHeaderLabel(key) {
+        if (MAPA_COLUMNAS_ESTANDAR[key]) return MAPA_COLUMNAS_ESTANDAR[key];
+        return camelCaseToTitle(key);
+      }
+      
+      // 4. Renderizar el thead dinámicamente
+      const thead = tbody.closest('table').querySelector('thead');
+      if (thead) {
+        let headersHtml = '<tr>';
+        finalKeys.forEach(key => {
+          let styleAlign = '';
+          if (key === 'supervisor' || key === 'activo') {
+            styleAlign = ' style="text-align:center"';
+          }
+          headersHtml += `<th${styleAlign}>${escapeHtml(keyToHeaderLabel(key))}</th>`;
+        });
+        headersHtml += '</tr>';
+        thead.innerHTML = headersHtml;
+      }
+      
+      // 5. Renderizar el tbody dinámicamente
+      tbody.innerHTML = empleados.map(emp => {
+        let rowHtml = '<tr>';
+        finalKeys.forEach(key => {
+          let val = emp[key] !== undefined && emp[key] !== null ? emp[key] : '';
+          
+          let tdHtml = '';
+          if (key === 'id') {
+            tdHtml = `<td style="font-family:'DM Sans',sans-serif;font-weight:600;">${escapeHtml(val)}</td>`;
+          } else if (key === 'nombre') {
+            tdHtml = `<td><strong>${escapeHtml(val)}</strong></td>`;
+          } else if (key === 'supervisor') {
+            tdHtml = `<td style="text-align:center">${val === 'SI' ? '<span class="pill ok">SI</span>' : '<span class="pill dim">NO</span>'}</td>`;
+          } else if (key === 'activo') {
+            tdHtml = `<td style="text-align:center">${val === 'SI' ? '<span class="pill ok">Activo</span>' : '<span class="pill miss">Inactivo</span>'}</td>`;
+          } else if (key === 'pin') {
+            tdHtml = `<td style="font-family:'DM Mono',monospace;color:var(--g500);">${escapeHtml(val)}</td>`;
+          } else if (key === 'baseLat' || key === 'baseLng') {
+            tdHtml = `<td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--g500);">${escapeHtml(val)}</td>`;
+          } else if (key === 'foto_url') {
+            tdHtml = `<td style="font-size:11px;color:var(--g500);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
+          } else {
+            // Personalizado
+            tdHtml = `<td>${escapeHtml(val)}</td>`;
+          }
+          rowHtml += tdHtml;
+        });
+        rowHtml += '</tr>';
+        return rowHtml;
+      }).join('');
+    }
+
+    window.descargarBaseAGoogleSheetsActualizar = async function() {
+      if (!empCache.length) {
+        mostrarToast('No hay datos de empleados cargados.', 'warning');
+        return;
+      }
+      
+      mostrarLoader(true);
+      try {
+        // 1. Encontrar todas las propiedades únicas (keys) presentes en empCache
+        const ignoreKeys = new Set([
+          'registros', 'entradaHoy', 'salidaHoy', 'almuerzoHoy', 
+          'horaEntrada', 'horaSalida', 'horaEntradaMs', 'horaSalidaMs', 
+          'deviceToken', 'id_dispositivo'
+        ]);
+        
+        const keysEncontradas = new Set();
+        empCache.forEach(emp => {
+          Object.keys(emp).forEach(key => {
+            if (!key.startsWith('_') && !ignoreKeys.has(key)) {
+              keysEncontradas.add(key);
+            }
+          });
+        });
+        
+        // 2. Ordenar las columnas para que las estándar vayan primero y luego las custom
+        const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+        const finalKeys = [];
+        
+        COLUMNAS_ORDENADAS.forEach(k => {
+          if (keysEncontradas.has(k)) {
+            finalKeys.push(k);
+            keysEncontradas.delete(k);
+          }
+        });
+        
+        keysEncontradas.forEach(k => {
+          finalKeys.push(k);
+        });
+        
+        // 3. Traducir keys a cabeceras en español
+        const MAPA_HEADER_LABEL = {
+          id: "ID / Cédula",
+          nombre: "Nombre completo",
+          area: "Área",
+          cargo: "Cargo",
+          pin: "PIN",
+          supervisor: "Supervisor (SI/NO)",
+          activo: "Activo (SI/NO)",
+          foto_url: "URL Foto",
+          baseLat: "Latitud Base",
+          baseLng: "Longitud Base",
+          fechaNacimiento: "Fecha Nacimiento"
+        };
+        
+        function camelCaseToTitle(key) {
+          const result = key.replace(/([A-Z])/g, " $1");
+          return result.charAt(0).toUpperCase() + result.slice(1);
+        }
+        
+        function keyToHeaderLabel(key) {
+          if (MAPA_HEADER_LABEL[key]) return MAPA_HEADER_LABEL[key];
+          return camelCaseToTitle(key);
+        }
+        
+        const encabezados = finalKeys.map(k => keyToHeaderLabel(k));
+        
+        // 4. Mapear los empleados con solo estas propiedades
+        const empleadosSheets = empCache.map(emp => {
+          const empObj = {};
+          finalKeys.forEach(k => {
+            empObj[k] = emp[k] !== undefined && emp[k] !== null ? emp[k] : '';
+          });
+          return empObj;
+        });
+        
+        const res = await jsonpRequest({
+          accion: 'escribirHojaActualizar',
+          empleados: JSON.stringify(empleadosSheets),
+          columnas: JSON.stringify(finalKeys),
+          encabezados: JSON.stringify(encabezados)
+        });
+        
+        mostrarLoader(false);
+        if (res && res.ok) {
+          if (res.url) {
+            mostrarToast('¡Base de datos descargada con éxito! <a href="' + res.url + '" target="_blank" style="text-decoration:underline;color:white;font-weight:bold;margin-left:6px;">Abrir Hoja ACTUALIZAR <i class="fas fa-external-link-alt"></i></a>', 'success');
+          } else {
+            mostrarToast('¡Base de datos descargada con éxito a la hoja "ACTUALIZAR"!', 'success');
+          }
+        } else {
+          mostrarToast(res?.error || 'Error al descargar a Google Sheets.', 'error');
+        }
+      } catch (err) {
+        mostrarLoader(false);
+        mostrarToast('Error de red al conectar con Google Sheets: ' + err.message, 'error');
+      }
+    };
+
+    window.leerEImportarDesdeGoogleSheetsActualizar = async function() {
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({
+          accion: 'leerHojaActualizar'
+        });
+        
+        mostrarLoader(false);
+        if (res && res.ok && res.empleados) {
+          const empleados = res.empleados;
+          _vistaPreviaMasivaCache = empleados;
+          
+          const tbody = $('tbodyVistaPreviaEmpleados');
+          const container = $('vistaPreviaEmpleadosContainer');
+          const countEl = $('countVistaPrevia');
+          
+          if (!empleados.length) {
+            mostrarToast('La hoja "ACTUALIZAR" no contiene registros válidos.', 'warning');
+            if (container) container.style.display = 'none';
+            return;
+          }
+          
+          renderVistaPreviaMasiva(empleados);
+          
+          if (countEl) countEl.textContent = empleados.length;
+          if (container) container.style.display = 'block';
+          
+          mostrarToast(`Importado desde Sheets: ${empleados.length} registros cargados en vista previa. ¡Verifícalos y presiona "Guardar Personal"!`, 'success');
+        } else {
+          mostrarToast(res?.error || 'Error al leer la hoja "ACTUALIZAR" de Google Sheets.', 'error');
+        }
+      } catch (err) {
+        mostrarLoader(false);
+        mostrarToast('Error de red al conectar con Google Sheets: ' + err.message, 'error');
+      }
+    };
+
+    window.agregarEmpleadoDesdeFormulario = function() {
+      const id = $('frmEmpId').value.trim();
+      const nombre = $('frmEmpNombre').value.trim();
+      const area = $('frmEmpArea').value.trim();
+      const cargo = $('frmEmpCargo').value.trim();
+      const pin = $('frmEmpPin').value.trim();
+      const supervisor = $('frmEmpSup').value;
+      const activo = $('frmEmpActivo').value;
+      
+      if (!id || !nombre || !area || !cargo || !pin) {
+        mostrarToast('Por favor, complete todos los campos obligatorios (*).', 'warning');
+        return;
+      }
+      
+      if (pin.length !== 4 || isNaN(pin)) {
+        mostrarToast('El PIN debe tener exactamente 4 dígitos numéricos.', 'warning');
+        return;
+      }
+      
+      const empObj = {
+        id: id,
+        nombre: nombre,
+        area: area,
+        cargo: cargo,
+        pin: pin,
+        supervisor: supervisor,
+        activo: activo
+      };
+      
+      // Evitar duplicados locales en el caché de vista previa
+      const idxExistente = _vistaPreviaMasivaCache.findIndex(e => e.id === id);
+      if (idxExistente > -1) {
+        _vistaPreviaMasivaCache[idxExistente] = empObj;
+        mostrarToast('Empleado actualizado en la lista de vista previa.', 'info');
+      } else {
+        _vistaPreviaMasivaCache.push(empObj);
+        mostrarToast('Empleado agregado a la lista de vista previa.', 'success');
+      }
+      
+      // Renderizar vista previa
+      const tbody = $('tbodyVistaPreviaEmpleados');
+      const container = $('vistaPreviaEmpleadosContainer');
+      const countEl = $('countVistaPrevia');
+      
+      renderVistaPreviaMasiva(_vistaPreviaMasivaCache);
+      
+      if (countEl) countEl.textContent = _vistaPreviaMasivaCache.length;
+      if (container) container.style.display = 'block';
+      
+      // Limpiar formulario para permitir ingresar otro
+      $('frmEmpId').value = '';
+      $('frmEmpNombre').value = '';
+      $('frmEmpArea').value = '';
+      $('frmEmpCargo').value = '';
+      $('frmEmpPin').value = '';
+      $('frmEmpSup').value = 'NO';
+      $('frmEmpActivo').value = 'SI';
+    };
+
+    window.parsearPegadoMasivo = function(texto) {
+      if (!texto || !texto.trim()) return [];
+      const lineas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      if (lineas.length === 0) return [];
+
+      let primerLinea = lineas[0].toLowerCase();
+      let esEncabezado = primerLinea.includes('cedula') || primerLinea.includes('id') || primerLinea.includes('nombre') || primerLinea.includes('pin') || primerLinea.includes('cargo') || primerLinea.includes('area');
+      
+      let inicio = esEncabezado ? 1 : 0;
+      let empleados = [];
+      
+      // Detección de separador
+      let sep = '\t';
+      if (lineas[0].includes('\t')) sep = '\t';
+      else if (lineas[0].includes(';')) sep = ';';
+      else if (lineas[0].includes(',')) sep = ',';
+
+      let keys = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+      
+      if (esEncabezado) {
+        const headers = lineas[0].split(sep).map(h => h.trim());
+        const parsedKeys = headers.map(h => normalizarHeaderAKeyJS(h));
+        // Validar que al menos existan id y nombre
+        if (parsedKeys.includes('id') && parsedKeys.includes('nombre')) {
+          keys = parsedKeys;
+        } else {
+          // No es un encabezado de columnas válido, tratar la primera línea como datos
+          esEncabezado = false;
+          inicio = 0;
+        }
+      }
+      
+      const idxId = keys.indexOf('id');
+      const idxNombre = keys.indexOf('nombre');
+      
+      for (let i = inicio; i < lineas.length; i++) {
+        const linea = lineas[i];
+        let celdas = linea.split(sep).map(c => c.trim());
+        if (celdas.length < 2) continue; // Mínimo ID y Nombre
+        
+        const empIdVal = celdas[idxId !== -1 ? idxId : 0];
+        const empNombreVal = celdas[idxNombre !== -1 ? idxNombre : 1];
+        if (!empIdVal || !empNombreVal) continue;
+        
+        const emp = {};
+        for (let colIdx = 0; colIdx < keys.length; colIdx++) {
+          const key = keys[colIdx];
+          if (!key) continue;
+          
+          let val = celdas[colIdx] !== undefined ? celdas[colIdx] : '';
+          
+          if (key === 'supervisor') {
+            val = String(val).toUpperCase() === 'SI' ? 'SI' : 'NO';
+          } else if (key === 'activo') {
+            val = String(val).toUpperCase() === 'NO' ? 'NO' : 'SI';
+          }
+          emp[key] = val;
+        }
+        empleados.push(emp);
+      }
+      return empleados;
+    };
+
+    window.procesarVistaPreviaMasiva = function() {
+      const txt = $('txtMasivoEmpleados').value;
+      if (!txt || !txt.trim()) {
+        mostrarToast('Por favor, pega algunos datos antes de previsualizar.', 'warning');
+        return;
+      }
+      
+      const empleados = window.parsearPegadoMasivo(txt);
+      _vistaPreviaMasivaCache = empleados;
+      
+      const tbody = $('tbodyVistaPreviaEmpleados');
+      const container = $('vistaPreviaEmpleadosContainer');
+      const countEl = $('countVistaPrevia');
+      
+      if (!empleados.length) {
+        mostrarToast('No se pudieron parsear los datos. Verifique el formato.', 'error');
+        if (container) container.style.display = 'none';
+        return;
+      }
+      
+      renderVistaPreviaMasiva(empleados);
+      
+      if (countEl) countEl.textContent = empleados.length;
+      if (container) container.style.display = 'block';
+      
+      mostrarToast(`Vista previa cargada con ${empleados.length} registros.`, 'success');
+    };
+
+    window.limpiarVistaPreviaMasiva = function() {
+      const txtArea = $('txtMasivoEmpleados');
+      if (txtArea) txtArea.value = '';
+      
+      const tbody = $('tbodyVistaPreviaEmpleados');
+      if (tbody) tbody.innerHTML = '';
+      const container = $('vistaPreviaEmpleadosContainer');
+      if (container) container.style.display = 'none';
+      _vistaPreviaMasivaCache = [];
+      mostrarToast('Área de trabajo y vista previa limpiadas.', 'info');
+    };
+
+    window.guardarMasivoEmpleados = async function() {
+      if (!_vistaPreviaMasivaCache.length) {
+        const txt = $('txtMasivoEmpleados')?.value;
+        if (txt && txt.trim()) {
+          _vistaPreviaMasivaCache = window.parsearPegadoMasivo(txt);
+        }
+      }
+      
+      if (!_vistaPreviaMasivaCache.length) {
+        mostrarToast('No hay datos válidos para guardar.', 'warning');
+        return;
+      }
+      
+      if (!confirm(`¿Estás seguro de guardar/actualizar MASIVAMENTE ${_vistaPreviaMasivaCache.length} empleados en Firebase?\n\nEsta acción modificará la base de datos de personal.`)) {
+        return;
+      }
+      
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({
+          accion: 'actualizarMasivoEmpleados',
+          empleados: JSON.stringify(_vistaPreviaMasivaCache)
+        });
+        
+        mostrarLoader(false);
+        if (res && res.ok) {
+          mostrarToast(`¡Personal actualizado con éxito! ${res.procesados} registros guardados.`, 'success');
+          
+          const txtArea = $('txtMasivoEmpleados');
+          if (txtArea) txtArea.value = '';
+          
+          const tbody = $('tbodyVistaPreviaEmpleados');
+          if (tbody) tbody.innerHTML = '';
+          const container = $('vistaPreviaEmpleadosContainer');
+          if (container) container.style.display = 'none';
+          _vistaPreviaMasivaCache = [];
+          
+          localStorage.removeItem('tcontrol_registros_cache_v1');
+          await cargarDatosCompletos();
+        } else {
+          mostrarToast(res?.error || 'Error al guardar los datos de empleados.', 'error');
+        }
+      } catch (err) {
+        mostrarLoader(false);
+        mostrarToast('Error de red al enviar la actualización masiva: ' + err.message, 'error');
+      }
     };
