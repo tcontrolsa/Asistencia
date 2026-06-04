@@ -21,6 +21,35 @@
     // ============================================================
     function $(id) { return document.getElementById(id); }
 
+    function clasificarGap(salidaReg, gap) {
+      if (!salidaReg) return { tipo: 'justificar', mins: gap };
+      const razon = String(salidaReg.razon_salida || '').toLowerCase();
+      const tipo = String(salidaReg.tipo_salida || '').toLowerCase();
+      const razonPermiso = String(salidaReg.razon_permiso || '').toLowerCase();
+
+      if (razon === 'permiso_medico' || tipo.includes('medico') || razonPermiso.includes('medico')) {
+        return { tipo: 'medico', mins: gap };
+      }
+      if (razon === 'permiso_personal' || razon === 'cumpleanos' || tipo.includes('personal') || razonPermiso.includes('personal')) {
+        return { tipo: 'personal', mins: gap };
+      }
+      return { tipo: 'justificar', mins: gap };
+    }
+
+    function limpiarCachesLocales() {
+      localStorage.removeItem('tcontrol_registros_cache_v1');
+      localStorage.removeItem('tcontrol_archivados_cache_v1');
+      localStorage.removeItem('tcontrol_almuerzos_extra_cache_v1');
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('tcontrol_archivados_cache_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
+
     function escapeHtml(str) {
       if (!str) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -346,6 +375,9 @@
       let dc = document.getElementById('donutCircle');
       if (dc) { dc.style.strokeDasharray = circ; dc.style.strokeDashoffset = circ; }
 
+      const esFestivoHoy = esFeriadoODomingo(hoy) || (new Date(hoy + 'T12:00:00').getDay() === 6);
+      const refEntradaHoy = esFestivoHoy ? 435 : HORA_ENTRADA_REF;
+
       let hoyP = 0, hoyA = 0, hoyT = 0, hoySalieron = 0;
       empCache.forEach(e => {
         let entr = (e.registros || []).find(r => r.fecha === hoy && r.tipo === 'ENTRADA');
@@ -353,7 +385,7 @@
         if (entr) {
           hoyP++;
           let m = obtenerMinutos(entr.hora);
-          if (m !== null && m > HORA_ENTRADA_REF) hoyT++;
+          if (m !== null && m > refEntradaHoy) hoyT++;
           if (sal) hoySalieron++;
         } else {
           hoyA++;
@@ -381,7 +413,9 @@
           asist += dias;
           entradas.forEach(r => {
             let m = obtenerMinutos(r.hora);
-            if (m !== null && m > HORA_ENTRADA_REF) tard++;
+            const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+            const refEntradaR = esFestivoR ? 435 : HORA_ENTRADA_REF;
+            if (m !== null && m > refEntradaR) tard++;
             if (r.almuerzo === 'SI') almP++;
           });
         });
@@ -476,6 +510,58 @@
           }).join('') : '<div class="empty-state">Todos han registrado su salida</div>';
         }
 
+        // Calcular e imprimir Faltas y Ausencias del Período
+        let listadoFaltas = [];
+        empCache.forEach(e => {
+          let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= hoy_);
+          let fechasAsistidas = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f));
+          
+          let fechasFaltas = [];
+          diasHab.forEach(fecha => {
+            if (!fechasAsistidas.has(fecha)) {
+              fechasFaltas.push(fecha);
+            }
+          });
+
+          if (fechasFaltas.length > 0) {
+            listadoFaltas.push({
+              id: e.id,
+              nombre: e.nombre,
+              area: e.area,
+              fechas: fechasFaltas.sort((a, b) => b.localeCompare(a))
+            });
+          }
+        });
+
+        let htmlFaltas = listadoFaltas.sort((a, b) => b.fechas.length - a.fechas.length).map((e, i) => {
+          let datesChips = e.fechas.slice(0, 4).map(f => `<span class="absence-chip">${f.slice(8, 10)}/${f.slice(5, 7)}</span>`).join(' ');
+          if (e.fechas.length > 4) {
+            datesChips += ` <span class="absence-chip-more">+${e.fechas.length - 4} más</span>`;
+          }
+          let datesTextAll = e.fechas.map(f => `${f.slice(8, 10)}/${f.slice(5, 7)}`).join(', ');
+          return `<div class="ranking-item" onclick="mostrarDetalle('${e.id}')" style="cursor:pointer; display:flex; align-items:center; gap:12px; padding:6px 0; border-bottom:1px solid var(--g100);">
+            <div class="ranking-position ${i === 0 ? 'top' : ''}">${i + 1}</div>
+            <div class="ranking-info" style="flex:1;">
+              <div class="ranking-name" style="font-weight:600; font-size:12px;">${escapeHtml(e.nombre)}</div>
+              <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+                <span class="ranking-area" style="font-size:11px; color:var(--g500);">${escapeHtml(e.area || 'Sin área')}</span>
+              </div>
+              <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:4px;" title="Fechas: ${datesTextAll}">
+                ${datesChips}
+              </div>
+            </div>
+            <div class="ranking-value" style="display:flex; flex-direction:column; align-items:flex-end; justify-content:center;">
+              <span style="font-size:12px; font-weight:700; color:var(--red); background:var(--red-lt); padding:3px 8px; border-radius:6px; display:flex; align-items:center; gap:4px;">
+                <i class="fas fa-exclamation-circle"></i> ${e.fechas.length}
+              </span>
+            </div>
+          </div>`;
+        }).join('');
+
+        if ($('ausenciasRanking')) {
+          $('ausenciasRanking').innerHTML = htmlFaltas || '<div class="empty-state">Sin faltas en el período</div>';
+        }
+
         let sumDiaria = 0, diasExc = 0;
         let cntDia = {};
         empCache.forEach(e => {
@@ -496,10 +582,167 @@
         empCache.forEach(e => {
           (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= hoy_ && (r.horasExtra === 'SI' || r.autoriza)).forEach(r => {
             let m = obtenerMinutos(r.hora);
-            if (m !== null && m - HORA_SALIDA_REF > 1) extraTotal += m - HORA_SALIDA_REF;
+            const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+            const refSalidaR = esFestivoR ? 915 : HORA_SALIDA_REF;
+            if (m !== null && m - refSalidaR > 1) extraTotal += m - refSalidaR;
           });
         });
         if($('horasExtraTotal')) $('horasExtraTotal').textContent = formatearMinutos(extraTotal);
+
+        // ------------------------------------------------------------
+        // CÁLCULO DE JUSTIFICACIONES PENDIENTES EN EL PERÍODO
+        // ------------------------------------------------------------
+        let justificacionesPendientes = [];
+        let totalMinutosJustificarPeriodo = 0;
+
+        // Generar la lista de fechas del período actual excluyendo el día de hoy
+        let todasLasFechas = [];
+        let currDate = new Date(periodo.inicio + 'T00:00:00');
+        let endDate = new Date(hoy_ + 'T00:00:00');
+        while (currDate < endDate) {
+          todasLasFechas.push(currDate.toISOString().split('T')[0]);
+          currDate.setDate(currDate.getDate() + 1);
+        }
+
+        empCache.forEach(e => {
+          todasLasFechas.forEach(fecha => {
+            const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
+            const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
+            
+            // Si ya está justificado o es un día festivo sin asistencia, ignorar
+            if (regsDia.some(r => r.justificado === 'SI')) return;
+
+            let minsFaltantes = 0;
+            let razon = "";
+
+            if (regsDia.length === 0) {
+              if (!esFestivo && diasHab.includes(fecha)) {
+                minsFaltantes = 480;
+                razon = "Inasistencia";
+              }
+            } else {
+              let sortedRegs = [...regsDia].sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+
+              let periodosDia = [];
+              let entradaPendiente = null;
+              let ultimoSalidaMins = null;
+              let ultimoSalidaReg = null;
+
+              // Calcular gaps intermedios
+              let dayMedico = 0;
+              let dayPersonal = 0;
+              let dayJustificar = 0;
+
+              sortedRegs.forEach(r => {
+                const tipo = String(r.tipo || '').toUpperCase();
+                if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+                  let mE = obtenerMinutos(r.hora);
+                  if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+                    let gap = mE - ultimoSalidaMins;
+                    let clasif = clasificarGap(ultimoSalidaReg, gap);
+                    if (clasif.tipo === 'medico') dayMedico += gap;
+                    else if (clasif.tipo === 'personal') dayPersonal += gap;
+                    else dayJustificar += gap;
+                  }
+                  entradaPendiente = r;
+                } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+                  if (entradaPendiente) {
+                    periodosDia.push({ entrada: entradaPendiente, salida: r });
+                    ultimoSalidaMins = obtenerMinutos(r.hora);
+                    ultimoSalidaReg = r;
+                    entradaPendiente = null;
+                  } else {
+                    periodosDia.push({ entrada: null, salida: r });
+                  }
+                }
+              });
+              if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
+
+              let minutosTrabajadosHoy = 0;
+              ultimoSalidaMins = null;
+              ultimoSalidaReg = null;
+
+              periodosDia.forEach(p => {
+                if (!p.entrada || !p.salida) return;
+                let mE = obtenerMinutos(p.entrada.hora);
+                let mS = obtenerMinutos(p.salida.hora);
+                if (mE === null || mS === null || mS <= mE) return;
+                minutosTrabajadosHoy += (mS - mE);
+              });
+
+              let netWorked = minutosTrabajadosHoy;
+              if (netWorked > 240) netWorked -= 45;
+
+              let expectedNet = esFestivo ? 435 : 480;
+              let missingMinutes = Math.max(0, expectedNet - netWorked);
+              let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
+              let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+
+              minsFaltantes = dayJustificar + unaccountedMissing;
+
+              // Determinar la razón
+              if (minsFaltantes > 0) {
+                let tieneEntradaSinSalida = periodosDia.some(p => p.entrada && !p.salida);
+                if (tieneEntradaSinSalida) {
+                  razon = "Salida Faltante";
+                } else if (dayJustificar > 0 && unaccountedMissing === 0) {
+                  razon = "Salida Intermedia";
+                } else if (unaccountedMissing > 0 && dayJustificar === 0) {
+                  razon = "Jornada Incompleta";
+                } else {
+                  razon = "Jornada Incompleta / Gaps";
+                }
+              }
+            }
+
+            if (minsFaltantes > 0) {
+              totalMinutosJustificarPeriodo += minsFaltantes;
+              justificacionesPendientes.push({
+                empId: e.id,
+                nombre: e.nombre,
+                area: e.area,
+                fecha: fecha,
+                tiempoMins: minsFaltantes,
+                razon: razon
+              });
+            }
+          });
+        });
+
+        if ($('justificacionesRanking')) {
+          $('justificacionesRanking').innerHTML = justificacionesPendientes.length ? justificacionesPendientes.map((item, i) => {
+            let labelTiempo = minutosAHHMMSS(item.tiempoMins);
+            let fechaLegible = `${item.fecha.slice(8, 10)}/` + `${item.fecha.slice(5, 7)}`;
+            return `<div class="ranking-item">
+              <div class="ranking-position">${i + 1}</div>
+              <div class="ranking-info" style="flex:1;">
+                <div class="ranking-name" onclick="mostrarDetalle('${item.empId}')" style="cursor:pointer; text-decoration:underline;">${escapeHtml(item.nombre)}</div>
+                <div class="ranking-area" style="font-size:11px;">${escapeHtml(item.area || 'Sin área')} • <span class="pill" style="font-size: 9px; padding: 1px 6px; background:#fee2e2; color:#991b1b; font-weight:700;">${item.razon}</span></div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                <div style="font-size:10px; color:var(--g400); font-weight:600;">${fechaLegible}</div>
+                <div style="font-weight:700; color:var(--red); font-size:13px; display:flex; align-items:center; gap:6px;">
+                  <span>${labelTiempo}</span>
+                  <button class="btn-primary" style="padding:4px 8px; font-size:10px; border-radius:4px; font-weight:600;" onclick="window.mostrarModalJustificar('${item.empId}', '${escapeHtml(item.nombre)}', '${item.fecha}', '${labelTiempo}', '${item.razon}')">Justificar</button>
+                </div>
+              </div>
+            </div>`;
+          }).join('') : '<div class="empty-state">No hay justificaciones pendientes</div>';
+        }
+        if ($('justificacionesTotalTime')) {
+          $('justificacionesTotalTime').textContent = minutosAHHMMSS(totalMinutosJustificarPeriodo);
+        }
+
+        // Subtítulo de almuerzo de planta con extras
+        let extrasPeriodo = (window.almuerzosExtra || []).filter(ae => {
+          let fNorm = normalizarFechaStr(ae.fecha);
+          return fNorm >= periodo.inicio && fNorm <= hoy_;
+        });
+        let totalExtrasPeriodo = extrasPeriodo.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+        let totalLunchesPeriodo = almP + totalExtrasPeriodo;
+        if ($('dashAlmPlantaSub')) {
+          $('dashAlmPlantaSub').innerHTML = `<span style="font-weight:600; color:var(--blue)">${almP}</span> emp. + <span style="font-weight:600; color:var(--indigo)">${totalExtrasPeriodo}</span> ext. = <strong>${totalLunchesPeriodo}</strong> total`;
+        }
 
         cargarResumenMensual();
         cargarAnalisisTardanzas();
@@ -517,11 +760,46 @@
         $('tablaResumenMensual').innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando datos...</p></div>';
         return;
       }
-      let html = `<table class="employee-table"><thead><tr><th>Empleado</th><th>Área</th><th>Asistencias</th><th>Faltas</th><th>Tardanzas</th><th>Alm. Planta</th><th>Alm. Fuera</th><th>Puntualidad</th></tr></thead><tbody>`;
+      let html = `<table class="employee-table table-compact"><thead><tr><th>Empleado</th><th>Área</th><th>Asistencias</th><th>Faltas</th><th>Tardanzas</th><th>Alm. Planta</th><th>Alm. Fuera</th><th>Puntualidad</th></tr></thead><tbody>`;
       html += data.sort((a, b) => b.asist - a.asist).map(e => {
         let pc = e.punt >= 90 ? 'ok' : e.punt >= 70 ? 'late' : 'miss';
         return `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></div></td><td>${escapeHtml(e.area || '—')}</div></td><td><span class="pill ok">${e.asist}</span></td><td><span class="pill ${e.faltas ? 'miss' : 'ok'}">${e.faltas}</span></td><td><span class="pill ${e.tards ? 'late' : 'ok'}">${e.tards}</span></div></td><td><span class="pill late">${e.almP}</span></div></td><td><span class="pill" style="background:#dbeafe">${e.almF}</span></div></td><td><span class="pill ${pc}">${e.punt}%</span></div></tr>`;
       }).join('');
+
+      // Calcular almuerzos extra del período para agregar fila final si es > 0
+      let idx = parseInt($('periodoMensual')?.value || 0);
+      let periodoSel = periodos[idx];
+      if (periodoSel) {
+        const fechaFiltro = $('filtroFechaReportes')?.value;
+        const R_INI = fechaFiltro ? fechaFiltro : periodoSel.inicio;
+        const R_FIN = fechaFiltro ? fechaFiltro : periodoSel.fin;
+
+        let extrasPeriodo = (window.almuerzosExtra || []).filter(ae => {
+          let fNorm = normalizarFechaStr(ae.fecha);
+          return fNorm >= R_INI && fNorm <= R_FIN;
+        });
+        let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+
+        if (totalAlmExt > 0) {
+          let rowHtml = `<tr style="background-color:rgba(99,102,241,0.05); font-style:italic;">
+            <td>
+              <div class="employee-cell">
+                <div class="employee-photo-placeholder" style="background:var(--indigo-lt); color:var(--indigo); display:flex; align-items:center; justify-content:center;"><i class="fas fa-utensils"></i></div>
+                <strong>Almuerzos Extras (Formulario)</strong>
+              </div>
+            </td>
+            <td>Varios</td>
+            <td style="text-align:center">—</td>
+            <td style="text-align:center">—</td>
+            <td style="text-align:center">—</td>
+            <td style="text-align:center"><span class="pill late" style="font-size:10px;padding:2px 7px;font-weight:bold;">${totalAlmExt}</span></td>
+            <td style="text-align:center">—</td>
+            <td style="text-align:center">—</td>
+          </tr>`;
+          html += rowHtml;
+        }
+      }
+
       html += `</tbody></table>`;
       $('tablaResumenMensual').innerHTML = html;
     }
@@ -568,7 +846,11 @@
       let total = empCache.length;
       let pres = empCache.filter(e => e.entradaHoy).length;
       let ausentes = total - pres;
-      let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > HORA_ENTRADA_REF; }).length;
+      const esFestivoHoy = esFeriadoODomingo(hoy) || (new Date(hoy + 'T12:00:00').getDay() === 6);
+      const refEntradaHoy = esFestivoHoy ? 435 : HORA_ENTRADA_REF;
+      const refSalidaHoy = esFestivoHoy ? 915 : HORA_SALIDA_REF;
+
+      let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > refEntradaHoy; }).length;
       let salieron = empCache.filter(e => e.salidaHoy).length;
       let sinSalida = pres - salieron;
       let almPlanta = empCache.filter(e => e.entradaHoy && e.almuerzoHoy === 'SI').length;
@@ -583,6 +865,12 @@
       $('asisAlmuerzoPlanta').textContent = almPlanta;
       $('asisAlmuerzoFuera').textContent = almFuera;
 
+      let extrasHoy = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy);
+      let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+      if ($('asisAlmuerzoPlantaSub')) {
+        $('asisAlmuerzoPlantaSub').innerHTML = `en comedor <span style="font-weight:700; color:var(--indigo)">(+ ${totalExtrasHoy} ext.)</span>`;
+      }
+
       window._asisData = empCache.map(e => {
         let eReg = (e.registros || []).find(r => r.tipo === 'ENTRADA' && r.fecha === hoy);
         let sReg = (e.registros || []).find(r => r.tipo === 'SALIDA' && r.fecha === hoy);
@@ -596,13 +884,13 @@
 
         let horaV = e.horaEntradaMs || eReg?.hora || eReg?.timestamp;
         let mEnt = e.entradaHoy ? obtenerMinutos(horaV) : null;
-        let tard = mEnt !== null && mEnt > HORA_ENTRADA_REF;
+        let tard = mEnt !== null && mEnt > refEntradaHoy;
 
-        let eHtml = e.entradaHoy ? `<span class="editable-cell" ${clickEntrada}>${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'}${tard ? ` <span class="delta pos">+${formatearMinutos(mEnt - HORA_ENTRADA_REF)}</span>` : ''}</span>` : `<span class="editable-cell empty" ${clickEntrada}>-</span>`;
+        let eHtml = e.entradaHoy ? `<span class="editable-cell" ${clickEntrada}>${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'}${tard ? ` <span class="delta pos">+${formatearMinutos(mEnt - refEntradaHoy)}</span>` : ''}</span>` : `<span class="editable-cell empty" ${clickEntrada}>-</span>`;
 
         let sHoraV = e.horaSalidaMs || sReg?.hora || sReg?.timestamp;
         let mSal = e.salidaHoy ? obtenerMinutos(sHoraV) : null;
-        let sHtml = e.salidaHoy ? `<span class="editable-cell" ${clickSalida}>${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}${mSal - HORA_SALIDA_REF > 1 ? ` <span class="delta neg">+${formatearMinutos(mSal - HORA_SALIDA_REF)}</span>` : ''}</span>` : (e.entradaHoy ? `<span class="editable-cell empty" ${clickSalida}>Pendiente</span>` : `<span class="editable-cell empty" ${clickSalida}>-</span>`);
+        let sHtml = e.salidaHoy ? `<span class="editable-cell" ${clickSalida}>${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}${mSal - refSalidaHoy > 1 ? ` <span class="delta neg">+${formatearMinutos(mSal - refSalidaHoy)}</span>` : ''}</span>` : (e.entradaHoy ? `<span class="editable-cell empty" ${clickSalida}>Pendiente</span>` : `<span class="editable-cell empty" ${clickSalida}>-</span>`);
 
         let estHtml = !e.entradaHoy ? '<span class="pill miss"><i class="fas fa-times"></i> Ausente</span>' : tard ? '<span class="pill late"><i class="fas fa-exclamation"></i> Tarde</span>' : '<span class="pill ok"><i class="fas fa-check"></i> Puntual</span>';
 
@@ -748,7 +1036,7 @@
         $('asistenciaTablaContainer').innerHTML = '<div class="empty-state"><i class="fas fa-users-slash"></i><p>No hay empleados que coincidan con el filtro</p></div>';
         return;
       }
-      let html = `<table class="employee-table"><thead><tr><th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th><th>Área</th><th>Entrada</th><th>Salida</th><th>Modo</th><th>Extras</th><th>Estado</th><th>Almuerzo</th></tr></thead><tbody>`;
+      let html = `<table class="employee-table table-compact"><thead><tr><th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th><th>Área</th><th>Entrada</th><th>Salida</th><th>Modo</th><th>Extras</th><th>Estado</th><th>Almuerzo</th></tr></thead><tbody>`;
       html += data.map(e => `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td><td>${escapeHtml(e.area || '—')}</td><td>${e._eH}</td><td>${e._sH}</td><td>${e._modo}</td><td>${e._extras}</td><td>${e._est}</td><td>${e._toggle}</td></tr>`).join('');
       html += `</tbody></table>`;
       $('asistenciaTablaContainer').innerHTML = html;
@@ -777,6 +1065,7 @@
       { id: 'puntualidad', label: 'Puntualidad', tipo: 'pct' },
       { id: 'permisoMedico', label: 'Permiso Médico', tipo: 'tiempo' },
       { id: 'permisoPersonal', label: 'Permiso Personal', tipo: 'tiempo' },
+      { id: 'tiempoPorJustificar', label: 'Tiempo por Justificar', tipo: 'tiempo' },
       { id: 'horasExtra50', label: 'Horas Extra 50% (A)', tipo: 'tiempo' },
       { id: 'horasExtra100', label: 'Horas Extra 100% (B)', tipo: 'tiempo' },
       { id: 'horasCampoNormales', label: 'Horas Campo Normales', tipo: 'tiempo' },
@@ -861,11 +1150,10 @@
 
       const hoyRep = new Date().toISOString().split('T')[0];
       const fechaFiltro = $('filtroFechaReportes')?.value;
+      const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
+      const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
 
       let stats = empCache.map(e => {
-        const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
-        const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
-
         let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
         let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
         // Días laborables solo hasta hoy (no días futuros del período)
@@ -876,23 +1164,19 @@
         // FALTAS: días hábiles transcurridos menos días asistidos
         let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
 
-        // PERMISOS: leer desde razon_salida de los registros reales
-        let permisoMedico = 0, permisoPersonal = 0;
-        salidas.forEach(r => {
-          const rs = (r.razon_salida || r.razonSalidaTemprana || '').toLowerCase();
-          if (rs.includes('medico') || rs === 'permiso_medico') permisoMedico++;
-          else if (rs.includes('personal') || rs === 'permiso_personal') permisoPersonal++;
-        });
-
         // ATRASOS + ALMUERZO + PUNTUALIDAD
         let atrasos = 0;
         let minutosAtrasos = 0;
         let almPlanta = 0, almFuera = 0;
         entradas.forEach(r => {
           let m = obtenerMinutos(r.hora);
-          if (m !== null && m > HORA_ENTRADA_REF) {
-            atrasos++;
-            minutosAtrasos += m - HORA_ENTRADA_REF;
+          if (m !== null) {
+            const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+            const refEntradaR = esFestivoR ? 435 : HORA_ENTRADA_REF;
+            if (m > refEntradaR) {
+              atrasos++;
+              minutosAtrasos += m - refEntradaR;
+            }
           }
           if (r.almuerzo === 'SI') almPlanta++;
           if (r.almuerzo === 'NO') almFuera++;
@@ -906,54 +1190,177 @@
         let horasCampo50 = 0;
         let horasCampo100 = 0;
 
-        const diasUnicos = [...new Set((e.registros || []).map(r => r.fecha))].filter(f => f >= R_INI && f <= R_FIN);
+        let totalTiempoPersonal = 0;
+        let totalTiempoMedico = 0;
+        let totalTiempoPorJustificar = 0;
 
-        diasUnicos.forEach(fecha => {
+        // Generar lista de todas las fechas en el rango R_INI a R_FIN
+        let todasLasFechas = [];
+        let currDate = new Date(R_INI + 'T00:00:00');
+        let endDate = new Date(R_FIN + 'T00:00:00');
+        while (currDate <= endDate) {
+          todasLasFechas.push(currDate.toISOString().split('T')[0]);
+          currDate.setDate(currDate.getDate() + 1);
+        }
+
+        todasLasFechas.forEach(fecha => {
           const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
-          const entrada = regsDia.find(r => r.tipo === 'ENTRADA');
-          const salida = regsDia.find(r => r.tipo === 'SALIDA');
-          if (!entrada || !salida) return;
+          const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
+          const isJustificado = regsDia.some(r => r.justificado === 'SI');
 
-          const esFestivo = esFeriadoODomingo(fecha);
-          const mEnt = obtenerMinutos(entrada.hora);
-          const mSal = obtenerMinutos(salida.hora);
-          if (mEnt === null || mSal === null || mSal <= mEnt) return;
+          if (regsDia.length === 0) {
+            if (!esFestivo && diasLaborables.includes(fecha)) {
+              totalTiempoPorJustificar += 480;
+            }
+            return;
+          }
 
-          const enCampo = entrada.modo === 'CAMPO' || salida.modo === 'CAMPO';
-          const autorizado = (entrada.horasExtra === 'SI' || salida.horasExtra === 'SI');
+          let periodosDia = [];
+          let entradaPendiente = null;
+          let ultimoSalidaMins = null;
+          let ultimoSalidaReg = null;
+
+          let sortedRegs = [...regsDia].sort((a, b) => {
+            const timeA = a.hora;
+            const timeB = b.hora;
+            return String(timeA).localeCompare(String(timeB));
+          });
+
+          sortedRegs.forEach(r => {
+            const tipo = String(r.tipo || '').toUpperCase();
+            if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+              let mE = obtenerMinutos(r.hora);
+              if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+                let gap = mE - ultimoSalidaMins;
+                let clasif = clasificarGap(ultimoSalidaReg, gap);
+                if (clasif.tipo === 'medico') {
+                  totalTiempoMedico += gap;
+                } else if (clasif.tipo === 'personal') {
+                  totalTiempoPersonal += gap;
+                } else {
+                  if (!isJustificado) {
+                    totalTiempoPorJustificar += gap;
+                  }
+                }
+              }
+              entradaPendiente = r;
+            } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+              if (entradaPendiente) {
+                periodosDia.push({ entrada: entradaPendiente, salida: r });
+                ultimoSalidaMins = obtenerMinutos(r.hora);
+                ultimoSalidaReg = r;
+                entradaPendiente = null;
+              } else {
+                periodosDia.push({ entrada: null, salida: r });
+              }
+            }
+          });
+          if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
+
+          let minutosTrabajadosHoy = 0;
+          let dayPersonal = 0;
+          let dayMedico = 0;
+          let dayJustificar = 0;
+
+          ultimoSalidaMins = null;
+          ultimoSalidaReg = null;
+
+          periodosDia.forEach(p => {
+            if (!p.entrada || !p.salida) return;
+            let mE = obtenerMinutos(p.entrada.hora);
+            let mS = obtenerMinutos(p.salida.hora);
+            if (mE === null || mS === null || mS <= mE) return;
+            let duracion = mS - mE;
+            minutosTrabajadosHoy += duracion;
+
+            if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+              let gap = mE - ultimoSalidaMins;
+              let clasif = clasificarGap(ultimoSalidaReg, gap);
+              if (clasif.tipo === 'medico') dayMedico += gap;
+              else if (clasif.tipo === 'personal') dayPersonal += gap;
+              else dayJustificar += gap;
+            }
+            ultimoSalidaMins = mS;
+            ultimoSalidaReg = p.salida;
+          });
+
+          let netWorked = minutosTrabajadosHoy;
+          if (netWorked > 240) netWorked -= 45;
+
+          // Auto-autorización de horas extras
+          let autorizado = regsDia.some(r => r.horasExtra === 'SI');
+          if (esFestivo) {
+            if (netWorked > 60) autorizado = true;
+          } else {
+            if (netWorked >= 600) autorizado = true;
+          }
+
+          let extraMins50Acum = 0;
+          let extraMins100Acum = 0;
+          let shiftMins = 0;
+
+          periodosDia.forEach(p => {
+            if (!p.entrada || !p.salida) return;
+            let mE = obtenerMinutos(p.entrada.hora);
+            let mS = obtenerMinutos(p.salida.hora);
+            if (mE === null || mS === null || mS <= mE) return;
+            let duracion = mS - mE;
+            let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
+
+            if (esFestivo) {
+              if (enCampo) {
+                if (autorizado) horasCampo100 += duracion;
+              } else {
+                let H_INI = 435; // 07:15
+                let H_FIN = 915; // 15:15
+                shiftMins += Math.max(0, Math.min(mS, H_FIN) - Math.max(mE, H_INI));
+                if (mS > H_FIN) {
+                  extraMins100Acum += (mS - Math.max(mE, H_FIN));
+                }
+              }
+            } else {
+              let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+              if (enCampo) {
+                if (mS <= H_INI || mE >= H_FIN) {
+                  horasCampo50 += duracion;
+                } else {
+                  let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
+                  let mExtra = duracion - mNormal;
+                  horasCampoNormales += mNormal;
+                  horasCampo50 += mExtra;
+                }
+              } else {
+                if (autorizado && mS > H_FIN) {
+                  extraMins50Acum += (mS - Math.max(mE, H_FIN));
+                }
+              }
+            }
+          });
 
           if (esFestivo) {
+            if (netWorked > 240) {
+              shiftMins = Math.max(0, shiftMins - 45);
+            }
             if (autorizado) {
-              if (enCampo) horasCampo100 += (mSal - mEnt);
-              else horasExtra100 += (mSal - mEnt);
+              let extrasExcedentes = (extraMins100Acum >= 40) ? extraMins100Acum : 0;
+              horasExtra100 += (shiftMins + extrasExcedentes);
             }
           } else {
-            // Horario normal: 07:30 - 16:15
-            const H_INI = HORA_ENTRADA_REF;
-            const H_FIN = HORA_SALIDA_REF;
+            if (extraMins50Acum >= 40) {
+              horasExtra50 += extraMins50Acum;
+            }
+          }
 
-            let normal = 0, extra50 = 0;
-
-            // Tiempo antes de la jornada
-            if (mEnt < H_INI) {
-              if (enCampo) extra50 += (H_INI - mEnt);
-              else if (autorizado) extra50 += (H_INI - mEnt);
-              normal += (Math.min(mSal, H_FIN) - H_INI);
+          if (!isJustificado) {
+            let missingMinutes = 0;
+            if (esFestivo) {
+              missingMinutes = Math.max(0, 435 - netWorked);
             } else {
-              normal += (Math.min(mSal, H_FIN) - mEnt);
+              missingMinutes = Math.max(0, 480 - netWorked);
             }
-
-            // Tiempo después de la jornada
-            if (mSal > H_FIN) {
-              if (autorizado) extra50 += (mSal - H_FIN);
-            }
-
-            if (enCampo) {
-              horasCampoNormales += Math.max(0, normal);
-              horasCampo50 += Math.max(0, extra50);
-            } else {
-              horasExtra50 += Math.max(0, extra50);
-            }
+            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
+            let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+            totalTiempoPorJustificar += unaccountedMissing;
           }
         });
 
@@ -963,8 +1370,9 @@
           area: e.area,
           asistencias: diasAsistidos,
           faltas: faltas,
-          permisoMedico: permisoMedico,
-          permisoPersonal: permisoPersonal,
+          permisoMedico: totalTiempoMedico,
+          permisoPersonal: totalTiempoPersonal,
+          tiempoPorJustificar: totalTiempoPorJustificar,
           atrasos: atrasos,
           minutosAtrasos: minutosAtrasos,
           almPlanta: almPlanta,
@@ -996,8 +1404,8 @@
       let totalHorasExtra = stats.reduce((s, r) => s + r.totalHorasExtra, 0);
 
       $('repFaltas').textContent = totalFaltas;
-      $('repPermisoMedico').textContent = totalPermisoMedico;
-      $('repPermisoPersonal').textContent = totalPermisoPersonal;
+      $('repPermisoMedico').textContent = formatearMinutos(totalPermisoMedico);
+      $('repPermisoPersonal').textContent = formatearMinutos(totalPermisoPersonal);
       $('repAtrasos').textContent = totalAtrasos;
       $('repHorasExtra50').textContent = formatearHorasDecimal(totalHorasExtra50);
       $('repHorasExtra100').textContent = formatearHorasDecimal(totalHorasExtra100);
@@ -1007,6 +1415,21 @@
       $('repTotalExtras50').textContent = formatearHorasDecimal(totalExtras50);
       $('repTotalExtras100').textContent = formatearHorasDecimal(totalExtras100);
       $('repTotalHorasExtra').textContent = formatearHorasDecimal(totalHorasExtra);
+
+      // Almuerzos reporte
+      let totalAlmPlanta = stats.reduce((s, r) => s + r.almPlanta, 0);
+      let totalAlmFuera = stats.reduce((s, r) => s + r.almFuera, 0);
+      let extrasPeriodo = (window.almuerzosExtra || []).filter(ae => {
+        let fNorm = normalizarFechaStr(ae.fecha);
+        return fNorm >= R_INI && fNorm <= R_FIN;
+      });
+      let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+      let totalAlmLunch = totalAlmPlanta + totalAlmExt;
+
+      if ($('repAlmuerzosEmp')) $('repAlmuerzosEmp').textContent = totalAlmPlanta;
+      if ($('repAlmuerzosExt')) $('repAlmuerzosExt').textContent = totalAlmExt;
+      if ($('repAlmuerzosTotal')) $('repAlmuerzosTotal').textContent = totalAlmLunch;
+      if ($('repAlmuerzosFuera')) $('repAlmuerzosFuera').textContent = totalAlmFuera;
 
       window._reportesData = stats;
       // Cargar preferencias de columnas al cargar datos
@@ -1080,7 +1503,7 @@
             const valor = e[col.id];
             let contenido = '';
             if (col.tipo === 'tiempo') {
-              contenido = `<span style="font-family:'DM Mono',monospace;font-size:10px">${minutosAHHMMSS(valor)}</span>`;
+              contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${minutosAHHMMSS(valor)}</span>`;
             } else if (col.tipo === 'pct') {
               let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
               contenido = `<span class="pill ${pc}" style="font-size:10px;padding:2px 7px">${valor}%</span>`;
@@ -1089,9 +1512,9 @@
             } else if (col.id === 'atrasos') {
               contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:10px;padding:2px 7px">${valor}</span>`;
             } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
-              contenido = `<strong style="font-family:'DM Mono',monospace;font-size:10px">${valor}</strong>`;
+              contenido = `<strong style="font-family:'Fira Code',monospace;font-size:10px">${valor}</strong>`;
             } else {
-              contenido = `<span style="font-family:'DM Mono',monospace;font-size:10px">${valor}</span>`;
+              contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${valor}</span>`;
             }
             rowHtml += `<td style="text-align:center">${contenido}</td>`;
           }
@@ -1152,7 +1575,13 @@
       regs.forEach(r => {
         let m = obtenerMinutos(r.hora);
         if (m === null) return;
-        if (r.tipo === 'ENTRADA') { sE += m; cE++; if (m > HORA_ENTRADA_REF) tardT++; }
+        if (r.tipo === 'ENTRADA') {
+          sE += m;
+          cE++;
+          const esFestivo = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+          const refEnt = esFestivo ? 435 : HORA_ENTRADA_REF;
+          if (m > refEnt) tardT++;
+        }
         else { sS += m; cS++; }
       });
       let pE = cE ? Math.round(sE / cE) : null;
@@ -1161,8 +1590,8 @@
       let porDia = {};
       // Asegurar que los registros estén ordenados cronológicamente para el emparejamiento
       [...regs].sort((a, b) => {
-        const timeA = a.timestamp || a.hora;
-        const timeB = b.timestamp || b.hora;
+        const timeA = a.hora;
+        const timeB = b.hora;
         return String(timeA).localeCompare(String(timeB));
       }).forEach(r => {
         // Normalizar la fecha a YYYY-MM-DD para evitar fechas mal formateadas de Sheets
@@ -1212,11 +1641,14 @@
       let filas = fechasOrdenadas.map(f => {
         let d = porDia[f];
         let regsDia = d.registros;
+        const dayOfWeek = new Date(f + 'T12:00:00').getDay();
+        const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
+        const isJustificado = regsDia.some(r => r.justificado === 'SI');
 
         let periodosDia = [];
         let entradaPendiente = null;
         let minutosPermisoHoy = 0;
-        let ultimoSalidaMins = null;
+        let ultimoSalidaMins = null, ultimoSalidaReg = null;
 
         regsDia.forEach(r => {
           const tipo = String(r.tipo || '').toUpperCase();
@@ -1245,7 +1677,9 @@
             return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
           if (esAdminMaster && !p.entrada) {
-            return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'ENTRADA', '07:30:00', '${f}')"><i class="fas fa-plus"></i> 07:30</button>`;
+            let defEntStr = esFestivo ? '07:15:00' : '07:30:00';
+            let defEntLbl = esFestivo ? '07:15' : '07:30';
+            return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'ENTRADA', '${defEntStr}', '${f}')"><i class="fas fa-plus"></i> ${defEntLbl}</button>`;
           }
           return valor;
         }).join('<br>');
@@ -1256,7 +1690,9 @@
             return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
           if (esAdminMaster && !p.salida) {
-            return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'SALIDA', '16:15:00', '${f}')"><i class="fas fa-plus"></i> 16:15</button>`;
+            let defSalStr = esFestivo ? '15:15:00' : '16:15:00';
+            let defSalLbl = esFestivo ? '15:15' : '16:15';
+            return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'SALIDA', '${defSalStr}', '${f}')"><i class="fas fa-plus"></i> ${defSalLbl}</button>`;
           }
           return valor;
         }).join('<br>');
@@ -1270,7 +1706,8 @@
         let atrasoMins = 0;
         if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
           let mE = obtenerMinutos(primerReg.hora);
-          if (mE !== null && mE > HORA_ENTRADA_REF) atrasoMins = mE - HORA_ENTRADA_REF;
+          let refEntrada = esFestivo ? 435 : HORA_ENTRADA_REF;
+          if (mE !== null && mE > refEntrada) atrasoMins = mE - refEntrada;
         }
 
         let razonesBadges = [];
@@ -1307,13 +1744,67 @@
         });
 
         let razonesCompletas = razonesBadges.length > 0 ? `<div style="display:flex; flex-direction:column; gap:4px;">${razonesBadges.join('')}</div>` : '';
+        let rowStyle = "";
+        let badgeDia = "";
+        if (dayOfWeek === 0) {
+          rowStyle = "background-color: rgba(239, 68, 68, 0.04);";
+          badgeDia = `<span class="pill miss" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">DOMINGO</span>`;
+        } else if (dayOfWeek === 6) {
+          rowStyle = "background-color: rgba(59, 130, 246, 0.04);";
+          badgeDia = `<span class="pill" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; background: #dbeafe; color: #1e40af; font-weight: 700;">SÁBADO</span>`;
+        } else if (esFeriadoODomingo(f)) {
+          rowStyle = "background-color: rgba(245, 158, 11, 0.04);";
+          badgeDia = `<span class="pill late" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">FERIADO</span>`;
+        } else {
+          badgeDia = `<span class="pill ok" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">LABORAL</span>`;
+        }
+
         const diaSemana = obtenerDiaSemanaStr(f);
-        let fechaFormateada = `<span style="font-size:10px;color:var(--g400);display:block">${diaSemana}</span>${f.slice(8, 10)}/${f.slice(5, 7)}`;
+        let fechaFormateada = `<span style="font-size:10px;color:var(--g400);display:block">${diaSemana}</span>${f.slice(8, 10)}/${f.slice(5, 7)}${badgeDia}`;
 
         let h50 = 0, h100 = 0, hCN = 0, hC50 = 0, hC100 = 0;
         let minutosTrabajadosHoy = 0;
-        let esFestivo = esFeriadoODomingo(f);
+        let tiempoPersonal = 0;
+        let tiempoMedico = 0;
+        let tiempoPorJustificar = 0;
+        ultimoSalidaMins = null;
+        ultimoSalidaReg = null;
+
+        periodosDia.forEach(p => {
+          if (!p.entrada || !p.salida) return;
+          let mE = obtenerMinutos(p.entrada.hora);
+          let mS = obtenerMinutos(p.salida.hora);
+          if (mE === null || mS === null || mS <= mE) return;
+
+          let duracion = mS - mE;
+          minutosTrabajadosHoy += duracion;
+
+          if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+            let gap = mE - ultimoSalidaMins;
+            let clasif = clasificarGap(ultimoSalidaReg, gap);
+            if (clasif.tipo === 'medico') {
+              tiempoMedico += gap;
+            } else if (clasif.tipo === 'personal') {
+              tiempoPersonal += gap;
+            } else {
+              tiempoPorJustificar += gap;
+            }
+          }
+          ultimoSalidaMins = mS;
+          ultimoSalidaReg = p.salida;
+        });
+
+        // Descontar almuerzo si superó 4 horas
+        let netWorked = minutosTrabajadosHoy;
+        if (netWorked > 240) netWorked -= 45;
+
+        // Auto-autorización de horas extras
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
+        if (esFestivo) {
+          if (netWorked > 60) autorizadoGlobal = true;
+        } else {
+          if (netWorked >= 600) autorizadoGlobal = true;
+        }
 
         let extBadgeVal = autorizadoGlobal ? 'SI' : 'NO';
         let extBadge = autorizadoGlobal ? '<span class="pill ok">SI</span>' : '<span class="pill dim">NO</span>';
@@ -1325,47 +1816,84 @@
           extBadgeHtml = `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', '${extBadgeVal}', '${f}')">${extBadge}</span>`;
         }
 
+        let extraMins50Acum = 0;
+        let extraMins100Acum = 0;
+        let shiftMins = 0;
+
         periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
           let mE = obtenerMinutos(p.entrada.hora);
           let mS = obtenerMinutos(p.salida.hora);
           if (mE === null || mS === null || mS <= mE) return;
           let duracion = mS - mE;
-          minutosTrabajadosHoy += duracion;
           let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
 
           if (esFestivo) {
-            if (autorizadoGlobal) {
-              if (enCampo) hC100 += duracion;
-              else h100 += duracion;
+            if (enCampo) {
+              if (autorizadoGlobal) hC100 += duracion;
+            } else {
+              let H_INI = 435; // 07:15
+              let H_FIN = 915; // 15:15
+              shiftMins += Math.max(0, Math.min(mS, H_FIN) - Math.max(mE, H_INI));
+              if (mS > H_FIN) {
+                extraMins100Acum += (mS - Math.max(mE, H_FIN));
+              }
             }
           } else {
             let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
-            if (mS <= H_INI || mE >= H_FIN) {
-              if (autorizadoGlobal || enCampo) {
-                if (enCampo) hC50 += duracion;
-                else if (autorizadoGlobal) h50 += duracion;
+            if (enCampo) {
+              if (mS <= H_INI || mE >= H_FIN) {
+                hC50 += duracion;
+              } else {
+                let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
+                let mExtra = duracion - mNormal;
+                hCN += mNormal;
+                hC50 += mExtra;
               }
             } else {
-              let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-              let mExtra = duracion - mNormal;
-              if (enCampo) { hCN += mNormal; hC50 += mExtra; }
-              else { if (autorizadoGlobal) h50 += mExtra; }
+              // Normal (no campo) - Horas extra solo después de las 16:15
+              if (autorizadoGlobal && mS > H_FIN) {
+                extraMins50Acum += (mS - Math.max(mE, H_FIN));
+              }
             }
           }
         });
 
-        // Descontar 45 minutos (30 almuerzo + 15 break) si trabajó más de 4 horas
-        if (minutosTrabajadosHoy > 240) {
-          minutosTrabajadosHoy -= 45;
+        if (esFestivo) {
+          if (netWorked > 240) {
+            shiftMins = Math.max(0, shiftMins - 45);
+          }
+          if (autorizadoGlobal) {
+            let extrasExcedentes = (extraMins100Acum >= 40) ? extraMins100Acum : 0;
+            h100 = shiftMins + extrasExcedentes;
+          } else {
+            h100 = 0;
+          }
+        } else {
+          if (extraMins50Acum >= 40) {
+            h50 = extraMins50Acum;
+          } else {
+            h50 = 0;
+          }
         }
 
-        return `<tr>
+        if (isJustificado) {
+          tiempoPorJustificar = 0;
+        } else {
+          let missingMinutes = esFestivo ? Math.max(0, 435 - netWorked) : Math.max(0, 480 - netWorked);
+          let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
+          let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+          tiempoPorJustificar += unaccountedMissing;
+        }
+
+        return `<tr style="${rowStyle}">
       <td style="white-space:nowrap; font-weight:600;">${fechaFormateada}</td>
       <td class="hora-cell">${horaE}</td>
       <td class="hora-cell">${horaS}</td>
-      <td style="text-align:center; color:var(--indigo)">${minutosPermisoHoy > 0 ? minutosAHHMMSS(minutosPermisoHoy) : '—'}</td>
-      <td style="text-align:center; color:var(--green); font-weight:600;">${minutosTrabajadosHoy > 0 ? minutosAHHMMSS(minutosTrabajadosHoy) : '—'}</td>
+      <td style="text-align:center; color:var(--indigo)">${tiempoPersonal > 0 ? minutosAHHMMSS(tiempoPersonal) : '—'}</td>
+      <td style="text-align:center; color:var(--teal)">${tiempoMedico > 0 ? minutosAHHMMSS(tiempoMedico) : '—'}</td>
+      <td style="text-align:center; color:var(--red)">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
+      <td style="text-align:center; color:var(--green); font-weight:600;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
       <td>${aBadge}</td>
       <td>${extBadgeHtml}</td>
       <td>${razonesCompletas}</td>
@@ -1460,7 +1988,9 @@
                   <th>Fecha</th>
                   <th>Entrada</th>
                   <th>Salida</th>
-                  <th>TIEMPO PERMISO</th>
+                  <th>TIEMPO PERSONAL</th>
+                  <th>TIEMPO MEDICO</th>
+                  <th>TIEMPO POR JUSTIFICAR</th>
                   <th>TOTAL HORAS</th>
                   <th>Almuerzo</th>
                   <th>Autoriz. H.E.</th>
@@ -1475,7 +2005,7 @@
                   <th>TOTAL EXTRAS 100% (B+D)</th>
                 </tr>
               </thead>
-              <tbody>${filas || '<tr><td colspan="16" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tbody>${filas || '<tr><td colspan="18" class="empty-state">Sin registros</td></tr>'}</tbody>
             </table>
           </div>
         </div>
@@ -1515,12 +2045,12 @@
       let modal = document.getElementById('extraLunchModal');
       modal.classList.remove('hidden');
       $('visitanteFecha').value = hoy;
-      $('visitanteNombre').focus();
+      $('visitanteCantidad').focus();
     }
 
     function cerrarModal() {
       document.getElementById('extraLunchModal').classList.add('hidden');
-      ['visitanteNombre', 'visitanteEmpresa', 'visitanteObservaciones'].forEach(id => {
+      ['visitanteObservaciones'].forEach(id => {
         let el = $(id);
         if (el) el.value = '';
       });
@@ -1529,23 +2059,29 @@
     }
 
     async function guardarAlmuerzoExtra() {
-      let nombre = $('visitanteNombre').value.trim();
-      if (!nombre) { mostrarToast('Ingrese nombre', 'error'); return; }
+      let fecha = $('visitanteFecha').value;
+      let cantidad = $('visitanteCantidad').value;
+      let observaciones = $('visitanteObservaciones').value.trim();
+
+      if (!fecha) { mostrarToast('Ingrese una fecha válida', 'error'); return; }
+      if (!cantidad || cantidad < 1) { mostrarToast('Ingrese una cantidad válida', 'error'); return; }
+
       mostrarLoader(true);
       try {
         let res = await jsonpRequest({
           accion: 'registrarAlmuerzoExtra',
-          nombre: nombre,
-          empresa: $('visitanteEmpresa').value.trim(),
-          fecha: $('visitanteFecha').value,
-          tipo: $('visitanteTipo').value,
-          observaciones: $('visitanteObservaciones').value.trim(),
-          cantidad: $('visitanteCantidad').value
+          nombre: 'Almuerzo Extra',
+          empresa: 'TCONTROL',
+          fecha: fecha,
+          tipo: 'Formulario',
+          observaciones: observaciones,
+          cantidad: cantidad
         });
         mostrarLoader(false);
         if (res?.error) { mostrarToast(res.error, 'error'); return; }
-        mostrarToast('Registrado: ' + nombre, 'success');
+        mostrarToast('Almuerzo Extra registrado', 'success');
         cerrarModal();
+        cargarDatosCompletos(true);
       } catch (e) {
         mostrarLoader(false);
         mostrarToast('Error: ' + e.message, 'error');
@@ -1567,8 +2103,8 @@
 
         if (res.ok) {
           mostrarToast('Registro completado', 'success');
-          localStorage.removeItem('tcontrol_registros_cache_v1'); // Forzar recarga de cache
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
           if (panelActual === 'detalle') mostrarDetalle(empleadoId);
         } else {
           mostrarToast(res.error || 'Error', 'error');
@@ -1595,8 +2131,8 @@
         });
         if (res.ok) {
           mostrarToast('Registro eliminado', 'success');
-          localStorage.removeItem('tcontrol_registros_cache_v1');
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
           if (panelActual === 'detalle') mostrarDetalle(empleadoId);
           else if (panelActual === 'asistencia') cargarAsistencia();
         } else {
@@ -1618,8 +2154,8 @@
         mostrarLoader(false);
         if (res.ok) {
           mostrarToast(`Depuración exitosa: ${res.eliminados} duplicados eliminados`, 'success');
-          localStorage.removeItem('tcontrol_registros_cache_v1');
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
         } else {
           mostrarToast(res.error || 'Error en depuración', 'error');
         }
@@ -1763,7 +2299,7 @@
           }
           keysToRemove.forEach(k => localStorage.removeItem(k));
 
-          await cargarDatosCompletos();
+          await cargarDatosCompletos(true);
         } else {
           mostrarLoader(false);
           mostrarToast('Error al guardar en Sheets: ' + (result.error || 'Desconocido'), 'error');
@@ -1820,8 +2356,8 @@
         if (res.ok) {
           mostrarToast('Registro guardado', 'success');
           cerrarModalManual();
-          localStorage.removeItem('tcontrol_registros_cache_v1');
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
           if (panelActual === 'detalle') mostrarDetalle(eid);
           else cargarAsistencia();
         } else {
@@ -1853,8 +2389,8 @@
         });
         if (res.ok) {
           mostrarToast('Registro actualizado', 'success');
-          localStorage.removeItem('tcontrol_registros_cache_v1');
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
           if (panelActual === 'detalle') mostrarDetalle(empleadoId);
           else cargarAsistencia();
         } else {
@@ -1929,8 +2465,8 @@
         if (res.ok) {
           mostrarToast(`Éxito: ${res.procesados} registros procesados`, 'success');
           cerrarModalMasivo();
-          localStorage.removeItem('tcontrol_registros_cache_v1');
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
           cargarAsistencia();
         } else {
           mostrarToast(res.error || 'Error', 'error');
@@ -1943,14 +2479,81 @@
     }
 
     // ============================================================
+    // ============================================================
+    // MODAL DE JUSTIFICACIÓN
+    // ============================================================
+    window.mostrarModalJustificar = function(empId, nombre, fecha, tiempoStr, razon) {
+      window.currentJustifyEmpId = empId;
+      window.currentJustifyFecha = fecha;
+      $('justNombre').textContent = nombre;
+      $('justFecha').textContent = fecha;
+      $('justTiempo').textContent = tiempoStr;
+      $('justObservaciones').value = '';
+      $('justTipoPermiso').selectedIndex = 0;
+      $('justificarModal').classList.remove('hidden');
+    };
+
+    window.cerrarModalJustificar = function() {
+      $('justificarModal').classList.add('hidden');
+      window.currentJustifyEmpId = null;
+      window.currentJustifyFecha = null;
+    };
+
+    window.guardarJustificacion = async function() {
+      if (!window.currentJustifyEmpId || !window.currentJustifyFecha) return;
+      
+      const tipoPermisoSelect = $('justTipoPermiso');
+      const tipoPermisoText = tipoPermisoSelect.options[tipoPermisoSelect.selectedIndex].text;
+      const observaciones = $('justObservaciones').value.trim();
+      const razonCompleta = tipoPermisoText + (observaciones ? " - " + observaciones : "");
+
+      let supervisorName = "Supervisor";
+      let sessionData = {};
+      try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      if (sessionData.id) {
+        if (sessionData.id === "1058") {
+          supervisorName = "Admin Master";
+        } else {
+          let sup = empCache.find(x => x.id === sessionData.id);
+          if (sup) supervisorName = sup.nombre;
+          else supervisorName = "Supervisor ID " + sessionData.id;
+        }
+      }
+
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({
+          accion: 'justificarDia',
+          empleadoId: window.currentJustifyEmpId,
+          fecha: window.currentJustifyFecha,
+          razon: razonCompleta,
+          supervisor: supervisorName
+        });
+
+        mostrarLoader(false);
+        if (res && res.ok) {
+          mostrarToast('Día justificado correctamente', 'success');
+          window.cerrarModalJustificar();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
+        } else {
+          mostrarToast(res?.error || 'Error al guardar justificación', 'error');
+        }
+      } catch (e) {
+        mostrarLoader(false);
+        mostrarToast('Error al guardar justificación: ' + e.message, 'error');
+      }
+    };
+
+    // ============================================================
     // CARGA DE DATOS
     // ============================================================
-    async function cargarDatosCompletos() {
+    async function cargarDatosCompletos(force = false) {
       if (estaActualizando) return;
       estaActualizando = true;
       mostrarLoader(true);
       try {
-        const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor' });
+        const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor', force: force });
         mostrarLoader(false);
         estaActualizando = false;
         if (!res || res.error) {
@@ -1958,6 +2561,7 @@
           return;
         }
         empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+        window.almuerzosExtra = res.almuerzosExtra || [];
         periodos = generarPeriodos();
 
         let periodoSelect = $('periodoMensual');
@@ -2073,9 +2677,9 @@
       item.addEventListener('click', () => cambiarPanel(item.dataset.panel));
     });
     $('btnRefresh').addEventListener('click', async () => {
-      localStorage.removeItem('tcontrol_registros_cache_v1');
+      limpiarCachesLocales();
       mostrarToast('Borrando caché local de registros...', 'info');
-      await cargarDatosCompletos();
+      await cargarDatosCompletos(true);
     });
     $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
     $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
@@ -2085,6 +2689,9 @@
 
     document.getElementById('extraLunchModal').addEventListener('click', e => {
       if (e.target === document.getElementById('extraLunchModal')) cerrarModal();
+    });
+    document.getElementById('justificarModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('justificarModal')) cerrarModalJustificar();
     });
     document.getElementById('manualRegistroModal').addEventListener('click', e => {
       if (e.target === document.getElementById('manualRegistroModal')) cerrarModalManual();
@@ -2114,8 +2721,8 @@
         // Cargar sin mostrar loader para que sea transparente al usuario
         const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor' });
         if (res && res.empleados) {
-            empCache = res.empleados;
-            renderAll();
+            empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+            cargarPanelActual();
         }
       }
     });
@@ -2182,21 +2789,18 @@
 
         let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
 
-        let permisoMedico = 0, permisoPersonal = 0;
-        salidas.forEach(r => {
-          const rs = (r.razon_salida || r.razonSalidaTemprana || '').toLowerCase();
-          if (rs.includes('medico') || rs === 'permiso_medico') permisoMedico++;
-          else if (rs.includes('personal') || rs === 'permiso_personal') permisoPersonal++;
-        });
-
         let atrasos = 0;
         let minutosAtrasos = 0;
         let almPlanta = 0, almFuera = 0;
         entradas.forEach(r => {
           let m = obtenerMinutos(r.hora);
-          if (m !== null && m > HORA_ENTRADA_REF) {
-            atrasos++;
-            minutosAtrasos += m - HORA_ENTRADA_REF;
+          if (m !== null) {
+            const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+            const refEntradaR = esFestivoR ? 435 : HORA_ENTRADA_REF;
+            if (m > refEntradaR) {
+              atrasos++;
+              minutosAtrasos += m - refEntradaR;
+            }
           }
           if (r.almuerzo === 'SI') almPlanta++;
           if (r.almuerzo === 'NO') almFuera++;
@@ -2209,51 +2813,177 @@
         let horasCampo50 = 0;
         let horasCampo100 = 0;
 
-        const diasUnicos = [...new Set((e.registros || []).map(r => r.fecha))].filter(f => f >= periodo.inicio && f <= periodo.fin);
+        let totalTiempoPersonal = 0;
+        let totalTiempoMedico = 0;
+        let totalTiempoPorJustificar = 0;
 
-        diasUnicos.forEach(fecha => {
+        // Generar lista de todas las fechas en el rango
+        let todasLasFechas = [];
+        let currDate = new Date(periodo.inicio + 'T00:00:00');
+        let endDate = new Date(periodo.fin + 'T00:00:00');
+        while (currDate <= endDate) {
+          todasLasFechas.push(currDate.toISOString().split('T')[0]);
+          currDate.setDate(currDate.getDate() + 1);
+        }
+
+        todasLasFechas.forEach(fecha => {
           const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
-          const entrada = regsDia.find(r => r.tipo === 'ENTRADA');
-          const salida = regsDia.find(r => r.tipo === 'SALIDA');
-          if (!entrada || !salida) return;
+          const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
+          const isJustificado = regsDia.some(r => r.justificado === 'SI');
 
-          const esFestivo = esFeriadoODomingo(fecha);
-          const mEnt = obtenerMinutos(entrada.hora);
-          const mSal = obtenerMinutos(salida.hora);
-          if (mEnt === null || mSal === null || mSal <= mEnt) return;
+          if (regsDia.length === 0) {
+            if (!esFestivo && diasLaborables.includes(fecha)) {
+              totalTiempoPorJustificar += 480;
+            }
+            return;
+          }
 
-          const enCampo = entrada.modo === 'CAMPO' || salida.modo === 'CAMPO';
-          const autorizado = (entrada.horasExtra === 'SI' || salida.horasExtra === 'SI');
+          let periodosDia = [];
+          let entradaPendiente = null;
+          let ultimoSalidaMins = null;
+          let ultimoSalidaReg = null;
+
+          let sortedRegs = [...regsDia].sort((a, b) => {
+            const timeA = a.hora;
+            const timeB = b.hora;
+            return String(timeA).localeCompare(String(timeB));
+          });
+
+          sortedRegs.forEach(r => {
+            const tipo = String(r.tipo || '').toUpperCase();
+            if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+              let mE = obtenerMinutos(r.hora);
+              if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+                let gap = mE - ultimoSalidaMins;
+                let clasif = clasificarGap(ultimoSalidaReg, gap);
+                if (clasif.tipo === 'medico') {
+                  totalTiempoMedico += gap;
+                } else if (clasif.tipo === 'personal') {
+                  totalTiempoPersonal += gap;
+                } else {
+                  if (!isJustificado) {
+                    totalTiempoPorJustificar += gap;
+                  }
+                }
+              }
+              entradaPendiente = r;
+            } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+              if (entradaPendiente) {
+                periodosDia.push({ entrada: entradaPendiente, salida: r });
+                ultimoSalidaMins = obtenerMinutos(r.hora);
+                ultimoSalidaReg = r;
+                entradaPendiente = null;
+              } else {
+                periodosDia.push({ entrada: null, salida: r });
+              }
+            }
+          });
+          if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
+
+          let minutosTrabajadosHoy = 0;
+          let dayPersonal = 0;
+          let dayMedico = 0;
+          let dayJustificar = 0;
+
+          ultimoSalidaMins = null;
+          ultimoSalidaReg = null;
+
+          periodosDia.forEach(p => {
+            if (!p.entrada || !p.salida) return;
+            let mE = obtenerMinutos(p.entrada.hora);
+            let mS = obtenerMinutos(p.salida.hora);
+            if (mE === null || mS === null || mS <= mE) return;
+            let duracion = mS - mE;
+            minutosTrabajadosHoy += duracion;
+
+            if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+              let gap = mE - ultimoSalidaMins;
+              let clasif = clasificarGap(ultimoSalidaReg, gap);
+              if (clasif.tipo === 'medico') dayMedico += gap;
+              else if (clasif.tipo === 'personal') dayPersonal += gap;
+              else dayJustificar += gap;
+            }
+            ultimoSalidaMins = mS;
+            ultimoSalidaReg = p.salida;
+          });
+
+          let netWorked = minutosTrabajadosHoy;
+          if (netWorked > 240) netWorked -= 45;
+
+          // Auto-autorización de horas extras
+          let autorizado = regsDia.some(r => r.horasExtra === 'SI');
+          if (esFestivo) {
+            if (netWorked > 60) autorizado = true;
+          } else {
+            if (netWorked >= 600) autorizado = true;
+          }
+
+          let extraMins50Acum = 0;
+          let extraMins100Acum = 0;
+          let shiftMins = 0;
+
+          periodosDia.forEach(p => {
+            if (!p.entrada || !p.salida) return;
+            let mE = obtenerMinutos(p.entrada.hora);
+            let mS = obtenerMinutos(p.salida.hora);
+            if (mE === null || mS === null || mS <= mE) return;
+            let duracion = mS - mE;
+            let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
+
+            if (esFestivo) {
+              if (enCampo) {
+                if (autorizado) horasCampo100 += duracion;
+              } else {
+                let H_INI = 435; // 07:15
+                let H_FIN = 915; // 15:15
+                shiftMins += Math.max(0, Math.min(mS, H_FIN) - Math.max(mE, H_INI));
+                if (mS > H_FIN) {
+                  extraMins100Acum += (mS - Math.max(mE, H_FIN));
+                }
+              }
+            } else {
+              let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+              if (enCampo) {
+                if (mS <= H_INI || mE >= H_FIN) {
+                  horasCampo50 += duracion;
+                } else {
+                  let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
+                  let mExtra = duracion - mNormal;
+                  horasCampoNormales += mNormal;
+                  horasCampo50 += mExtra;
+                }
+              } else {
+                if (autorizado && mS > H_FIN) {
+                  extraMins50Acum += (mS - Math.max(mE, H_FIN));
+                }
+              }
+            }
+          });
 
           if (esFestivo) {
+            if (netWorked > 240) {
+              shiftMins = Math.max(0, shiftMins - 45);
+            }
             if (autorizado) {
-              if (enCampo) horasCampo100 += (mSal - mEnt);
-              else horasExtra100 += (mSal - mEnt);
+              let extrasExcedentes = (extraMins100Acum >= 40) ? extraMins100Acum : 0;
+              horasExtra100 += (shiftMins + extrasExcedentes);
             }
           } else {
-            const H_INI = HORA_ENTRADA_REF;
-            const H_FIN = HORA_SALIDA_REF;
+            if (extraMins50Acum >= 40) {
+              horasExtra50 += extraMins50Acum;
+            }
+          }
 
-            let normal = 0, extra50 = 0;
-
-            if (mEnt < H_INI) {
-              if (enCampo) extra50 += (H_INI - mEnt);
-              else if (autorizado) extra50 += (H_INI - mEnt);
-              normal += (Math.min(mSal, H_FIN) - H_INI);
+          if (!isJustificado) {
+            let missingMinutes = 0;
+            if (esFestivo) {
+              missingMinutes = Math.max(0, 435 - netWorked);
             } else {
-              normal += (Math.min(mSal, H_FIN) - mEnt);
+              missingMinutes = Math.max(0, 480 - netWorked);
             }
-
-            if (mSal > H_FIN) {
-              if (autorizado) extra50 += (mSal - H_FIN);
-            }
-
-            if (enCampo) {
-              horasCampoNormales += Math.max(0, normal);
-              horasCampo50 += Math.max(0, extra50);
-            } else {
-              horasExtra50 += Math.max(0, extra50);
-            }
+            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
+            let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+            totalTiempoPorJustificar += unaccountedMissing;
           }
         });
 
@@ -2264,8 +2994,9 @@
           foto_url: e.foto_url,
           asistencias: diasAsistidos,
           faltas: faltas,
-          permisoMedico: permisoMedico,
-          permisoPersonal: permisoPersonal,
+          permisoMedico: totalTiempoMedico,
+          permisoPersonal: totalTiempoPersonal,
+          tiempoPorJustificar: totalTiempoPorJustificar,
           atrasos: atrasos,
           minutosAtrasos: minutosAtrasos,
           almPlanta: almPlanta,
@@ -2423,7 +3154,7 @@
             const valor = e[col.id];
             let contenido = '';
             if (col.tipo === 'tiempo') {
-              contenido = `<span style="font-family:'DM Mono',monospace;font-size:11px">${minutosAHHMMSS(valor)}</span>`;
+              contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${minutosAHHMMSS(valor)}</span>`;
             } else if (col.tipo === 'pct') {
               let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
               contenido = `<span class="pill ${pc}" style="font-size:11px;padding:2px 7px">${valor}%</span>`;
@@ -2432,9 +3163,9 @@
             } else if (col.id === 'atrasos') {
               contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
             } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
-              contenido = `<strong style="font-family:'DM Mono',monospace;font-size:11px">${valor}</strong>`;
+              contenido = `<strong style="font-family:'Fira Code',monospace;font-size:11px">${valor}</strong>`;
             } else {
-              contenido = `<span style="font-family:'DM Mono',monospace;font-size:11px">${valor}</span>`;
+              contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${valor}</span>`;
             }
             rowHtml += `<td style="text-align:center">${contenido}</td>`;
           }
@@ -2455,6 +3186,25 @@
       renderizarColumnasInteractivas();
       filtrarReporteInteractivo();
       mostrarToast('Columnas restablecidas por defecto', 'info');
+    };
+
+    window.cargarPlantillaReporte = function(tipo) {
+      if (tipo === 'almuerzos') {
+        columnasCustomActivas = ['asistencias', 'almPlanta', 'almFuera'];
+        mostrarToast('Plantilla de Almuerzos cargada', 'success');
+      } else if (tipo === 'extras') {
+        columnasCustomActivas = ['horasExtra50', 'horasExtra100', 'horasCampoNormales', 'horasCampo50', 'horasCampo100', 'totalExtras50', 'totalExtras100'];
+        mostrarToast('Plantilla de Horas Extra cargada', 'success');
+      } else if (tipo === 'asistencias') {
+        columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'];
+        mostrarToast('Plantilla de Asistencia y Atrasos cargada', 'success');
+      } else if (tipo === 'completo') {
+        columnasCustomActivas = COLUMNAS_DISPONIBLES.map(c => c.id);
+        mostrarToast('Plantilla de Reporte Completo cargada', 'success');
+      }
+      guardarColumnasCustomActivas(columnasCustomActivas);
+      renderizarColumnasInteractivas();
+      filtrarReporteInteractivo();
     };
 
     window.exportarExcelReporteCustom = function() {
@@ -2939,7 +3689,7 @@
           
           let tdHtml = '';
           if (key === 'id') {
-            tdHtml = `<td style="font-family:'DM Sans',sans-serif;font-weight:600;">${escapeHtml(val)}</td>`;
+            tdHtml = `<td style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;">${escapeHtml(val)}</td>`;
           } else if (key === 'nombre') {
             tdHtml = `<td><strong>${escapeHtml(val)}</strong></td>`;
           } else if (key === 'supervisor') {
@@ -2947,9 +3697,9 @@
           } else if (key === 'activo') {
             tdHtml = `<td style="text-align:center">${val === 'SI' ? '<span class="pill ok">Activo</span>' : '<span class="pill miss">Inactivo</span>'}</td>`;
           } else if (key === 'pin') {
-            tdHtml = `<td style="font-family:'DM Mono',monospace;color:var(--g500);">${escapeHtml(val)}</td>`;
+            tdHtml = `<td style="font-family:'Fira Code',monospace;color:var(--g500);">${escapeHtml(val)}</td>`;
           } else if (key === 'baseLat' || key === 'baseLng') {
-            tdHtml = `<td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--g500);">${escapeHtml(val)}</td>`;
+            tdHtml = `<td style="font-family:'Fira Code',monospace;font-size:11px;color:var(--g500);">${escapeHtml(val)}</td>`;
           } else if (key === 'foto_url') {
             tdHtml = `<td style="font-size:11px;color:var(--g500);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
           } else {
@@ -3297,8 +4047,8 @@
           if (container) container.style.display = 'none';
           _vistaPreviaMasivaCache = [];
           
-          localStorage.removeItem('tcontrol_registros_cache_v1');
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
         } else {
           mostrarToast(res?.error || 'Error al guardar los datos de empleados.', 'error');
         }

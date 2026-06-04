@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Supervisor — Control 2026</title>
   <link
-    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="./CSS/supervisor.css?v=20260528">
@@ -156,8 +156,11 @@
       <div class="sidebar-header">
         <div class="sidebar-logo">
           <div class="sidebar-logo-icon"><i class="fas fa-chart-line"></i></div>
-          <div>CONTROL <span>2026</span></div>
+          <div class="sidebar-logo-text">CONTROL <span>2026</span></div>
         </div>
+        <button id="btnToggleSidebar" class="sidebar-toggle-btn" title="Comprimir/Expandir Menú">
+          <i class="fas fa-chevron-left"></i>
+        </button>
       </div>
       <nav class="sidebar-nav">
         <div class="nav-item active" data-panel="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></div>
@@ -205,6 +208,7 @@
             </div>
             <div class="stat-value" id="dashAlmPlanta">--%</div>
             <div class="stat-label">Almuerzo planta</div>
+            <div class="stat-sub" id="dashAlmPlantaSub" style="font-size:10.5px; color:var(--g500); margin-top:4px;">--</div>
           </div>
           <div class="stat-card" style="--stat-color:var(--purple)">
             <div class="stat-header">
@@ -230,10 +234,25 @@
           </div>
         </div>
 
-        <div class="metricas-row">
-          <div class="metric-card" style="flex:1">
+        <div class="metricas-row" style="grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));">
+          <div class="metric-card">
             <div class="metric-title"><i class="fas fa-user-clock"></i> Sin Salida en el Período</div>
             <div id="sinSalidaRanking" class="ranking-list" style="max-height: 250px; overflow-y: auto;">
+              <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-title"><i class="fas fa-calendar-times"></i> Faltas y Ausencias del Período</div>
+            <div id="ausenciasRanking" class="ranking-list" style="max-height: 250px; overflow-y: auto;">
+              <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-title" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+              <span><i class="fas fa-gavel text-amber"></i> Justificaciones Pendientes</span>
+              <span class="pill" id="justificacionesTotalTime" style="font-size:10px; background:#fef3c7; color:#d97706; font-weight:700;">00:00</span>
+            </div>
+            <div id="justificacionesRanking" class="ranking-list" style="max-height: 250px; overflow-y: auto;">
               <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
             </div>
           </div>
@@ -317,6 +336,34 @@
               <div class="reporte-period">número de atrasos</div>
             </div>
           </div>
+
+          <div class="reportes-grid" style="margin-bottom:var(--gap)">
+            <div class="reporte-card">
+              <div class="reporte-icon green"><i class="fas fa-utensils"></i></div>
+              <div class="reporte-value" id="repAlmuerzosEmp">--</div>
+              <div class="reporte-label">Almuerzos Empleados</div>
+              <div class="reporte-period">en planta</div>
+            </div>
+            <div class="reporte-card">
+              <div class="reporte-icon blue"><i class="fas fa-plus-circle"></i></div>
+              <div class="reporte-value" id="repAlmuerzosExt">--</div>
+              <div class="reporte-label">Almuerzos Extras</div>
+              <div class="reporte-period">de visitantes/varios</div>
+            </div>
+            <div class="reporte-card" style="border-color: var(--green);">
+              <div class="reporte-icon green" style="background: rgba(16, 185, 129, 0.1); color: var(--green);"><i class="fas fa-calculator"></i></div>
+              <div class="reporte-value" id="repAlmuerzosTotal">--</div>
+              <div class="reporte-label">TOTAL ALMUERZOS</div>
+              <div class="reporte-period">empleados + extras</div>
+            </div>
+            <div class="reporte-card">
+              <div class="reporte-icon pink"><i class="fas fa-home"></i></div>
+              <div class="reporte-value" id="repAlmuerzosFuera">--</div>
+              <div class="reporte-label">Almuerzos Fuera</div>
+              <div class="reporte-period">fuera de planta</div>
+            </div>
+          </div>
+
           <div class="reportes-grid" style="margin-bottom:var(--gap)">
             <div class="reporte-card">
               <div class="reporte-icon green"><i class="fas fa-charging-station"></i></div>
@@ -379,7 +426,7 @@
               
               <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.02);">
                 <span style="font-size:11px; font-weight:700; color:var(--g600);"><i class="fas fa-calendar-day" style="color:var(--blue);"></i> Filtrar por fecha:</span>
-                <input type="date" id="filtroFechaReportes" onchange="cargarReportesConFiltroFecha()" style="border:none; outline:none; font-family:'DM Sans', sans-serif; font-size:11.5px; font-weight:600; color:var(--g700); cursor:pointer; padding:2px;">
+                <input type="date" id="filtroFechaReportes" onchange="cargarReportesConFiltroFecha()" style="border:none; outline:none; font-family:'Plus Jakarta Sans', sans-serif; font-size:11.5px; font-weight:600; color:var(--g700); cursor:pointer; padding:2px;">
                 <button onclick="limpiarFiltroFechaReportes()" id="btnLimpiarFechaRep" style="display:none; border:none; background:none; cursor:pointer; color:var(--rose); font-size:11px; padding:2px 4px; line-height:1;" title="Limpiar fecha"><i class="fas fa-times-circle"></i></button>
               </div>
             </div>
@@ -461,13 +508,13 @@
           </div>
           <div class="kpi-card" style="--card-color:var(--teal)" onclick="setFiltroAsistencia('almuerzo_si')">
             <div class="kpi-header">
-              <div class="kpi-icon teal"><i class="fas fa-building"></i></div>
+              <div class="kpi-icon" style="background:#e6fffa;color:#319795"><i class="fas fa-utensils"></i></div>
               <div>
                 <div class="kpi-value" id="asisAlmuerzoPlanta">--</div>
                 <div class="kpi-label">Almuerzan planta</div>
               </div>
             </div>
-            <div class="kpi-sub">en comedor</div>
+            <div class="kpi-sub" id="asisAlmuerzoPlantaSub">en comedor</div>
           </div>
           <div class="kpi-card" style="--card-color:var(--pink)" onclick="setFiltroAsistencia('almuerzo_no')">
             <div class="kpi-header">
@@ -477,7 +524,7 @@
                 <div class="kpi-label">Almuerzan fuera</div>
               </div>
             </div>
-            <div class="kpi-sub">fuera de planta</div>
+            <div class="kpi-sub" id="asisAlmuerzoFueraSub">fuera de planta</div>
           </div>
           <div class="kpi-card" style="--card-color:var(--blue)" onclick="setFiltroAsistencia('salieron')">
             <div class="kpi-header">
@@ -525,6 +572,15 @@
               <button class="btn btn-primary" onclick="exportarGoogleSheetsReporteCustom()" style="padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; background:#0f9d58; border:none; color:white; display:flex; align-items:center; gap:8px; cursor:pointer; box-shadow:0 2px 4px rgba(15,157,88,0.15); transition:transform 0.2s;" title="Crear pestaña y exportar en tu archivo original de Google Sheets"><i class="fab fa-google-drive"></i> Exportar Google Sheets</button>
               <button class="btn" onclick="imprimirReporteCustom()" style="padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; background:#3b82f6; border:none; color:white; display:flex; align-items:center; gap:8px; cursor:pointer; box-shadow:0 2px 4px rgba(59,130,246,0.15); transition:transform 0.2s;"><i class="fas fa-print"></i> Imprimir Reporte</button>
             </div>
+          </div>
+
+          <!-- Plantillas Rápidas de Reportes -->
+          <div style="background:#f8fafc; padding:12px 18px; border-radius:12px; margin-bottom:20px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; border:1px solid var(--g200); box-shadow:inset 0 1px 2px rgba(0,0,0,0.01);">
+            <span style="font-size:11.5px; font-weight:800; color:var(--g600); text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:6px; margin-right:4px;"><i class="fas fa-file-invoice" style="color:var(--blue);"></i> Plantillas rápidas:</span>
+            <button onclick="cargarPlantillaReporte('almuerzos')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #bbf7d0; background:#f0fdf4; color:#166534; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Reporte de Almuerzos en planta y fuera"><i class="fas fa-utensils"></i> Almuerzos</button>
+            <button onclick="cargarPlantillaReporte('extras')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #fed7aa; background:#fff7ed; color:#9a3412; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Reporte de Horas Extra y Campo"><i class="fas fa-clock"></i> Horas Extra</button>
+            <button onclick="cargarPlantillaReporte('asistencias')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #bfdbfe; background:#eff6ff; color:#1e40af; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Reporte de Asistencias, Faltas y Atrasos"><i class="fas fa-calendar-check"></i> Asistencias y Atrasos</button>
+            <button onclick="cargarPlantillaReporte('completo')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #e9d5ff; background:#faf5ff; color:#6b21a8; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Mostrar todas las columnas disponibles"><i class="fas fa-globe"></i> Reporte Completo</button>
           </div>
 
           <!-- Drag and Drop / Interactive Selector Container -->
@@ -671,7 +727,7 @@
               <div class="form-group" style="flex:1; display:flex; flex-direction:column; margin-bottom:12px;">
                 <label class="form-label" style="font-weight:600; font-size:11.5px; margin-bottom:2px;">Pega tus columnas de Excel aquí directamente:</label>
                 <span style="font-size:10px; color:var(--g400); margin-bottom:6px; display:block;">Formato: ID/Cédula | Nombre | Área | Cargo | PIN | Supervisor (SI/NO) | Activo (SI/NO)</span>
-                <textarea id="txtMasivoEmpleados" class="form-input" style="flex:1; font-family:'DM Mono', monospace; font-size:11px; min-height:120px; resize:none; padding:10px;" placeholder="Ejemplo:&#10;1712345678&#9;Juan Pérez&#9;PRODUCCION&#9;Operario&#9;1234&#9;NO&#9;SI"></textarea>
+                <textarea id="txtMasivoEmpleados" class="form-input" style="flex:1; font-family:'Fira Code', monospace; font-size:11px; min-height:120px; resize:none; padding:10px;" placeholder="Ejemplo:&#10;1712345678&#9;Juan Pérez&#9;PRODUCCION&#9;Operario&#9;1234&#9;NO&#9;SI"></textarea>
               </div>
               
               <div style="display:flex; gap:10px;">
@@ -752,28 +808,60 @@
   <div id="extraLunchModal" class="modal-overlay hidden">
     <div class="modal-container">
       <div class="modal-header">
-        <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Almuerzo extra</h3><button class="modal-close"
-          onclick="cerrarModal()">&times;</button>
+        <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Almuerzo extra</h3>
+        <button class="modal-close" onclick="cerrarModal()">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="form-group"><label class="form-label">Nombre *</label><input type="text" id="visitanteNombre"
-            class="form-input"></div>
-        <div class="form-group"><label class="form-label">Empresa</label><input type="text" id="visitanteEmpresa"
-            class="form-input"></div>
-        <div class="form-group"><label class="form-label">Fecha</label><input type="date" id="visitanteFecha"
-            class="form-input"></div>
-        <div class="form-group"><label class="form-label">Cantidad</label><input type="number" id="visitanteCantidad"
-            class="form-input" value="1" min="1"></div>
-        <div class="form-group"><label class="form-label">Tipo</label><select id="visitanteTipo" class="form-select">
-            <option value="planta">Planta</option>
-            <option value="ejecutivo">Ejecutivo</option>
-            <option value="takeaway">Takeaway</option>
-          </select></div>
-        <div class="form-group"><label class="form-label">Observaciones</label><textarea id="visitanteObservaciones"
-            class="form-input" rows="2"></textarea></div>
+        <div class="form-group">
+          <label class="form-label">Fecha</label>
+          <input type="date" id="visitanteFecha" class="form-input" style="font-family:'Plus Jakarta Sans', sans-serif;">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cantidad</label>
+          <input type="number" id="visitanteCantidad" class="form-input" value="1" min="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones</label>
+          <textarea id="visitanteObservaciones" class="form-input" rows="3" placeholder="Detalles u observaciones del almuerzo extra..."></textarea>
+        </div>
       </div>
-      <div class="modal-footer"><button class="btn-secondary-modal" onclick="cerrarModal()">Cancelar</button><button
-          class="btn-primary-modal" onclick="guardarAlmuerzoExtra()">Registrar</button></div>
+      <div class="modal-footer">
+        <button class="btn-secondary-modal" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn-primary-modal" onclick="guardarAlmuerzoExtra()">Registrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE JUSTIFICACIÓN -->
+  <div id="justificarModal" class="modal-overlay hidden">
+    <div class="modal-container" style="max-width:400px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fas fa-balance-scale"></i> Justificar Tiempo</h3>
+        <button class="modal-close" onclick="cerrarModalJustificar()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:var(--g50); padding:12px; border-radius:8px; margin-bottom:15px; font-size:12.5px; border:1px solid var(--g200); line-height:1.5;">
+          <div><strong>Empleado:</strong> <span id="justNombre">---</span></div>
+          <div><strong>Fecha:</strong> <span id="justFecha">---</span></div>
+          <div><strong>Tiempo a Justificar:</strong> <span id="justTiempo" style="color:var(--red); font-weight:700;">---</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Motivo / Tipo de Permiso *</label>
+          <select id="justTipoPermiso" class="form-select">
+            <option value="permiso_personal">Permiso Personal</option>
+            <option value="permiso_medico">Permiso Médico</option>
+            <option value="justificado_supervisor">Justificado por Supervisor (Otro)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones / Comentarios</label>
+          <textarea id="justObservaciones" class="form-input" rows="3" placeholder="Detalles del motivo de la justificación..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary-modal" onclick="cerrarModalJustificar()">Cancelar</button>
+        <button class="btn-primary-modal" onclick="guardarJustificacion()">Justificar</button>
+      </div>
     </div>
   </div>
 
@@ -869,6 +957,25 @@
 
   <script src="./JS/tcontrol_core.js?v=20260528"></script>
   <script src="./JS/supervisor_core.js?v=20260528"></script>
+  <script>
+    // Lógica para colapsar barra lateral y recordar su estado
+    document.addEventListener("DOMContentLoaded", () => {
+      const sidebar = document.querySelector(".sidebar");
+      const toggleBtn = document.getElementById("btnToggleSidebar");
+      
+      // Restaurar estado guardado
+      if (localStorage.getItem("sidebarCollapsed") === "true") {
+        sidebar.classList.add("collapsed");
+      }
+      
+      if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener("click", () => {
+          sidebar.classList.toggle("collapsed");
+          localStorage.setItem("sidebarCollapsed", sidebar.classList.contains("collapsed"));
+        });
+      }
+    });
+  </script>
 </body>
 
 </html>

@@ -76,6 +76,8 @@ window.FirebaseBackend = {
                     return await this.obtenerReporteMensual(params);
                 case 'actualizarRegistroGeneral':
                     return await this.actualizarRegistroGeneral(params);
+                case 'justificarDia':
+                    return await this.justificarDia(params);
                 case 'actualizarEmpleado':
                     return await this.actualizarEmpleado(params);
                 case 'actualizarMasivoEmpleados':
@@ -887,6 +889,75 @@ window.FirebaseBackend = {
         return { error: "No se encontró el registro para actualizar" };
     },
 
+    async justificarDia(params) {
+        const empleadoId = params.empleadoId;
+        const fecha = params.fecha;
+        const supervisor = params.supervisor || 'Supervisor';
+        const razon = params.razon || 'Justificado';
+
+        try {
+            // 1. Buscar registros del empleado en esa fecha en Firebase
+            const snap = await db.collection('registros')
+                .where('empleadoId', '==', empleadoId)
+                .where('fecha', '==', fecha)
+                .get();
+
+            if (!snap.empty) {
+                // Actualizar todos los registros existentes para ese día
+                const batch = db.batch();
+                snap.docs.forEach(doc => {
+                    batch.update(doc.ref, {
+                        justificado: 'SI',
+                        quien_justifica: supervisor,
+                        razon_justificac: razon,
+                        timestamp: typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB')
+                    });
+                });
+                await batch.commit();
+            } else {
+                // Si no hay marcaciones ese día, creamos una marcación de tipo 'JUSTIFICACION'
+                const empDoc = await db.collection('empleados').doc(empleadoId).get();
+                const nombre = empDoc.exists ? empDoc.data().nombre : empleadoId;
+                
+                await db.collection('registros').add({
+                    empleadoId: empleadoId,
+                    nombre: nombre,
+                    fecha: fecha,
+                    tipo: 'JUSTIFICACION',
+                    hora: '00:00:00',
+                    almuerzo: 'NO',
+                    modo: 'OFICINA',
+                    horasExtra: 'NO',
+                    justificado: 'SI',
+                    quien_justifica: supervisor,
+                    razon_justificac: razon,
+                    timestamp: typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB')
+                });
+            }
+
+            // 2. Sincronizar la justificación con Google Sheets
+            try {
+                await this._jsonp({
+                    accion: 'actualizarRegistroArchivado',
+                    empleadoId: empleadoId,
+                    fecha: fecha,
+                    tipo: 'JUSTIFICACION',
+                    campo: 'justificado',
+                    valor: 'SI',
+                    quien_justifica: supervisor,
+                    razon_justificac: razon
+                });
+            } catch (e) {
+                console.warn("⚠️ Error al enviar justificación a Sheets:", e);
+            }
+
+            return { ok: true };
+        } catch (error) {
+            console.error("🔥 Error en justificarDia:", error);
+            return { error: error.message };
+        }
+    },
+
     async obtenerAsistenciaEmpleado(params) {
         const id = params.empleadoId;
         const query = await db.collection('registros')
@@ -1217,6 +1288,37 @@ window.FirebaseBackend = {
                 await _fetchArchivados();
             }
 
+            // 2.6 Caching y obtención de Almuerzos Extras
+            const CACHE_ALMUERZOS_EXTRA_KEY = 'tcontrol_almuerzos_extra_cache_v1';
+            let almuerzosExtraData = { almuerzos: [], lastSync: null };
+            try {
+                const storedAlm = localStorage.getItem(CACHE_ALMUERZOS_EXTRA_KEY);
+                if (storedAlm) almuerzosExtraData = JSON.parse(storedAlm);
+            } catch(e) { console.warn("Error leyendo caché almuerzos extras:", e); }
+
+            const horasAlmuerzos = almuerzosExtraData.lastSync ? (new Date() - new Date(almuerzosExtraData.lastSync)) / (1000 * 60 * 60) : 999;
+            const _fetchAlmuerzosExtra = async () => {
+                try {
+                    const resJson = await this._jsonp({ accion: 'obtenerAlmuerzosExtra' });
+                    if (resJson.ok && resJson.almuerzos) {
+                        almuerzosExtraData.almuerzos = resJson.almuerzos;
+                        almuerzosExtraData.lastSync = new Date().toISOString();
+                        try {
+                            localStorage.setItem(CACHE_ALMUERZOS_EXTRA_KEY, JSON.stringify(almuerzosExtraData));
+                            console.log("✅ Almuerzos extras de Sheets actualizados en caché.");
+                        } catch(e) {}
+                    }
+                } catch(e) { console.warn("Error consultando almuerzos extras:", e); }
+            };
+
+            if (params.force) {
+                console.log("📥 Forzando obtención de almuerzos extras de Sheets...");
+                await _fetchAlmuerzosExtra();
+            } else if (horasAlmuerzos > 12) {
+                console.log("📥 Obteniendo almuerzos extras históricos de Sheets...");
+                await _fetchAlmuerzosExtra();
+            }
+
             const archivadosNorm = archivadosData.registros.map(reg => ({
                 id: reg.id || `arch_${reg.empleadoId}_${reg.fecha}_${reg.tipo}`,
                 empleadoId: reg.empleadoId || reg.id_empleado || '',
@@ -1237,7 +1339,9 @@ window.FirebaseBackend = {
                 tipo_salida: reg.tipo_salida || reg.tipoSalida || '',
                 razon_permiso: reg.razon_permiso || reg.razonPermiso || '',
                 horasExtra: reg.horasExtra || '',
-                autoriza: reg.autoriza || ''
+                autoriza: reg.autoriza || '',
+                justificado: reg.justificado || '',
+                razon_justificac: reg.razon_justificac || ''
             })).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
 
             // Registros de Firebase: también normalizar fecha por si acaso
@@ -1300,6 +1404,7 @@ window.FirebaseBackend = {
 
             return {
                 empleados: Object.values(empleadosMap),
+                almuerzosExtra: almuerzosExtraData.almuerzos || [],
                 timestamp: new Date().toISOString()
             };
         } catch (error) {

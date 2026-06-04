@@ -49,7 +49,7 @@
     }
 
     body {
-      font-family: 'DM Sans', sans-serif;
+      font-family: 'Plus Jakarta Sans', sans-serif;
       background: var(--g100);
       color: var(--g900);
       min-height: 100vh
@@ -266,15 +266,20 @@
     .stat-card {
       background: white;
       border-radius: var(--r);
-      padding: 10px 14px;
+      padding: 8px 12px;
       border: 1px solid var(--g200);
       box-shadow: var(--sh);
       transition: all .3s ease;
-      position: relative
+      position: relative;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto auto auto;
+      column-gap: 12px;
+      align-items: center;
     }
 
     .stat-card:hover {
-      transform: translateY(-4px);
+      transform: translateY(-2px);
       box-shadow: var(--shmd)
     }
 
@@ -296,10 +301,12 @@
     }
 
     .stat-header {
+      grid-column: 1;
+      grid-row: 1 / span 3;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin-bottom: 4px
+      justify-content: center;
+      margin-bottom: 0;
     }
 
     .stat-icon {
@@ -333,17 +340,31 @@
     }
 
     .stat-value {
-      font-size: 20px;
+      grid-column: 2;
+      grid-row: 1;
+      font-size: 18px;
       font-weight: 900;
-      font-family: 'DM Mono', monospace;
-      line-height: 1;
-      margin-bottom: 2px
+      font-family: 'Fira Code', monospace;
+      line-height: 1.1;
+      margin-bottom: 1px
     }
 
     .stat-label {
-      font-size: 11px;
+      grid-column: 2;
+      grid-row: 2;
+      font-size: 10.5px;
       color: var(--g500);
-      font-weight: 600
+      font-weight: 600;
+      line-height: 1.2
+    }
+
+    .stat-sub {
+      grid-column: 2;
+      grid-row: 3;
+      font-size: 10px;
+      color: var(--g400);
+      margin-top: 1px;
+      line-height: 1.2
     }
 
     /* KPI Cards */
@@ -425,7 +446,7 @@
     .kpi-value {
       font-size: 18px;
       font-weight: 900;
-      font-family: 'DM Mono', monospace;
+      font-family: 'Fira Code', monospace;
       line-height: 1
     }
 
@@ -525,9 +546,30 @@
       color: var(--g500)
     }
 
+    .absence-chip {
+      background: var(--red-lt);
+      color: var(--red);
+      font-size: 9.5px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 700;
+      border: 1px solid rgba(239, 68, 68, 0.12);
+      display: inline-block;
+    }
+
+    .absence-chip-more {
+      background: var(--g100);
+      color: var(--g600);
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 700;
+      display: inline-block;
+    }
+
     .ranking-value {
       font-weight: 700;
-      font-family: 'DM Mono', monospace
+      font-family: 'Fira Code', monospace
     }
 
     /* HBar */
@@ -573,7 +615,7 @@
     }
 
     .hbar-number {
-      font-family: 'DM Mono', monospace;
+      font-family: 'Fira Code', monospace;
       font-weight: 700;
       text-align: right;
       font-size: var(--fxs)
@@ -989,7 +1031,7 @@
     .reporte-value {
       font-size: 16px;
       font-weight: 900;
-      font-family: 'DM Mono', monospace;
+      font-family: 'Fira Code', monospace;
       margin-bottom: 2px
     }
 
@@ -1598,4 +1640,122 @@
       .hbar-row {
         grid-template-columns: 100px 1fr 80px
       }
+    }
+
+    /* --- SIDEBAR TOGGLE & COLLAPSED STYLES (PC ONLY) --- */
+    @media (min-width: 769px) {
+      :root {
+        --gap: 12px;
+        --pad: 16px;
+        --r: 12px;
+      }
+
+      .sidebar {
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .sidebar-toggle-btn {
+        background: var(--g100);
+        border: 1px solid var(--g200);
+        color: var(--g600);
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        outline: none;
+        flex-shrink: 0;
+      }
+
+      .sidebar-toggle-btn:hover {
+        background: var(--red-lt);
+        color: var(--red);
+        border-color: var(--red);
+        transform: scale(1.1);
+      }
+
+      /* Collapsed State */
+      .sidebar.collapsed {
+        width: 70px;
+      }
+
+      .sidebar.collapsed .sidebar-header {
+        padding: var(--pad) 8px;
+        justify-content: center;
+      }
+
+      .sidebar.collapsed .sidebar-logo-text,
+      .sidebar.collapsed .sidebar-nav .nav-item span,
+      .sidebar.collapsed .sidebar-footer button span {
+        display: none;
+      }
+
+      .sidebar.collapsed .sidebar-logo {
+        justify-content: center;
+      }
+
+      .sidebar.collapsed .nav-item {
+        justify-content: center;
+        padding: 12px 0;
+      }
+
+      .sidebar.collapsed .nav-item:hover {
+        transform: none;
+      }
+
+      .sidebar.collapsed .nav-item i {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .sidebar.collapsed .sidebar-footer {
+        padding: var(--pad) 8px;
+      }
+
+      .sidebar.collapsed .btn-refresh,
+      .sidebar.collapsed .btn-extra-lunch {
+        padding: 12px 0;
+      }
+
+      .sidebar.collapsed .btn-refresh i,
+      .sidebar.collapsed .btn-extra-lunch i {
+        margin: 0;
+      }
+
+      .sidebar.collapsed .sidebar-toggle-btn i {
+        transform: rotate(180deg);
+      }
+    }
+
+    /* --- DASHBOARD COMPACT LAYOUT OVERRIDES --- */
+    .metric-card {
+      padding: 12px 16px;
+    }
+
+    .stats-grid {
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .metricas-row {
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .hbar-row {
+      padding: 4px 0;
+    }
+    
+    .ranking-item {
+      padding: 6px 0;
     }

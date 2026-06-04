@@ -176,7 +176,7 @@ function doPost(e) {
           var r_razonPermiso = r.razon_permiso || r.razonPermiso || '';
           
           filas.push([
-            r.fecha||'', r.empleadoId||'', r.nombre||'', r.tipo||'', r.almuerzo||'', r.hora||'', r.lat||'', r.lng||'', r.dispositivo||'', tsStr, r.dia||'', r.modo||'', r.horasExtra||'', r.autoriza||'', r_razonSalidaTemprana, r_quienJustifica, r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso
+            r.fecha||'', r.empleadoId||'', r.nombre||'', r.tipo||'', r.almuerzo||'', r.hora||'', r.lat||'', r.lng||'', r.dispositivo||'', tsStr, r.dia||'', r.modo||'', r.horasExtra||'', r.autoriza||'', r_razonSalidaTemprana, r_quienJustifica, r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso, r.justificado||'', r.razon_justificac||''
           ]);
         }
         sheet.getRange(sheet.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
@@ -259,7 +259,9 @@ function doPost(e) {
             tipoSalida: r18,
             tipo_salida: r18,
             razonPermiso: r19,
-            razon_permiso: r19
+            razon_permiso: r19,
+            justificado: r[20]?String(r[20]):'',
+            razon_justificac: r[21]?String(r[21]):''
           });
         }
         return ContentService.createTextOutput(JSON.stringify({ok: true, registros: registros})).setMimeType(ContentService.MimeType.JSON);
@@ -338,6 +340,9 @@ function procesarAccion(params) {
       
     case 'obtenerInfoEmpleado':
       return obtenerInfoEmpleado(params.id);
+      
+    case 'obtenerAlmuerzosExtra':
+      return obtenerAlmuerzosExtra();
     
     // Terminal Guardia
     case 'verificarClaveGuardia':
@@ -389,7 +394,7 @@ function procesarAccion(params) {
         if (empIdReq && rEmpId !== empIdReq) continue;
         
         registros.push({
-          fecha: r[0]?String(r[0]):'', empleadoId: rEmpId, nombre: r[2]?String(r[2]):'', tipo: r[3]?String(r[3]):'', almuerzo: r[4]?String(r[4]):'', hora: r[5]?String(r[5]):'', lat: r[6]?String(r[6]):'', lng: r[7]?String(r[7]):'', dispositivo: r[8]?String(r[8]):'', timestamp: r[9]?String(r[9]):'', dia: r[10]?String(r[10]):'', modo: r[11]?String(r[11]):'', horasExtra: r[12]?String(r[12]):'', autoriza: r[13]?String(r[13]):'', razonSalidaTemprana: r[14]?String(r[14]):'', quienJustifica: r[15]?String(r[15]):'', razonEntradaTardia: r[16]?String(r[16]):'', quienJustificaEntrada: r[17]?String(r[17]):'', tipoSalida: r[18]?String(r[18]):'', razonPermiso: r[19]?String(r[19]):''
+          fecha: r[0]?String(r[0]):'', empleadoId: rEmpId, nombre: r[2]?String(r[2]):'', tipo: r[3]?String(r[3]):'', almuerzo: r[4]?String(r[4]):'', hora: r[5]?String(r[5]):'', lat: r[6]?String(r[6]):'', lng: r[7]?String(r[7]):'', dispositivo: r[8]?String(r[8]):'', timestamp: r[9]?String(r[9]):'', dia: r[10]?String(r[10]):'', modo: r[11]?String(r[11]):'', horasExtra: r[12]?String(r[12]):'', autoriza: r[13]?String(r[13]):'', razonSalidaTemprana: r[14]?String(r[14]):'', quienJustifica: r[15]?String(r[15]):'', razonEntradaTardia: r[16]?String(r[16]):'', quienJustificaEntrada: r[17]?String(r[17]):'', tipoSalida: r[18]?String(r[18]):'', razonPermiso: r[19]?String(r[19]):'', justificado: r[20]?String(r[20]):'', razon_justificac: r[21]?String(r[21]):''
         });
       }
       return { ok: true, registros: registros };
@@ -1637,8 +1642,7 @@ function registrarAlmuerzoExtra(params) {
   try {
     lock.waitLock(15000);
     
-    const nombre = params.nombre?.toString().trim();
-    if (!nombre) return { error: "El nombre del visitante es obligatorio" };
+    const nombre = params.nombre?.toString().trim() || "Almuerzo Extra";
     
     let fecha = params.fecha;
     if (!fecha) {
@@ -1666,11 +1670,57 @@ function registrarAlmuerzoExtra(params) {
     
     sheet.appendRow([fecha, nombre, empresa, tipo, cantidad, horaRegistro, timestamp, observaciones]);
     
-    return { ok: true, mensaje: `Almuerzo extra registrado para ${nombre}` };
-  } catch (error) {
-    console.error("Error en registrarAlmuerzoExtra:", error);
-    return { error: error.toString() };
   } finally { lock.releaseLock(); }
+}
+
+function obtenerAlmuerzosExtra() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(HOJA_ALMUERZOS_EXTRA);
+    if (!sheet) return { ok: true, almuerzos: [] };
+    var dataRange = sheet.getDataRange().getValues();
+    if (dataRange.length <= 1) return { ok: true, almuerzos: [] };
+    
+    var tz = Session.getScriptTimeZone();
+    var almuerzos = [];
+    
+    for (var i = 1; i < dataRange.length; i++) {
+      var r = dataRange[i];
+      var fechaVal = r[0];
+      var fechaStr = '';
+      if (fechaVal instanceof Date) {
+        fechaStr = Utilities.formatDate(fechaVal, tz, 'yyyy-MM-dd');
+      } else if (fechaVal) {
+        var s = String(fechaVal).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+          fechaStr = s.slice(0, 10);
+        } else {
+          var m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (m1) {
+            fechaStr = m1[3] + '-' + m1[2].padStart(2,'0') + '-' + m1[1].padStart(2,'0');
+          } else {
+            var d = new Date(s);
+            fechaStr = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+          }
+        }
+      }
+      
+      var cantidad = parseInt(r[4]) || 0;
+      var obs = r[7] ? String(r[7]).trim() : '';
+      
+      if (fechaStr && cantidad > 0) {
+        almuerzos.push({
+          fecha: fechaStr,
+          cantidad: cantidad,
+          observaciones: obs
+        });
+      }
+    }
+    return { ok: true, almuerzos: almuerzos };
+  } catch (error) {
+    console.error("Error en obtenerAlmuerzosExtra:", error);
+    return { error: error.toString() };
+  }
 }
 
 // =================== FUNCIONES PARA TERMINAL GUARDIA ===================
@@ -2053,7 +2103,7 @@ function obtenerEstadisticasConsumo(params) {
       mensaje: "OK"
     };
   } catch (error) {
-    console.error("âŒ Error en obtenerEstadisticasConsumo:", error);
+    console.error("❌ Error en obtenerEstadisticasConsumo:", error);
     return { error: error.toString() };
   }
 }
@@ -2104,6 +2154,12 @@ function actualizarRegistroArchivado(params) {
       else if (campo === 'horasExtra') colIdx = COLUMNAS.HORAS_EXTRA;
       else if (campo === 'razon_entrada_tardia') colIdx = COLUMNAS.RAZON_ENTRADA_TARDIA;
       else if (campo === 'razon_salida') colIdx = COLUMNAS.RAZON_SALIDA_TEMPRANA;
+      else if (campo === 'justificado') {
+        sheet.getRange(filaIndex, 20 + 1).setValue('SI');
+        if (params.quien_justifica) sheet.getRange(filaIndex, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(params.quien_justifica);
+        if (params.razon_justificac) sheet.getRange(filaIndex, 21 + 1).setValue(params.razon_justificac);
+        return { ok: true };
+      }
       
       if (colIdx !== -1) {
         sheet.getRange(filaIndex, colIdx + 1).setValue(valor);
@@ -2111,8 +2167,8 @@ function actualizarRegistroArchivado(params) {
       }
       return { ok: false, error: "Campo no mapeado para Sheets" };
     } else {
-      // Crear nuevo registro en Sheets si es completar hora
-      if (campo === 'hora') {
+      // Crear nuevo registro en Sheets si es completar hora o si es justificación
+      if (campo === 'hora' || tipo === 'JUSTIFICACION' || campo === 'justificado') {
         const sheetEmp = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
         const emps = sheetEmp.getDataRange().getValues();
         let nombre = eid;
@@ -2123,22 +2179,28 @@ function actualizarRegistroArchivado(params) {
           }
         }
         
-        const nuevaFila = new Array(20).fill('');
+        const nuevaFila = new Array(22).fill('');
         nuevaFila[COLUMNAS.FECHA] = fecha;
         nuevaFila[COLUMNAS.ID] = eid;
         nuevaFila[COLUMNAS.NOMBRE] = nombre;
-        nuevaFila[COLUMNAS.TIPO] = tipo;
-        nuevaFila[COLUMNAS.HORA] = valor;
+        nuevaFila[COLUMNAS.TIPO] = tipo || 'JUSTIFICACION';
+        nuevaFila[COLUMNAS.HORA] = (campo === 'hora' ? valor : '00:00:00');
         nuevaFila[COLUMNAS.ALMUERZO] = "NO";
         nuevaFila[COLUMNAS.MODO] = "OFICINA";
         nuevaFila[COLUMNAS.HORAS_EXTRA] = "NO";
         nuevaFila[COLUMNAS.TIMESTAMP] = new Date();
         nuevaFila[COLUMNAS.DIA] = obtenerDiaEcuador(new Date(fecha + 'T12:00:00'));
         
+        if (campo === 'justificado' || tipo === 'JUSTIFICACION') {
+          nuevaFila[20] = 'SI';
+          nuevaFila[COLUMNAS.QUIEN_JUSTIFICA] = params.quien_justifica || '';
+          nuevaFila[21] = params.razon_justificac || '';
+        }
+        
         sheet.appendRow(nuevaFila);
         return { ok: true };
       }
-      return { ok: false, error: "Registro no encontrado en Sheets y no se pudo crear" };
+      return { ok: false, error: "Registro no encontrado y no es creación de hora/justificación" };
     }
   } catch (error) {
     console.error("Error en actualizarRegistroArchivado:", error);
