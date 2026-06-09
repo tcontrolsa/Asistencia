@@ -9,11 +9,11 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260528">
+  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260608_1">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260528"></script>
+  <script src="./JS/firebase_backend.js?v=20260608_1"></script>
   <script>window.USE_FIREBASE = true;</script>
   <style>
     /* Estilos para el Simulador de Empleado */
@@ -601,7 +601,16 @@
           <!-- Search and Table -->
           <div style="border-top:1px dashed var(--g300); padding-top:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-              <div class="search-box" style="margin:0;"><input type="text" id="searchReportesCustom" class="search-input" placeholder="Filtrar por empleado o área..." oninput="filtrarReporteInteractivo()" style="max-width:320px; border-radius:10px;"></div>
+              <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                <div class="search-box" style="margin:0;"><input type="text" id="searchReportesCustom" class="search-input" placeholder="Filtrar por empleado o área..." oninput="filtrarReporteInteractivo()" style="max-width:320px; border-radius:10px;"></div>
+                <div class="quick-filters" id="filtrosRapidosCargo" style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <button class="btn btn-filter active" onclick="setFiltroRapidoReporte('', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">TODOS</button>
+                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('pasante', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Pasante</button>
+                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('sin asistencia', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Sin Asistencia</button>
+                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('almuerzos extra', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Almuerzos Extra</button>
+                </div>
+                <input type="hidden" id="filtroCargoReporte" value="">
+              </div>
               <div id="reporteCustomInfo" style="font-size:12px; font-weight:700; color:var(--g600); background:#f1f5f9; padding:6px 12px; border-radius:8px;">Cargando...</div>
             </div>
             
@@ -955,8 +964,8 @@
     </div>
   </div>
 
-  <script src="./JS/tcontrol_core.js?v=20260528"></script>
-  <script src="./JS/supervisor_core.js?v=20260528"></script>
+  <script src="./JS/tcontrol_core.js?v=20260608_1"></script>
+  <script src="./JS/supervisor_core.js?v=20260608_1"></script>
   <script>
     // Lógica para colapsar barra lateral y recordar su estado
     document.addEventListener("DOMContentLoaded", () => {

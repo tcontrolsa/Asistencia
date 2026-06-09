@@ -69,6 +69,67 @@
       if (loader) loader.classList.toggle('hidden', !show);
     }
 
+    function formatearTimestampCompleto(ts) {
+      if (!ts) return '';
+      let dateObj;
+      if (typeof ts.toDate === 'function') dateObj = ts.toDate();
+      else if (ts && typeof ts === 'object' && ts.seconds) dateObj = new Date(ts.seconds * 1000);
+      else dateObj = new Date(ts);
+
+      if (dateObj && !isNaN(dateObj.getTime())) {
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const y = dateObj.getFullYear();
+        const hh = String(dateObj.getHours()).padStart(2, '0');
+        const mm = String(dateObj.getMinutes()).padStart(2, '0');
+        const ss = String(dateObj.getSeconds()).padStart(2, '0');
+        return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+      }
+      return String(ts);
+    }
+
+    function parsearTimestamp(tsString) {
+      if (!tsString) return null;
+      tsString = String(tsString).trim();
+      const regexDMY = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+      const regexYMD = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+
+      let year, month, day, hour, minute, second;
+      let match = tsString.match(regexDMY);
+      if (match) {
+        day = match[1].padStart(2, '0');
+        month = match[2].padStart(2, '0');
+        year = match[3];
+        hour = match[4].padStart(2, '0');
+        minute = match[5].padStart(2, '0');
+        second = (match[6] || '00').padStart(2, '0');
+      } else {
+        match = tsString.match(regexYMD);
+        if (match) {
+          year = match[1];
+          month = match[2].padStart(2, '0');
+          day = match[3].padStart(2, '0');
+          hour = match[4].padStart(2, '0');
+          minute = match[5].padStart(2, '0');
+          second = (match[6] || '00').padStart(2, '0');
+        } else {
+          const d = new Date(tsString);
+          if (isNaN(d.getTime())) return null;
+          year = d.getFullYear();
+          month = String(d.getMonth() + 1).padStart(2, '0');
+          day = String(d.getDate()).padStart(2, '0');
+          hour = String(d.getHours()).padStart(2, '0');
+          minute = String(d.getMinutes()).padStart(2, '0');
+          second = String(d.getSeconds()).padStart(2, '0');
+        }
+      }
+      return {
+        fecha: `${year}-${month}-${day}`,
+        hora: `${hour}:${minute}:${second}`,
+        timestampFormatted: `${day}/${month}/${year} ${hour}:${minute}:${second}`
+      };
+    }
+
     function obtenerMinutos(valor) {
       if (!valor) return null;
       if (typeof valor === 'number') {
@@ -376,7 +437,7 @@
       if (dc) { dc.style.strokeDasharray = circ; dc.style.strokeDashoffset = circ; }
 
       const esFestivoHoy = esFeriadoODomingo(hoy) || (new Date(hoy + 'T12:00:00').getDay() === 6);
-      const refEntradaHoy = esFestivoHoy ? 435 : HORA_ENTRADA_REF;
+      const refEntradaHoy = esFestivoHoy ? 420 : HORA_ENTRADA_REF;
 
       let hoyP = 0, hoyA = 0, hoyT = 0, hoySalieron = 0;
       empCache.forEach(e => {
@@ -414,7 +475,7 @@
           entradas.forEach(r => {
             let m = obtenerMinutos(r.hora);
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-            const refEntradaR = esFestivoR ? 435 : HORA_ENTRADA_REF;
+            const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
             if (m !== null && m > refEntradaR) tard++;
             if (r.almuerzo === 'SI') almP++;
           });
@@ -583,7 +644,7 @@
           (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= hoy_ && (r.horasExtra === 'SI' || r.autoriza)).forEach(r => {
             let m = obtenerMinutos(r.hora);
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-            const refSalidaR = esFestivoR ? 915 : HORA_SALIDA_REF;
+            const refSalidaR = esFestivoR ? 900 : HORA_SALIDA_REF;
             if (m !== null && m - refSalidaR > 1) extraTotal += m - refSalidaR;
           });
         });
@@ -671,9 +732,9 @@
               });
 
               let netWorked = minutosTrabajadosHoy;
-              if (netWorked > 240) netWorked -= 45;
+              if (!esFestivo && netWorked > 240) netWorked -= 45;
 
-              let expectedNet = esFestivo ? 435 : 480;
+              let expectedNet = 480;
               let missingMinutes = Math.max(0, expectedNet - netWorked);
               let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
               let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
@@ -815,11 +876,16 @@
           let mins = obtenerMinutos(r.hora);
           if (mins === null) return;
           sE += mins; nE++;
-          if (mins - HORA_ENTRADA_REF > 1) { t++; m += mins - HORA_ENTRADA_REF; }
+          const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+          const refEnt = esFestivoR ? 420 : HORA_ENTRADA_REF;
+          if (mins - refEnt > 1) { t++; m += mins - refEnt; }
         });
         salidas.forEach(r => {
           let mins = obtenerMinutos(r.hora);
-          if (mins !== null && mins - HORA_SALIDA_REF > 1) x++;
+          if (mins === null) return;
+          const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+          const refSal = esFestivoR ? 900 : HORA_SALIDA_REF;
+          if (mins - refSal > 1) x++;
         });
         return { ...e, tardanzas: t, minP: m, extra: x, promE: nE ? Math.round(sE / nE) : null, nE, id: e.id };
       });
@@ -847,8 +913,8 @@
       let pres = empCache.filter(e => e.entradaHoy).length;
       let ausentes = total - pres;
       const esFestivoHoy = esFeriadoODomingo(hoy) || (new Date(hoy + 'T12:00:00').getDay() === 6);
-      const refEntradaHoy = esFestivoHoy ? 435 : HORA_ENTRADA_REF;
-      const refSalidaHoy = esFestivoHoy ? 915 : HORA_SALIDA_REF;
+      const refEntradaHoy = esFestivoHoy ? 420 : HORA_ENTRADA_REF;
+      const refSalidaHoy = esFestivoHoy ? 900 : HORA_SALIDA_REF;
 
       let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > refEntradaHoy; }).length;
       let salieron = empCache.filter(e => e.salidaHoy).length;
@@ -892,7 +958,49 @@
         let mSal = e.salidaHoy ? obtenerMinutos(sHoraV) : null;
         let sHtml = e.salidaHoy ? `<span class="editable-cell" ${clickSalida}>${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}${mSal - refSalidaHoy > 1 ? ` <span class="delta neg">+${formatearMinutos(mSal - refSalidaHoy)}</span>` : ''}</span>` : (e.entradaHoy ? `<span class="editable-cell empty" ${clickSalida}>Pendiente</span>` : `<span class="editable-cell empty" ${clickSalida}>-</span>`);
 
-        let estHtml = !e.entradaHoy ? '<span class="pill miss"><i class="fas fa-times"></i> Ausente</span>' : tard ? '<span class="pill late"><i class="fas fa-exclamation"></i> Tarde</span>' : '<span class="pill ok"><i class="fas fa-check"></i> Puntual</span>';
+        let fReg = (e.registros || []).find(r => r.tipo === 'FALTA' && r.fecha === hoy);
+        let razonAusenciaHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : '';
+        let isSinAsistencia = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+
+        let estHtml = '';
+        let ausenciaHtml = '-';
+
+        if (isSinAsistencia) {
+             estHtml = '<span class="pill" style="background:#f1f5f9; color:#64748b; border:1px dashed #cbd5e1;"><i class="fas fa-utensils"></i> Solo Alm.</span>';
+             ausenciaHtml = '<span class="pill dim" style="opacity:0.6; font-size:10px; background:transparent; border:none;">N/A</span>';
+        } else {
+             if (!e.entradaHoy) {
+                  estHtml = '<span class="pill miss"><i class="fas fa-times"></i> Ausente</span>';
+                  
+                  // WhatsApp Button
+                  let tel = (e.telefono || '').replace(/\D/g, '');
+                  if (tel && tel.length >= 9) {
+                      if (tel.startsWith('0')) tel = '593' + tel.substring(1);
+                      let msg = encodeURIComponent("Hola, te recordamos que no has registrado tu asistencia el día de hoy.");
+                      estHtml += ` <a href="https://wa.me/${tel}?text=${msg}" target="_blank" onclick="event.stopPropagation();" style="color:#25d366; margin-left:6px; font-size:16px; vertical-align:middle; transition: transform 0.2s;" title="Notificar por WhatsApp"><i class="fab fa-whatsapp"></i></a>`;
+                  }
+                  
+                  // Dropdown Razón
+                  let selectHtml = `
+                    <div style="position:relative; width:100%; min-width:120px;">
+                        <select onchange="window.guardarRazonAusenciaGlobal('${e.id}', this.value)" onclick="event.stopPropagation();" style="font-size:10px; padding:4px 8px; border-radius:12px; width:100%; border:1px solid ${razonAusenciaHoy ? '#fdba74' : '#cbd5e1'}; background:${razonAusenciaHoy ? '#fff7ed' : '#f8fafc'}; color:${razonAusenciaHoy ? '#c2410c' : '#64748b'}; font-weight:600; cursor:pointer; outline:none;">
+                            <option value="">${razonAusenciaHoy ? 'Cambiar Razón...' : '+ Agregar Razón'}</option>
+                            <option value="Vacación" ${razonAusenciaHoy === 'Vacación' ? 'selected' : ''}>🏖️ Vacación</option>
+                            <option value="Permiso Médico" ${razonAusenciaHoy === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
+                            <option value="Permiso Personal" ${razonAusenciaHoy === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
+                            <option value="Calamidad Doméstica" ${razonAusenciaHoy === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
+                            <option value="Otro" ${razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
+                        </select>
+                    </div>
+                  `;
+                  if (razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica'].includes(razonAusenciaHoy)) {
+                       selectHtml += `<div style="font-size:10px; color:var(--indigo); margin-top:4px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
+                  }
+                  ausenciaHtml = selectHtml;
+             } else {
+                  estHtml = tard ? '<span class="pill late"><i class="fas fa-exclamation"></i> Tarde</span>' : '<span class="pill ok"><i class="fas fa-check"></i> Puntual</span>';
+             }
+        }
 
         // Modo y Extras
         let modo = eReg?.modo || sReg?.modo || (e.entradaHoy ? 'EMPRESA' : '-');
@@ -910,10 +1018,19 @@
           extrasHtml = `<span class="editable-pill" ${clickExtras}>${extras}</span>`;
         }
 
-        let puedeEditar = e.entradaHoy || esAdminMaster;
-        let toggle = `<div class="almuerzo-toggle"><button class="toggle-option ${e.almuerzoHoy === 'SI' ? 'active-si' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-building"></i> Sí</button><button class="toggle-option ${e.almuerzoHoy === 'NO' ? 'active-no' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-home"></i> No</button></div>`;
+        let toggle = '';
+        if (isSinAsistencia) {
+             toggle = `<div class="almuerzo-toggle" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-radius:12px;"><button class="toggle-option ${e.almuerzoHoy === 'SI' ? 'active-si' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" style="flex:1; border-radius:12px 0 0 12px; font-weight:600; font-size:11px; padding:6px 4px;"><i class="fas fa-check-circle" style="margin-right:4px;"></i> Planta</button><button class="toggle-option ${e.almuerzoHoy === 'NO' ? 'active-no' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" style="flex:1; border-radius:0 12px 12px 0; font-weight:600; font-size:11px; padding:6px 4px;"><i class="fas fa-times-circle" style="margin-right:4px;"></i> Fuera</button></div>`;
+        } else {
+             if (!e.entradaHoy) {
+                 toggle = `<span class="pill dim" style="font-size:10px; opacity:0.5; background:transparent; border:none;">Ausente</span>`;
+             } else {
+                 let puedeEditar = e.entradaHoy || esAdminMaster;
+                 toggle = `<div class="almuerzo-toggle"><button class="toggle-option ${e.almuerzoHoy === 'SI' ? 'active-si' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-building"></i> Sí</button><button class="toggle-option ${e.almuerzoHoy === 'NO' ? 'active-no' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-home"></i> No</button></div>`;
+             }
+        }
 
-        return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, id: e.id };
+        return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, id: e.id, isSinAsistencia };
       });
       filtrarAsistenciaTabla();
     }
@@ -928,6 +1045,16 @@
         nuevoValor = confirm(`¿Cambiar MODO a CAMPO? (Cancelar para OFICINA)`) ? 'CAMPO' : 'OFICINA';
       } else if (campo === 'horasExtra') {
         nuevoValor = confirm(`¿Autorizar HORAS EXTRAS?`) ? 'SI' : 'NO';
+      } else if (campo === 'timestamp') {
+        let tsLegible = formatearTimestampCompleto(valorActual);
+        nuevoValor = prompt(`Editar TIMESTAMP para ${tipoReg} para el empleado ${empleadoId} [${targetFecha}]:\nUse el formato: DD/MM/YYYY HH:MM:SS`, tsLegible);
+        if (nuevoValor === null) return;
+        const parsed = parsearTimestamp(nuevoValor);
+        if (!parsed) {
+          mostrarToast('Formato de timestamp inválido. Use el formato: DD/MM/YYYY HH:MM:SS', 'error');
+          return;
+        }
+        nuevoValor = parsed.timestampFormatted;
       }
 
       if (nuevoValor === null || nuevoValor === "") return;
@@ -946,7 +1073,8 @@
 
         if (res.ok) {
           mostrarToast('Registro actualizado correctamente', 'success');
-          await cargarDatosCompletos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
           if (panelActual === 'detalle') mostrarDetalle(empleadoId);
           else cargarAsistencia();
         } else {
@@ -1036,11 +1164,47 @@
         $('asistenciaTablaContainer').innerHTML = '<div class="empty-state"><i class="fas fa-users-slash"></i><p>No hay empleados que coincidan con el filtro</p></div>';
         return;
       }
-      let html = `<table class="employee-table table-compact"><thead><tr><th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th><th>Área</th><th>Entrada</th><th>Salida</th><th>Modo</th><th>Extras</th><th>Estado</th><th>Almuerzo</th></tr></thead><tbody>`;
-      html += data.map(e => `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td><td>${escapeHtml(e.area || '—')}</td><td>${e._eH}</td><td>${e._sH}</td><td>${e._modo}</td><td>${e._extras}</td><td>${e._est}</td><td>${e._toggle}</td></tr>`).join('');
+      let html = `<table class="employee-table table-compact"><thead><tr><th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th><th>Área</th><th>Entrada</th><th>Salida</th><th>Modo</th><th>Extras</th><th>Estado</th><th>Razón Ausencia</th><th>Almuerzo</th></tr></thead><tbody>`;
+      html += data.map(e => `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td><td>${escapeHtml(e.area || '—')}</td><td>${e._eH}</td><td>${e._sH}</td><td>${e._modo}</td><td>${e._extras}</td><td>${e._est}</td><td>${e._ausencia}</td><td>${e._toggle}</td></tr>`).join('');
       html += `</tbody></table>`;
       $('asistenciaTablaContainer').innerHTML = html;
     }
+    
+    window.guardarRazonAusenciaGlobal = async function(empleadoId, valorSeleccionado) {
+      if (!valorSeleccionado) return;
+      let razonFinal = valorSeleccionado;
+      if (valorSeleccionado === 'Otro') {
+        let otra = prompt("Ingrese la razón de la ausencia:");
+        if (!otra) {
+            cargarAsistencia(); // Refresh UI if cancelled
+            return;
+        }
+        razonFinal = otra;
+      }
+      
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({
+          accion: 'guardarRegistro',
+          id: empleadoId,
+          tipo: 'FALTA',
+          fecha_falta: hoy,
+          razon_ausencia: razonFinal
+        });
+        if (res.ok) {
+          mostrarToast('Razón de ausencia guardada', 'success');
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true);
+          cargarAsistencia();
+        } else {
+          mostrarToast(res.error || 'Error al guardar', 'error');
+        }
+      } catch (e) {
+        mostrarToast('Error de conexión', 'error');
+      } finally {
+        mostrarLoader(false);
+      }
+    };
 
     let _sortAsisDir = 'asc';
     function sortAsistencia(campo) {
@@ -1172,12 +1336,16 @@
           let m = obtenerMinutos(r.hora);
           if (m !== null) {
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-            const refEntradaR = esFestivoR ? 435 : HORA_ENTRADA_REF;
+            const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
             if (m > refEntradaR) {
               atrasos++;
               minutosAtrasos += m - refEntradaR;
             }
           }
+        });
+        
+        let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= R_INI && r.fecha <= R_FIN);
+        registrosAlmuerzo.forEach(r => {
           if (r.almuerzo === 'SI') almPlanta++;
           if (r.almuerzo === 'NO') almFuera++;
         });
@@ -1285,7 +1453,7 @@
           });
 
           let netWorked = minutosTrabajadosHoy;
-          if (netWorked > 240) netWorked -= 45;
+          if (!esFestivo && netWorked > 240) netWorked -= 45;
 
           // Auto-autorización de horas extras
           let autorizado = regsDia.some(r => r.horasExtra === 'SI');
@@ -1311,12 +1479,7 @@
               if (enCampo) {
                 if (autorizado) horasCampo100 += duracion;
               } else {
-                let H_INI = 435; // 07:15
-                let H_FIN = 915; // 15:15
-                shiftMins += Math.max(0, Math.min(mS, H_FIN) - Math.max(mE, H_INI));
-                if (mS > H_FIN) {
-                  extraMins100Acum += (mS - Math.max(mE, H_FIN));
-                }
+                if (autorizado) horasExtra100 += duracion;
               }
             } else {
               let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
@@ -1338,26 +1501,14 @@
           });
 
           if (esFestivo) {
-            if (netWorked > 240) {
-              shiftMins = Math.max(0, shiftMins - 45);
-            }
-            if (autorizado) {
-              let extrasExcedentes = (extraMins100Acum >= 40) ? extraMins100Acum : 0;
-              horasExtra100 += (shiftMins + extrasExcedentes);
-            }
+            // Ya calculados directamente en el loop anterior
           } else {
-            if (extraMins50Acum >= 40) {
-              horasExtra50 += extraMins50Acum;
-            }
+            horasExtra50 += extraMins50Acum;
           }
 
           if (!isJustificado) {
             let missingMinutes = 0;
-            if (esFestivo) {
-              missingMinutes = Math.max(0, 435 - netWorked);
-            } else {
-              missingMinutes = Math.max(0, 480 - netWorked);
-            }
+            missingMinutes = Math.max(0, 480 - netWorked);
             let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             totalTiempoPorJustificar += unaccountedMissing;
@@ -1579,7 +1730,7 @@
           sE += m;
           cE++;
           const esFestivo = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-          const refEnt = esFestivo ? 435 : HORA_ENTRADA_REF;
+          const refEnt = esFestivo ? 420 : HORA_ENTRADA_REF;
           if (m > refEnt) tardT++;
         }
         else { sS += m; cS++; }
@@ -1632,8 +1783,9 @@
           }
         });
 
-        // Descontar 45 min si trabajó más de 4 horas ese día
-        if (minutosDia > 240) minutosDia -= 45;
+        // Descontar 45 min si trabajó más de 4 horas ese día (solo en días normales)
+        const esFestivo = esFeriadoODomingo(f) || (new Date(f + 'T12:00:00').getDay() === 6);
+        if (!esFestivo && minutosDia > 240) minutosDia -= 45;
         tSegs += minutosDia * 60;
       });
 
@@ -1674,11 +1826,12 @@
         let horaE = periodosDia.map(p => {
           const valor = p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--';
           if (esAdminMaster && p.entrada) {
-            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
+            const tsVal = formatearTimestampCompleto(p.entrada.timestamp);
+            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
           if (esAdminMaster && !p.entrada) {
-            let defEntStr = esFestivo ? '07:15:00' : '07:30:00';
-            let defEntLbl = esFestivo ? '07:15' : '07:30';
+            let defEntStr = esFestivo ? '07:00:00' : '07:30:00';
+            let defEntLbl = esFestivo ? '07:00' : '07:30';
             return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'ENTRADA', '${defEntStr}', '${f}')"><i class="fas fa-plus"></i> ${defEntLbl}</button>`;
           }
           return valor;
@@ -1687,11 +1840,12 @@
         let horaS = periodosDia.map(p => {
           const valor = p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--';
           if (esAdminMaster && p.salida) {
-            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
+            const tsVal = formatearTimestampCompleto(p.salida.timestamp);
+            return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
           if (esAdminMaster && !p.salida) {
-            let defSalStr = esFestivo ? '15:15:00' : '16:15:00';
-            let defSalLbl = esFestivo ? '15:15' : '16:15';
+            let defSalStr = esFestivo ? '15:00:00' : '16:15:00';
+            let defSalLbl = esFestivo ? '15:00' : '16:15';
             return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'SALIDA', '${defSalStr}', '${f}')"><i class="fas fa-plus"></i> ${defSalLbl}</button>`;
           }
           return valor;
@@ -1706,7 +1860,7 @@
         let atrasoMins = 0;
         if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
           let mE = obtenerMinutos(primerReg.hora);
-          let refEntrada = esFestivo ? 435 : HORA_ENTRADA_REF;
+          let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
           if (mE !== null && mE > refEntrada) atrasoMins = mE - refEntrada;
         }
 
@@ -1740,6 +1894,16 @@
             else if (txt === 'salida_justificada') { txt = 'Justificada'; ico = '✅'; }
             let q = r.quien_justifica ? ` (${r.quien_justifica})` : '';
             razonesBadges.push(`<span class="pill" style="background:#fce7f3; color:#831843; font-size:11px;">${ico} ${txt}${q}</span>`);
+          }
+          if (r.razon_ausencia || r.razon_justificac) {
+            let txt = r.razon_ausencia || r.razon_justificac;
+            let ico = '✏️';
+            if (txt === 'Vacación' || txt === 'Vacacion') ico = '🏖️';
+            else if (txt === 'Permiso Médico') ico = '🩺';
+            else if (txt === 'Permiso Personal') ico = '👤';
+            else if (txt === 'Calamidad Doméstica') ico = '🏠';
+            else if (r.razon_justificac) ico = '✅';
+            razonesBadges.push(`<span class="pill" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; font-size:11px;">${ico} ${escapeHtml(txt)}</span>`);
           }
         });
 
@@ -1794,9 +1958,9 @@
           ultimoSalidaReg = p.salida;
         });
 
-        // Descontar almuerzo si superó 4 horas
+        // Descontar almuerzo si superó 4 horas (solo en días normales)
         let netWorked = minutosTrabajadosHoy;
-        if (netWorked > 240) netWorked -= 45;
+        if (!esFestivo && netWorked > 240) netWorked -= 45;
 
         // Auto-autorización de horas extras
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
@@ -1832,12 +1996,7 @@
             if (enCampo) {
               if (autorizadoGlobal) hC100 += duracion;
             } else {
-              let H_INI = 435; // 07:15
-              let H_FIN = 915; // 15:15
-              shiftMins += Math.max(0, Math.min(mS, H_FIN) - Math.max(mE, H_INI));
-              if (mS > H_FIN) {
-                extraMins100Acum += (mS - Math.max(mE, H_FIN));
-              }
+              if (autorizadoGlobal) h100 += duracion;
             }
           } else {
             let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
@@ -1860,27 +2019,15 @@
         });
 
         if (esFestivo) {
-          if (netWorked > 240) {
-            shiftMins = Math.max(0, shiftMins - 45);
-          }
-          if (autorizadoGlobal) {
-            let extrasExcedentes = (extraMins100Acum >= 40) ? extraMins100Acum : 0;
-            h100 = shiftMins + extrasExcedentes;
-          } else {
-            h100 = 0;
-          }
+          // Ya calculados directamente en el loop anterior
         } else {
-          if (extraMins50Acum >= 40) {
-            h50 = extraMins50Acum;
-          } else {
-            h50 = 0;
-          }
+          h50 = extraMins50Acum;
         }
 
         if (isJustificado) {
           tiempoPorJustificar = 0;
         } else {
-          let missingMinutes = esFestivo ? Math.max(0, 435 - netWorked) : Math.max(0, 480 - netWorked);
+          let missingMinutes = Math.max(0, 480 - netWorked);
           let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
           tiempoPorJustificar += unaccountedMissing;
@@ -2373,8 +2520,22 @@
     // --- FUNCIONES DE EDICIÓN ADMIN ---
     async function editarValorRegistro(empleadoId, tipo, docId, campo, valorActual, fecha) {
       if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
-      let nuevo = prompt(`Editar ${campo} para ${tipo} (${fecha || 'Hoy'}):`, valorActual);
-      if (nuevo === null || nuevo === valorActual) return;
+      
+      let nuevo;
+      if (campo === 'timestamp') {
+        let tsLegible = formatearTimestampCompleto(valorActual);
+        nuevo = prompt(`Editar TIMESTAMP para ${tipo} (${fecha || 'Hoy'}):\nUse el formato: DD/MM/YYYY HH:MM:SS`, tsLegible);
+        if (nuevo === null) return;
+        const parsed = parsearTimestamp(nuevo);
+        if (!parsed) {
+          mostrarToast('Formato de timestamp inválido. Use el formato: DD/MM/YYYY HH:MM:SS', 'error');
+          return;
+        }
+        nuevo = parsed.timestampFormatted;
+      } else {
+        nuevo = prompt(`Editar ${campo} para ${tipo} (${fecha || 'Hoy'}):`, valorActual);
+        if (nuevo === null || nuevo === valorActual) return;
+      }
 
       mostrarLoader(true);
       try {
@@ -2796,12 +2957,16 @@
           let m = obtenerMinutos(r.hora);
           if (m !== null) {
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-            const refEntradaR = esFestivoR ? 435 : HORA_ENTRADA_REF;
+            const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
             if (m > refEntradaR) {
               atrasos++;
               minutosAtrasos += m - refEntradaR;
             }
           }
+        });
+
+        let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
+        registrosAlmuerzo.forEach(r => {
           if (r.almuerzo === 'SI') almPlanta++;
           if (r.almuerzo === 'NO') almFuera++;
         });
@@ -2908,7 +3073,7 @@
           });
 
           let netWorked = minutosTrabajadosHoy;
-          if (netWorked > 240) netWorked -= 45;
+          if (!esFestivo && netWorked > 240) netWorked -= 45;
 
           // Auto-autorización de horas extras
           let autorizado = regsDia.some(r => r.horasExtra === 'SI');
@@ -2934,12 +3099,7 @@
               if (enCampo) {
                 if (autorizado) horasCampo100 += duracion;
               } else {
-                let H_INI = 435; // 07:15
-                let H_FIN = 915; // 15:15
-                shiftMins += Math.max(0, Math.min(mS, H_FIN) - Math.max(mE, H_INI));
-                if (mS > H_FIN) {
-                  extraMins100Acum += (mS - Math.max(mE, H_FIN));
-                }
+                if (autorizado) horasExtra100 += duracion;
               }
             } else {
               let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
@@ -2961,26 +3121,14 @@
           });
 
           if (esFestivo) {
-            if (netWorked > 240) {
-              shiftMins = Math.max(0, shiftMins - 45);
-            }
-            if (autorizado) {
-              let extrasExcedentes = (extraMins100Acum >= 40) ? extraMins100Acum : 0;
-              horasExtra100 += (shiftMins + extrasExcedentes);
-            }
+            // Ya calculados directamente en el loop anterior
           } else {
-            if (extraMins50Acum >= 40) {
-              horasExtra50 += extraMins50Acum;
-            }
+            horasExtra50 += extraMins50Acum;
           }
 
           if (!isJustificado) {
             let missingMinutes = 0;
-            if (esFestivo) {
-              missingMinutes = Math.max(0, 435 - netWorked);
-            } else {
-              missingMinutes = Math.max(0, 480 - netWorked);
-            }
+            missingMinutes = Math.max(0, 480 - netWorked);
             let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             totalTiempoPorJustificar += unaccountedMissing;
@@ -2991,6 +3139,7 @@
           id: e.id,
           nombre: e.nombre,
           area: e.area,
+          cargo: e.cargo || '',
           foto_url: e.foto_url,
           asistencias: diasAsistidos,
           faltas: faltas,
@@ -3012,7 +3161,6 @@
           totalHorasExtra: (horasExtra50 + horasExtra100 + horasCampo50 + horasCampo100)
         };
       });
-
       renderizarColumnasInteractivas();
       filtrarReporteInteractivo();
     };
@@ -3104,9 +3252,36 @@
       filtrarReporteInteractivo();
     };
 
+    window.setFiltroRapidoReporte = function(cargoVal, btnElement) {
+      if ($('filtroCargoReporte')) {
+        $('filtroCargoReporte').value = cargoVal;
+      }
+      if (btnElement && btnElement.parentElement) {
+        const btns = btnElement.parentElement.querySelectorAll('.btn-filter');
+        btns.forEach(b => b.classList.remove('active'));
+        btnElement.classList.add('active');
+        // Actualizar el estilo visual para mostrar el botón activo con un color de fondo diferente
+        btns.forEach(b => {
+          b.style.background = '#f8fafc';
+          b.style.color = 'var(--g600)';
+          b.style.borderColor = 'var(--g200)';
+        });
+        btnElement.style.background = 'var(--blue)';
+        btnElement.style.color = '#fff';
+        btnElement.style.borderColor = 'var(--blue)';
+      }
+      filtrarReporteInteractivo();
+    };
+
     window.filtrarReporteInteractivo = function() {
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
+      
+      let data = (_reportesCustomData || []).filter(e => {
+          let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
+          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+          return matchQ && matchCargo;
+      });
 
       // Ordenar
       if (_sortCustomReport.col) {
@@ -3219,7 +3394,12 @@
       let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
 
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
+      let data = (_reportesCustomData || []).filter(e => {
+          let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
+          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+          return matchQ && matchCargo;
+      });
 
       let headersHtml = '<th>Empleado</th><th>Área</th>';
       COLUMNAS_DISPONIBLES.forEach(col => {
@@ -3318,7 +3498,12 @@
       let nombreHoja = `Rep_${periodoStr.replace(/ — /g, '_').replace(/ /g, '_')}`;
       
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
+      let data = (_reportesCustomData || []).filter(e => {
+          let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
+          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+          return matchQ && matchCargo;
+      });
 
       // Construir cabeceras
       let headers = ['Empleado', 'Área'];
@@ -3377,7 +3562,12 @@
 
     window.imprimirReporteCustom = function() {
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-      let data = (_reportesCustomData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
+      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
+      let data = (_reportesCustomData || []).filter(e => {
+          let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
+          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+          return matchQ && matchCargo;
+      });
       if (!data.length) {
         mostrarToast('No hay datos para imprimir', 'warning');
         return;

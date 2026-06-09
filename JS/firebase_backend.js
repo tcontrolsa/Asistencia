@@ -555,7 +555,8 @@ window.FirebaseBackend = {
             razon_entrada_tardia: data.razon_entrada_tardia || "",
             quien_justifica_entrada: data.quien_justifica_entrada || "",
             tipo_salida: data.tipo_salida || "",
-            razon_permiso: data.razon_permiso || ""
+            razon_permiso: data.razon_permiso || "",
+            razon_ausencia: data.razon_ausencia || ""
         };
 
         // Guardar en Firestore con ID Determinístico para evitar duplicados
@@ -564,6 +565,17 @@ window.FirebaseBackend = {
         const idDocumento = `${empleadoId}_${data.tipo}_${fechaStr}_${idLimpio}`;
 
         await db.collection('registros').doc(idDocumento).set(nuevoRegistro);
+        
+        // Si es FALTA, sincronizar inmediatamente con Google Sheets
+        if (data.tipo === 'FALTA') {
+            try {
+                // _jsonp envía la petición al Google Apps Script real
+                await this._jsonp(params);
+            } catch (e) {
+                console.warn("⚠️ Error al sincronizar FALTA con Sheets:", e);
+            }
+        }
+
         return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
     },
 
@@ -774,19 +786,40 @@ window.FirebaseBackend = {
         const regSnap = await db.collection('registros')
             .where('empleadoId', '==', id)
             .where('fecha', '==', hoyStr)
-            .where('tipo', '==', 'ENTRADA')
+            .where('tipo', 'in', ['ENTRADA', 'SOLO_ALMUERZO'])
             .get();
 
         if (regSnap.empty) {
-            // Si no existe, tal vez es un error de registro o el admin quiere forzarlo
-            // Por consistencia, si no hay entrada, no solemos registrar almuerzo en la tabla de registros
-            // Pero podríamos registrarlo en consumo_almuerzos si fuera necesario.
-            return { error: "No se encontró registro de entrada para el " + hoyStr };
+            // Crear registro SOLO_ALMUERZO
+            const empDoc = await db.collection('empleados').doc(id).get();
+            const nombre = empDoc.exists ? empDoc.data().nombre : 'Desconocido';
+            
+            const h = hoy.getHours().toString().padStart(2, '0');
+            const m = hoy.getMinutes().toString().padStart(2, '0');
+            const s = hoy.getSeconds().toString().padStart(2, '0');
+            const horaStr = `${h}:${m}:${s}`;
+            
+            const idLimpio = horaStr.replace(/:/g, '');
+            const idDocumento = `${id}_SOLO_ALMUERZO_${hoyStr}_${idLimpio}`;
+            
+            await db.collection('registros').doc(idDocumento).set({
+                fecha: hoyStr,
+                empleadoId: id,
+                nombre: nombre,
+                tipo: 'SOLO_ALMUERZO',
+                almuerzo: nuevoAlmuerzo,
+                hora: horaStr,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                dia: this._obtenerDiaSemana(hoy),
+                modo: 'OFICINA',
+                horasExtra: 'NO'
+            });
+        } else {
+            // Actualizar el existente
+            await db.collection('registros').doc(regSnap.docs[0].id).update({
+                almuerzo: nuevoAlmuerzo
+            });
         }
-
-        await db.collection('registros').doc(regSnap.docs[0].id).update({
-            almuerzo: nuevoAlmuerzo
-        });
 
         // Registrar en auditoría
         await db.collection('auditoria_almuerzos').add({
@@ -796,6 +829,13 @@ window.FirebaseBackend = {
             autor: "SUPERVISOR",
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
+
+        // Sincronizar inmediatamente con Google Sheets
+        try {
+            await this._jsonp(params);
+        } catch (e) {
+            console.warn("⚠️ Error al sincronizar Almuerzo con Sheets:", e);
+        }
 
         return { ok: true };
     },
@@ -838,8 +878,17 @@ window.FirebaseBackend = {
 
         if (docId) {
             const updateData = {};
-            updateData[campo] = valor;
-            updateData.timestamp = typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB');
+            if (campo === 'timestamp') {
+                const parsed = parsearTimestamp(valor);
+                if (!parsed) return { error: "Formato de timestamp inválido" };
+                updateData.timestamp = parsed.timestampFormatted;
+                updateData.fecha = parsed.fecha;
+                updateData.hora = parsed.hora;
+                updateData.dia = this._obtenerDiaSemana(new Date(parsed.fecha + 'T12:00:00'));
+            } else {
+                updateData[campo] = valor;
+                updateData.timestamp = typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB');
+            }
             await db.collection('registros').doc(docId).update(updateData);
             return { ok: true };
         } else if (empleadoId && campo === 'hora') {
@@ -1347,10 +1396,10 @@ window.FirebaseBackend = {
             // Registros de Firebase: también normalizar fecha por si acaso
             const registrosFirebase = allRegistros.map(r => ({ ...r, fecha: this._normFecha(r.fecha) }));
 
-            // Fechas cubiertas por Firebase (para evitar duplicados con archivados)
-            const fechasEnFirebase = new Set(registrosFirebase.map(r => r.fecha).filter(Boolean));
-            // Solo incluir archivados de fechas que NO están en Firebase
-            const archivadosFiltrados = archivadosNorm.filter(r => r.fecha && !fechasEnFirebase.has(r.fecha));
+            // Fechas cubiertas por Firebase por empleado (para evitar duplicados con archivados de forma individual)
+            const empFechasEnFirebase = new Set(registrosFirebase.map(r => `${r.empleadoId}|${r.fecha}`).filter(Boolean));
+            // Solo incluir archivados de fechas que NO están en Firebase para ese empleado específico
+            const archivadosFiltrados = archivadosNorm.filter(r => r.fecha && !empFechasEnFirebase.has(`${r.empleadoId}|${r.fecha}`));
             const registrosCompletos = registrosFirebase.concat(archivadosFiltrados);
 
             // 3. Procesar todos los registros combinados
@@ -1376,6 +1425,9 @@ window.FirebaseBackend = {
                             d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
                             empleadosMap[eid].horaEntradaMs = d.getTime();
                         }
+                    }
+                    if (reg.tipo === 'SOLO_ALMUERZO') {
+                        if (!empleadosMap[eid].almuerzoHoy) empleadosMap[eid].almuerzoHoy = reg.almuerzo;
                     }
                     if (reg.tipo === 'SALIDA') {
                         empleadosMap[eid].salidaHoy = true;
@@ -1651,5 +1703,47 @@ window.FirebaseBackend = {
         return s;
     }
 };
+
+function parsearTimestamp(tsString) {
+    if (!tsString) return null;
+    tsString = String(tsString).trim();
+    const regexDMY = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+    const regexYMD = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+
+    let year, month, day, hour, minute, second;
+    let match = tsString.match(regexDMY);
+    if (match) {
+        day = match[1].padStart(2, '0');
+        month = match[2].padStart(2, '0');
+        year = match[3];
+        hour = match[4].padStart(2, '0');
+        minute = match[5].padStart(2, '0');
+        second = (match[6] || '00').padStart(2, '0');
+    } else {
+        match = tsString.match(regexYMD);
+        if (match) {
+            year = match[1];
+            month = match[2].padStart(2, '0');
+            day = match[3].padStart(2, '0');
+            hour = match[4].padStart(2, '0');
+            minute = match[5].padStart(2, '0');
+            second = (match[6] || '00').padStart(2, '0');
+        } else {
+            const d = new Date(tsString);
+            if (isNaN(d.getTime())) return null;
+            year = d.getFullYear();
+            month = String(d.getMonth() + 1).padStart(2, '0');
+            day = String(d.getDate()).padStart(2, '0');
+            hour = String(d.getHours()).padStart(2, '0');
+            minute = String(d.getMinutes()).padStart(2, '0');
+            second = String(d.getSeconds()).padStart(2, '0');
+        }
+    }
+    return {
+        fecha: `${year}-${month}-${day}`,
+        hora: `${hour}:${minute}:${second}`,
+        timestampFormatted: `${day}/${month}/${year} ${hour}:${minute}:${second}`
+    };
+}
 
 console.log("🚀 Motor de Firebase inicializado y listo para usar.");

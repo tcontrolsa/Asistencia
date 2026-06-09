@@ -1343,6 +1343,20 @@
       color: var(--red);
     }
 
+    .btn-edit-tiny {
+      background: none;
+      border: none;
+      color: var(--g300);
+      cursor: pointer;
+      padding: 4px;
+      font-size: 10px;
+      transition: color 0.2s;
+    }
+
+    .btn-edit-tiny:hover {
+      color: var(--indigo);
+    }
+
     .btn-quick-add {
       background: var(--blu-lt);
       border: 1px dashed var(--blue);

@@ -31,7 +31,8 @@ const COLUMNAS = {
   RAZON_ENTRADA_TARDIA: 16,   // Q
   QUIEN_JUSTIFICA_ENTRADA: 17,// R
   TIPO_SALIDA: 18,            // S
-  RAZON_PERMISO: 19           // T
+  RAZON_PERMISO: 19,          // T
+  RAZON_AUSENCIA: 20          // U
 };
 
 // Columnas de la hoja EMPLEADOS
@@ -158,7 +159,7 @@ function doPost(e) {
         var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
         if (!sheet) {
           sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('REGISTROS');
-          sheet.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO']);
+          sheet.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'RAZON_AUSENCIA']);
         }
         var registros = data.registros;
         if (!registros || registros.length === 0) {
@@ -1213,8 +1214,8 @@ function guardarRegistro(data) {
       if (dist > radioTarget) return { error: `${msgError} (${Math.round(dist)}m)` };
     }
     
-    // Armar fila (20 columnas A-T)
-    const nuevaFila = new Array(20).fill("");
+    // Armar fila (21 columnas A-U)
+    const nuevaFila = new Array(21).fill("");
     nuevaFila[COLUMNAS.FECHA]                = fechaStr;  // <-- usa la fecha correcta (puede ser pasada)
     nuevaFila[COLUMNAS.ID]                   = data.id.toString().trim();
     nuevaFila[COLUMNAS.NOMBRE]               = infoEmpleado.nombre;
@@ -1237,6 +1238,7 @@ function guardarRegistro(data) {
     nuevaFila[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA] = data.quien_justifica_entrada || "";
     nuevaFila[COLUMNAS.TIPO_SALIDA]          = data.tipo_salida || "";
     nuevaFila[COLUMNAS.RAZON_PERMISO]        = data.razon_permiso || "";
+    nuevaFila[COLUMNAS.RAZON_AUSENCIA]       = data.razon_ausencia || "";
     
     hoja.appendRow(nuevaFila);
     return { ok: true, msg: `${data.tipo} registrado con Ã©xito (${modo})` };
@@ -1286,7 +1288,8 @@ function obtenerRegistrosEmpleado(empleadoId) {
           razon_entrada_tardia: fila[COLUMNAS.RAZON_ENTRADA_TARDIA]?.toString() || '',
           quien_justifica_entrada: fila[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA]?.toString() || '',
           tipo_salida: fila[COLUMNAS.TIPO_SALIDA]?.toString() || '',
-          razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || ''
+          razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || '',
+          razon_ausencia: fila[COLUMNAS.RAZON_AUSENCIA]?.toString() || ''
         });
       }
     }
@@ -1358,7 +1361,8 @@ function obtenerDatosSupervisorConTimestamp() {
         razon_entrada_tardia: fila[COLUMNAS.RAZON_ENTRADA_TARDIA]?.toString() || '',
         quien_justifica_entrada: fila[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA]?.toString() || '',
         tipo_salida: fila[COLUMNAS.TIPO_SALIDA]?.toString() || '',
-        razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || ''
+        razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || '',
+        razon_ausencia: fila[COLUMNAS.RAZON_AUSENCIA]?.toString() || ''
       });
     }
     
@@ -1379,6 +1383,7 @@ function obtenerDatosSupervisorConTimestamp() {
       const registroHoy = registrosEmpleado.filter(r => r.fecha === hoyStr);
       const entradaHoy = registroHoy.find(r => r.tipo === 'ENTRADA');
       const salidaHoy = registroHoy.find(r => r.tipo === 'SALIDA');
+      const soloAlmuerzoHoy = registroHoy.find(r => r.tipo === 'SOLO_ALMUERZO');
       
       let horaEntradaMs = null;
       let horaSalidaMs = null;
@@ -1393,6 +1398,8 @@ function obtenerDatosSupervisorConTimestamp() {
         if (entradaHoy.timestamp) {
           horaEntradaMs = new Date(entradaHoy.timestamp).getTime();
         }
+      } else if (soloAlmuerzoHoy) {
+        almuerzoHoy = soloAlmuerzoHoy.almuerzo || null;
       }
       
       if (salidaHoy) {
@@ -2145,6 +2152,16 @@ function actualizarRegistroArchivado(params) {
     }
     
     if (filaIndex !== -1) {
+      if (campo === 'timestamp') {
+        var parsed = parsearTimestampGAS(valor);
+        if (!parsed) return { ok: false, error: "Formato de timestamp inválido para Sheets: " + valor };
+        sheet.getRange(filaIndex, COLUMNAS.TIMESTAMP + 1).setValue(parsed.timestampFormatted);
+        sheet.getRange(filaIndex, COLUMNAS.FECHA + 1).setValue(parsed.fecha);
+        sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue(parsed.hora);
+        sheet.getRange(filaIndex, COLUMNAS.DIA + 1).setValue(obtenerDiaEcuador(new Date(parsed.fecha + 'T12:00:00')));
+        return { ok: true };
+      }
+
       // Actualizar existente
       let colIdx = -1;
       // Mapear campo a columna
@@ -2280,7 +2297,7 @@ function actualizarAlmuerzoSupervisor(params) {
       const id = data[i][COLUMNAS.ID]?.toString().trim() || '';
       const tipo = data[i][COLUMNAS.TIPO]?.toString() || '';
       
-      if (fechaStr === hoyStr && id === empleadoId && tipo === "ENTRADA") {
+      if (fechaStr === hoyStr && id === empleadoId && (tipo === "ENTRADA" || tipo === "SOLO_ALMUERZO")) {
         filaEncontrada = i + 1;
         valorAnterior = data[i][COLUMNAS.ALMUERZO]?.toString() || '';
         empleadoNombre = data[i][COLUMNAS.NOMBRE]?.toString() || '';
@@ -2289,11 +2306,28 @@ function actualizarAlmuerzoSupervisor(params) {
     }
     
     if (filaEncontrada === -1) {
-      return { error: "No se encontrÃ³ registro de entrada para hoy. El empleado no ha marcado entrada." };
+      // Si no hay registro previo de ENTRADA o SOLO_ALMUERZO, lo creamos para usuarios sin asistencia.
+      const infoEmpleado = obtenerInfoEmpleado(empleadoId);
+      empleadoNombre = infoEmpleado.encontrado ? infoEmpleado.nombre : 'Desconocido';
+      const ahora = new Date();
+      const nuevaFila = new Array(21).fill("");
+      nuevaFila[COLUMNAS.FECHA] = hoyStr;
+      nuevaFila[COLUMNAS.ID] = empleadoId;
+      nuevaFila[COLUMNAS.NOMBRE] = empleadoNombre;
+      nuevaFila[COLUMNAS.TIPO] = "SOLO_ALMUERZO";
+      nuevaFila[COLUMNAS.ALMUERZO] = nuevoAlmuerzo;
+      nuevaFila[COLUMNAS.HORA] = Utilities.formatDate(ahora, timeZone, 'HH:mm:ss');
+      nuevaFila[COLUMNAS.TIMESTAMP] = ahora;
+      nuevaFila[COLUMNAS.DIA] = obtenerDiaEcuador(ahora);
+      nuevaFila[COLUMNAS.MODO] = "OFICINA";
+      nuevaFila[COLUMNAS.HORAS_EXTRA] = "NO";
+      
+      sheetRegistros.appendRow(nuevaFila);
+      valorAnterior = "NINGUNO";
+    } else {
+      // Actualizar el campo de almuerzo
+      sheetRegistros.getRange(filaEncontrada, COLUMNAS.ALMUERZO + 1).setValue(nuevoAlmuerzo);
     }
-    
-    // Actualizar el campo de almuerzo
-    sheetRegistros.getRange(filaEncontrada, COLUMNAS.ALMUERZO + 1).setValue(nuevoAlmuerzo);
     
     // Registrar en hoja de auditorÃ­a
     let sheetAuditoria = ss.getSheetByName("AUDITORIA_ALMUERZOS");
@@ -2401,6 +2435,7 @@ function obtenerDatosSupervisor(params) {
       const registroHoy = registrosEmpleado.filter(r => r.fecha === hoyStr);
       const entradaHoy = registroHoy.find(r => r.tipo === 'ENTRADA');
       const salidaHoy = registroHoy.find(r => r.tipo === 'SALIDA');
+      const soloAlmuerzoHoy = registroHoy.find(r => r.tipo === 'SOLO_ALMUERZO');
       
       let horaEntradaMs = null;
       let horaSalidaMs = null;
@@ -2416,6 +2451,8 @@ function obtenerDatosSupervisor(params) {
           fechaBase.setHours(parseInt(h), parseInt(m), parseInt(s) || 0);
           horaEntradaMs = fechaBase.getTime();
         }
+      } else if (soloAlmuerzoHoy) {
+        almuerzoHoy = soloAlmuerzoHoy.almuerzo || "NO";
       }
       
       if (salidaHoy) {
@@ -2685,4 +2722,46 @@ function exportarBaseDatosParaFirebase() {
   } finally {
     lock.releaseLock();
   }
+}
+
+function parsearTimestampGAS(tsString) {
+  if (!tsString) return null;
+  tsString = String(tsString).trim();
+  const regexDMY = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+  const regexYMD = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
+
+  var year, month, day, hour, minute, second;
+  var match = tsString.match(regexDMY);
+  if (match) {
+    day = String(match[1]).padStart(2, '0');
+    month = String(match[2]).padStart(2, '0');
+    year = match[3];
+    hour = String(match[4]).padStart(2, '0');
+    minute = String(match[5]).padStart(2, '0');
+    second = String(match[6] || '00').padStart(2, '0');
+  } else {
+    match = tsString.match(regexYMD);
+    if (match) {
+      year = match[1];
+      month = String(match[2]).padStart(2, '0');
+      day = String(match[3]).padStart(2, '0');
+      hour = String(match[4]).padStart(2, '0');
+      minute = String(match[5]).padStart(2, '0');
+      second = String(match[6] || '00').padStart(2, '0');
+    } else {
+      var d = new Date(tsString);
+      if (isNaN(d.getTime())) return null;
+      year = d.getFullYear();
+      month = String(d.getMonth() + 1).padStart(2, '0');
+      day = String(d.getDate()).padStart(2, '0');
+      hour = String(d.getHours()).padStart(2, '0');
+      minute = String(d.getMinutes()).padStart(2, '0');
+      second = String(d.getSeconds()).padStart(2, '0');
+    }
+  }
+  return {
+    fecha: year + "-" + month + "-" + day,
+    hora: hour + ":" + minute + ":" + second,
+    timestampFormatted: day + "/" + month + "/" + year + " " + hour + ":" + minute + ":" + second
+  };
 }

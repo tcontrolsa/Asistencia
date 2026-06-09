@@ -591,6 +591,18 @@
         }
 
         window.cambiarModo = function (modo) {
+            if (modo === 'CAMPO') {
+                if (!posicion.lat || !posicion.lng) {
+                    mostrarToast('Ubicación no detectada. Esperando GPS...', 'warning');
+                    solicitarPermisoGPS();
+                    return;
+                }
+                const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+                if (dist <= 250000) {
+                    mostrarToast(`No puedes activar CAMPO a menos de 250km de la base (Distancia actual: ${(dist/1000).toFixed(1)} km)`, 'error');
+                    return;
+                }
+            }
             currentMode = modo;
             renderHomePage();
             ajustarLayout();
@@ -2683,7 +2695,7 @@
             Object.entries(registrosPorSemana).forEach(([semana, data]) => {
                 Object.entries(data.registros).forEach(([fecha, regs]) => {
                     const diaRegs = regs || [];
-                    const entrada = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
+                    const entrada = diaRegs.find(r => { const t = getVal(r, 'tipo', 3) || r[3]; return t === 'ENTRADA' || t === 'SOLO_ALMUERZO'; });
                     const salida = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
 
                     if (entrada || salida) data.stats.dias++;
@@ -2744,7 +2756,7 @@
                 let diasHTML = '';
                 fechasEnSemana.forEach(fecha => {
                     const diaRegs = semanaData.registros[fecha];
-                    const entrada = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
+                    const entrada = diaRegs.find(r => { const t = getVal(r, 'tipo', 3) || r[3]; return t === 'ENTRADA' || t === 'SOLO_ALMUERZO'; });
                     const salida = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
 
                     // Calcular atraso automáticamente si hay entrada
@@ -2808,10 +2820,11 @@
                         const razonAtraso = getVal(reg, 'razon_entrada_tardia', 19) || reg[19];
                         const razonSalida = getVal(reg, 'razon_salida', 17) || reg[17];
                         const razonPermiso = getVal(reg, 'razon_permiso', 22) || reg[22];
+                        const razonAusencia = getVal(reg, 'razon_ausencia', 23) || reg[23];
                         const tipoReg = getVal(reg, 'tipo', 3) || reg[3];
 
                         if (tipoReg === 'FALTA') {
-                            return '<div style="padding: 6px 10px; background: rgba(255,152,0,0.1); border-left: 3px solid #ff9800; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #e65100;"><strong>📌 Justificación:</strong> ' + (razonPermiso || 'Falta revisada') + '</div>';
+                            return '<div style="padding: 6px 10px; background: rgba(255,152,0,0.1); border-left: 3px solid #ff9800; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #e65100;"><strong>📌 Justificación:</strong> ' + (razonAusencia || razonPermiso || 'Falta revisada') + '</div>';
                         }
 
                         if (razonAtraso) {

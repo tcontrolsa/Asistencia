@@ -1,4 +1,4 @@
-// Script de prueba para validar los cálculos de horarios, sobretiempos y justificaciones
+// Script de prueba para validar los cálculos de horarios, sobretiempos y justificaciones (Sin almuerzo en fines de semana/feriados)
 const assert = require('assert');
 
 // Mock de utilidades
@@ -91,7 +91,8 @@ function calcularJornada({ fecha, registros, diasLaborables, HORA_ENTRADA_REF = 
   });
 
   let netWorked = minutosTrabajadosHoy;
-  if (netWorked > 240) netWorked -= 45;
+  // Solo descontar almuerzo en días laborables normales (no en fines de semana/feriados)
+  if (!esFestivo && netWorked > 240) netWorked -= 45;
 
   let autorizado = registros.some(r => r.horasExtra === 'SI') || netWorked > 60; // Auto-autorizado si > 1h en festivos
 
@@ -104,12 +105,7 @@ function calcularJornada({ fecha, registros, diasLaborables, HORA_ENTRADA_REF = 
     let mS = obtenerMinutos(p.salida.hora);
 
     if (esFestivo) {
-      let H_INI = 435; // 07:15
-      let H_FIN = 915; // 15:15
-      shiftMins += Math.max(0, Math.min(mS, H_FIN) - Math.max(mE, H_INI));
-      if (mS > H_FIN) {
-        extraMins100Acum += (mS - Math.max(mE, H_FIN));
-      }
+      if (autorizado) horasExtra100 += (mS - mE);
     } else {
       let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
       if (autorizado && mS > H_FIN) {
@@ -119,26 +115,14 @@ function calcularJornada({ fecha, registros, diasLaborables, HORA_ENTRADA_REF = 
   });
 
   if (esFestivo) {
-    if (netWorked > 240) {
-      shiftMins = Math.max(0, shiftMins - 45);
-    }
-    if (autorizado) {
-      let extrasExcedentes = (extraMins100Acum >= 40) ? extraMins100Acum : 0;
-      horasExtra100 += (shiftMins + extrasExcedentes);
-    }
+    // Ya acumulados directamente
   } else {
-    if (extraMins50Acum >= 40) {
-      horasExtra50 += extraMins50Acum;
-    }
+    horasExtra50 += extraMins50Acum;
   }
 
   if (!isJustificado) {
-    let missingMinutes = 0;
-    if (esFestivo) {
-      missingMinutes = Math.max(0, 435 - netWorked);
-    } else {
-      missingMinutes = Math.max(0, 480 - netWorked);
-    }
+    // La jornada esperada neta es siempre 480 minutos (8 horas)
+    let missingMinutes = Math.max(0, 480 - netWorked);
     let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
     let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
     totalTiempoPorJustificar += unaccountedMissing;
@@ -153,59 +137,60 @@ function calcularJornada({ fecha, registros, diasLaborables, HORA_ENTRADA_REF = 
 
 console.log("?? Ejecutando pruebas de cálculo...");
 
-// Caso 1: Sábado normal (Festivo) trabajado de 07:15 a 16:00 (sobretiempo de 45 mins)
-// Esperado: 8 horas extras 100% (7h 15m shift net + 45m extra), 0 tiempo por justificar
+// Caso 1: Sábado normal (Festivo) trabajado de 07:00 a 15:45 (sobretiempo de 45 mins)
+// Esperado: 8h 45m (525 mins) extras 100% (8h shift + 45m extra), 0 tiempo por justificar
 const res1 = calcularJornada({
   fecha: '2026-06-06', // Sábado
   registros: [
-    { tipo: 'ENTRADA', hora: '07:15:00' },
-    { tipo: 'SALIDA', hora: '16:00:00' }
+    { tipo: 'ENTRADA', hora: '07:00:00' },
+    { tipo: 'SALIDA', hora: '15:45:00' }
   ],
   diasLaborables: ['2026-06-06']
 });
 console.log("Caso 1 (Sábado completo con extras):", res1);
-assert.strictEqual(res1.horasExtra100, 480, "Caso 1: Horas Extra 100% debería ser 480 mins (8h)");
+assert.strictEqual(res1.horasExtra100, 525, "Caso 1: Horas Extra 100% debería ser 525 mins (8h 45m)");
 assert.strictEqual(res1.totalTiempoPorJustificar, 0, "Caso 1: Tiempo por justificar debería ser 0");
 
-// Caso 2: Sábado (Festivo) trabajado de 07:15 a 15:30 (sobretiempo de 15 mins - bajo el umbral de 40 mins)
-// Esperado: 7.25 horas extras 100% (435 mins), 0 tiempo por justificar
+// Caso 2: Sábado (Festivo) trabajado de 07:00 a 15:30
+// Esperado: 8h 30m (510 mins) extras 100%, 0 tiempo por justificar (sin umbral de 40 min en festivos)
 const res2 = calcularJornada({
   fecha: '2026-06-06', // Sábado
   registros: [
-    { tipo: 'ENTRADA', hora: '07:15:00' },
+    { tipo: 'ENTRADA', hora: '07:00:00' },
     { tipo: 'SALIDA', hora: '15:30:00' }
   ],
   diasLaborables: ['2026-06-06']
 });
-console.log("Caso 2 (Sábado con extras bajo el umbral):", res2);
-assert.strictEqual(res2.horasExtra100, 435, "Caso 2: Horas Extra 100% debería ser 435 mins (7h 15m)");
+console.log("Caso 2 (Sábado con extras sin umbral):", res2);
+assert.strictEqual(res2.horasExtra100, 510, "Caso 2: Horas Extra 100% debería ser 510 mins (8h 30m)");
 assert.strictEqual(res2.totalTiempoPorJustificar, 0, "Caso 2: Tiempo por justificar debería ser 0");
 
-// Caso 3: Sábado (Festivo) trabajado incompleto de 08:15 a 15:15 (tarde por 1h)
-// Esperado: 375 mins (6h 15m) de extras 100%, 60 mins de tiempo por justificar
+// Caso 3: Sábado (Festivo) trabajado incompleto de 08:00 a 15:00 (tarde por 1h)
+// Esperado: 7h (420 mins) de extras 100%, 60 mins de tiempo por justificar (faltó 1h para completar 8h)
 const res3 = calcularJornada({
   fecha: '2026-06-06',
   registros: [
-    { tipo: 'ENTRADA', hora: '08:15:00' },
-    { tipo: 'SALIDA', hora: '15:15:00' }
+    { tipo: 'ENTRADA', hora: '08:00:00' },
+    { tipo: 'SALIDA', hora: '15:00:00' }
   ],
   diasLaborables: ['2026-06-06']
 });
 console.log("Caso 3 (Sábado incompleto):", res3);
-assert.strictEqual(res3.horasExtra100, 375, "Caso 3: Horas Extra 100% debería ser 375 mins");
+assert.strictEqual(res3.horasExtra100, 420, "Caso 3: Horas Extra 100% debería ser 420 mins");
 assert.strictEqual(res3.totalTiempoPorJustificar, 60, "Caso 3: Tiempo por justificar debería ser 60 mins (1h)");
 
 // Caso 4: Sábado (Festivo) incompleto PERO JUSTIFICADO
-// Esperado: 375 mins de extras, 0 mins de tiempo por justificar
+// Esperado: 7h (420 mins) de extras, 0 mins de tiempo por justificar
 const res4 = calcularJornada({
   fecha: '2026-06-06',
   registros: [
-    { tipo: 'ENTRADA', hora: '08:15:00', justificado: 'SI' },
-    { tipo: 'SALIDA', hora: '15:15:00', justificado: 'SI' }
+    { tipo: 'ENTRADA', hora: '08:00:00', justificado: 'SI' },
+    { tipo: 'SALIDA', hora: '15:00:00', justificado: 'SI' }
   ],
   diasLaborables: ['2026-06-06']
 });
 console.log("Caso 4 (Sábado incompleto justificado):", res4);
+assert.strictEqual(res4.horasExtra100, 420, "Caso 4: Horas Extra 100% debería ser 420 mins");
 assert.strictEqual(res4.totalTiempoPorJustificar, 0, "Caso 4: Tiempo por justificar debería ser 0 porque está justificado");
 
 // Caso 5: Domingo no trabajado
@@ -218,4 +203,22 @@ const res5 = calcularJornada({
 console.log("Caso 5 (Domingo no trabajado):", res5);
 assert.strictEqual(res5.totalTiempoPorJustificar, 0, "Caso 5: No debería acumular tiempo por justificar");
 
+// Caso 6: El caso del usuario (entrada 07:17, salida 15:15 en festivo/fin de semana)
+// Esperado:
+//   - Horas trabajadas netas: 15:15 - 07:17 = 7h 58m = 478 mins.
+//   - Tiempo por justificar: 480 - 478 = 2 mins (00:02:00)
+//   - Horas extras 100%: 7h 58m = 478 mins (07:58:00) (bajo la opción B, igual al total trabajado)
+const res6 = calcularJornada({
+  fecha: '2026-06-06', // Sábado (Festivo)
+  registros: [
+    { tipo: 'ENTRADA', hora: '07:17:00' },
+    { tipo: 'SALIDA', hora: '15:15:00' }
+  ],
+  diasLaborables: ['2026-06-06']
+});
+console.log("Caso 6 (Caso del usuario: entrada 07:17, salida 15:15):", res6);
+assert.strictEqual(res6.horasExtra100, 478, "Caso 6: Horas Extra 100% debería ser 478 mins (07:58:00)");
+assert.strictEqual(res6.totalTiempoPorJustificar, 2, "Caso 6: Tiempo por justificar debería ser 2 mins (00:02:00)");
+
 console.log("?? TODAS LAS PRUEBAS PASARON CORRECTAMENTE!");
+
