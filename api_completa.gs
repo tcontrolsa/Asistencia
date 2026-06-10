@@ -1655,9 +1655,11 @@ function registrarAlmuerzoExtra(params) {
     if (!fecha) {
       fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
     } else {
-      const fechaObj = new Date(fecha);
-      if (isNaN(fechaObj.getTime())) return { error: "Fecha invÃ¡lida" };
-      fecha = Utilities.formatDate(fechaObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        const fechaObj = new Date(fecha);
+        if (isNaN(fechaObj.getTime())) return { error: "Fecha inválida" };
+        fecha = Utilities.formatDate(fechaObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      }
     }
     
     const empresa = params.empresa?.toString().trim() || "";
@@ -1712,12 +1714,18 @@ function obtenerAlmuerzosExtra() {
         }
       }
       
+      var nombre = r[1] ? String(r[1]).trim() : '';
+      var empresa = r[2] ? String(r[2]).trim() : '';
+      var tipo = r[3] ? String(r[3]).trim() : '';
       var cantidad = parseInt(r[4]) || 0;
       var obs = r[7] ? String(r[7]).trim() : '';
       
       if (fechaStr && cantidad > 0) {
         almuerzos.push({
           fecha: fechaStr,
+          nombre: nombre,
+          empresa: empresa,
+          tipo: tipo,
           cantidad: cantidad,
           observaciones: obs
         });

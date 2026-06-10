@@ -94,6 +94,11 @@ window.FirebaseBackend = {
                     return await this._post(params);
                 case 'leerHojaActualizar':
                     return await this._jsonp(params);
+                // Acciones exclusivas de Google Apps Script (Sheets)
+                case 'registrarAlmuerzoExtra':
+                case 'archivarRegistros':
+                case 'crearReporteGoogleSheets':
+                    return await this._jsonp(params);
                 default:
                     console.warn("⚠️ Acción no reconocida:", accion);
                     return { error: "Acción no soportada en Firebase: " + accion };
@@ -309,7 +314,7 @@ window.FirebaseBackend = {
 
             // Normalizar fecha si viene como string ISO (ej: 2026-05-04T05:00:00.000Z)
             let fechaLimpia = data.fecha || "";
-            if (fechaLimpia.includes('T')) {
+            if (/^\d{4}-\d{2}-\d{2}T/.test(fechaLimpia)) {
                 fechaLimpia = fechaLimpia.split('T')[0];
             }
 
@@ -559,22 +564,26 @@ window.FirebaseBackend = {
             razon_ausencia: data.razon_ausencia || ""
         };
 
-        // Guardar en Firestore con ID Determinístico para evitar duplicados
-        // Formato: IDEMPLEADO_TIPO_FECHA_HORA (ej: 101_ENTRADA_2026-05-05_081500)
+        const hoyStrLocal = new Date().toLocaleDateString('en-CA');
+        const isPastDate = fechaStr < hoyStrLocal;
+
+        // Si es fecha pasada, escribir directamente en la hoja de REGISTROS (Google Sheets)
+        // para evitar el dual-write y duplicados, ya que el archivo ocurre por día.
+        if (isPastDate) {
+            try {
+                await this._jsonp(params);
+            } catch (e) {
+                console.warn("⚠️ Error al sincronizar histórico con Sheets:", e);
+                return { error: "Error de conexión con histórico: " + e.message };
+            }
+            return { ok: true, msg: `${data.tipo} registrado en histórico` };
+        }
+
+        // Si es fecha actual, guardar SOLO en Firestore con ID Determinístico
         const idLimpio = horaStr.replace(/:/g, '');
         const idDocumento = `${empleadoId}_${data.tipo}_${fechaStr}_${idLimpio}`;
 
         await db.collection('registros').doc(idDocumento).set(nuevoRegistro);
-        
-        // Si es FALTA, sincronizar inmediatamente con Google Sheets
-        if (data.tipo === 'FALTA') {
-            try {
-                // _jsonp envía la petición al Google Apps Script real
-                await this._jsonp(params);
-            } catch (e) {
-                console.warn("⚠️ Error al sincronizar FALTA con Sheets:", e);
-            }
-        }
 
         return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
     },
@@ -789,36 +798,55 @@ window.FirebaseBackend = {
             .where('tipo', 'in', ['ENTRADA', 'SOLO_ALMUERZO'])
             .get();
 
+        const hoyStrLocal = new Date().toLocaleDateString('en-CA');
+        const isPastDate = hoyStr < hoyStrLocal;
+
         if (regSnap.empty) {
-            // Crear registro SOLO_ALMUERZO
-            const empDoc = await db.collection('empleados').doc(id).get();
-            const nombre = empDoc.exists ? empDoc.data().nombre : 'Desconocido';
-            
-            const h = hoy.getHours().toString().padStart(2, '0');
-            const m = hoy.getMinutes().toString().padStart(2, '0');
-            const s = hoy.getSeconds().toString().padStart(2, '0');
-            const horaStr = `${h}:${m}:${s}`;
-            
-            const idLimpio = horaStr.replace(/:/g, '');
-            const idDocumento = `${id}_SOLO_ALMUERZO_${hoyStr}_${idLimpio}`;
-            
-            await db.collection('registros').doc(idDocumento).set({
-                fecha: hoyStr,
-                empleadoId: id,
-                nombre: nombre,
-                tipo: 'SOLO_ALMUERZO',
-                almuerzo: nuevoAlmuerzo,
-                hora: horaStr,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                dia: this._obtenerDiaSemana(hoy),
-                modo: 'OFICINA',
-                horasExtra: 'NO'
-            });
+            if (isPastDate) {
+                // Para fechas anteriores, si no está en Firebase, debe estar en Sheets.
+                // Lo enviamos a Sheets y NO lo creamos en Firebase para evitar dualidad.
+                try {
+                    await this._jsonp(params);
+                } catch (e) { console.warn("Error Sheets:", e); }
+            } else {
+                // Crear registro SOLO_ALMUERZO en Firebase para la fecha actual
+                const empDoc = await db.collection('empleados').doc(id).get();
+                const nombre = empDoc.exists ? empDoc.data().nombre : 'Desconocido';
+                
+                const h = hoy.getHours().toString().padStart(2, '0');
+                const m = hoy.getMinutes().toString().padStart(2, '0');
+                const s = hoy.getSeconds().toString().padStart(2, '0');
+                const horaStr = `${h}:${m}:${s}`;
+                
+                const idLimpio = horaStr.replace(/:/g, '');
+                const idDocumento = `${id}_SOLO_ALMUERZO_${hoyStr}_${idLimpio}`;
+                
+                await db.collection('registros').doc(idDocumento).set({
+                    fecha: hoyStr,
+                    empleadoId: id,
+                    nombre: nombre,
+                    tipo: 'SOLO_ALMUERZO',
+                    almuerzo: nuevoAlmuerzo,
+                    hora: horaStr,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    dia: this._obtenerDiaSemana(hoy),
+                    modo: 'OFICINA',
+                    horasExtra: 'NO'
+                });
+            }
         } else {
-            // Actualizar el existente
+            // Actualizar el existente en Firebase
             await db.collection('registros').doc(regSnap.docs[0].id).update({
                 almuerzo: nuevoAlmuerzo
             });
+            
+            // Si es fecha anterior y aún estaba en Firebase, también mandarlo a Sheets 
+            // por si estaba archivado parcialmente
+            if (isPastDate) {
+                try {
+                    await this._jsonp(params);
+                } catch (e) { console.warn("Error Sheets:", e); }
+            }
         }
 
         // Registrar en auditoría
@@ -829,13 +857,6 @@ window.FirebaseBackend = {
             autor: "SUPERVISOR",
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
-
-        // Sincronizar inmediatamente con Google Sheets
-        try {
-            await this._jsonp(params);
-        } catch (e) {
-            console.warn("⚠️ Error al sincronizar Almuerzo con Sheets:", e);
-        }
 
         return { ok: true };
     },
@@ -881,13 +902,17 @@ window.FirebaseBackend = {
             if (campo === 'timestamp') {
                 const parsed = parsearTimestamp(valor);
                 if (!parsed) return { error: "Formato de timestamp inválido" };
-                updateData.timestamp = parsed.timestampFormatted;
+                const [dPart, tPart] = parsed.timestampFormatted.split(' ');
+                const [day, month, year] = dPart.split('/').map(Number);
+                const [hour, minute, second] = tPart.split(':').map(Number);
+                const dateObj = new Date(year, month - 1, day, hour, minute, second);
+                updateData.timestamp = firebase.firestore.Timestamp.fromDate(dateObj);
                 updateData.fecha = parsed.fecha;
                 updateData.hora = parsed.hora;
                 updateData.dia = this._obtenerDiaSemana(new Date(parsed.fecha + 'T12:00:00'));
             } else {
                 updateData[campo] = valor;
-                updateData.timestamp = typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB');
+                updateData.timestamp = firebase.firestore.Timestamp.fromDate(new Date());
             }
             await db.collection('registros').doc(docId).update(updateData);
             return { ok: true };
@@ -930,7 +955,7 @@ window.FirebaseBackend = {
                 modo: params.modo || "OFICINA",
                 horasExtra: params.horasExtra || "NO",
                 observacion: params.observacion || "",
-                timestamp: typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB')
+                timestamp: firebase.firestore.Timestamp.fromDate(new Date())
             });
             return { ok: true };
         }
@@ -959,7 +984,7 @@ window.FirebaseBackend = {
                         justificado: 'SI',
                         quien_justifica: supervisor,
                         razon_justificac: razon,
-                        timestamp: typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB')
+                        timestamp: firebase.firestore.Timestamp.fromDate(new Date())
                     });
                 });
                 await batch.commit();
@@ -980,7 +1005,7 @@ window.FirebaseBackend = {
                     justificado: 'SI',
                     quien_justifica: supervisor,
                     razon_justificac: razon,
-                    timestamp: typeof obtenerFechaHoraEstricta === 'function' ? obtenerFechaHoraEstricta() : new Date().toLocaleString('en-GB')
+                    timestamp: firebase.firestore.Timestamp.fromDate(new Date())
                 });
             }
 
@@ -1681,7 +1706,7 @@ window.FirebaseBackend = {
         if (!hora) return "";
         let hStr = hora.toString();
         // Si viene como ISO (ej: 1899-12-30T12:44:00.000Z)
-        if (hStr.includes('T')) {
+        if (/^\d{4}-\d{2}-\d{2}T/.test(hStr)) {
             let partes = hStr.split('T')[1];
             return partes.split('.')[0].substring(0, 8); // Retorna HH:mm:ss
         }

@@ -83,7 +83,7 @@
         const hh = String(dateObj.getHours()).padStart(2, '0');
         const mm = String(dateObj.getMinutes()).padStart(2, '0');
         const ss = String(dateObj.getSeconds()).padStart(2, '0');
-        return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+        return `${d}-${m}-${y} ${hh}:${mm}:${ss}`;
       }
       return String(ts);
     }
@@ -408,22 +408,76 @@
     }
 
     async function cambiarEstadoAlmuerzo(id, estado, fecha) {
-      let exito = await actualizarAlmuerzo(id, estado, fecha);
-      if (exito) {
-        let idx = empCache.findIndex(e => e.id === id);
-        if (idx !== -1) {
-          if (!fecha || fecha === hoy) {
-            empCache[idx].almuerzoHoy = estado;
+      let idx = empCache.findIndex(e => e.id === id);
+      let estadoAnterior = null;
+      let regAnterior = null;
+      let targetFecha = fecha || hoy;
+      
+      if (idx !== -1) {
+        if (!fecha || fecha === hoy) {
+          estadoAnterior = empCache[idx].almuerzoHoy;
+          empCache[idx].almuerzoHoy = estado;
+        }
+        let reg = empCache[idx].registros?.find(r => r.tipo === 'ENTRADA' && r.fecha === targetFecha);
+        if (reg) {
+          regAnterior = reg.almuerzo;
+          reg.almuerzo = estado;
+        }
+      }
+
+      // Redibujar la UI inmediatamente
+      if (panelActual === 'detalle') mostrarDetalle(id);
+      else {
+        cargarAsistencia();
+        cargarDashboard();
+      }
+      if (typeof cargarDirectorio === 'function') cargarDirectorio();
+      if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+      if (typeof filtrarReporteInteractivo === 'function') filtrarReporteInteractivo();
+
+      // Enviar la petición en segundo plano
+      try {
+        const res = await jsonpRequest({
+          accion: 'actualizarAlmuerzoSupervisor',
+          empleadoId: id,
+          almuerzo: estado,
+          fecha: targetFecha
+        });
+        if (res && !res.error) {
+          mostrarToast('Almuerzo actualizado', 'success');
+          // Limpiar caches de la app
+          limpiarCachesLocales();
+          // Silenciosamente recargar en background
+          await cargarDatosCompletos(true, true);
+        } else {
+          mostrarToast(res?.error || 'Error al actualizar almuerzo', 'error');
+          // Revertir
+          if (idx !== -1) {
+            if (!fecha || fecha === hoy) empCache[idx].almuerzoHoy = estadoAnterior;
+            let reg = empCache[idx].registros?.find(r => r.tipo === 'ENTRADA' && r.fecha === targetFecha);
+            if (reg) reg.almuerzo = regAnterior;
           }
-          let reg = empCache[idx].registros?.find(r => r.tipo === 'ENTRADA' && r.fecha === (fecha || hoy));
-          if (reg) reg.almuerzo = estado;
+          if (panelActual === 'detalle') mostrarDetalle(id);
+          else {
+            cargarAsistencia();
+            cargarDashboard();
+          }
+          if (typeof cargarDirectorio === 'function') cargarDirectorio();
+        }
+      } catch (e) {
+        mostrarToast('Error al actualizar almuerzo (sin conexión)', 'error');
+        // Revertir
+        if (idx !== -1) {
+          if (!fecha || fecha === hoy) empCache[idx].almuerzoHoy = estadoAnterior;
+          let reg = empCache[idx].registros?.find(r => r.tipo === 'ENTRADA' && r.fecha === targetFecha);
+          if (reg) reg.almuerzo = regAnterior;
         }
         if (panelActual === 'detalle') mostrarDetalle(id);
         else {
           cargarAsistencia();
           cargarDashboard();
         }
-        cargarDirectorio();
+        if (typeof cargarDirectorio === 'function') cargarDirectorio();
       }
     }
 
@@ -477,7 +531,11 @@
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
             const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
             if (m !== null && m > refEntradaR) tard++;
-            if (r.almuerzo === 'SI') almP++;
+          });
+          
+          let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= periodo.inicio && r.fecha <= hoy_);
+          registrosAlmuerzo.forEach(r => {
+            if (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA') almP++;
           });
         });
         let aPct = calcularPct(asist, totalPos);
@@ -756,7 +814,7 @@
               }
             }
 
-            if (minsFaltantes > 0) {
+            if (minsFaltantes > 15) {
               totalMinutosJustificarPeriodo += minsFaltantes;
               justificacionesPendientes.push({
                 empId: e.id,
@@ -866,6 +924,7 @@
     }
 
     function cargarAnalisisTardanzas() {
+      if (!$('tarTotal')) return;
       let periodo = periodos[parseInt($('periodoTardanzas')?.value || 0)];
       if (!periodo || !empCache.length) return;
       let stats = empCache.map(e => {
@@ -919,8 +978,12 @@
       let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > refEntradaHoy; }).length;
       let salieron = empCache.filter(e => e.salidaHoy).length;
       let sinSalida = pres - salieron;
-      let almPlanta = empCache.filter(e => e.entradaHoy && e.almuerzoHoy === 'SI').length;
-      let almFuera = empCache.filter(e => e.entradaHoy && e.almuerzoHoy === 'NO').length;
+      
+      let extrasHoy = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy);
+      let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+
+      let almPlanta = empCache.filter(e => (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA')).length + totalExtrasHoy;
+      let almFuera = empCache.filter(e => (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA')).length;
 
       $('asisTotal').textContent = total;
       $('asisPresentes').textContent = pres;
@@ -930,11 +993,8 @@
       if ($('asisSinSalida')) $('asisSinSalida').textContent = sinSalida;
       $('asisAlmuerzoPlanta').textContent = almPlanta;
       $('asisAlmuerzoFuera').textContent = almFuera;
-
-      let extrasHoy = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy);
-      let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
       if ($('asisAlmuerzoPlantaSub')) {
-        $('asisAlmuerzoPlantaSub').innerHTML = `en comedor <span style="font-weight:700; color:var(--indigo)">(+ ${totalExtrasHoy} ext.)</span>`;
+        $('asisAlmuerzoPlantaSub').textContent = totalExtrasHoy > 0 ? `Incluye ${totalExtrasHoy} extras` : '';
       }
 
       window._asisData = empCache.map(e => {
@@ -1019,73 +1079,43 @@
         }
 
         let toggle = '';
-        if (isSinAsistencia) {
-             toggle = `<div class="almuerzo-toggle" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-radius:12px;"><button class="toggle-option ${e.almuerzoHoy === 'SI' ? 'active-si' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" style="flex:1; border-radius:12px 0 0 12px; font-weight:600; font-size:11px; padding:6px 4px;"><i class="fas fa-check-circle" style="margin-right:4px;"></i> Planta</button><button class="toggle-option ${e.almuerzoHoy === 'NO' ? 'active-no' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" style="flex:1; border-radius:0 12px 12px 0; font-weight:600; font-size:11px; padding:6px 4px;"><i class="fas fa-times-circle" style="margin-right:4px;"></i> Fuera</button></div>`;
+        let puedeEditar = e.entradaHoy || esAdminMaster || isSinAsistencia;
+
+        if (!e.entradaHoy && !isSinAsistencia) {
+             toggle = `<span class="pill dim" style="font-size:10px; opacity:0.5; background:transparent; border:none;">Ausente</span>`;
         } else {
-             if (!e.entradaHoy) {
-                 toggle = `<span class="pill dim" style="font-size:10px; opacity:0.5; background:transparent; border:none;">Ausente</span>`;
-             } else {
-                 let puedeEditar = e.entradaHoy || esAdminMaster;
-                 toggle = `<div class="almuerzo-toggle"><button class="toggle-option ${e.almuerzoHoy === 'SI' ? 'active-si' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-building"></i> Sí</button><button class="toggle-option ${e.almuerzoHoy === 'NO' ? 'active-no' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-home"></i> No</button></div>`;
-             }
+             toggle = `<div class="almuerzo-toggle"><button class="toggle-option ${(e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA') ? 'active-si' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-building"></i> Sí</button><button class="toggle-option ${(e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA') ? 'active-no' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-home"></i> No</button></div>`;
         }
 
         return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, id: e.id, isSinAsistencia };
       });
+      
+      let extrasHoyTb = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy);
+      extrasHoyTb.forEach((extra, idx) => {
+         window._asisData.push({
+            id: `extra_${idx}`,
+            nombre: `Visitante/Extra (${extra.observaciones || 'Sin detalle'})`,
+            area: 'Visita/Extra',
+            foto_url: '',
+            _eH: `<span class="pill dim" style="opacity:0.5; font-size:10px;">--:--</span>`,
+            _sH: `<span class="pill dim" style="opacity:0.5; font-size:10px;">--:--</span>`,
+            _modo: `<span class="pill dim" style="opacity:0.5; font-size:10px;">N/A</span>`,
+            _extras: `<span class="pill dim" style="opacity:0.5; font-size:10px;">N/A</span>`,
+            _est: `<span class="pill" style="background:#f3f4f6; color:#6b7280; font-size:10px; border:1px dashed #cbd5e1;"><i class="fas fa-id-badge"></i> Visitante</span>`,
+            _ausencia: `<span class="pill dim" style="opacity:0.5; font-size:10px;">—</span>`,
+            _toggle: `<span class="pill" style="background:#dbeafe; color:#1e40af; font-size:11px; font-weight:600;"><i class="fas fa-building" style="margin-right:4px;"></i> +${extra.cantidad} Extra(s)</span>`,
+            _entradaHoy: false,
+            _salidaHoy: false,
+            _tard: false,
+            _almuerzoHoy: 'SI'
+         });
+      });
+
       filtrarAsistenciaTabla();
     }
 
-    async function editarValorRegistro(empleadoId, tipoReg, docId, campo, valorActual, fechaManual) {
-      let nuevoValor = "";
-      let targetFecha = fechaManual || hoy;
+    // editarValorRegistro duplicada eliminada, la función unificada se encuentra abajo como window.editarValorRegistro
 
-      if (campo === 'hora') {
-        nuevoValor = prompt(`Editar HORA (${tipoReg}) para el empleado ${empleadoId} [${targetFecha}]:`, valorActual);
-      } else if (campo === 'modo') {
-        nuevoValor = confirm(`¿Cambiar MODO a CAMPO? (Cancelar para OFICINA)`) ? 'CAMPO' : 'OFICINA';
-      } else if (campo === 'horasExtra') {
-        nuevoValor = confirm(`¿Autorizar HORAS EXTRAS?`) ? 'SI' : 'NO';
-      } else if (campo === 'timestamp') {
-        let tsLegible = formatearTimestampCompleto(valorActual);
-        nuevoValor = prompt(`Editar TIMESTAMP para ${tipoReg} para el empleado ${empleadoId} [${targetFecha}]:\nUse el formato: DD/MM/YYYY HH:MM:SS`, tsLegible);
-        if (nuevoValor === null) return;
-        const parsed = parsearTimestamp(nuevoValor);
-        if (!parsed) {
-          mostrarToast('Formato de timestamp inválido. Use el formato: DD/MM/YYYY HH:MM:SS', 'error');
-          return;
-        }
-        nuevoValor = parsed.timestampFormatted;
-      }
-
-      if (nuevoValor === null || nuevoValor === "") return;
-
-      mostrarLoader(true);
-      try {
-        const res = await jsonpRequest({
-          accion: 'actualizarRegistroGeneral',
-          docId: docId,
-          empleadoId: empleadoId,
-          tipo: tipoReg,
-          fecha: targetFecha,
-          campo: campo,
-          valor: nuevoValor
-        });
-
-        if (res.ok) {
-          mostrarToast('Registro actualizado correctamente', 'success');
-          limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-          if (panelActual === 'detalle') mostrarDetalle(empleadoId);
-          else cargarAsistencia();
-        } else {
-          mostrarToast(res.error || 'Error al actualizar', 'error');
-        }
-      } catch (e) {
-        mostrarToast('Error de conexión', 'error');
-      } finally {
-        mostrarLoader(false);
-      }
-    }
 
     async function editarMetaEmpleado(empleadoId, campo, valorActual) {
       let nuevoValor = prompt(`Editar ${campo.toUpperCase()} para el empleado ${empleadoId}:`, valorActual);
@@ -1146,6 +1176,13 @@
     }
 
     function filtrarAsistenciaTabla() {
+      document.querySelectorAll('.kpi-card[data-filter]').forEach(btn => {
+        if (btn.getAttribute('data-filter') === filtroAsistenciaActual) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
       let q = ($('searchAsistencia')?.value || '').toLowerCase();
       let data = (window._asisData || []).filter(e => {
         if (q && !e.nombre.toLowerCase().includes(q) && !(e.area || '').toLowerCase().includes(q) && !(e.id || '').includes(q)) return false;
@@ -1220,6 +1257,7 @@
     // GESTOR DE COLUMNAS VISIBLES
     // ============================================================
     const COLUMNAS_DISPONIBLES = [
+      { id: 'area', label: 'Área', tipo: 'texto' },
       { id: 'asistencias', label: 'Asistencias', tipo: 'numero' },
       { id: 'faltas', label: 'Faltas', tipo: 'numero' },
       { id: 'atrasos', label: 'Nº Atrasos', tipo: 'numero' },
@@ -1255,22 +1293,22 @@
       const columnasVisibles = obtenerColumnasVisibles();
       const allChecked = COLUMNAS_DISPONIBLES.every(col => columnasVisibles.includes(col.id));
       
-      let html = '<div style="margin-bottom:16px;padding:12px;background:var(--g50);border-radius:12px;border:1px solid var(--g200)">';
-      html += '<div style="font-weight:600;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;gap:8px;">';
-      html += '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-sliders-h"></i> Columnas visibles</div>';
-      html += `<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:500;cursor:pointer;user-select:none;color:var(--red);"><input type="checkbox" ${allChecked ? 'checked' : ''} onchange="toggleTodasLasColumnas(this.checked)" style="cursor:pointer"> Seleccionar Todo</label>`;
+      let html = '';
+      html += '<div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;width:100%;font-size:11.5px;color:var(--g700);border-bottom:1px solid var(--g100);padding-bottom:6px;">';
+      html += '<span>Configurar Columnas</span>';
+      html += `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;color:var(--red);"><input type="checkbox" ${allChecked ? 'checked' : ''} onchange="toggleTodasLasColumnas(this.checked)" style="cursor:pointer"> Todo</label>`;
       html += '</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">';
+      html += '<div style="display:flex;flex-direction:column;gap:4px">';
 
       COLUMNAS_DISPONIBLES.forEach(col => {
         const isChecked = columnasVisibles.includes(col.id);
-        html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 8px;border-radius:6px;transition:all .2s;background:${isChecked ? 'var(--red-lt)' : 'white'};border:1px solid ${isChecked ? 'var(--red)' : 'var(--g200)'}">`;
+        html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:all .2s;background:${isChecked ? 'var(--red-lt)' : 'transparent'};border:1px solid ${isChecked ? 'var(--red)' : 'transparent'}">`;
         html += `<input type="checkbox" ${isChecked ? 'checked' : ''} onchange="cambiarVisibilidadColumna('${col.id}')" style="cursor:pointer">`;
-        html += `<span style="font-size:var(--fxs);font-weight:500;color:${isChecked ? 'var(--red)' : 'var(--g600)'}">${col.label}</span>`;
+        html += `<span style="font-size:11px;font-weight:500;color:${isChecked ? 'var(--red)' : 'var(--g600)'}">${col.label}</span>`;
         html += `</label>`;
       });
 
-      html += '</div></div>';
+      html += '</div>';
       return html;
     }
 
@@ -1346,8 +1384,8 @@
         
         let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= R_INI && r.fecha <= R_FIN);
         registrosAlmuerzo.forEach(r => {
-          if (r.almuerzo === 'SI') almPlanta++;
-          if (r.almuerzo === 'NO') almFuera++;
+          if (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA') almPlanta++;
+          if (r.almuerzo === 'NO' || r.almuerzo === 'FUERA') almFuera++;
         });
         let puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
 
@@ -1637,37 +1675,46 @@
       }
 
       // Construir headers según columnas visibles
-      let headerHtml = `<th onclick="sortarTablaReportes('nombre')">Empleado ${sortIcon('nombre')}</th><th onclick="sortarTablaReportes('area')">Área ${sortIcon('area')}</th>`;
+      let headerHtml = `<th onclick="sortarTablaReportes('nombre')">Empleado ${sortIcon('nombre')}</th>`;
       COLUMNAS_DISPONIBLES.forEach(col => {
         if (columnasVisibles.includes(col.id)) {
-          headerHtml += `<th onclick="sortarTablaReportes('${col.id}')" style="text-align:center">${col.label} ${sortIcon(col.id)}</th>`;
+          if (col.id === 'area') {
+            headerHtml += `<th onclick="sortarTablaReportes('area')">Área ${sortIcon('area')}</th>`;
+          } else {
+            headerHtml += `<th onclick="sortarTablaReportes('${col.id}')" style="text-align:center">${col.label} ${sortIcon(col.id)}</th>`;
+          }
         }
       });
 
       let html = `<table class="employee-table table-compact"><thead><tr>${headerHtml}</tr></thead><tbody>`;
 
       html += data.map(e => {
-        let rowHtml = `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td><td>${escapeHtml(e.area || '—')}</td>`;
+        let rowHtml = `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td>`;
 
         COLUMNAS_DISPONIBLES.forEach(col => {
           if (columnasVisibles.includes(col.id)) {
             const valor = e[col.id];
             let contenido = '';
-            if (col.tipo === 'tiempo') {
-              contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${minutosAHHMMSS(valor)}</span>`;
-            } else if (col.tipo === 'pct') {
-              let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
-              contenido = `<span class="pill ${pc}" style="font-size:10px;padding:2px 7px">${valor}%</span>`;
-            } else if (col.id === 'faltas') {
-              contenido = `<span class="pill ${valor > 0 ? 'miss' : 'ok'}" style="font-size:10px;padding:2px 7px">${valor}</span>`;
-            } else if (col.id === 'atrasos') {
-              contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:10px;padding:2px 7px">${valor}</span>`;
-            } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
-              contenido = `<strong style="font-family:'Fira Code',monospace;font-size:10px">${valor}</strong>`;
+            if (col.id === 'area') {
+              contenido = escapeHtml(valor || '—');
+              rowHtml += `<td>${contenido}</td>`;
             } else {
-              contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${valor}</span>`;
+              if (col.tipo === 'tiempo') {
+                contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${minutosAHHMMSS(valor)}</span>`;
+              } else if (col.tipo === 'pct') {
+                let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
+                contenido = `<span class="pill ${pc}" style="font-size:10px;padding:2px 7px">${valor}%</span>`;
+              } else if (col.id === 'faltas') {
+                contenido = `<span class="pill ${valor > 0 ? 'miss' : 'ok'}" style="font-size:10px;padding:2px 7px">${valor}</span>`;
+              } else if (col.id === 'atrasos') {
+                contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:10px;padding:2px 7px">${valor}</span>`;
+              } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
+                contenido = `<strong style="font-family:'Fira Code',monospace;font-size:10px">${valor}</strong>`;
+              } else {
+                contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${valor}</span>`;
+              }
+              rowHtml += `<td style="text-align:center">${contenido}</td>`;
             }
-            rowHtml += `<td style="text-align:center">${contenido}</td>`;
           }
         });
 
@@ -1677,9 +1724,26 @@
 
       html += '</tbody></table>';
 
-      let selectorHtml = renderizadorSelectorColumnas();
+      // Update dropdown columns list dynamically
+      if ($('monthlyColsDropdown')) {
+        $('monthlyColsDropdown').innerHTML = renderizadorSelectorColumnas();
+      }
+
       let scrollHint = '<div class="scroll-hint"><i class="fas fa-arrows-alt-h"></i> Arrastra para desplazarte — clic en columna para ordenar</div>';
-      $('tablaReportes').innerHTML = selectorHtml + scrollHint + `<div class="table-scroll-wrap" id="reportesScrollWrap">${html}</div>`;
+      $('tablaReportes').innerHTML = scrollHint + `<div class="table-scroll-wrap" id="reportesScrollWrap">${html}</div>`;
+
+      // Sync double scrollbars
+      const tableScroll = $('reportesScrollWrap');
+      const topScroll = $('monthlyTopScroll');
+      if (tableScroll && topScroll) {
+        const dummy = topScroll.querySelector('.top-scroll-dummy');
+        if (dummy) {
+          setTimeout(() => {
+            dummy.style.width = tableScroll.scrollWidth + 'px';
+            topScroll.scrollLeft = tableScroll.scrollLeft;
+          }, 50);
+        }
+      }
 
       // Drag-to-scroll con mouse
       const wrap = document.getElementById('reportesScrollWrap');
@@ -1689,6 +1753,9 @@
         wrap.addEventListener('mouseleave', () => { isDown = false; });
         wrap.addEventListener('mouseup', () => { isDown = false; });
         wrap.addEventListener('mousemove', e => { if (!isDown) return; e.preventDefault(); const x = e.pageX - wrap.offsetLeft; wrap.scrollLeft = scrollLeft - (x - startX); });
+      }
+      if (typeof initScrollSync === 'function') {
+        initScrollSync('monthlyTopScroll', 'reportesScrollWrap');
       }
     }
     function volverAAsistencia() { cambiarPanel('asistencia'); cargarAsistencia(); }
@@ -1719,7 +1786,7 @@
 
       let entT = regs.filter(r => r.tipo === 'ENTRADA').length;
       let salT = regs.filter(r => r.tipo === 'SALIDA').length;
-      let almP = regs.filter(r => r.tipo === 'ENTRADA' && r.almuerzo === 'SI').length;
+      let almP = regs.filter(r => r.tipo === 'ENTRADA' && (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA')).length;
       let dias = new Set(regs.filter(r => r.tipo === 'ENTRADA').map(r => r.fecha)).size;
 
       let sE = 0, cE = 0, sS = 0, cS = 0, tardT = 0;
@@ -1851,9 +1918,9 @@
           return valor;
         }).join('<br>');
 
-        let aBadge = d.almuerzo === 'SI' ? '<span class="pill ok">🏢 Planta</span>' : d.almuerzo === 'NO' ? '<span class="pill" style="background:#dbeafe; color:#1e40af;">🏠 Fuera</span>' : '<span class="pill dim">❓ —</span>';
+        let aBadge = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? '<span class="pill ok">🏢 Sí</span>' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? '<span class="pill" style="background:#dbeafe; color:#1e40af;">🏠 No</span>' : '<span class="pill dim">❓ —</span>';
         if (esAdminMaster) {
-          aBadge = `<span class="editable-pill" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}', '${d.almuerzo === 'SI' ? 'NO' : 'SI'}', '${f}')">${aBadge}</span>`;
+          aBadge = `<span class="editable-pill" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}', '${(d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'NO' : 'SI'}', '${f}')">${aBadge}</span>`;
         }
 
         let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
@@ -2391,7 +2458,7 @@
               const hh = String(dateObj.getHours()).padStart(2, '0');
               const mm = String(dateObj.getMinutes()).padStart(2, '0');
               const ss = String(dateObj.getSeconds()).padStart(2, '0');
-              ts = `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+              ts = `${d}-${m}-${y} ${hh}:${mm}:${ss}`;
             } else {
               ts = String(ts);
             }
@@ -2518,49 +2585,163 @@
     }
 
     // --- FUNCIONES DE EDICIÓN ADMIN ---
-    async function editarValorRegistro(empleadoId, tipo, docId, campo, valorActual, fecha) {
+    window.editarValorRegistro = async function(empleadoId, tipo, docId, campo, valorActual, fecha) {
       if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
       
-      let nuevo;
-      if (campo === 'timestamp') {
+      let nuevoValor = null;
+      let targetFecha = fecha || hoy;
+
+      if (campo === 'hora') {
+        nuevoValor = prompt(`Editar HORA (${tipo}) para el empleado ${empleadoId} [${targetFecha}]:`, valorActual);
+        if (nuevoValor === null) return;
+        const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
+        if (nuevoValor !== "" && !timeRegex.test(nuevoValor)) {
+          mostrarToast('Formato de hora inválido. Use HH:MM o HH:MM:SS', 'error');
+          return;
+        }
+        if (nuevoValor !== "" && nuevoValor.split(':').length === 2) {
+          nuevoValor += ':00';
+        }
+      } else if (campo === 'modo') {
+        if (valorActual === 'CAMPO') {
+          nuevoValor = confirm(`¿Cambiar MODO a OFICINA? (Aceptar para OFICINA, Cancelar para mantener CAMPO)`) ? 'OFICINA' : 'CAMPO';
+        } else {
+          nuevoValor = confirm(`¿Cambiar MODO a CAMPO? (Aceptar para CAMPO, Cancelar para mantener OFICINA)`) ? 'CAMPO' : 'OFICINA';
+        }
+        if (nuevoValor === valorActual) return;
+      } else if (campo === 'horasExtra') {
+        if (valorActual === 'SI') {
+          nuevoValor = confirm(`¿Quitar la autorización de HORAS EXTRAS?`) ? 'NO' : 'SI';
+        } else {
+          nuevoValor = confirm(`¿Autorizar HORAS EXTRAS?`) ? 'SI' : 'NO';
+        }
+        if (nuevoValor === valorActual) return;
+      } else if (campo === 'timestamp') {
         let tsLegible = formatearTimestampCompleto(valorActual);
-        nuevo = prompt(`Editar TIMESTAMP para ${tipo} (${fecha || 'Hoy'}):\nUse el formato: DD/MM/YYYY HH:MM:SS`, tsLegible);
-        if (nuevo === null) return;
-        const parsed = parsearTimestamp(nuevo);
+        nuevoValor = prompt(`Editar TIMESTAMP para ${tipo} (${targetFecha}):\nUse el formato: DD/MM/YYYY HH:MM:SS`, tsLegible);
+        if (nuevoValor === null) return;
+        const parsed = parsearTimestamp(nuevoValor);
         if (!parsed) {
           mostrarToast('Formato de timestamp inválido. Use el formato: DD/MM/YYYY HH:MM:SS', 'error');
           return;
         }
-        nuevo = parsed.timestampFormatted;
+        nuevoValor = parsed.timestampFormatted;
       } else {
-        nuevo = prompt(`Editar ${campo} para ${tipo} (${fecha || 'Hoy'}):`, valorActual);
-        if (nuevo === null || nuevo === valorActual) return;
+        nuevoValor = prompt(`Editar ${campo} para ${tipo} (${targetFecha}):`, valorActual);
+        if (nuevoValor === null || nuevoValor === valorActual) return;
       }
 
-      mostrarLoader(true);
+      if (nuevoValor === null) return;
+
+      // Realizar actualización optimista en el cache local
+      let emp = empCache.find(e => e.id === empleadoId);
+      let originalRegistros = emp ? JSON.parse(JSON.stringify(emp.registros || [])) : null;
+      let originalAlmuerzoHoy = emp ? emp.almuerzoHoy : null;
+
+      if (emp) {
+        if (!emp.registros) emp.registros = [];
+        let reg = null;
+        if (docId) {
+          reg = emp.registros.find(r => r.id === docId);
+        }
+        if (!reg) {
+          reg = emp.registros.find(r => r.fecha === targetFecha && r.tipo === tipo);
+        }
+
+        if (reg) {
+          if (campo === 'timestamp') {
+            const parsed = parsearTimestamp(nuevoValor);
+            if (parsed) {
+              reg.timestamp = parsed.timestampFormatted;
+              reg.fecha = parsed.fecha;
+              reg.hora = parsed.hora;
+            }
+          } else {
+            reg[campo] = nuevoValor;
+            if (campo === 'hora') {
+              reg.hora = nuevoValor;
+            }
+          }
+        } else {
+          let newReg = {
+            id: docId || 'temp_' + Date.now(),
+            empleadoId: empleadoId,
+            nombre: emp.nombre,
+            fecha: targetFecha,
+            tipo: tipo,
+            hora: campo === 'hora' ? nuevoValor : '00:00:00',
+            almuerzo: campo === 'almuerzo' ? nuevoValor : 'NO',
+            modo: campo === 'modo' ? nuevoValor : 'OFICINA',
+            horasExtra: campo === 'horasExtra' ? nuevoValor : 'NO',
+            observacion: campo === 'observacion' ? nuevoValor : '',
+            timestamp: new Date().toISOString()
+          };
+          if (campo === 'timestamp') {
+            const parsed = parsearTimestamp(nuevoValor);
+            if (parsed) {
+              newReg.timestamp = parsed.timestampFormatted;
+              newReg.fecha = parsed.fecha;
+              newReg.hora = parsed.hora;
+            }
+          }
+          emp.registros.push(newReg);
+        }
+
+        if (targetFecha === hoy && tipo === 'ENTRADA' && campo === 'almuerzo') {
+          emp.almuerzoHoy = nuevoValor;
+        }
+      }
+
+      // Redibujar la UI inmediatamente
+      mostrarToast('Procesando edición...', 'info');
+      if (panelActual === 'detalle') mostrarDetalle(empleadoId);
+      else {
+        cargarAsistencia();
+        cargarDashboard();
+      }
+      if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+      if (typeof filtrarReporteInteractivo === 'function') filtrarReporteInteractivo();
+
+      // Enviar la petición en segundo plano
       try {
         const res = await jsonpRequest({
           accion: 'actualizarRegistroGeneral',
           docId: docId || '',
           empleadoId: empleadoId,
           tipo: tipo,
-          fecha: fecha || hoy,
+          fecha: targetFecha,
           campo: campo,
-          valor: nuevo
+          valor: nuevoValor
         });
-        if (res.ok) {
+        if (res && res.ok) {
           mostrarToast('Registro actualizado', 'success');
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-          if (panelActual === 'detalle') mostrarDetalle(empleadoId);
-          else cargarAsistencia();
+          await cargarDatosCompletos(true, true); // silent sync
         } else {
-          mostrarToast(res.error || 'Error', 'error');
+          mostrarToast(res?.error || 'Error al actualizar', 'error');
+          // Revertir
+          if (emp && originalRegistros) {
+            emp.registros = originalRegistros;
+            if (targetFecha === hoy) emp.almuerzoHoy = originalAlmuerzoHoy;
+          }
+          if (panelActual === 'detalle') mostrarDetalle(empleadoId);
+          else {
+            cargarAsistencia();
+            cargarDashboard();
+          }
         }
       } catch (e) {
-        mostrarToast('Error de conexión', 'error');
-      } finally {
-        mostrarLoader(false);
+        mostrarToast('Error de conexión al actualizar', 'error');
+        // Revertir
+        if (emp && originalRegistros) {
+          emp.registros = originalRegistros;
+          if (targetFecha === hoy) emp.almuerzoHoy = originalAlmuerzoHoy;
+        }
+        if (panelActual === 'detalle') mostrarDetalle(empleadoId);
+        else {
+          cargarAsistencia();
+          cargarDashboard();
+        }
       }
     }
 
@@ -2681,49 +2862,119 @@
         }
       }
 
-      mostrarLoader(true);
+      // Optimistic update of local cache
+      let empId = window.currentJustifyEmpId;
+      let fecha = window.currentJustifyFecha;
+      let emp = empCache.find(e => e.id === empId);
+      
+      // Save current state for backup
+      let originalRegistros = emp ? JSON.parse(JSON.stringify(emp.registros || [])) : null;
+
+      if (emp) {
+        if (!emp.registros) emp.registros = [];
+        let regs = emp.registros.filter(r => r.fecha === fecha);
+        if (regs.length > 0) {
+          regs.forEach(r => {
+            r.justificado = 'SI';
+            r.quien_justifica = supervisorName;
+            r.razon_justificac = razonCompleta;
+          });
+        } else {
+          emp.registros.push({
+            id: 'temp_' + Date.now(),
+            empleadoId: empId,
+            nombre: emp.nombre,
+            fecha: fecha,
+            tipo: 'JUSTIFICACION',
+            hora: '00:00:00',
+            almuerzo: 'NO',
+            modo: 'OFICINA',
+            horasExtra: 'NO',
+            justificado: 'SI',
+            quien_justifica: supervisorName,
+            razon_justificac: razonCompleta,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      // Close modal immediately and show initial toast
+      window.cerrarModalJustificar();
+      mostrarToast('Día justificado (procesando...)', 'success');
+      
+      // Redraw UI immediately
+      if (panelActual === 'detalle') mostrarDetalle(empId);
+      else {
+        cargarAsistencia();
+        cargarDashboard();
+      }
+      if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+      if (typeof filtrarReporteInteractivo === 'function') filtrarReporteInteractivo();
+
+      // Perform network request in background
       try {
         const res = await jsonpRequest({
           accion: 'justificarDia',
-          empleadoId: window.currentJustifyEmpId,
-          fecha: window.currentJustifyFecha,
+          empleadoId: empId,
+          fecha: fecha,
           razon: razonCompleta,
           supervisor: supervisorName
         });
 
-        mostrarLoader(false);
         if (res && res.ok) {
           mostrarToast('Día justificado correctamente', 'success');
-          window.cerrarModalJustificar();
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
+          // Silently sync cache in background
+          await cargarDatosCompletos(true, true);
         } else {
           mostrarToast(res?.error || 'Error al guardar justificación', 'error');
+          // Revert on error
+          if (emp && originalRegistros) {
+            emp.registros = originalRegistros;
+          }
+          if (panelActual === 'detalle') mostrarDetalle(empId);
+          else {
+            cargarAsistencia();
+            cargarDashboard();
+          }
         }
       } catch (e) {
-        mostrarLoader(false);
-        mostrarToast('Error al guardar justificación: ' + e.message, 'error');
+        mostrarToast('Error de conexión al guardar justificación', 'error');
+        // Revert on error
+        if (emp && originalRegistros) {
+          emp.registros = originalRegistros;
+        }
+        if (panelActual === 'detalle') mostrarDetalle(empId);
+        else {
+          cargarAsistencia();
+          cargarDashboard();
+        }
       }
     };
 
     // ============================================================
     // CARGA DE DATOS
     // ============================================================
-    async function cargarDatosCompletos(force = false) {
+    async function cargarDatosCompletos(force = false, silencioso = false) {
       if (estaActualizando) return;
       estaActualizando = true;
-      mostrarLoader(true);
+      if (!silencioso) mostrarLoader(true);
       try {
         const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor', force: force });
-        mostrarLoader(false);
+        if (!silencioso) mostrarLoader(false);
         estaActualizando = false;
         if (!res || res.error) {
-          mostrarToast(res?.error || 'Error al cargar datos', 'error');
+          if (!silencioso) mostrarToast(res?.error || 'Error al cargar datos', 'error');
           return;
         }
         empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
         window.almuerzosExtra = res.almuerzosExtra || [];
         periodos = generarPeriodos();
+
+        const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+        if (sessionStr) {
+          try { mostrarInformacionSupervisor(JSON.parse(sessionStr)); } catch(e) {}
+        }
 
         let periodoSelect = $('periodoMensual');
         let tardanzaSelect = $('periodoTardanzas');
@@ -2733,9 +2984,11 @@
         $('lastUpdate').textContent = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
         cargarPanelActual();
       } catch (e) {
-        mostrarLoader(false);
+        if (!silencioso) {
+          mostrarLoader(false);
+          mostrarToast('Error de conexión: ' + e.message, 'error');
+        }
         estaActualizando = false;
-        mostrarToast('Error de conexión: ' + e.message, 'error');
       }
     }
 
@@ -2812,12 +3065,34 @@
       return token;
     }
 
+    function mostrarInformacionSupervisor(session) {
+      const el = $('sidebarSupervisorInfo');
+      if (!el) return;
+      
+      let nombre = "Supervisor";
+      let id = session.id || "";
+      
+      if (id === "1058") {
+        nombre = "Admin Master";
+      } else {
+        let sup = empCache.find(x => x.id === id);
+        if (sup) nombre = sup.nombre;
+        else nombre = "Supervisor ID " + id;
+      }
+      
+      el.innerHTML = `
+        <div style="font-weight:700; color:var(--g800); font-size:12.5px;">${escapeHtml(nombre)}</div>
+        <div style="font-size:10px; color:var(--g400); margin-top:2px;">ID: ${escapeHtml(id)}</div>
+      `;
+    }
+
     function verificarEstadoSupervisor() {
       const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
       if (sessionStr) {
         try {
           const session = JSON.parse(sessionStr);
           window.isMaster = (session.id === "1058");
+          mostrarInformacionSupervisor(session);
           if (window.isMaster) {
             if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
             if ($('navItemOpciones')) $('navItemOpciones').style.display = 'flex';
@@ -2834,9 +3109,53 @@
       }
     }
 
+    // Sync double scrollbars helper
+    const initScrollSync = (topId, bottomId) => {
+      const top = $(topId);
+      const bottom = $(bottomId);
+      if (!top || !bottom) return;
+      
+      let isSyncingTop = false;
+      let isSyncingBottom = false;
+      
+      top.onscroll = function() {
+        if (!isSyncingBottom) {
+          isSyncingTop = true;
+          bottom.scrollLeft = top.scrollLeft;
+          isSyncingTop = false;
+        }
+      };
+      
+      bottom.onscroll = function() {
+        if (!isSyncingTop) {
+          isSyncingBottom = true;
+          top.scrollLeft = bottom.scrollLeft;
+          isSyncingBottom = false;
+        }
+      };
+    };
+
     document.querySelectorAll('.nav-item').forEach(item => {
-      item.addEventListener('click', () => cambiarPanel(item.dataset.panel));
+      item.addEventListener('click', () => {
+        if (item.dataset.panel) cambiarPanel(item.dataset.panel);
+      });
     });
+
+    // Dismiss visible columns dropdown when clicking outside
+    document.addEventListener('click', e => {
+      const dropdown = $('monthlyColsDropdown');
+      if (dropdown && !dropdown.classList.contains('hidden')) {
+        const btn = dropdown.previousElementSibling;
+        if (!dropdown.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+          dropdown.classList.add('hidden');
+        }
+      }
+    });
+
+    // Initialize Scroll Syncs
+    initScrollSync('monthlyTopScroll', 'reportesScrollWrap');
+    initScrollSync('customRepTopScroll', 'reporteCustomScroll');
+
     $('btnRefresh').addEventListener('click', async () => {
       limpiarCachesLocales();
       mostrarToast('Borrando caché local de registros...', 'info');
@@ -2967,8 +3286,8 @@
 
         let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
         registrosAlmuerzo.forEach(r => {
-          if (r.almuerzo === 'SI') almPlanta++;
-          if (r.almuerzo === 'NO') almFuera++;
+          if (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA') almPlanta++;
+          if (r.almuerzo === 'NO' || r.almuerzo === 'FUERA') almFuera++;
         });
         let puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
 
@@ -3166,40 +3485,30 @@
     };
 
     window.renderizarColumnasInteractivas = function() {
-      const containerDisponibles = $('columnasDisponibles');
-      const containerActivas = $('columnasActivas');
-      if (!containerDisponibles || !containerActivas) return;
+      const container = $('columnasSelectorInteractivo');
+      if (!container) return;
 
-      containerDisponibles.innerHTML = '';
-      containerActivas.innerHTML = '';
+      container.innerHTML = '';
 
       COLUMNAS_DISPONIBLES.forEach(col => {
         const isActiva = columnasCustomActivas.includes(col.id);
         const chip = document.createElement('div');
         chip.className = `chip-item ${isActiva ? 'activa' : 'disponible'}`;
-        chip.setAttribute('draggable', 'true');
-        chip.setAttribute('id', `chip-${col.id}`);
+        chip.style.margin = '2px';
+        chip.style.display = 'inline-flex';
+        chip.style.cursor = 'pointer';
         chip.innerHTML = `${isActiva ? '<i class="fas fa-check"></i>' : '<i class="fas fa-plus"></i>'} ${col.label}`;
         
-        chip.addEventListener('dragstart', (e) => dragCustom(e, col.id));
         chip.addEventListener('click', () => {
-          if (isActiva) quitarColumnaCustom(col.id);
-          else agregarColumnaCustom(col.id);
+          if (isActiva) {
+            quitarColumnaCustom(col.id);
+          } else {
+            agregarColumnaCustom(col.id);
+          }
         });
 
-        if (isActiva) {
-          containerActivas.appendChild(chip);
-        } else {
-          containerDisponibles.appendChild(chip);
-        }
+        container.appendChild(chip);
       });
-
-      if (!columnasCustomActivas.length) {
-        containerActivas.innerHTML = '<div style="color:var(--g400); font-size:11.5px; padding:10px; width:100%; text-align:center;"><i class="fas fa-info-circle"></i> No hay columnas en el reporte. Selecciona algunas de la izquierda.</div>';
-      }
-      if (columnasCustomActivas.length === COLUMNAS_DISPONIBLES.length) {
-        containerDisponibles.innerHTML = '<div style="color:var(--g400); font-size:11.5px; padding:10px; width:100%; text-align:center;"><i class="fas fa-check-circle"></i> Todas las columnas añadidas.</div>';
-      }
     };
 
     window.agregarColumnaCustom = function(colId) {
@@ -3277,6 +3586,107 @@
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
       let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
       
+      const headerTr = $('reporteCustomHeaders');
+      const bodyT = $('reporteCustomBody');
+      if (!bodyT) return;
+
+      // Headers
+      function sortIconCustom(colId) {
+        if (_sortCustomReport.col !== colId) return '<i class="fas fa-sort" style="opacity:.2;margin-left:4px;font-size:9px"></i>';
+        return _sortCustomReport.dir === 'asc'
+          ? '<i class="fas fa-sort-up" style="color:var(--red);margin-left:4px;font-size:9px"></i>'
+          : '<i class="fas fa-sort-down" style="color:var(--red);margin-left:4px;font-size:9px"></i>';
+      }
+
+      if (fCargo === 'almuerzos extra') {
+        // Ocultar personalizador de columnas cuando se muestran almuerzos extra
+        if ($('reportsLayoutContainer')) {
+          $('reportsLayoutContainer').style.display = 'none';
+        }
+
+        const selectPeriodo = $('periodoCustomReportes');
+        const idx = parseInt(selectPeriodo?.value || 0);
+        let periodo = periodos[idx];
+        let pInicio = periodo ? periodo.inicio : '';
+        let pFin = periodo ? periodo.fin : '';
+
+        let extras = (window.almuerzosExtra || []).filter(ae => {
+          let fNorm = normalizarFechaStr(ae.fecha);
+          return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
+        });
+
+        if (q) {
+          extras = extras.filter(ae => 
+            (ae.nombre || '').toLowerCase().includes(q) || 
+            (ae.observaciones || '').toLowerCase().includes(q) || 
+            (ae.empresa || '').toLowerCase().includes(q) ||
+            (ae.tipo || '').toLowerCase().includes(q)
+          );
+        }
+
+        // Ordenar
+        if (_sortCustomReport.col) {
+          extras.sort((a, b) => {
+            let va = a[_sortCustomReport.col] ?? '';
+            let vb = b[_sortCustomReport.col] ?? '';
+            if (typeof va === 'string') {
+              return _sortCustomReport.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+            }
+            return _sortCustomReport.dir === 'asc' ? va - vb : vb - va;
+          });
+        }
+
+        let headersHtml = `
+          <th onclick="sortReporteCustom('fecha')" style="cursor:pointer">Fecha ${sortIconCustom('fecha')}</th>
+          <th onclick="sortReporteCustom('nombre')" style="cursor:pointer">Descripción ${sortIconCustom('nombre')}</th>
+          <th onclick="sortReporteCustom('cantidad')" style="text-align:center; cursor:pointer">Cantidad ${sortIconCustom('cantidad')}</th>
+          <th onclick="sortReporteCustom('empresa')" style="cursor:pointer">Empresa/Destino ${sortIconCustom('empresa')}</th>
+          <th onclick="sortReporteCustom('observaciones')" style="cursor:pointer">Observaciones ${sortIconCustom('observaciones')}</th>
+          <th onclick="sortReporteCustom('tipo')" style="cursor:pointer">Tipo ${sortIconCustom('tipo')}</th>
+        `;
+
+        if (headerTr) headerTr.innerHTML = headersHtml;
+
+        if (!extras.length) {
+          bodyT.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No hay almuerzos extras registrados en este período.</td></tr>`;
+          if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = 'Mostrando 0 registros (0 almuerzos extras)';
+          return;
+        }
+
+        bodyT.innerHTML = extras.map(ae => {
+          let dateStr = ae.fecha;
+          try {
+            if (dateStr && dateStr.includes('T')) {
+              dateStr = dateStr.split('T')[0];
+            }
+          } catch(e) {}
+          return `<tr>
+            <td style="font-family:'Fira Code',monospace;font-size:11px">${dateStr}</td>
+            <td>
+              <div class="employee-cell">
+                <div class="employee-photo-placeholder" style="background:var(--indigo-lt); color:var(--indigo); display:flex; align-items:center; justify-content:center;"><i class="fas fa-utensils"></i></div>
+                <strong>${escapeHtml(ae.nombre || 'Almuerzo Extra')}</strong>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="pill late" style="font-weight:700;font-size:11px;padding:2px 7px">${ae.cantidad || 1}</span></td>
+            <td>${escapeHtml(ae.empresa || '—')}</td>
+            <td>${escapeHtml(ae.observaciones || '—')}</td>
+            <td><span class="pill ok" style="font-size:10px;padding:2px 7px">${escapeHtml(ae.tipo || 'Manual')}</span></td>
+          </tr>`;
+        }).join('');
+
+        if ($('reporteCustomInfo')) {
+          let totalCant = extras.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+          $('reporteCustomInfo').textContent = `Mostrando ${extras.length} registros (${totalCant} almuerzos extras)`;
+        }
+        return;
+      }
+
+      // Mostrar personalizador de columnas cuando se muestran reportes regulares
+      if ($('reportsLayoutContainer')) {
+        $('reportsLayoutContainer').style.display = 'grid';
+      }
+
       let data = (_reportesCustomData || []).filter(e => {
           let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
           let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
@@ -3293,56 +3703,52 @@
         });
       }
 
-      // Headers
-      function sortIconCustom(colId) {
-        if (_sortCustomReport.col !== colId) return '<i class="fas fa-sort" style="opacity:.2;margin-left:4px;font-size:9px"></i>';
-        return _sortCustomReport.dir === 'asc'
-          ? '<i class="fas fa-sort-up" style="color:var(--red);margin-left:4px;font-size:9px"></i>'
-          : '<i class="fas fa-sort-down" style="color:var(--red);margin-left:4px;font-size:9px"></i>';
-      }
-
-      let headersHtml = `<th onclick="sortReporteCustom('nombre')">Empleado ${sortIconCustom('nombre')}</th><th onclick="sortReporteCustom('area')">Área ${sortIconCustom('area')}</th>`;
+      let headersHtml = `<th onclick="sortReporteCustom('nombre')" style="cursor:pointer">Empleado ${sortIconCustom('nombre')}</th>`;
       COLUMNAS_DISPONIBLES.forEach(col => {
         if (columnasCustomActivas.includes(col.id)) {
-          headersHtml += `<th onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer;">${col.label} ${sortIconCustom(col.id)}</th>`;
+          if (col.id === 'area') {
+            headersHtml += `<th onclick="sortReporteCustom('area')" style="cursor:pointer">Área ${sortIconCustom('area')}</th>`;
+          } else {
+            headersHtml += `<th onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer;">${col.label} ${sortIconCustom(col.id)}</th>`;
+          }
         }
       });
 
-      const headerTr = $('reporteCustomHeaders');
       if (headerTr) headerTr.innerHTML = headersHtml;
 
-      // Body
-      const bodyT = $('reporteCustomBody');
-      if (!bodyT) return;
-
       if (!data.length) {
-        bodyT.innerHTML = `<tr><td colspan="${columnasCustomActivas.length + 2}" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No se encontraron resultados.</td></tr>`;
+        bodyT.innerHTML = `<tr><td colspan="${columnasCustomActivas.length + 1}" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No se encontraron resultados.</td></tr>`;
         if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = 'Mostrando 0 empleados';
         return;
       }
 
       bodyT.innerHTML = data.map(e => {
-        let rowHtml = `<tr><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td><td>${escapeHtml(e.area || '—')}</td>`;
+        let rowHtml = `<tr><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td>`;
 
         COLUMNAS_DISPONIBLES.forEach(col => {
           if (columnasCustomActivas.includes(col.id)) {
             const valor = e[col.id];
             let contenido = '';
-            if (col.tipo === 'tiempo') {
-              contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${minutosAHHMMSS(valor)}</span>`;
-            } else if (col.tipo === 'pct') {
-              let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
-              contenido = `<span class="pill ${pc}" style="font-size:11px;padding:2px 7px">${valor}%</span>`;
-            } else if (col.id === 'faltas') {
-              contenido = `<span class="pill ${valor > 0 ? 'miss' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
-            } else if (col.id === 'atrasos') {
-              contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
-            } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
-              contenido = `<strong style="font-family:'Fira Code',monospace;font-size:11px">${valor}</strong>`;
+            if (col.id === 'area') {
+              contenido = escapeHtml(valor || '—');
+              rowHtml += `<td>${contenido}</td>`;
             } else {
-              contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${valor}</span>`;
+              if (col.tipo === 'tiempo') {
+                contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${minutosAHHMMSS(valor)}</span>`;
+              } else if (col.tipo === 'pct') {
+                let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
+                contenido = `<span class="pill ${pc}" style="font-size:11px;padding:2px 7px">${valor}%</span>`;
+              } else if (col.id === 'faltas') {
+                contenido = `<span class="pill ${valor > 0 ? 'miss' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
+              } else if (col.id === 'atrasos') {
+                contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
+              } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
+                contenido = `<strong style="font-family:'Fira Code',monospace;font-size:11px">${valor}</strong>`;
+              } else {
+                contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${valor}</span>`;
+              }
+              rowHtml += `<td style="text-align:center">${contenido}</td>`;
             }
-            rowHtml += `<td style="text-align:center">${contenido}</td>`;
           }
         });
 
@@ -3350,13 +3756,48 @@
         return rowHtml;
       }).join('');
 
+      // Sync double scrollbars
+      const tableScroll = $('reporteCustomScroll');
+      const topScroll = $('customRepTopScroll');
+      if (tableScroll && topScroll) {
+        const dummy = topScroll.querySelector('.top-scroll-dummy');
+        if (dummy) {
+          setTimeout(() => {
+            dummy.style.width = tableScroll.scrollWidth + 'px';
+            topScroll.scrollLeft = tableScroll.scrollLeft;
+          }, 50);
+        }
+      }
+
+      if (typeof initScrollSync === 'function') {
+        initScrollSync('customRepTopScroll', 'reporteCustomScroll');
+      }
+
       if ($('reporteCustomInfo')) {
         $('reporteCustomInfo').textContent = `Mostrando ${data.length} empleados de ${empCache.length}`;
       }
     };
 
     window.restablecerColumnasDefault = function() {
-      columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+      // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
+      if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
+        $('filtroCargoReporte').value = '';
+        const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter');
+        btns.forEach(b => {
+          b.classList.remove('active');
+          b.style.background = '#f8fafc';
+          b.style.color = 'var(--g600)';
+          b.style.borderColor = 'var(--g200)';
+        });
+        const btnTodos = Array.from(btns).find(b => b.textContent.trim().toUpperCase() === 'TODOS');
+        if (btnTodos) {
+          btnTodos.classList.add('active');
+          btnTodos.style.background = 'var(--blue)';
+          btnTodos.style.color = '#fff';
+          btnTodos.style.borderColor = 'var(--blue)';
+        }
+      }
+      columnasCustomActivas = [];
       guardarColumnasCustomActivas(columnasCustomActivas);
       renderizarColumnasInteractivas();
       filtrarReporteInteractivo();
@@ -3364,6 +3805,24 @@
     };
 
     window.cargarPlantillaReporte = function(tipo) {
+      // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
+      if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
+        $('filtroCargoReporte').value = '';
+        const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter');
+        btns.forEach(b => {
+          b.classList.remove('active');
+          b.style.background = '#f8fafc';
+          b.style.color = 'var(--g600)';
+          b.style.borderColor = 'var(--g200)';
+        });
+        const btnTodos = Array.from(btns).find(b => b.textContent.trim().toUpperCase() === 'TODOS');
+        if (btnTodos) {
+          btnTodos.classList.add('active');
+          btnTodos.style.background = 'var(--blue)';
+          btnTodos.style.color = '#fff';
+          btnTodos.style.borderColor = 'var(--blue)';
+        }
+      }
       if (tipo === 'almuerzos') {
         columnasCustomActivas = ['asistencias', 'almPlanta', 'almFuera'];
         mostrarToast('Plantilla de Almuerzos cargada', 'success');
@@ -3383,50 +3842,98 @@
     };
 
     window.exportarExcelReporteCustom = function() {
-      if (!_reportesCustomData.length) {
-        mostrarToast('No hay datos para exportar', 'warning');
-        return;
-      }
-
+      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
+      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
       const selectPeriodo = $('periodoCustomReportes');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
       let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
 
-      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-      let data = (_reportesCustomData || []).filter(e => {
-          let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
-          return matchQ && matchCargo;
-      });
-
-      let headersHtml = '<th>Empleado</th><th>Área</th>';
-      COLUMNAS_DISPONIBLES.forEach(col => {
-        if (columnasCustomActivas.includes(col.id)) {
-          headersHtml += `<th>${col.label}</th>`;
+      let hasData = false;
+      let extras = [];
+      if (fCargo === 'almuerzos extra') {
+        let pInicio = periodo ? periodo.inicio : '';
+        let pFin = periodo ? periodo.fin : '';
+        extras = (window.almuerzosExtra || []).filter(ae => {
+          let fNorm = normalizarFechaStr(ae.fecha);
+          return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
+        });
+        if (q) {
+          extras = extras.filter(ae => 
+            (ae.nombre || '').toLowerCase().includes(q) || 
+            (ae.observaciones || '').toLowerCase().includes(q) || 
+            (ae.empresa || '').toLowerCase().includes(q) ||
+            (ae.tipo || '').toLowerCase().includes(q)
+          );
         }
-      });
+        hasData = extras.length > 0;
+      } else {
+        hasData = _reportesCustomData.length > 0;
+      }
 
-      let bodyHtml = data.map(e => {
-        let rowHtml = `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
+      if (!hasData) {
+        mostrarToast('No hay datos para exportar', 'warning');
+        return;
+      }
+
+      let headersHtml = '';
+      let bodyHtml = '';
+      let totalCols = 0;
+
+      if (fCargo === 'almuerzos extra') {
+        headersHtml = '<th>Fecha</th><th>Descripción</th><th style="text-align:center;">Cantidad</th><th>Empresa/Destino</th><th>Observaciones</th><th>Tipo</th>';
+        totalCols = 6;
+        bodyHtml = extras.map(ae => {
+          let dateStr = ae.fecha;
+          try {
+            if (dateStr && dateStr.includes('T')) {
+              dateStr = dateStr.split('T')[0];
+            }
+          } catch(e) {}
+          return `<tr>
+            <td>${dateStr}</td>
+            <td>${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
+            <td style="text-align:center;">${ae.cantidad || 1}</td>
+            <td>${escapeHtml(ae.empresa || '—')}</td>
+            <td>${escapeHtml(ae.observaciones || '—')}</td>
+            <td>${escapeHtml(ae.tipo || 'Manual')}</td>
+          </tr>`;
+        }).join('');
+      } else {
+        headersHtml = '<th>Empleado</th><th>Área</th>';
         COLUMNAS_DISPONIBLES.forEach(col => {
           if (columnasCustomActivas.includes(col.id)) {
-            const valor = e[col.id];
-            let contenido = '';
-            if (col.tipo === 'tiempo') {
-              contenido = minutosAHHMMSS(valor);
-            } else if (col.tipo === 'pct') {
-              contenido = `${valor}%`;
-            } else {
-              contenido = valor;
-            }
-            rowHtml += `<td style="text-align:center;">${contenido}</td>`;
+            headersHtml += `<th>${col.label}</th>`;
           }
         });
-        rowHtml += '</tr>';
-        return rowHtml;
-      }).join('');
+        totalCols = columnasCustomActivas.length + 2;
+
+        let data = (_reportesCustomData || []).filter(e => {
+            let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
+            let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+            return matchQ && matchCargo;
+        });
+
+        bodyHtml = data.map(e => {
+          let rowHtml = `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
+          COLUMNAS_DISPONIBLES.forEach(col => {
+            if (columnasCustomActivas.includes(col.id)) {
+              const valor = e[col.id];
+              let contenido = '';
+              if (col.tipo === 'tiempo') {
+                contenido = minutosAHHMMSS(valor);
+              } else if (col.tipo === 'pct') {
+                contenido = `${valor}%`;
+              } else {
+                contenido = valor;
+              }
+              rowHtml += `<td style="text-align:center;">${contenido}</td>`;
+            }
+          });
+          rowHtml += '</tr>';
+          return rowHtml;
+        }).join('');
+      }
 
       // Formato HTML premium nativo para Excel
       let excelHtml = `
@@ -3457,9 +3964,9 @@
         </head>
         <body>
           <table>
-            <tr><td colspan="${columnasCustomActivas.length + 2}" class="title-cell">TCONTROL S.A. - REPORTE DE ASISTENCIA</td></tr>
-            <tr><td colspan="${columnasCustomActivas.length + 2}" class="meta-cell">Periodo: ${periodoStr} | Generado: ${new Date().toLocaleString('es')}</td></tr>
-            <tr><td colspan="${columnasCustomActivas.length + 2}" style="height:15px;"></td></tr>
+            <tr><td colspan="${totalCols}" class="title-cell">TCONTROL S.A. - REPORTE DE ASISTENCIA</td></tr>
+            <tr><td colspan="${totalCols}" class="meta-cell">Periodo: ${periodoStr} | Generado: ${formatearTimestampCompleto(new Date())}</td></tr>
+            <tr><td colspan="${totalCols}" style="height:15px;"></td></tr>
             <thead>
               <tr>${headersHtml}</tr>
             </thead>
@@ -3484,11 +3991,8 @@
     };
 
     window.exportarGoogleSheetsReporteCustom = async function() {
-      if (!_reportesCustomData.length) {
-        mostrarToast('No hay datos para exportar', 'warning');
-        return;
-      }
-
+      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
+      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
       const selectPeriodo = $('periodoCustomReportes');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
@@ -3496,40 +4000,87 @@
       
       // Nombre de hoja seguro (max 30 chars, sin caracteres ilegales)
       let nombreHoja = `Rep_${periodoStr.replace(/ — /g, '_').replace(/ /g, '_')}`;
-      
-      let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-      let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-      let data = (_reportesCustomData || []).filter(e => {
-          let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
-          return matchQ && matchCargo;
-      });
 
-      // Construir cabeceras
-      let headers = ['Empleado', 'Área'];
-      COLUMNAS_DISPONIBLES.forEach(col => {
-        if (columnasCustomActivas.includes(col.id)) {
-          headers.push(col.label);
+      let hasData = false;
+      let extras = [];
+      if (fCargo === 'almuerzos extra') {
+        let pInicio = periodo ? periodo.inicio : '';
+        let pFin = periodo ? periodo.fin : '';
+        extras = (window.almuerzosExtra || []).filter(ae => {
+          let fNorm = normalizarFechaStr(ae.fecha);
+          return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
+        });
+        if (q) {
+          extras = extras.filter(ae => 
+            (ae.nombre || '').toLowerCase().includes(q) || 
+            (ae.observaciones || '').toLowerCase().includes(q) || 
+            (ae.empresa || '').toLowerCase().includes(q) ||
+            (ae.tipo || '').toLowerCase().includes(q)
+          );
         }
-      });
+        hasData = extras.length > 0;
+      } else {
+        hasData = _reportesCustomData.length > 0;
+      }
 
-      // Construir filas
-      let filas = data.map(e => {
-        let fila = [e.nombre, e.area || ''];
+      if (!hasData) {
+        mostrarToast('No hay datos para exportar', 'warning');
+        return;
+      }
+
+      // Construir cabeceras y filas
+      let headers = [];
+      let filas = [];
+
+      if (fCargo === 'almuerzos extra') {
+        headers = ['Fecha', 'Descripción', 'Cantidad', 'Empresa/Destino', 'Observaciones', 'Tipo'];
+        filas = extras.map(ae => {
+          let dateStr = ae.fecha;
+          try {
+            if (dateStr && dateStr.includes('T')) {
+              dateStr = dateStr.split('T')[0];
+            }
+          } catch(e) {}
+          return [
+            dateStr,
+            ae.nombre || 'Almuerzo Extra',
+            ae.cantidad || 1,
+            ae.empresa || '',
+            ae.observaciones || '',
+            ae.tipo || 'Manual'
+          ];
+        });
+      } else {
+        headers = ['Empleado', 'Área'];
         COLUMNAS_DISPONIBLES.forEach(col => {
           if (columnasCustomActivas.includes(col.id)) {
-            const valor = e[col.id];
-            if (col.tipo === 'tiempo') {
-              fila.push(minutosAHHMMSS(valor));
-            } else if (col.tipo === 'pct') {
-              fila.push(`${valor}%`);
-            } else {
-              fila.push(valor);
-            }
+            headers.push(col.label);
           }
         });
-        return fila;
-      });
+
+        let data = (_reportesCustomData || []).filter(e => {
+            let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
+            let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+            return matchQ && matchCargo;
+        });
+
+        filas = data.map(e => {
+          let fila = [e.nombre, e.area || ''];
+          COLUMNAS_DISPONIBLES.forEach(col => {
+            if (columnasCustomActivas.includes(col.id)) {
+              const valor = e[col.id];
+              if (col.tipo === 'tiempo') {
+                fila.push(minutosAHHMMSS(valor));
+              } else if (col.tipo === 'pct') {
+                fila.push(`${valor}%`);
+              } else {
+                fila.push(valor);
+              }
+            }
+          });
+          return fila;
+        });
+      }
 
       mostrarLoader(true);
       try {
@@ -3563,20 +4114,37 @@
     window.imprimirReporteCustom = function() {
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
       let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-      let data = (_reportesCustomData || []).filter(e => {
-          let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
-          return matchQ && matchCargo;
-      });
-      if (!data.length) {
-        mostrarToast('No hay datos para imprimir', 'warning');
-        return;
-      }
-
       const selectPeriodo = $('periodoCustomReportes');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
       let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
+
+      let hasData = false;
+      let extras = [];
+      if (fCargo === 'almuerzos extra') {
+        let pInicio = periodo ? periodo.inicio : '';
+        let pFin = periodo ? periodo.fin : '';
+        extras = (window.almuerzosExtra || []).filter(ae => {
+          let fNorm = normalizarFechaStr(ae.fecha);
+          return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
+        });
+        if (q) {
+          extras = extras.filter(ae => 
+            (ae.nombre || '').toLowerCase().includes(q) || 
+            (ae.observaciones || '').toLowerCase().includes(q) || 
+            (ae.empresa || '').toLowerCase().includes(q) ||
+            (ae.tipo || '').toLowerCase().includes(q)
+          );
+        }
+        hasData = extras.length > 0;
+      } else {
+        hasData = _reportesCustomData.length > 0;
+      }
+
+      if (!hasData) {
+        mostrarToast('No hay datos para imprimir', 'warning');
+        return;
+      }
 
       let printWindow = window.open('', '_blank');
       if (!printWindow) {
@@ -3584,41 +4152,77 @@
         return;
       }
 
-      // Generar headers de impresión
-      let headersHtml = '<th>Empleado</th><th>Área</th>';
-      COLUMNAS_DISPONIBLES.forEach(col => {
-        if (columnasCustomActivas.includes(col.id)) {
-          headersHtml += `<th>${col.label}</th>`;
-        }
-      });
+      // Generar headers y filas de impresión
+      let headersHtml = '';
+      let bodyHtml = '';
+      let totalMetaLabel = '';
+      let tituloReporte = '';
 
-      // Generar filas de impresión
-      let bodyHtml = data.map(e => {
-        let rowHtml = `<tr><td style="font-weight:600;">${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
+      if (fCargo === 'almuerzos extra') {
+        headersHtml = '<th>Fecha</th><th>Descripción</th><th style="text-align:center;">Cantidad</th><th>Empresa/Destino</th><th>Observaciones</th><th>Tipo</th>';
+        tituloReporte = 'TCONTROL S.A. - REPORTE DE ALMUERZOS EXTRAS';
+        let totalQty = extras.reduce((sum, ae) => sum + parseInt(ae.cantidad || 0), 0);
+        totalMetaLabel = `Total Almuerzos Extras: ${totalQty} | Registros: ${extras.length}`;
+
+        bodyHtml = extras.map(ae => {
+          let dateStr = ae.fecha;
+          try {
+            if (dateStr && dateStr.includes('T')) {
+              dateStr = dateStr.split('T')[0];
+            }
+          } catch(e) {}
+          return `<tr>
+            <td style="font-family:monospace;">${dateStr}</td>
+            <td style="font-weight:600;">${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
+            <td style="text-align:center;">${ae.cantidad || 1}</td>
+            <td>${escapeHtml(ae.empresa || '—')}</td>
+            <td>${escapeHtml(ae.observaciones || '—')}</td>
+            <td>${escapeHtml(ae.tipo || 'Manual')}</td>
+          </tr>`;
+        }).join('');
+      } else {
+        headersHtml = '<th>Empleado</th><th>Área</th>';
         COLUMNAS_DISPONIBLES.forEach(col => {
           if (columnasCustomActivas.includes(col.id)) {
-            const valor = e[col.id];
-            let contenido = '';
-            if (col.tipo === 'tiempo') {
-              contenido = minutosAHHMMSS(valor);
-            } else if (col.tipo === 'pct') {
-              contenido = `${valor}%`;
-            } else {
-              contenido = valor;
-            }
-            rowHtml += `<td style="text-align:center;">${contenido}</td>`;
+            headersHtml += `<th>${col.label}</th>`;
           }
         });
-        rowHtml += '</tr>';
-        return rowHtml;
-      }).join('');
+        tituloReporte = 'TCONTROL S.A. - REPORTE OFICIAL DE ASISTENCIA';
+
+        let data = (_reportesCustomData || []).filter(e => {
+            let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
+            let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+            return matchQ && matchCargo;
+        });
+        totalMetaLabel = `Total Empleados Evaluados: ${data.length}`;
+
+        bodyHtml = data.map(e => {
+          let rowHtml = `<tr><td style="font-weight:600;">${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
+          COLUMNAS_DISPONIBLES.forEach(col => {
+            if (columnasCustomActivas.includes(col.id)) {
+              const valor = e[col.id];
+              let contenido = '';
+              if (col.tipo === 'tiempo') {
+                contenido = minutosAHHMMSS(valor);
+              } else if (col.tipo === 'pct') {
+                contenido = `${valor}%`;
+              } else {
+                contenido = valor;
+              }
+              rowHtml += `<td style="text-align:center;">${contenido}</td>`;
+            }
+          });
+          rowHtml += '</tr>';
+          return rowHtml;
+        }).join('');
+      }
 
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>Reporte de Asistencia - ${periodoStr}</title>
+          <title>${tituloReporte} - ${periodoStr}</title>
           <style>
             body {
               font-family: Arial, sans-serif;
@@ -3696,12 +4300,12 @@
         </head>
         <body>
           <div class="header">
-            <h1>TCONTROL S.A. - REPORTE OFICIAL DE ASISTENCIA</h1>
+            <h1>${tituloReporte}</h1>
             <p>Período de Consulta: ${periodoStr}</p>
           </div>
           <div class="info-meta">
-            <div>Generado el: ${new Date().toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-            <div>Total Empleados Evaluados: ${data.length}</div>
+            <div>Generado el: ${formatearTimestampCompleto(new Date())}</div>
+            <div>${totalMetaLabel}</div>
           </div>
           <table>
             <thead>

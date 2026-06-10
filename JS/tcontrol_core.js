@@ -61,11 +61,16 @@ function obtenerFechaHoraEstricta(dateObj = new Date()) {
     const hh = String(dateObj.getHours()).padStart(2, '0');
     const mm = String(dateObj.getMinutes()).padStart(2, '0');
     const ss = String(dateObj.getSeconds()).padStart(2, '0');
-    return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+    return `${d}-${m}-${y} ${hh}:${mm}:${ss}`;
 }
 
 // ========== PULL TO REFRESH ==========
 document.addEventListener('DOMContentLoaded', () => {
+    // Desactivar en la vista del supervisor
+    if (window.location.pathname.includes('supervisor') || document.getElementById('btnMobileMenu')) {
+        return;
+    }
+
     let startY = 0;
     let currentY = 0;
     let isPulling = false;

@@ -245,7 +245,7 @@
 
         function formatearFechaCorta() {
             const d = new Date();
-            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
         }
 
         function formatearFechaParaGrupo(fecha) {
@@ -1710,7 +1710,7 @@
                 if (rFecha) {
                     let d = null;
                     if (typeof rFecha === 'string') {
-                        const parsed = rFecha.includes('T') ? rFecha.split('T')[0] : rFecha;
+                        const parsed = /^\d{4}-\d{2}-\d{2}T/.test(rFecha) ? rFecha.split('T')[0] : rFecha;
                         d = new Date(parsed);
                     } else if (rFecha instanceof Date) {
                         d = rFecha;
@@ -1746,7 +1746,7 @@
                     if (!rFecha) return false;
                     let checkStr = '';
                     if (typeof rFecha === 'string') {
-                        if (rFecha.includes('T')) checkStr = rFecha.split('T')[0];
+                        if (/^\d{4}-\d{2}-\d{2}T/.test(rFecha)) checkStr = rFecha.split('T')[0];
                         else checkStr = rFecha.substring(0, 10);
                     } else if (rFecha instanceof Date) {
                         const tzDate2 = new Date(rFecha);
@@ -1898,7 +1898,7 @@
                 const fecha = getVal(r, 'fecha', 0) || r[0];
                 let fStr = '';
                 if (fecha instanceof Date) fStr = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
-                else fStr = String(fecha).split('T')[0];
+                else fStr = /^\d{4}-\d{2}-\d{2}T/.test(String(fecha)) ? String(fecha).split('T')[0] : String(fecha).substring(0, 10);
                 return fStr === hoyStr;
             });
 
@@ -2016,7 +2016,7 @@
 
             // Inicializar variables para la credencial
             const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
-            const insignia = calcularInsigniaPersonal();
+            const stats = calcularEstadisticas();
             const areaInfo = iconoDeArea(empleado.area);
 
             // Crear globos persistentes que permanecen todo el día (via elementos fixed)
@@ -2079,7 +2079,11 @@
                             </div>
                             <div class="employee-id-badge">ID: ${empleado.id || '---'}</div>
                         </div>
-                        <div style="margin-top: 35px; margin-bottom: 6px;">
+                        <!-- Insignias debajo del ID del usuario -->
+                        <div class="insignias-container-credencial" style="margin-top: 38px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 0px; position: relative; z-index: 20;">
+                            ${generarInsigniasHTMLCompacto(stats)}
+                        </div>
+                        <div style="margin-top: 15px; margin-bottom: 6px;">
                             <div style="color: #64748b; font-size: clamp(12px, 3.5vw, 14px); font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
                                 ${(() => {
                     const h = new Date().getHours();
@@ -2133,11 +2137,11 @@
                             </div>
                             <!-- Tarjeta de Almuerzo -->
                             <!-- Tarjeta de Almuerzo: Ahora proporcional e integrada en el grid -->
-                            <div class="status-card lunch ${almuerzo === 'SI' ? 'lunch-animated-si' : almuerzo === 'NO' ? 'lunch-animated-no' : ''}" 
+                            <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'lunch-animated-no' : ''}" 
                                  style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px;">
                                 
                                 <div class="status-icon" style="height: 70px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; position: relative;">
-                                    ${almuerzo === 'SI'
+                                    ${(almuerzo === 'SI' || almuerzo === 'PLANTA')
                     ? `
                                         <div style="position: absolute; width: 60px; height: 60px; background: radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
                                         <img src="almuerzo.gif" alt="Almuerzo" style="width: 90px; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)); animation: float-img 3s ease-in-out infinite;">
@@ -2149,8 +2153,8 @@
                                 </div>
 
                                 <div class="status-label" style="font-size: 10px;">ALMUERZO</div>
-                                <div class="status-value" style="font-size: clamp(12px, 3.5vw, 14px); font-weight: 800; ${almuerzo === 'SI' ? 'color:#059669;' : almuerzo === 'NO' ? 'color:#2563eb;' : ''}">
-                                    ${almuerzo === 'SI' ? 'Planta' : almuerzo === 'NO' ? 'Fuera' : '---'}
+                                <div class="status-value" style="font-size: clamp(12px, 3.5vw, 14px); font-weight: 800; ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'color:#059669;' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'color:#2563eb;' : ''}">
+                                    ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Sí' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'No' : '---'}
                                 </div>
 
                                 <style>
@@ -2193,7 +2197,10 @@
                     return `
                         <button class="btn-main-action ${btn.class}" onclick="${btn.type !== 'NONE' ? `iniciarRegistro('${btn.type}')` : ''}" ${btn.disabled}>
                             <div class="btn-type"><i class="fas ${btn.icon}"></i> ${btn.label}</div>
-                            <div id="btnTime" class="btn-time">--:--:--</div>
+                            ${tieneSalida
+                                ? `<div id="btnTime" class="btn-time" data-completa="true">COMPLETA</div>`
+                                : `<div id="btnTime" class="btn-time">--:--:--</div>`
+                            }
                         </button>
                         `;
                 })()}
@@ -2246,7 +2253,13 @@
                 const timeStr = `${hh}:${mm}:${ss}`;
 
                 if (clockEl) clockEl.textContent = timeStr;
-                if (btnTime) btnTime.textContent = timeStr;
+                if (btnTime) {
+                    if (btnTime.getAttribute('data-completa') === 'true') {
+                        btnTime.textContent = 'COMPLETA';
+                    } else {
+                        btnTime.textContent = timeStr;
+                    }
+                }
 
                 if (dateEl) {
                     const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -2266,6 +2279,166 @@
 
             // Calcular estadísticas generales
             const stats = calcularEstadisticas();
+
+            // Formatear fecha/hora actual
+            function obtenerFechaHoraActualFormateada() {
+                const ahora = new Date();
+                const dia = String(ahora.getDate()).padStart(2, '0');
+                const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+                const anio = ahora.getFullYear();
+                const hh = String(ahora.getHours()).padStart(2, '0');
+                const mm = String(ahora.getMinutes()).padStart(2, '0');
+                const ss = String(ahora.getSeconds()).padStart(2, '0');
+                return `${dia}-${mes}-${anio} ${hh}:${mm}:${ss}`;
+            }
+
+            const formatMins = (mins) => {
+                const h = Math.floor(mins / 60);
+                const m = Math.floor(mins % 60);
+                return `${h}h ${m}m`;
+            };
+
+            // Generar logros del periodo
+            let logrosHTML = '';
+            
+            // Logro 1: Asistencia (basado en días trabajados)
+            let asistenciaTitulo = '';
+            let asistenciaDesc = '';
+            let asistenciaIcono = '';
+            let asistenciaColor = '';
+            
+            if (stats.diasTrabajados >= 15) {
+                asistenciaTitulo = 'Asistencia de Platino';
+                asistenciaDesc = `¡Extraordinario! Has registrado ${stats.diasTrabajados} días laborados en este período. Excelente compromiso.`;
+                asistenciaIcono = '🏆';
+                asistenciaColor = 'linear-gradient(135deg, #e2e8f0, #cbd5e1)';
+            } else if (stats.diasTrabajados >= 8) {
+                asistenciaTitulo = 'Asistencia de Oro';
+                asistenciaDesc = `Muy buena constancia con ${stats.diasTrabajados} días laborados en este período. ¡Sigue así!`;
+                asistenciaIcono = '🥇';
+                asistenciaColor = 'linear-gradient(135deg, #fef3c7, #fde68a)';
+            } else if (stats.diasTrabajados >= 1) {
+                asistenciaTitulo = 'Asistencia de Plata';
+                asistenciaDesc = `Has registrado ${stats.diasTrabajados} días laborados en este período. Buen inicio.`;
+                asistenciaIcono = '🥈';
+                asistenciaColor = 'linear-gradient(135deg, #ffedd5, #fed7aa)';
+            } else {
+                asistenciaTitulo = 'Iniciando Camino';
+                asistenciaDesc = 'Aún no registras asistencias en este período. ¡Registra tu entrada hoy!';
+                asistenciaIcono = '🥉';
+                asistenciaColor = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+            }
+
+            logrosHTML += `
+                <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <div class="achievement-icon" style="font-size: 24px; background: ${asistenciaColor}; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
+                        ${asistenciaIcono}
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; font-size: 13px; color: #1e293b;">${asistenciaTitulo}</div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${asistenciaDesc}</div>
+                    </div>
+                </div>
+            `;
+
+            // Logro 2: Puntualidad (basado en porcentaje)
+            const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
+            let puntualidadTitulo = '';
+            let puntualidadDesc = '';
+            let puntualidadIcono = '';
+            let puntualidadColor = '';
+            
+            if (stats.diasTrabajados === 0) {
+                puntualidadTitulo = 'Sin Registro';
+                puntualidadDesc = 'Se evaluará tu puntualidad una vez que registres asistencias.';
+                puntualidadIcono = '⏱️';
+                puntualidadColor = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+            } else if (puntualidadPct === 100) {
+                puntualidadTitulo = 'Puntualidad Impecable (100%)';
+                puntualidadDesc = '¡Asombroso! No registras ningún atraso en este período. Eres un ejemplo de puntualidad.';
+                puntualidadIcono = '🌟';
+                puntualidadColor = 'linear-gradient(135deg, #ecfdf5, #a7f3d0)';
+            } else if (puntualidadPct >= 90) {
+                puntualidadTitulo = 'Puntualidad de Élite';
+                puntualidadDesc = `Excelente puntualidad del ${puntualidadPct}% (${stats.diasTrabajados - stats.atrasos} de ${stats.diasTrabajados} días a tiempo).`;
+                puntualidadIcono = '🎖️';
+                puntualidadColor = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
+            } else if (puntualidadPct >= 75) {
+                puntualidadTitulo = 'Buen Ritmo de Entrada';
+                puntualidadDesc = `Has mantenido un ${puntualidadPct}% de puntualidad en el periodo. ¡Sigue concentrado!`;
+                puntualidadIcono = '👍';
+                puntualidadColor = 'linear-gradient(135deg, #eff6ff, #dbeafe)';
+            } else {
+                puntualidadTitulo = 'Puntualidad por Mejorar';
+                puntualidadDesc = `Tienes un ${puntualidadPct}% de puntualidad (${stats.atrasos} atrasos en ${stats.diasTrabajados} días). ¡Llega más temprano!`;
+                puntualidadIcono = '⚠️';
+                puntualidadColor = 'linear-gradient(135deg, #fff5f5, #fed7d7)';
+            }
+
+            logrosHTML += `
+                <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 8px;">
+                    <div class="achievement-icon" style="font-size: 24px; background: ${puntualidadColor}; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
+                        ${puntualidadIcono}
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; font-size: 13px; color: #1e293b;">${puntualidadTitulo}</div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${puntualidadDesc}</div>
+                    </div>
+                </div>
+            `;
+
+            // Logro 3: Campo
+            if (stats.minutosCampo > 0) {
+                const campoMinsStr = formatMins(stats.minutosCampo);
+                logrosHTML += `
+                    <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 8px;">
+                        <div class="achievement-icon" style="font-size: 24px; background: linear-gradient(135deg, #f0f9ff, #e0f2fe); width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
+                            🏗️
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; font-size: 13px; color: #1e293b;">Héroe de Campo</div>
+                            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Has sumado ${campoMinsStr} trabajando activamente en campo durante este período.</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Logro 4: Almuerzo Saludable (basado en almuerzos en planta)
+            if (stats.almuerzos > 0) {
+                let almTitulo = '';
+                let almDesc = '';
+                let almIcono = '';
+                let almColor = '';
+                
+                if (stats.almuerzos >= 15) {
+                    almTitulo = 'Almuerzo Platinum';
+                    almDesc = `¡Espectacular! Has almorzado en planta ${stats.almuerzos} veces en este período, priorizando tu permanencia y bienestar.`;
+                    almIcono = '👑';
+                    almColor = 'linear-gradient(135deg, #f0fdf4, #bbf7d0)';
+                } else if (stats.almuerzos >= 8) {
+                    almTitulo = 'Almuerzo de Oro';
+                    almDesc = `Muy buen hábito. Has registrado ${stats.almuerzos} almuerzos en la planta durante este período.`;
+                    almIcono = '🥗';
+                    almColor = 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
+                } else {
+                    almTitulo = 'Almuerzo de Plata';
+                    almDesc = `Has registrado ${stats.almuerzos} almuerzos en la planta. ¡Sigue manteniendo tu constancia!`;
+                    almIcono = '🥪';
+                    almColor = 'linear-gradient(135deg, #fdf8f6, #fee2e2)';
+                }
+
+                logrosHTML += `
+                    <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 8px;">
+                        <div class="achievement-icon" style="font-size: 24px; background: ${almColor}; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
+                            ${almIcono}
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; font-size: 13px; color: #1e293b;">${almTitulo}</div>
+                            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${almDesc}</div>
+                        </div>
+                    </div>
+                `;
+            }
 
             const hoy = new Date();
             const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
@@ -2295,99 +2468,99 @@
 
             mainContent.innerHTML = `
             <div class="page">
-                <!-- SECCIÓN PAUSADA: RESUMEN HOY 
-                <div class="glass-card">
-                    ...
-                </div>
-                -->
                 
-                <!-- ESTADÍSTICAS GENERALES -->
+                <!-- RESUMEN DE PERÍODO (Estadísticas Generales y Horas Unificadas) -->
                 <div class="glass-card mt-3">
-                    <h5 class="fw-bold mb-3" style="font-size: clamp(14px, 4.5vw, 16px);"><i class="fas fa-chart-bar"></i> Estadísticas Generales</h5>
+                    <h5 class="fw-bold mb-3" style="font-size: clamp(14px, 4.5vw, 16px);"><i class="fas fa-chart-bar text-primary"></i> Resumen del Período</h5>
                     
-                    <!-- Primera fila: Resumen rápido -->
-                    <div class="row g-3 mb-4">
-                        <div class="col-6">
-                            <div class="stat-card" style="font-size: clamp(11px, 3.2vw, 13px); border: 2px solid #667eea;">
-                                <div style="font-size: clamp(10px, 3vw, 12px); color: #667eea; font-weight: 600; margin-bottom: 4px;">📅 DÍAS</div>
-                                <div class="stat-value" style="font-size: clamp(20px, 5.5vw, 28px); color: #667eea;">${stats.diasTrabajados}</div>
-                                <small class="text-muted">Trabajados</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="stat-card" style="font-size: clamp(11px, 3.2vw, 13px); border: 2px solid #f44336;">
-                                <div style="font-size: clamp(10px, 3vw, 12px); color: #f44336; font-weight: 600; margin-bottom: 4px;">⚠️ ATRASOS</div>
-                                <div class="stat-value" style="font-size: clamp(20px, 5.5vw, 28px); color: #f44336;">${stats.atrasos}</div>
-                                <small class="text-muted">Registrados</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="stat-card" style="font-size: clamp(11px, 3.2vw, 13px); border: 2px solid #2196f3;">
-                                <div style="font-size: clamp(10px, 3vw, 12px); color: #2196f3; font-weight: 600; margin-bottom: 4px;">🍽️ ALMUERZOS</div>
-                                <div class="stat-value" style="font-size: clamp(20px, 5.5vw, 28px); color: #2196f3;">${stats.almuerzos}</div>
-                                <small class="text-muted">En planta</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="stat-card" style="font-size: clamp(11px, 3.2vw, 13px); border: 2px solid #4caf50;">
-                                <div style="font-size: clamp(10px, 3vw, 12px); color: #4caf50; font-weight: 600; margin-bottom: 4px;">⏱️ SALIDAS TEMP</div>
-                                <div class="stat-value" style="font-size: clamp(20px, 5.5vw, 28px); color: #4caf50;">${stats.salidas_tempranas}</div>
-                                <small class="text-muted">Justificadas</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Segunda fila: Horas de trabajo -->
-                    <div class="row g-3 mb-3">
-                        <div class="col-12">
-                            <div style="font-size: clamp(11px, 3.2vw, 13px); font-weight: 600; color: #333; margin-bottom: 8px;">⏳ HORAS DE TRABAJO</div>
-                        </div>
-                        <div class="col-4">
-                            <div class="stat-card bg-success bg-opacity-10 border border-success" style="font-size: clamp(11px, 3.2vw, 13px);">
-                                <div class="stat-label" style="color: #2e7d32; font-size: clamp(10px, 3vw, 12px);">Horas Normales</div>
-                                <div class="stat-value text-success" style="font-size: clamp(18px, 5vw, 22px);">${stats.horas_normales}</div>
-                                <small class="text-muted">(hasta 8h/día)</small>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="stat-card bg-warning bg-opacity-10 border border-warning" style="font-size: clamp(11px, 3.2vw, 13px);">
-                                <div class="stat-label" style="color: #f57c00; font-size: clamp(10px, 3vw, 12px);">Extras (50%)</div>
-                                <div class="stat-value text-warning" style="font-size: clamp(18px, 5vw, 22px);">${stats.horas_extras_50}</div>
-                                <small class="text-muted">(sobre 8h/día)</small>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="stat-card bg-danger bg-opacity-10 border border-danger" style="font-size: clamp(11px, 3.2vw, 13px);">
-                                <div class="stat-label" style="color: #d32f2f; font-size: clamp(10px, 3vw, 12px);">🔴 Atrasos</div>
-                                <div class="stat-value text-danger" style="font-size: clamp(18px, 5vw, 22px);">+${stats.minutosAtrasoTotal}m</div>
-                                <small class="text-muted">(minutos totales)</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Tercera fila: Promedios -->
                     <div class="row g-3">
-                        <div class="col-12">
-                            <div style="font-size: clamp(11px, 3.2vw, 13px); font-weight: 600; color: #333; margin-bottom: 8px;">📊 ANÁLISIS DIARIO</div>
-                        </div>
-                        <div class="col-4">
-                            <div class="stat-card" style="font-size: clamp(10px, 3vw, 12px); text-align: center;">
-                                <div style="color: #666; margin-bottom: 6px;">Promedio</div>
-                                <div class="stat-value" style="font-size: clamp(16px, 4.5vw, 20px); color: #667eea;">${stats.promedioDiario}</div>
+                        <!-- Tarjeta 1: Asistencia y Almuerzos -->
+                        <div class="col-12 col-md-4">
+                            <div class="stat-card" style="padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1.5px solid rgba(226, 232, 240, 0.8); padding-bottom: 10px;">
+                                    <div style="font-size: 20px; background: rgba(99, 102, 241, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">📅</div>
+                                    <div style="font-weight: 750; font-size: clamp(11px, 3.2vw, 13px); color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">Asistencia y Almuerzos</div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; justify-content: center;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Días Trabajados</span>
+                                        <span style="font-size: clamp(15px, 4.5vw, 18px); color: #4f46e5; font-weight: 850;">${stats.diasTrabajados}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Almuerzos en Planta</span>
+                                        <span style="font-size: clamp(15px, 4.5vw, 18px); color: #0284c7; font-weight: 850;">${stats.almuerzos}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-4">
-                            <div class="stat-card" style="font-size: clamp(10px, 3vw, 12px); text-align: center;">
-                                <div style="color: #666; margin-bottom: 6px;">Máximo</div>
-                                <div class="stat-value" style="font-size: clamp(16px, 4.5vw, 20px); color: #4caf50;">${stats.maxDia}</div>
+
+                        <!-- Tarjeta 2: Horas Extras y Campo -->
+                        <div class="col-12 col-md-4">
+                            <div class="stat-card" style="padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1.5px solid rgba(226, 232, 240, 0.8); padding-bottom: 10px;">
+                                    <div style="font-size: 20px; background: rgba(245, 158, 11, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">⏳</div>
+                                    <div style="font-weight: 750; font-size: clamp(11px, 3.2vw, 13px); color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">Horas Extras y Campo</div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; justify-content: center;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600; display: block;">Extras (50%)</span>
+                                            <small style="font-size: 9px; color: #94a3b8; font-weight: 500;">(A+C Autorizadas)</small>
+                                        </div>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: #d97706; font-weight: 850;">${stats.horas_extras_50}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600; display: block;">Extras (100%)</span>
+                                            <small style="font-size: 9px; color: #94a3b8; font-weight: 500;">(B+D Feriado/Sáb/Dom)</small>
+                                        </div>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: #dc2626; font-weight: 850;">${stats.horas_extras_100}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600; display: block;">Horas en Campo</span>
+                                            <small style="font-size: 9px; color: #94a3b8; font-weight: 500;">(Labores de Campo)</small>
+                                        </div>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: #2563eb; font-weight: 850;">${stats.horas_campo}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-4">
-                            <div class="stat-card" style="font-size: clamp(10px, 3vw, 12px); text-align: center;">
-                                <div style="color: #666; margin-bottom: 6px;">Mínimo</div>
-                                <div class="stat-value" style="font-size: clamp(16px, 4.5vw, 20px); color: #f44336;">${stats.minDia}</div>
+
+                        <!-- Tarjeta 3: Puntualidad y Control -->
+                        <div class="col-12 col-md-4">
+                            <div class="stat-card" style="padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1.5px solid rgba(226, 232, 240, 0.8); padding-bottom: 10px;">
+                                    <div style="font-size: 20px; background: rgba(239, 68, 68, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">⏱️</div>
+                                    <div style="font-weight: 750; font-size: clamp(11px, 3.2vw, 13px); color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">Puntualidad y Control</div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; justify-content: center;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Días con Atraso</span>
+                                        <span style="font-size: clamp(15px, 4.5vw, 18px); color: #1f2937; font-weight: 850;">${stats.atrasos}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Demoras Acumuladas</span>
+                                        <span style="font-size: clamp(13px, 3.8vw, 15px); color: #4b5563; font-weight: 800;">+${stats.minutosAtrasoTotal} min</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Salidas Tempranas</span>
+                                        <span style="font-size: clamp(15px, 4.5vw, 18px); color: #10b981; font-weight: 850;">${stats.salidas_tempranas}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN DE LOGROS -->
+                <div class="glass-card mt-3">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h5 class="fw-bold m-0" style="font-size: clamp(14px, 4.5vw, 16px); color: #1e3a8a;"><i class="fas fa-trophy text-warning"></i> Mis Logros</h5>
+                        <span style="font-size: 10px; color: #64748b; font-weight: 600;">Actual al: ${obtenerFechaHoraActualFormateada()}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${logrosHTML}
                     </div>
                 </div>
                 
@@ -2397,7 +2570,7 @@
                     <div id="historialAgrupado"></div>
                 </div>
             </div>
-        `;
+            `;
 
             actualizarHistorialAgrupado();
 
@@ -2513,8 +2686,15 @@
                 finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 25);
             }
 
-            const iniStr = inicioPeriodo.toISOString().split('T')[0];
-            const finStr = finPeriodo.toISOString().split('T')[0];
+            function formatearFechaLocal(d) {
+                let y = d.getFullYear();
+                let m = String(d.getMonth() + 1).padStart(2, '0');
+                let day = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${day}`;
+            }
+
+            const iniStr = formatearFechaLocal(inicioPeriodo);
+            const finStr = formatearFechaLocal(finPeriodo);
 
             // Filtrar registros por el periodo actual
             const registrosFiltrados = registrosCompletos.filter(r => {
@@ -2528,12 +2708,13 @@
                     atrasos: 0,
                     almuerzos: 0,
                     salidas_tempranas: 0,
-                    horas_normales: '0h',
-                    horas_extras_50: '0h',
-                    promedioDiario: '0h',
-                    maxDia: '0h',
-                    minDia: '0h',
-                    minutosAtrasoTotal: 0
+                    horas_extras_50: '0h 0m',
+                    horas_extras_100: '0h 0m',
+                    horas_campo: '0h 0m',
+                    minutosAtrasoTotal: 0,
+                    minutosExtras50: 0,
+                    minutosExtras100: 0,
+                    minutosCampo: 0
                 };
             }
 
@@ -2552,33 +2733,75 @@
             // Días trabajados (contar días únicos)
             const diasTrabajados = Object.keys(grupos).length;
 
-            // Atrasos (días con razon_entrada_tardia)
+            let totalExtras50 = 0;
+            let totalExtras100 = 0;
+            let totalHorasCampo = 0;
+
+            let horasExtra50 = 0;
+            let horasExtra100 = 0;
+            let horasCampoNormales = 0;
+            let horasCampo50 = 0;
+            let horasCampo100 = 0;
+
             let atrasos = 0;
+            let minutosAtrasoTotal = 0;
             let almuerzos = 0;
             let salidas_tempranas = 0;
-            let minutosAtrasoTotal = 0;
 
-            let totalMinutos = 0;
-            let totalMinutosExtras50 = 0;
-            const horasPorDia = [];
+            // Aligned references from supervisor (strictly 450 = 7:30 and 975 = 16:15)
+            const H_INI_REF = 450;
+            const H_FIN_REF = 975;
+
+            function esFeriadoODomingo(fechaStr) {
+                if (!fechaStr) return false;
+                const d = new Date(fechaStr + 'T12:00:00');
+                if (d.getDay() === 0) return true;
+                return esFeriado(fechaStr);
+            }
+
+            function obtenerMinutos(valor) {
+                if (!valor) return null;
+                if (typeof valor === 'number') {
+                    if (valor > 0 && valor < 1) {
+                        let s = Math.round(valor * 86400);
+                        return Math.floor(s / 3600) * 60 + Math.floor((s % 3600) / 60);
+                    }
+                    if (valor > 1e12) {
+                        let d = new Date(valor);
+                        if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+                    }
+                    return null;
+                }
+                if (typeof valor === 'string') {
+                    let m = valor.match(/(\d{1,2}):(\d{2})/);
+                    if (m) return parseInt(m[1]) * 60 + parseInt(m[2]);
+                    let d = new Date(valor);
+                    if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+                }
+                if (valor instanceof Date) return valor.getHours() * 60 + valor.getMinutes();
+                return null;
+            }
 
             Object.entries(grupos).forEach(([fechaKey, registrosDia]) => {
                 const entrada = registrosDia.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
                 const salida = registrosDia.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
+                const esFestivo = esFeriadoODomingo(fechaKey) || (new Date(fechaKey + 'T12:00:00').getDay() === 6);
 
-                // Calcular atraso automáticamente basado en hora real
+                // Calcular atraso automáticamente basado en hora local real (nunca usar timestamp por desfase UTC)
                 if (entrada) {
-                    const horaEntrada = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
-                    const minAtraso = calcularMinutosAtraso(horaEntrada, fechaKey);
-
-                    if (minAtraso > 0) {
-                        atrasos++;
-                        minutosAtrasoTotal += minAtraso;
+                    const horaEntrada = getVal(entrada, 'hora', 5) || entrada[5];
+                    const mEntrada = obtenerMinutos(horaEntrada);
+                    if (mEntrada !== null) {
+                        const refEntrada = esFestivo ? 420 : H_INI_REF;
+                        if (mEntrada > refEntrada) {
+                            atrasos++;
+                            minutosAtrasoTotal += (mEntrada - refEntrada);
+                        }
                     }
                 }
 
-                // Contar almuerzos por día (si hay entrada con almuerzo=SI)
-                if (entrada && (getVal(entrada, 'almuerzo', 4) || entrada[4]) === 'SI') {
+                // Contar almuerzos por día (si hay entrada con almuerzo=SI o PLANTA)
+                if (entrada && ((getVal(entrada, 'almuerzo', 4) || entrada[4]) === 'SI' || (getVal(entrada, 'almuerzo', 4) || entrada[4]) === 'PLANTA')) {
                     almuerzos++;
                 }
 
@@ -2590,71 +2813,231 @@
                     salidas_tempranas++;
                 }
 
-                // Calcular horas trabajadas
-                if (entrada && salida) {
-                    try {
-                        const f = getVal(entrada, 'fecha', 0) || entrada[0];
-                        const hE = getVal(entrada, 'hora', 5) || entrada[5];
-                        const hS = getVal(salida, 'hora', 5) || salida[5];
+                // Procesar periodos del día para horas de trabajo
+                let periodosDia = [];
+                let entradaPendiente = null;
 
-                        if (f && hE && hS) {
-                            // Crear fechas robustas combinando fecha + hora, o usando el timestamp directo
-                            const entradaTs = getVal(entrada, 'timestamp', 2) || `${f}T${hE}`;
-                            const salidaTs = getVal(salida, 'timestamp', 2) || `${f}T${hS}`;
+                let sortedRegs = [...registrosDia].sort((a, b) => {
+                    const timeA = getVal(a, 'hora', 5) || a[5];
+                    const timeB = getVal(b, 'hora', 5) || b[5];
+                    return String(timeA).localeCompare(String(timeB));
+                });
 
-                            const entradaDate = parseDateSafe(entradaTs);
-                            const salidaDate = parseDateSafe(salidaTs);
+                sortedRegs.forEach(r => {
+                    const tipo = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
+                    if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+                        entradaPendiente = r;
+                    } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+                        if (entradaPendiente) {
+                            periodosDia.push({ entrada: entradaPendiente, salida: r });
+                            entradaPendiente = null;
+                        } else {
+                            periodosDia.push({ entrada: null, salida: r });
+                        }
+                    }
+                });
+                if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
 
-                            if (!isNaN(entradaDate.getTime()) && !isNaN(salidaDate.getTime()) && salidaDate > entradaDate) {
-                                let minutosBrutos = (salidaDate - entradaDate) / (1000 * 60);
-                                // Restar 30m almuerzo + 15m descanso = 45m
-                                let minutosNetos = Math.max(0, minutosBrutos - 45);
+                let minutosTrabajadosHoy = 0;
+                periodosDia.forEach(p => {
+                    if (!p.entrada || !p.salida) return;
+                    let mE = obtenerMinutos(getVal(p.entrada, 'hora', 5) || p.entrada[5]);
+                    let mS = obtenerMinutos(getVal(p.salida, 'hora', 5) || p.salida[5]);
+                    if (mE === null || mS === null || mS <= mE) return;
+                    minutosTrabajadosHoy += (mS - mE);
+                });
 
-                                horasPorDia.push(minutosNetos);
+                let netWorked = minutosTrabajadosHoy;
+                if (!esFestivo && netWorked > 240) netWorked -= 45; // Restar descanso
 
-                                if (minutosNetos <= 480) { // 8 horas = 480 minutos
-                                    totalMinutos += minutosNetos;
-                                } else {
-                                    totalMinutos += 480;
-                                    totalMinutosExtras50 += (minutosNetos - 480);
-                                }
+                // Auto-autorización de horas extras
+                let autorizado = registrosDia.some(r => getVal(r, 'horasExtra', 13) === 'SI' || r[13] === 'SI');
+                if (esFestivo) {
+                    if (netWorked > 60) autorizado = true;
+                } else {
+                    if (netWorked >= 600) autorizado = true;
+                }
+
+                let extraMins50Acum = 0;
+
+                periodosDia.forEach(p => {
+                    if (!p.entrada || !p.salida) return;
+                    let mE = obtenerMinutos(getVal(p.entrada, 'hora', 5) || p.entrada[5]);
+                    let mS = obtenerMinutos(getVal(p.salida, 'hora', 5) || p.salida[5]);
+                    if (mE === null || mS === null || mS <= mE) return;
+                    let duracion = mS - mE;
+
+                    const modoEntrada = getVal(p.entrada, 'modo', 10) || p.entrada[10];
+                    const modoSalida = getVal(p.salida, 'modo', 10) || p.salida[10];
+                    let enCampo = modoEntrada === 'CAMPO' || modoSalida === 'CAMPO';
+
+                    if (esFestivo) {
+                        if (enCampo) {
+                            if (autorizado) horasCampo100 += duracion;
+                        } else {
+                            if (autorizado) horasExtra100 += duracion;
+                        }
+                    } else {
+                        let H_INI = H_INI_REF, H_FIN = H_FIN_REF;
+                        if (enCampo) {
+                            if (mS <= H_INI || mE >= H_FIN) {
+                                horasCampo50 += duracion;
+                            } else {
+                                let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
+                                let mExtra = duracion - mNormal;
+                                horasCampoNormales += mNormal;
+                                horasCampo50 += mExtra;
+                            }
+                        } else {
+                            if (autorizado && mS > H_FIN) {
+                                extraMins50Acum += (mS - Math.max(mE, H_FIN));
                             }
                         }
-                    } catch (e) { console.warn("Error calculando horas para día:", fechaKey, e); }
+                    }
+                });
+
+                if (!esFestivo) {
+                    horasExtra50 += extraMins50Acum;
                 }
             });
 
-            const horas_normales = `${Math.floor(totalMinutos / 60)}h ${Math.floor(totalMinutos % 60)}m`;
-            const horas_extras_50 = `${Math.floor(totalMinutosExtras50 / 60)}h ${Math.floor(totalMinutosExtras50 % 60)}m`;
+            totalExtras50 = horasExtra50 + horasCampo50;
+            totalExtras100 = horasExtra100 + horasCampo100;
+            totalHorasCampo = horasCampoNormales + horasCampo50 + horasCampo100;
 
-            // Calcular promedios
-            let promedioDiario = '0h';
-            let maxDia = '0h';
-            let minDia = '0h';
-
-            if (horasPorDia.length > 0) {
-                const promMinutos = horasPorDia.reduce((a, b) => a + b, 0) / horasPorDia.length;
-                promedioDiario = `${Math.floor(promMinutos / 60)}h ${Math.floor(promMinutos % 60)}m`;
-
-                const maxMinutos = Math.max(...horasPorDia);
-                maxDia = `${Math.floor(maxMinutos / 60)}h ${Math.floor(maxMinutos % 60)}m`;
-
-                const minMinutos = Math.min(...horasPorDia);
-                minDia = `${Math.floor(minMinutos / 60)}h ${Math.floor(minMinutos % 60)}m`;
-            }
+            const formatMins = (mins) => {
+                const h = Math.floor(mins / 60);
+                const m = Math.floor(mins % 60);
+                return `${h}h ${m}m`;
+            };
 
             return {
                 diasTrabajados: diasTrabajados,
                 atrasos: atrasos,
                 almuerzos: almuerzos,
                 salidas_tempranas: salidas_tempranas,
-                horas_normales: horas_normales,
-                horas_extras_50: horas_extras_50,
-                promedioDiario: promedioDiario,
-                maxDia: maxDia,
-                minDia: minDia,
-                minutosAtrasoTotal: minutosAtrasoTotal
+                horas_extras_50: formatMins(totalExtras50),
+                horas_extras_100: formatMins(totalExtras100),
+                horas_campo: formatMins(totalHorasCampo),
+                minutosAtrasoTotal: minutosAtrasoTotal,
+                minutosExtras50: totalExtras50,
+                minutosExtras100: totalExtras100,
+                minutosCampo: totalHorasCampo
             };
+        }
+
+        function generarInsigniasHTMLCompacto(stats) {
+            if (!stats) return '';
+            const formatMins = (mins) => {
+                const h = Math.floor(mins / 60);
+                const m = Math.floor(mins % 60);
+                return `${h}h ${m}m`;
+            };
+            let html = '';
+
+            // 1. Asistencia
+            let asisIcon = '🥉';
+            let asisTitle = 'Sin Asistencia';
+            let asisBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+            let asisBorder = 'rgba(203, 213, 225, 0.4)';
+            if (stats.diasTrabajados >= 15) {
+                asisIcon = '🏆';
+                asisTitle = `Asistencia de Platino: ${stats.diasTrabajados} días`;
+                asisBg = 'linear-gradient(135deg, #e2e8f0, #cbd5e1)';
+                asisBorder = '#94a3b8';
+            } else if (stats.diasTrabajados >= 8) {
+                asisIcon = '🥇';
+                asisTitle = `Asistencia de Oro: ${stats.diasTrabajados} días`;
+                asisBg = 'linear-gradient(135deg, #fef3c7, #fde68a)';
+                asisBorder = '#fbbf24';
+            } else if (stats.diasTrabajados >= 1) {
+                asisIcon = '🥈';
+                asisTitle = `Asistencia de Plata: ${stats.diasTrabajados} días`;
+                asisBg = 'linear-gradient(135deg, #ffedd5, #fed7aa)';
+                asisBorder = '#fb923c';
+            }
+
+            html += `
+                <div class="compact-badge" title="${asisTitle}" style="background: ${asisBg}; border: 2.5px solid ${asisBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                    ${asisIcon}
+                </div>
+            `;
+
+            // 2. Puntualidad
+            const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
+            let puntIcon = '⏱️';
+            let puntTitle = 'Puntualidad por Evaluar';
+            let puntBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+            let puntBorder = 'rgba(203, 213, 225, 0.4)';
+            if (stats.diasTrabajados > 0) {
+                if (puntualidadPct === 100) {
+                    puntIcon = '🌟';
+                    puntTitle = 'Puntualidad Impecable (100%)';
+                    puntBg = 'linear-gradient(135deg, #ecfdf5, #a7f3d0)';
+                    puntBorder = '#34d399';
+                } else if (puntualidadPct >= 90) {
+                    puntIcon = '🎖️';
+                    puntTitle = `Puntualidad de Élite (${puntualidadPct}%)`;
+                    puntBg = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
+                    puntBorder = '#6ee7b7';
+                } else if (puntualidadPct >= 75) {
+                    puntIcon = '👍';
+                    puntTitle = `Buen Ritmo de Entrada (${puntualidadPct}%)`;
+                    puntBg = 'linear-gradient(135deg, #eff6ff, #dbeafe)';
+                    puntBorder = '#60a5fa';
+                } else {
+                    puntIcon = '⚠️';
+                    puntTitle = `Puntualidad por Mejorar (${puntualidadPct}% - ${stats.atrasos} atrasos)`;
+                    puntBg = 'linear-gradient(135deg, #fff5f5, #fed7d7)';
+                    puntBorder = '#f87171';
+                }
+            }
+
+            html += `
+                <div class="compact-badge" title="${puntTitle}" style="background: ${puntBg}; border: 2.5px solid ${puntBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                    ${puntIcon}
+                </div>
+            `;
+
+            // 3. Almuerzo
+            let almIcon = '🍽️';
+            let almTitle = 'Sin almuerzos en planta';
+            let almBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+            let almBorder = 'rgba(203, 213, 225, 0.4)';
+            if (stats.almuerzos >= 15) {
+                almIcon = '👑';
+                almTitle = `Almuerzo Platinum: ${stats.almuerzos} en planta`;
+                almBg = 'linear-gradient(135deg, #f0fdf4, #bbf7d0)';
+                almBorder = '#4ade80';
+            } else if (stats.almuerzos >= 8) {
+                almIcon = '🥗';
+                almTitle = `Almuerzo de Oro: ${stats.almuerzos} en planta`;
+                almBg = 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
+                almBorder = '#86efac';
+            } else if (stats.almuerzos >= 1) {
+                almIcon = '🥪';
+                almTitle = `Almuerzo de Plata: ${stats.almuerzos} en planta`;
+                almBg = 'linear-gradient(135deg, #fdf8f6, #fee2e2)';
+                almBorder = '#fca5a5';
+            }
+
+            html += `
+                <div class="compact-badge" title="${almTitle}" style="background: ${almBg}; border: 2.5px solid ${almBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                    ${almIcon}
+                </div>
+            `;
+
+            // 4. Labores de Campo
+            if (stats.minutosCampo > 0) {
+                const campoMinsStr = formatMins(stats.minutosCampo);
+                html += `
+                    <div class="compact-badge" title="Héroe de Campo: ${campoMinsStr} laboradas" style="background: linear-gradient(135deg, #f0f9ff, #e0f2fe); border: 2.5px solid #38bdf8; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                        🏗️
+                    </div>
+                `;
+            }
+
+            return html;
         }
 
         function actualizarHistorialAgrupado() {
@@ -2814,7 +3197,7 @@
                     const entradaHora = esFaltaJustificada ? 'JUSTIFICADO' : (entrada ? formatearHora(getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5]) : '--:--');
                     const salidaHora = esFaltaJustificada ? 'N/A' : (salida ? formatearHora(getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5]) : '--:--');
                     const almuerzoVal = entrada ? (getVal(entrada, 'almuerzo', 4) || entrada[4]) : '';
-                    const almuerzoIcon = almuerzoVal === 'SI' ? '🏢' : almuerzoVal === 'NO' ? '🏠' : '-';
+                    const almuerzoIcon = (almuerzoVal === 'SI' || almuerzoVal === 'PLANTA') ? '🏢' : (almuerzoVal === 'NO' || almuerzoVal === 'FUERA') ? '🏠' : '-';
 
                     const detallesRazones = diaRegs.map(reg => {
                         const razonAtraso = getVal(reg, 'razon_entrada_tardia', 19) || reg[19];
