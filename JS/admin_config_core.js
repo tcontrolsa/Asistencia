@@ -375,7 +375,34 @@
             );
         }
 
+        // ========== TOGGLE FIREBASE LOCAL ==========
+        window.toggleFirebaseAdmin = function() {
+            const current = localStorage.getItem('tcontrol_use_firebase') !== 'false';
+            if (current) {
+                localStorage.setItem('tcontrol_use_firebase', 'false');
+            } else {
+                localStorage.setItem('tcontrol_use_firebase', 'true');
+            }
+            actualizarEstadoBotonFirebaseAdmin();
+            window.location.reload();
+        };
+
+        function actualizarEstadoBotonFirebaseAdmin() {
+            const textEl = document.getElementById('toggleFirebaseText');
+            const btnEl = document.getElementById('btnToggleFirebaseAdmin');
+            if (!textEl || !btnEl) return;
+            const current = localStorage.getItem('tcontrol_use_firebase') !== 'false';
+            if (current) {
+                textEl.textContent = "Desactivar Firebase Local (Usar Sheets)";
+                btnEl.className = "btn btn-danger w-100 fw-bold shadow-sm";
+            } else {
+                textEl.textContent = "Activar Firebase Local (Recomendado)";
+                btnEl.className = "btn btn-success w-100 fw-bold shadow-sm";
+            }
+        }
+
         // ========== INICIALIZACIÓN ==========
         document.addEventListener('DOMContentLoaded', () => {
             cargarConfiguraciones();
+            actualizarEstadoBotonFirebaseAdmin();
         });

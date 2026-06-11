@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.5';
+const CACHE_NAME = 'tcontrol-v1.6';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -16,10 +16,12 @@ const PRECACHE_URLS = [
   './CSS/index.css',
   './JS/index_core.js',
   './JS/firebase_backend.js',
-  // CDNs críticos (Bootstrap, FontAwesome)
+  // CDNs críticos (Bootstrap, FontAwesome, Firebase SDKs)
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
+  'https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js'
 ];
 
 // ===== INSTALACIÓN =====

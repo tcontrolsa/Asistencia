@@ -2427,7 +2427,10 @@
       try {
         const limite = new Date();
         limite.setDate(limite.getDate() - diasNum);
-        const limiteStr = limite.toLocaleDateString('en-CA');
+        const y = limite.getFullYear();
+        const m = String(limite.getMonth() + 1).padStart(2, '0');
+        const d = String(limite.getDate()).padStart(2, '0');
+        const limiteStr = `${y}-${m}-${d}`;
 
         mostrarToast('Buscando registros antiguos...', 'info');
 
@@ -2468,60 +2471,63 @@
           registrosToArchive.push({ ...data, id: doc.id });
         });
 
-        mostrarToast(`Enviando ${registrosToArchive.length} registros a Sheets...`, 'info');
+        const chunkSiz = 200;
+        const totalRegistros = registrosToArchive.length;
+        const totalLotes = Math.ceil(totalRegistros / chunkSiz);
 
-        // 2. Enviar a Google Apps Script usando POST
-        const respuesta = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' }, // Evitar preflight CORS estricto
-          body: JSON.stringify({
-            accion: 'archivarRegistros',
-            registros: registrosToArchive
-          })
-        });
+        for (let i = 0; i < totalRegistros; i += chunkSiz) {
+          const chunk = registrosToArchive.slice(i, i + chunkSiz);
+          const loteActual = Math.floor(i / chunkSiz) + 1;
 
-        const result = await respuesta.json();
+          mostrarToast(`Archivando lote ${loteActual} de ${totalLotes} (${chunk.length} registros)...`, 'info');
 
-        if (result.ok) {
-          mostrarToast(`✅ Guardados en Sheets. Borrando de Firebase...`, 'success');
+          // Enviar lote a Google Apps Script usando POST
+          const respuesta = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' }, // Evitar preflight CORS estricto
+            body: JSON.stringify({
+              accion: 'archivarRegistros',
+              registros: chunk
+            })
+          });
 
-          // 3. Si se guardaron bien, borrarlos de Firebase en lotes
+          if (!respuesta.ok) {
+            throw new Error(`Error de red HTTP ${respuesta.status} en lote ${loteActual}`);
+          }
+
+          const result = await respuesta.json();
+          if (!result.ok) {
+            throw new Error(result.error || `Error del servidor en lote ${loteActual}`);
+          }
+
+          // Si se guardaron bien, borrarlos de Firebase inmediatamente
+          mostrarToast(`✅ Lote ${loteActual} guardado. Borrando de Firebase...`, 'info');
           let batch = db.batch();
-          let count = 0;
-          for (const reg of registrosToArchive) {
+          for (const reg of chunk) {
             batch.delete(db.collection('registros').doc(reg.id));
-            count++;
-            if (count === 400) {
-              await batch.commit();
-              batch = db.batch();
-              count = 0;
-            }
           }
-          if (count > 0) await batch.commit();
-
-          mostrarLoader(false);
-          mostrarToast('Archivado completado exitosamente.', 'success');
-          
-          // Limpiar todas las cachés locales (incluyendo tcontrol_archivados_cache)
-          // Esto evita que aparezca la ventana de "Justificar Asistencias"
-          const keysToRemove = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('tcontrol_')) {
-              keysToRemove.push(key);
-            }
-          }
-          keysToRemove.forEach(k => localStorage.removeItem(k));
-
-          await cargarDatosCompletos(true);
-        } else {
-          mostrarLoader(false);
-          mostrarToast('Error al guardar en Sheets: ' + (result.error || 'Desconocido'), 'error');
+          await batch.commit();
         }
+
+        mostrarLoader(false);
+        mostrarToast('Archivado completado exitosamente.', 'success');
+        
+        // Limpiar todas las cachés locales (incluyendo tcontrol_archivados_cache)
+        // Esto evita que aparezca la ventana de "Justificar Asistencias"
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('tcontrol_')) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+
+        await cargarDatosCompletos(true);
       } catch (err) {
         console.error("Error archivando:", err);
         mostrarLoader(false);
-        mostrarToast('Error en el proceso de archivado.', 'error');
+        mostrarToast(`Error en el proceso de archivado: ${err.message || err}`, 'error');
       }
     }
 

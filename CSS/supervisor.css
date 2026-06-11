@@ -1816,6 +1816,7 @@
           margin-right: 8px;
         }
       }
+    }
 
     /* --- SIDEBAR TOGGLE & COLLAPSED STYLES (PC ONLY) --- */
     @media (min-width: 769px) {

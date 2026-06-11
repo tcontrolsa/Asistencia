@@ -3972,15 +3972,15 @@
 
         // ========== TOGGLE FIREBASE ==========
         function toggleFirebase() {
-            const current = localStorage.getItem('tcontrol_use_firebase') === 'true';
-            if (!current) {
+            const current = localStorage.getItem('tcontrol_use_firebase') !== 'false';
+            if (current) {
+                localStorage.setItem('tcontrol_use_firebase', 'false');
+                window.location.reload();
+            } else {
                 if (confirm("¿Estás seguro de activar Firebase? Asegúrate de haber migrado la base de datos primero.")) {
                     localStorage.setItem('tcontrol_use_firebase', 'true');
                     window.location.reload();
                 }
-            } else {
-                localStorage.setItem('tcontrol_use_firebase', 'false');
-                window.location.reload();
             }
         }
 

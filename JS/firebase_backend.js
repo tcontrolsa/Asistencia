@@ -564,7 +564,7 @@ window.FirebaseBackend = {
             razon_ausencia: data.razon_ausencia || ""
         };
 
-        const hoyStrLocal = new Date().toLocaleDateString('en-CA');
+        const hoyStrLocal = this._hoyStr();
         const isPastDate = fechaStr < hoyStrLocal;
 
         // Si es fecha pasada, escribir directamente en la hoja de REGISTROS (Google Sheets)
@@ -798,7 +798,7 @@ window.FirebaseBackend = {
             .where('tipo', 'in', ['ENTRADA', 'SOLO_ALMUERZO'])
             .get();
 
-        const hoyStrLocal = new Date().toLocaleDateString('en-CA');
+        const hoyStrLocal = this._hoyStr();
         const isPastDate = hoyStr < hoyStrLocal;
 
         if (regSnap.empty) {
@@ -867,7 +867,7 @@ window.FirebaseBackend = {
         let valor = params.valor;
         const empleadoId = params.empleadoId;
         const tipo = params.tipo;
-        const fecha = params.fecha || new Date().toLocaleDateString('en-CA');
+        const fecha = params.fecha || this._hoyStr();
 
         if (!campo) return { error: "Falta el campo a actualizar" };
 
@@ -1009,20 +1009,23 @@ window.FirebaseBackend = {
                 });
             }
 
-            // 2. Sincronizar la justificación con Google Sheets
-            try {
-                await this._jsonp({
-                    accion: 'actualizarRegistroArchivado',
-                    empleadoId: empleadoId,
-                    fecha: fecha,
-                    tipo: 'JUSTIFICACION',
-                    campo: 'justificado',
-                    valor: 'SI',
-                    quien_justifica: supervisor,
-                    razon_justificac: razon
-                });
-            } catch (e) {
-                console.warn("⚠️ Error al enviar justificación a Sheets:", e);
+            // 2. Sincronizar la justificación con Google Sheets SOLO si es una fecha pasada
+            const hoyStrLocal = this._hoyStr();
+            if (fecha < hoyStrLocal) {
+                try {
+                    await this._jsonp({
+                        accion: 'actualizarRegistroArchivado',
+                        empleadoId: empleadoId,
+                        fecha: fecha,
+                        tipo: 'JUSTIFICACION',
+                        campo: 'justificado',
+                        valor: 'SI',
+                        quien_justifica: supervisor,
+                        razon_justificac: razon
+                    });
+                } catch (e) {
+                    console.warn("⚠️ Error al enviar justificación a Sheets:", e);
+                }
             }
 
             return { ok: true };
@@ -1205,7 +1208,7 @@ window.FirebaseBackend = {
     async obtenerListaCatering() {
         try {
             const hoy = new Date();
-            const hoyStr = hoy.toLocaleDateString('en-CA');
+            const hoyStr = this._hoyStr(hoy);
 
             // 1. Obtener todos los registros de ENTRADA de hoy (más flexible que filtrar por 'SI' en DB)
             const regSnap = await db.collection('registros')
@@ -1253,7 +1256,7 @@ window.FirebaseBackend = {
         const id = params.empleadoId;
         const nombre = params.nombre;
         const hoy = new Date();
-        const hoyStr = hoy.toLocaleDateString('en-CA');
+        const hoyStr = this._hoyStr(hoy);
 
         const uniqueId = `${id}_${hoyStr}`;
         await db.collection('consumo_almuerzos').doc(uniqueId).set({
@@ -1269,7 +1272,7 @@ window.FirebaseBackend = {
     async obtenerDatosSupervisor(params = {}) {
         try {
             const hoy = new Date();
-            const hoyStr = hoy.toLocaleDateString('en-CA');
+            const hoyStr = this._hoyStr(hoy);
 
             // 1. Empleados activos
             const empSnap = await db.collection('empleados').where('activo', '==', 'SI').get();
@@ -1288,7 +1291,7 @@ window.FirebaseBackend = {
             // 2. Caching de Registros para reducir lecturas (Ahorro crítico de Firebase)
             const limite = new Date();
             limite.setDate(limite.getDate() - 60);
-            const limiteStr = limite.toLocaleDateString('en-CA');
+            const limiteStr = this._hoyStr(limite);
 
             const CACHE_KEY = 'tcontrol_registros_cache_v1';
             let cacheData = { registros: {}, lastSync: null };
@@ -1303,7 +1306,7 @@ window.FirebaseBackend = {
             // Si el administrador necesita forzar recarga total, puede limpiar caché local o hacer refresh duro
             const ayer = new Date();
             ayer.setDate(ayer.getDate() - 1);
-            const ayerStr = ayer.toLocaleDateString('en-CA');
+            const ayerStr = this._hoyStr(ayer);
 
             if (cacheData.lastSync) {
                 console.log("⚡ Usando caché local. Obteniendo solo registros desde:", ayerStr);
@@ -1677,6 +1680,13 @@ window.FirebaseBackend = {
             document.body.appendChild(script);
             script.onload = () => script.remove();
         });
+    },
+
+    _hoyStr(dateObj = new Date()) {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     },
 
     _obtenerDiaSemana(fecha) {
