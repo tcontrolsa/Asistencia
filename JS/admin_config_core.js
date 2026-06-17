@@ -170,7 +170,7 @@
 
                 // Cargar otras configuraciones
                 if (res.otras) {
-                    document.getElementById('configWhatsApp').value = res.otras.whatsapp_number || '593999999999';
+                    document.getElementById('configWhatsApp').value = res.otras.whatsapp_number || '593963561149';
                     document.getElementById('configMensajeSoporte').value = res.otras.mensaje_soporte || 'Hola, necesito soporte técnico para el sistema CONTROL 2026';
                     document.getElementById('configModoMantenimiento').checked = res.otras.modo_mantenimiento || false;
                     document.getElementById('configMensajeMantenimiento').value = res.otras.mensaje_mantenimiento || 'El sistema se encuentra en mantenimiento. Por favor intenta más tarde.';
@@ -178,7 +178,7 @@
                     const divMant = document.getElementById('divMensajeMantenimiento');
                     if (divMant) divMant.style.display = res.otras.modo_mantenimiento ? 'block' : 'none';
                 } else {
-                    document.getElementById('configWhatsApp').value = '593999999999';
+                    document.getElementById('configWhatsApp').value = '593963561149';
                     document.getElementById('configMensajeSoporte').value = 'Hola, necesito soporte técnico para el sistema CONTROL 2026';
                     document.getElementById('configModoMantenimiento').checked = false;
                     document.getElementById('configMensajeMantenimiento').value = 'El sistema se encuentra en mantenimiento. Por favor intenta más tarde.';

@@ -10,7 +10,7 @@
             HORA_ENTRADA_LIMITE: "07:45",
             HORA_SALIDA: "16:15",
             ALMUERZO_ACTIVO: true,
-            WHATSAPP_NUMBER: "593996356114",
+            WHATSAPP_NUMBER: "593963561149",
             WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
         };
 
@@ -34,6 +34,7 @@
         let currentMode = 'OFICINA'; // 'OFICINA' o 'CAMPO'
         let gpsActivo = false;
         let registrosCompletos = [];
+        let cargandoRegistros = false;
         let intervaloGPS = null;
         let currentPage = 'home';
         let isAuthenticated = false;
@@ -551,6 +552,7 @@
         // ========== FUNCIONES DE REGISTRO ==========
         async function obtenerRegistrosEmpleado(force = false) {
             if (!empleado.id) return;
+            cargandoRegistros = true;
             try {
                 const registros = await obtenerRegistrosEmpleadoAPI(empleado.id, force);
 
@@ -565,11 +567,26 @@
                     registrosCompletos = Array.isArray(registros) ? registros : [];
                 }
 
+                cargandoRegistros = false;
+
+                // MECANISMO DE AUTO-SANACIÓN en segundo plano
+                let faltas = obtenerDiasFaltantes();
+                if (faltas.length > 0 && !force) {
+                    console.log("⚠️ Detectadas faltas. Re-verificando en segundo plano con refresco forzado...");
+                    await obtenerRegistrosEmpleado(true);
+                    return;
+                }
+
+                if (faltas.length > 0 && currentPage === 'home') {
+                    mostrarModalFaltasPasadas(faltas);
+                }
+
                 if (currentPage === 'history') actualizarHistorialAgrupado();
                 if (currentPage === 'profile') renderProfilePage();
             } catch (error) {
                 console.error('Error:', error);
                 registrosCompletos = [];
+                cargandoRegistros = false;
             }
         }
 
@@ -796,6 +813,18 @@
         async function procederConRegistro() {
             if (!verificarDistanciaEmpresa()) return;
 
+            // Solicitar confirmación para cancelar el almuerzo en caso de salida antes de las 10:00 a.m.
+            if (empleado.tipoRegistro === 'SALIDA') {
+                const ahora = new Date();
+                const minDelDia = ahora.getHours() * 60 + ahora.getMinutes();
+                if (minDelDia < 600) { // Antes de las 10:00 a.m.
+                    const deseaCancelar = confirm("❓ Vas a registrar tu salida antes de la hora de almuerzo.\n\n¿Deseas cancelar el almuerzo del día de hoy?");
+                    if (deseaCancelar) {
+                        empleado.almuerzo = 'NO';
+                    }
+                }
+            }
+
             // Advertencia para marcación sospechosa (Entrada muy reciente y marcando Salida)
             if (empleado.tipoRegistro === 'SALIDA' && Array.isArray(registrosCompletos)) {
                 const hoyStr = new Date().toISOString().split('T')[0];
@@ -967,12 +996,7 @@
                     return;
                 }
 
-                // Si tiene entrada pero NO tiene salida, preguntar si es permiso intermedio
-                if (estado.tieneEntrada && !estado.tieneSalida) {
-                    // Es potencial permiso intermedio
-                    mostrarModalTipoSalida();
-                    return;
-                }
+
 
                 empleado.almuerzo = estado.almuerzo || '';
                 registrar();
@@ -1396,29 +1420,16 @@
                         timestamp: new Date().toISOString()
                     }));
 
-                    const hoyStr = new Date().toISOString().split('T')[0];
-                    let horaEntradaRegistro = null;
-                    let horaSalidaRegistro = null;
-
-                    const registros = await obtenerRegistrosEmpleadoAPI(res.empleado.id);
-                    const registroHoy = registros.filter(r => r.fecha === hoyStr);
-                    const entradaHoy = registroHoy.find(r => r.tipo === 'ENTRADA');
-                    const salidaHoy = registroHoy.find(r => r.tipo === 'SALIDA');
-
-                    if (entradaHoy) {
-                        horaEntradaRegistro = formatearHora(entradaHoy.timestamp || entradaHoy.hora);
-                    }
-                    if (salidaHoy) {
-                        horaSalidaRegistro = formatearHora(salidaHoy.timestamp || salidaHoy.hora);
-                    }
+                    // Obtener estado actual (hoy) rápido sin descargar todo el historial de entrada
+                    const estadoRes = await obtenerEstado(res.empleado.id, null).catch(e => ({ error: e.message }));
 
                     estado = {
-                        tieneEntrada: res.empleado.tieneEntrada || false,
-                        tieneSalida: res.empleado.tieneSalida || false,
-                        horaEntrada: horaEntradaRegistro || res.empleado.horaEntrada || null,
-                        horaSalida: horaSalidaRegistro || res.empleado.horaSalida || null,
-                        almuerzo: res.empleado.almuerzo || null,
-                        esSupervisor: res.empleado.esSupervisor || false
+                        tieneEntrada: estadoRes.tieneEntrada || false,
+                        tieneSalida: estadoRes.tieneSalida || false,
+                        horaEntrada: estadoRes.horaEntrada || null,
+                        horaSalida: estadoRes.horaSalida || null,
+                        almuerzo: estadoRes.almuerzo || null,
+                        esSupervisor: estadoRes.esSupervisor || false
                     };
 
                     empleado = {
@@ -1430,11 +1441,12 @@
                         fechaNacimiento: res.empleado.fechaNacimiento || '',
                         baseLat: res.empleado.baseLat || null,
                         baseLng: res.empleado.baseLng || null,
+                        pagos_url: estadoRes.pagos_url || '',
                         tipoRegistro: '',
                         almuerzo: ''
                     };
 
-                    // Actualizar interfaz segun cargo inmediatamente
+                    // Actualizar interfaz según cargo inmediatamente
                     actualizarInterfazSegunCargo();
 
                     // Verificar Cumpleaños
@@ -1443,21 +1455,11 @@
                     }
 
                     isAuthenticated = true;
-                    await obtenerRegistrosEmpleado();
-                    let faltas = obtenerDiasFaltantes();
 
-                    // MECANISMO DE AUTO-SANACIÓN: Si hay faltas, forzar refresco de archivados una vez para descartar cache vieja
-                    if (faltas.length > 0) {
-                        console.log("⚠️ Detectadas faltas. Re-verificando con refresco forzado...");
-                        await obtenerRegistrosEmpleado(true);
-                        faltas = obtenerDiasFaltantes();
-                    }
+                    // Cargar registros históricos en segundo plano
+                    obtenerRegistrosEmpleado();
 
-                    if (faltas.length > 0) {
-                        mostrarModalFaltasPasadas(faltas);
-                    } else {
-                        renderHomePage();
-                    }
+                    renderHomePage();
                     mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
                 } else {
                     mostrarToast('Contraseña incorrecta', 'error');
@@ -2061,6 +2063,22 @@
             </div>
 
             <div class="credencial-wrapper">
+                ${!empleado.foto_url || empleado.foto_url.trim() === '' ? `
+                <div class="glass-card mb-3" style="background: rgba(239, 68, 68, 0.08); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: 20px; padding: 14px 16px; animation: pulseGlowRed 2.5s infinite ease-in-out; margin: 0 10px 15px; box-sizing: border-box; text-align: left;">
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <div style="background: #ef4444; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(239,68,68,0.2);">
+                            <i class="fas fa-camera"></i>
+                        </div>
+                        <div style="flex: 1;">
+                            <h6 class="fw-bold mb-1" style="color: #991b1b; font-size: 14px; margin: 0 0 4px 0; font-family: inherit;">Falta Foto de Perfil</h6>
+                            <p style="color: #7f1d1d; font-size: 11.5px; margin: 0 0 10px 0; line-height: 1.4; font-weight: 500;">Para validar su identidad corporativa, es obligatorio subir una foto de perfil clara.</p>
+                            <div style="font-size: 10.5px; color: #7f1d1d; background: rgba(239, 68, 68, 0.04); border-radius: 8px; padding: 8px 10px; border-left: 3px solid #ef4444; font-weight: 600; line-height: 1.4;">
+                                💡 <strong>Cómo quitar este aviso:</strong> Haga clic en el botón de cámara azul <i class="fas fa-camera" style="color: var(--primary);"></i> sobre su foto de credencial abajo, seleccione su foto y se actualizará automáticamente.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
                 <div class="credencial-profesional ${esCumpleanosHoy ? 'birthday-glow' : ''}">
                     <div class="photo-name-section">
                         <div class="photo-frame" style="position: relative;">
@@ -2073,6 +2091,9 @@
                     `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto">` :
                     `<div class="employee-photo-placeholder-profesional">👤</div>`
                 }
+                            </div>
+                            <div class="photo-edit-badge" onclick="triggerProfilePhotoUpload(event)" title="Cambiar foto de perfil">
+                                <i class="fas fa-camera"></i>
                             </div>
                             <div class="photo-verified">
                                 <i class="fas fa-check"></i>
@@ -2138,7 +2159,8 @@
                             <!-- Tarjeta de Almuerzo -->
                             <!-- Tarjeta de Almuerzo: Ahora proporcional e integrada en el grid -->
                             <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'lunch-animated-no' : ''}" 
-                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px;">
+                                 onclick="mostrarPopupAlmuerzo(true)"
+                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; cursor: pointer;">
                                 
                                 <div class="status-icon" style="height: 70px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; position: relative;">
                                     ${(almuerzo === 'SI' || almuerzo === 'PLANTA')
@@ -2270,8 +2292,126 @@
             actualizarReloj();
             window._clockInterval = setInterval(actualizarReloj, 1000);
 
+            evaluarPopupAlmuerzo();
             ajustarLayout();
         }
+
+        // ========== DETALLE DE INSIGNIA (CUSTOM MODAL) ==========
+        window.mostrarDetalleInsignia = function (titulo, descripcion, icono, colorBg, colorBorder) {
+            const modalExistente = document.getElementById('insigniaModal');
+            if (modalExistente) modalExistente.remove();
+
+            const modalHTML = `
+                <div id="insigniaModal" class="almuerzo-modal-overlay" onclick="if(event.target === this) this.remove();">
+                    <div class="almuerzo-modal-card" style="border: 2px solid ${colorBorder};">
+                        <button class="almuerzo-modal-close" onclick="document.getElementById('insigniaModal').remove();">&times;</button>
+                        <div class="almuerzo-modal-header" style="margin-top: 10px;">
+                            <div style="background: ${colorBg}; border: 2.5px solid ${colorBorder}; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 16px auto; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                                ${icono}
+                            </div>
+                            <h3 style="font-size: 20px; color: #0f172a; font-weight: 800; margin-bottom: 8px;">${titulo}</h3>
+                            <p style="font-size: 13.5px; color: #475569; line-height: 1.6; margin-bottom: 20px; padding: 0 10px;">${descripcion}</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="document.getElementById('insigniaModal').remove();" style="font-size: 14px; padding: 10px 24px; border-radius: 12px; font-weight: 700; width: 100%;">
+                            Aceptar
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+        };
+
+        // ========== POPUP DE ALMUERZO ==========
+        window.mostrarPopupAlmuerzo = function (manual = false) {
+            if (document.getElementById('almuerzoModal')) return;
+
+            if (!manual) {
+                const ahora = new Date();
+                const minutosDia = SecurityHelper ? SecurityHelper.obtenerMinutosDia(ahora) : (ahora.getHours() * 60 + ahora.getMinutes());
+                const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840;
+                if (!esHoraAlmuerzo) return;
+
+                const alm = empleado.almuerzo || estado.almuerzo;
+                if (alm === 'SI' || alm === 'PLANTA' || alm === 'NO' || alm === 'FUERA') return;
+
+                if (sessionStorage.getItem('almuerzo_popup_cerrado') === 'true') return;
+            }
+
+            const modalHTML = `
+                <div id="almuerzoModal" class="almuerzo-modal-overlay" onclick="if(event.target === this) cerrarAlmuerzoPopup();">
+                    <div class="almuerzo-modal-card">
+                        <button class="almuerzo-modal-close" onclick="cerrarAlmuerzoPopup()">&times;</button>
+                        <div class="almuerzo-modal-header">
+                            <div class="almuerzo-modal-icon">🍽️</div>
+                            <h3>¿Dónde almuerzas hoy?</h3>
+                            <p>Selecciona tu opción de almuerzo para registrarla en el sistema.</p>
+                        </div>
+                        <div class="almuerzo-modal-options">
+                            <div class="almuerzo-modal-option-card" onclick="registrarAlmuerzoPopup('SI')">
+                                <div class="option-icon">🏢</div>
+                                <div class="option-title">En planta</div>
+                                <div class="option-desc">Almuerzo en la empresa</div>
+                            </div>
+                            <div class="almuerzo-modal-option-card" onclick="registrarAlmuerzoPopup('NO')">
+                                <div class="option-icon">🏠</div>
+                                <div class="option-title">Fuera</div>
+                                <div class="option-desc">Almuerzo externo</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+        };
+
+        window.cerrarAlmuerzoPopup = function () {
+            sessionStorage.setItem('almuerzo_popup_cerrado', 'true');
+            const modal = document.getElementById('almuerzoModal');
+            if (modal) modal.remove();
+        };
+
+        window.registrarAlmuerzoPopup = async function (opcion) {
+            showLoading(true);
+            try {
+                const res = await jsonpRequest({
+                    accion: 'actualizarAlmuerzoSupervisor',
+                    empleadoId: empleado.id,
+                    almuerzo: opcion
+                });
+                if (res && res.ok !== false) {
+                    mostrarToast("Almuerzo registrado correctamente", "success");
+                    empleado.almuerzo = opcion;
+                    estado.almuerzo = opcion;
+                    const modal = document.getElementById('almuerzoModal');
+                    if (modal) modal.remove();
+                    renderHomePage();
+                } else {
+                    mostrarToast("Error al registrar almuerzo: " + (res?.error || "Desconocido"), "error");
+                }
+            } catch (error) {
+                console.error("Error registrando almuerzo:", error);
+                mostrarToast("Error de conexión", "error");
+            } finally {
+                showLoading(false);
+            }
+        };
+
+        window.evaluarPopupAlmuerzo = function () {
+            if (!isAuthenticated || !empleado || !empleado.id) return;
+            const ahora = new Date();
+            const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
+            const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840;
+            if (!esHoraAlmuerzo) return;
+
+            const alm = empleado.almuerzo || estado.almuerzo;
+            if (alm === 'SI' || alm === 'PLANTA' || alm === 'NO' || alm === 'FUERA') return;
+
+            if (sessionStorage.getItem('almuerzo_popup_cerrado') === 'true') return;
+
+            mostrarPopupAlmuerzo(false);
+        };
 
         // ========== RENDER HISTORY (RESUMEN) - VERSIÓN MEJORADA CON ESTADÍSTICAS ==========
         function renderHistoryPage() {
@@ -2663,9 +2803,9 @@
                 const [horaEsp, minEsp] = HORA_INICIO_ESPERADA.split(':').map(x => parseInt(x));
                 const horaEsperada = (horaEsp * 60) + (minEsp || 0);
 
-                // Calcular diferencia (solo positiva para atrasos)
+                // Calcular diferencia (solo positiva para atrasos con tolerancia de 5 minutos)
                 const diferencia = horaReal - horaEsperada;
-                return diferencia > 0 ? diferencia : 0;
+                return diferencia > 5 ? diferencia : 0;
             } catch (e) {
                 return 0;
             }
@@ -2793,7 +2933,7 @@
                     const mEntrada = obtenerMinutos(horaEntrada);
                     if (mEntrada !== null) {
                         const refEntrada = esFestivo ? 420 : H_INI_REF;
-                        if (mEntrada > refEntrada) {
+                        if (mEntrada > refEntrada + 5) {
                             atrasos++;
                             minutosAtrasoTotal += (mEntrada - refEntrada);
                         }
@@ -2854,8 +2994,10 @@
                 let autorizado = registrosDia.some(r => getVal(r, 'horasExtra', 13) === 'SI' || r[13] === 'SI');
                 if (esFestivo) {
                     if (netWorked > 60) autorizado = true;
+                    if (netWorked <= 60) autorizado = false;
                 } else {
                     if (netWorked >= 600) autorizado = true;
+                    if (netWorked - 480 <= 60) autorizado = false;
                 }
 
                 let extraMins50Acum = 0;
@@ -2940,25 +3082,29 @@
             let asisTitle = 'Sin Asistencia';
             let asisBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
             let asisBorder = 'rgba(203, 213, 225, 0.4)';
+            let asisDesc = 'Aún no registras días de asistencia en este período fiscal.';
             if (stats.diasTrabajados >= 15) {
                 asisIcon = '🏆';
                 asisTitle = `Asistencia de Platino: ${stats.diasTrabajados} días`;
                 asisBg = 'linear-gradient(135deg, #e2e8f0, #cbd5e1)';
                 asisBorder = '#94a3b8';
+                asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia en la empresa. ¡Rendimiento excepcional de nivel Platino!`;
             } else if (stats.diasTrabajados >= 8) {
                 asisIcon = '🥇';
                 asisTitle = `Asistencia de Oro: ${stats.diasTrabajados} días`;
                 asisBg = 'linear-gradient(135deg, #fef3c7, #fde68a)';
                 asisBorder = '#fbbf24';
+                asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia. ¡Excelente constancia de nivel Oro!`;
             } else if (stats.diasTrabajados >= 1) {
                 asisIcon = '🥈';
                 asisTitle = `Asistencia de Plata: ${stats.diasTrabajados} días`;
                 asisBg = 'linear-gradient(135deg, #ffedd5, #fed7aa)';
                 asisBorder = '#fb923c';
+                asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia. Nivel Plata, sigue manteniendo la constancia de tus registros.`;
             }
 
             html += `
-                <div class="compact-badge" title="${asisTitle}" style="background: ${asisBg}; border: 2.5px solid ${asisBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                <div class="compact-badge" title="${asisTitle}" onclick="mostrarDetalleInsignia('${asisTitle.replace(/'/g, "\\'")}', '${asisDesc.replace(/'/g, "\\'")}', '${asisIcon}', '${asisBg}', '${asisBorder}')" style="background: ${asisBg}; border: 2.5px solid ${asisBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                     ${asisIcon}
                 </div>
             `;
@@ -2969,32 +3115,37 @@
             let puntTitle = 'Puntualidad por Evaluar';
             let puntBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
             let puntBorder = 'rgba(203, 213, 225, 0.4)';
+            let puntDesc = 'Aún no hay suficientes días laborados en este período fiscal para evaluar tu puntualidad de entrada.';
             if (stats.diasTrabajados > 0) {
                 if (puntualidadPct === 100) {
                     puntIcon = '🌟';
                     puntTitle = 'Puntualidad Impecable (100%)';
                     puntBg = 'linear-gradient(135deg, #ecfdf5, #a7f3d0)';
                     puntBorder = '#34d399';
+                    puntDesc = '¡Espectacular! Tienes una puntualidad perfecta. No registras ningún atraso en este período de trabajo.';
                 } else if (puntualidadPct >= 90) {
                     puntIcon = '🎖️';
                     puntTitle = `Puntualidad de Élite (${puntualidadPct}%)`;
                     puntBg = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
                     puntBorder = '#6ee7b7';
+                    puntDesc = `Excelente puntualidad del ${puntualidadPct}% en tus registros. Sigue manteniendo esta gran disciplina de entrada.`;
                 } else if (puntualidadPct >= 75) {
                     puntIcon = '👍';
                     puntTitle = `Buen Ritmo de Entrada (${puntualidadPct}%)`;
                     puntBg = 'linear-gradient(135deg, #eff6ff, #dbeafe)';
                     puntBorder = '#60a5fa';
+                    puntDesc = `Buen ritmo de entrada. Mantienes una puntualidad del ${puntualidadPct}% en este período. ¡Sigue así!`;
                 } else {
                     puntIcon = '⚠️';
                     puntTitle = `Puntualidad por Mejorar (${puntualidadPct}% - ${stats.atrasos} atrasos)`;
                     puntBg = 'linear-gradient(135deg, #fff5f5, #fed7d7)';
                     puntBorder = '#f87171';
+                    puntDesc = `Puntualidad por mejorar del ${puntualidadPct}% con ${stats.atrasos} atraso(s). ¡Llegar a tiempo es clave para tu récord!`;
                 }
             }
 
             html += `
-                <div class="compact-badge" title="${puntTitle}" style="background: ${puntBg}; border: 2.5px solid ${puntBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                <div class="compact-badge" title="${puntTitle}" onclick="mostrarDetalleInsignia('${puntTitle.replace(/'/g, "\\'")}', '${puntDesc.replace(/'/g, "\\'")}', '${puntIcon}', '${puntBg}', '${puntBorder}')" style="background: ${puntBg}; border: 2.5px solid ${puntBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                     ${puntIcon}
                 </div>
             `;
@@ -3004,25 +3155,29 @@
             let almTitle = 'Sin almuerzos en planta';
             let almBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
             let almBorder = 'rgba(203, 213, 225, 0.4)';
+            let almDesc = 'Aún no has registrado almuerzos dentro de la empresa en este período de trabajo.';
             if (stats.almuerzos >= 15) {
                 almIcon = '👑';
                 almTitle = `Almuerzo Platinum: ${stats.almuerzos} en planta`;
                 almBg = 'linear-gradient(135deg, #f0fdf4, #bbf7d0)';
                 almBorder = '#4ade80';
+                almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. ¡Excelente constancia Platinum de permanencia y bienestar!`;
             } else if (stats.almuerzos >= 8) {
                 almIcon = '🥗';
                 almTitle = `Almuerzo de Oro: ${stats.almuerzos} en planta`;
                 almBg = 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
                 almBorder = '#86efac';
+                almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. ¡Buen nivel Oro de alimentación dentro de la empresa!`;
             } else if (stats.almuerzos >= 1) {
                 almIcon = '🥪';
                 almTitle = `Almuerzo de Plata: ${stats.almuerzos} en planta`;
                 almBg = 'linear-gradient(135deg, #fdf8f6, #fee2e2)';
                 almBorder = '#fca5a5';
+                almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. Nivel Plata, sigue participando del almuerzo en comedor.`;
             }
 
             html += `
-                <div class="compact-badge" title="${almTitle}" style="background: ${almBg}; border: 2.5px solid ${almBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                <div class="compact-badge" title="${almTitle}" onclick="mostrarDetalleInsignia('${almTitle.replace(/'/g, "\\'")}', '${almDesc.replace(/'/g, "\\'")}', '${almIcon}', '${almBg}', '${almBorder}')" style="background: ${almBg}; border: 2.5px solid ${almBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                     ${almIcon}
                 </div>
             `;
@@ -3030,8 +3185,13 @@
             // 4. Labores de Campo
             if (stats.minutosCampo > 0) {
                 const campoMinsStr = formatMins(stats.minutosCampo);
+                const campoTitle = `Héroe de Campo`;
+                const campoDesc = `Has acumulado un total de ${campoMinsStr} laborando fuera de la oficina en labores de campo. ¡Felicitaciones por tu gran dedicación en exteriores!`;
+                const campoIcon = '🏗️';
+                const campoBg = 'linear-gradient(135deg, #f0f9ff, #e0f2fe)';
+                const campoBorder = '#38bdf8';
                 html += `
-                    <div class="compact-badge" title="Héroe de Campo: ${campoMinsStr} laboradas" style="background: linear-gradient(135deg, #f0f9ff, #e0f2fe); border: 2.5px solid #38bdf8; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: help;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
+                    <div class="compact-badge" title="Héroe de Campo: ${campoMinsStr} laboradas" onclick="mostrarDetalleInsignia('${campoTitle}', '${campoDesc.replace(/'/g, "\\'")}', '${campoIcon}', '${campoBg}', '${campoBorder}')" style="background: linear-gradient(135deg, #f0f9ff, #e0f2fe); border: 2.5px solid #38bdf8; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                         🏗️
                     </div>
                 `;
@@ -3043,6 +3203,16 @@
         function actualizarHistorialAgrupado() {
             const container = document.getElementById('historialAgrupado');
             if (!container) return;
+
+            if (cargandoRegistros) {
+                container.innerHTML = `
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary spinner-border-sm" role="status" style="width: 24px; height: 24px; border-width: 2.5px;"></div>
+                        <p class="text-muted mt-2" style="font-size: 13px; font-weight: 500;">Cargando historial de marcaciones...</p>
+                    </div>
+                `;
+                return;
+            }
 
             if (!registrosCompletos || registrosCompletos.length === 0) {
                 container.innerHTML = '<p class="text-muted text-center py-3" style="font-size: clamp(12px, 3.8vw, 14px);">No hay registros disponibles</p>';
@@ -3290,9 +3460,9 @@
         }
         function renderProfilePage() {
             const mainContent = document.getElementById('mainContent');
-            const totalDias = new Set(registrosCompletos.map(r => r.fecha)).size;
-            const totalEntradas = registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
-            const totalSalidas = registrosCompletos.filter(r => r.tipo === 'SALIDA').length;
+            const totalDias = cargandoRegistros ? '...' : new Set(registrosCompletos.map(r => r.fecha)).size;
+            const totalEntradas = cargandoRegistros ? '...' : registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
+            const totalSalidas = cargandoRegistros ? '...' : registrosCompletos.filter(r => r.tipo === 'SALIDA').length;
 
             const mesActual = new Date().getMonth();
             const añoActual = new Date().getFullYear();
@@ -3301,7 +3471,7 @@
                 const fecha = new Date(r.fecha);
                 return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
             });
-            const diasTrabajadosMes = new Set(registrosMes.map(r => r.fecha)).size;
+            const diasTrabajadosMes = cargandoRegistros ? '...' : new Set(registrosMes.map(r => r.fecha)).size;
 
             mainContent.innerHTML = `
             <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
@@ -3310,11 +3480,12 @@
                     <!-- Decoración estética de fondo -->
                     <div style="position: absolute; top: -50px; right: -50px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(220,38,38,0.08) 0%, transparent 70%); pointer-events: none;"></div>
                     
-                    <div class="photo-container-premium d-inline-block" onclick="showPhotoModal('${empleado.foto_url || ''}')" style="position: relative; border-radius: 50%; padding: 4px; background: linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%); box-shadow: 0 10px 28px rgba(220,38,38,0.2); cursor: pointer; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); display: inline-block;">
+                    <div class="photo-container-premium d-inline-block profile-photo-container" onclick="triggerProfilePhotoUpload(event)" style="position: relative; border-radius: 50%; padding: 4px; background: linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%); box-shadow: 0 10px 28px rgba(37,99,235,0.2); cursor: pointer; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); display: inline-block;">
                         ${empleado.foto_url && empleado.foto_url.trim() ?
                             `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto" style="border-radius: 50%; width: 110px; height: 110px; object-fit: cover; border: 4px solid white;">` :
                             `<div class="employee-photo-placeholder-profesional" style="border-radius: 50%; width: 110px; height: 110px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%); font-size: 40px; border: 4px solid white; color: #475569;">👤</div>`
                         }
+                        <div class="photo-upload-overlay" style="position: absolute; top: 4px; left: 4px; right: 4px; bottom: 4px; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; opacity: 0; transition: opacity 0.25s ease; border-radius: 50%;"><i class="fas fa-camera"></i></div>
                     </div>
                     
                     <h3 class="fw-bold mt-3 mb-1" style="font-size: 22px; color: #0f172a; letter-spacing: -0.5px;">${empleado.nombre || 'Empleado'}</h3>
@@ -3385,6 +3556,81 @@
             ajustarLayout();
         }
 
+        function renderPagosPage() {
+            const mainContent = document.getElementById('mainContent');
+            
+            if (!empleado.pagos_url || empleado.pagos_url.trim() === '') {
+                mainContent.innerHTML = `
+                <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
+                    <div class="glass-card text-center" style="background: white; border-radius: 24px; padding: 40px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); border: 1px solid rgba(255, 255, 255, 0.7);">
+                        <div style="font-size: 60px; margin-bottom: 20px;">📄</div>
+                        <h4 class="fw-bold mb-2" style="color: #0f172a;">Roles de Pago</h4>
+                        <p class="text-muted" style="font-size: 14px; max-width: 320px; margin: 0 auto 24px; line-height: 1.5;">No se ha configurado su enlace de roles de pago en el sistema.</p>
+                        <div class="alert alert-info" style="font-size: 13px; max-width: 360px; margin: 0 auto; border-radius: 12px; background: rgba(59,130,246,0.05); border: 1px solid rgba(59,130,246,0.1); color: #1e3a8a;">
+                            <i class="fas fa-info-circle me-1"></i> Por favor, contacte con el departamento de Administración para vincular su cuenta.
+                        </div>
+                    </div>
+                </div>
+                `;
+                return;
+            }
+
+            const urlLower = empleado.pagos_url.toLowerCase();
+            const blocksIframe = urlLower.includes('sharepoint.com') || 
+                                 urlLower.includes('onedrive.live.com') || 
+                                 urlLower.includes('microsoft') || 
+                                 urlLower.includes('office.com') || 
+                                 urlLower.includes('login.microsoftonline.com');
+
+            if (blocksIframe) {
+                mainContent.innerHTML = `
+                <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
+                    <div class="glass-card text-center" style="background: white; border-radius: 24px; padding: 40px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); border: 1px solid rgba(255, 255, 255, 0.7);">
+                        <div style="font-size: 60px; margin-bottom: 20px;">🔒</div>
+                        <h4 class="fw-bold mb-2" style="color: #0f172a;">Rol de Pagos Protegido</h4>
+                        <p class="text-muted" style="font-size: 13.5px; max-width: 340px; margin: 0 auto 20px; line-height: 1.5;">El enlace configurado requiere iniciar sesión en Microsoft (OneDrive/SharePoint) y no permite mostrarse dentro de la aplicación debido a políticas de seguridad corporativas.</p>
+                        
+                        <a href="${empleado.pagos_url}" target="_blank" class="btn btn-primary w-100 mb-3" style="max-width: 320px; margin: 0 auto; font-size: 14px; padding: 12px; border-radius: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(59,130,246,0.2); text-decoration: none; color: white;">
+                            <i class="fas fa-external-link-alt"></i> Ver Rol de Pagos
+                        </a>
+                        
+                        <div class="alert alert-warning text-start" style="font-size: 12px; max-width: 360px; margin: 0 auto; border-radius: 12px; line-height: 1.4; background: rgba(245,158,11,0.05); border: 1px solid rgba(245,158,11,0.15); color: #92400e;">
+                            <i class="fas fa-exclamation-triangle me-1"></i> <strong>Nota:</strong> Si se le solicita, ingrese sus credenciales corporativas para abrir y descargar el documento de forma segura.
+                        </div>
+                    </div>
+                </div>
+                `;
+                return;
+            }
+
+            mainContent.innerHTML = `
+            <div class="page" style="height: calc(100vh - 140px); display: flex; flex-direction: column; animation: fadeIn 0.35s ease; padding-bottom: 10px;">
+                <!-- Header interno -->
+                <div class="glass-card mb-2 d-flex justify-content-between align-items-center" style="padding: 12px 16px; border-radius: 16px; background: rgba(255,255,255,0.9); box-shadow: 0 2px 10px rgba(0,0,0,0.02); border: 1px solid rgba(255,255,255,0.7); flex-shrink: 0;">
+                    <h5 class="fw-bold mb-0" style="font-size: 15px; color: #0f172a; display: flex; align-items: center; gap: 8px;"><i class="fas fa-file-invoice-dollar text-primary" style="font-size: 16px;"></i> Roles de Pago</h5>
+                    <a href="${empleado.pagos_url}" target="_blank" class="btn btn-sm" style="font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; border: 1.5px solid #cbd5e1; color: #475569; background: white; transition: all 0.2s;">
+                        <i class="fas fa-external-link-alt me-1"></i> Abrir Externamente
+                    </a>
+                </div>
+                
+                <!-- Notificación de seguridad -->
+                <div style="font-size: 11px; color: #854d0e; background: #fef9c3; border: 1px solid #fef08a; padding: 8px 12px; border-radius: 10px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-weight: 500;">
+                    <i class="fas fa-info-circle" style="font-size: 13px; color: #ca8a04;"></i>
+                    <span>Si la pantalla se muestra en blanco o requiere iniciar sesión, usa el botón <strong>"Abrir Externamente"</strong>.</span>
+                </div>
+                
+                <!-- Contenedor del documento iframe -->
+                <div style="flex: 1; position: relative; border-radius: 20px; overflow: hidden; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 8px 30px rgba(0,0,0,0.04);">
+                    <div id="iframeLoader" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10;">
+                        <div class="spinner-border text-primary" role="status" style="width: 30px; height: 30px; border-width: 3px;"></div>
+                        <p class="text-muted mt-2 small" style="font-weight: 500;">Cargando documento...</p>
+                    </div>
+                    <iframe src="${empleado.pagos_url}" style="width: 100%; height: 100%; border: none;" onload="document.getElementById('iframeLoader').style.display='none'"></iframe>
+                </div>
+            </div>
+            `;
+        }
+
         // ========== CERRAR SESIÓN ==========
         async function cerrarSesion() {
             if (confirm('¿Cerrar sesión? Se eliminará el acceso de este dispositivo.')) {
@@ -3426,6 +3672,8 @@
                 renderHorasExtrasPage();
             } else if (page === 'profile') {
                 renderProfilePage();
+            } else if (page === 'pagos') {
+                renderPagosPage();
             } else if (page === 'admin') {
                 renderAdminPage();
             }
@@ -3512,30 +3760,20 @@
                     if (data.empleadoId && data.token === deviceToken) {
                         showLoading(true);
 
-                        // ✨ PARALELO: config + estado + registros al mismo tiempo
-                        const [configRes, estadoRes, registros] = await Promise.all([
+                        // ✨ PARALELO: config + estado al mismo tiempo
+                        const [configRes, estadoRes] = await Promise.all([
                             cargarConfiguracionesSistema().catch(() => null),
-                            obtenerEstado(data.empleadoId, null).catch(e => ({ error: e.message })),
-                            obtenerRegistrosEmpleadoAPI(data.empleadoId).catch(() => [])
+                            obtenerEstado(data.empleadoId, null).catch(e => ({ error: e.message }))
                         ]);
 
                         showLoading(false);
 
                         if (estadoRes && !estadoRes.error) {
-                            const hoyStr = new Date().toISOString().split('T')[0];
-                            const listaRegistros = Array.isArray(registros) ? registros : [];
-                            if (registros && registros.error) {
-                                console.error('Error al recuperar registros iniciales:', registros.error);
-                            }
-                            const registroHoy = listaRegistros.filter(r => r.fecha === hoyStr);
-                            const entradaHoy = registroHoy.find(r => r.tipo === 'ENTRADA');
-                            const salidaHoy = registroHoy.find(r => r.tipo === 'SALIDA');
-
                             estado = {
                                 tieneEntrada: estadoRes.tieneEntrada || false,
                                 tieneSalida: estadoRes.tieneSalida || false,
-                                horaEntrada: entradaHoy ? formatearHora(entradaHoy.timestamp || entradaHoy.hora) : (estadoRes.horaEntrada || null),
-                                horaSalida: salidaHoy ? formatearHora(salidaHoy.timestamp || salidaHoy.hora) : (estadoRes.horaSalida || null),
+                                horaEntrada: estadoRes.horaEntrada || null,
+                                horaSalida: estadoRes.horaSalida || null,
                                 almuerzo: estadoRes.almuerzo || null,
                                 esSupervisor: estadoRes.esSupervisor || false
                             };
@@ -3550,26 +3788,24 @@
                                 baseLat: estadoRes.baseLat || null,
                                 baseLng: estadoRes.baseLng || null,
                                 authExtras: estadoRes.authExtras || 'NO',
+                                pagos_url: estadoRes.pagos_url || '',
                                 tipoRegistro: '',
                                 almuerzo: ''
                             };
 
                             actualizarInterfazSegunCargo();
-                            registrosCompletos = listaRegistros;
                             isAuthenticated = true;
+
+                            // Cargar registros históricos en segundo plano
+                            obtenerRegistrosEmpleado();
 
                             if (esCumpleanos(empleado.fechaNacimiento)) {
                                 setTimeout(celebrarCumpleanos, 1000);
                             }
 
-                            const faltas = obtenerDiasFaltantes();
-                            if (faltas.length > 0) {
-                                mostrarModalFaltasPasadas(faltas);
-                            } else {
-                                renderHomePage();
-                            }
+                            renderHomePage();
 
-                            // Cargar configuraciones en segundo plano (no bloquea la UI)
+                            // Cargar configuraciones en segundo plano si fallaron
                             if (!configRes) {
                                 cargarConfiguracionesSistema().catch(() => { });
                             }
@@ -4078,4 +4314,95 @@
                 }
             }
         });
+
+        // ========================================================
+        // SUBIDA DE FOTO DE PERFIL DEL USUARIO
+        // ========================================================
+        window.triggerProfilePhotoUpload = function(event) {
+            if (event) event.stopPropagation();
+            
+            let fileInput = document.getElementById('hiddenProfilePhotoInput');
+            if (!fileInput) {
+                fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.id = 'hiddenProfilePhotoInput';
+                fileInput.accept = 'image/*';
+                fileInput.style.display = 'none';
+                document.body.appendChild(fileInput);
+                
+                fileInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    showLoading(true);
+                    
+                    try {
+                        const reader = new FileReader();
+                        reader.onload = function(evt) {
+                            const img = new Image();
+                            img.onload = async function() {
+                                const canvas = document.createElement('canvas');
+                                const ctx = canvas.getContext('2d');
+                                
+                                const maxSize = 160;
+                                let w = img.width;
+                                let h = img.height;
+                                
+                                if (w > h) {
+                                    if (w > maxSize) {
+                                        h = Math.round((h * maxSize) / w);
+                                        w = maxSize;
+                                    }
+                                } else {
+                                    if (h > maxSize) {
+                                        w = Math.round((w * maxSize) / h);
+                                        h = maxSize;
+                                    }
+                                }
+                                
+                                canvas.width = w;
+                                canvas.height = h;
+                                ctx.drawImage(img, 0, 0, w, h);
+                                
+                                const base64Str = canvas.toDataURL('image/jpeg', 0.75);
+                                
+                                try {
+                                    const res = await jsonpRequest({
+                                        accion: 'actualizarEmpleado',
+                                        empleadoId: empleado.id,
+                                        campo: 'foto_url',
+                                        valor: base64Str
+                                    });
+                                    
+                                    if (res.ok) {
+                                        mostrarToast('Foto de perfil actualizada correctamente', 'success');
+                                        empleado.foto_url = base64Str;
+                                        
+                                        // Refrescar la página actual
+                                        if (currentPage === 'home') {
+                                            renderHomePage();
+                                        } else if (currentPage === 'profile') {
+                                            renderProfilePage();
+                                        }
+                                    } else {
+                                        mostrarToast(res.error || 'Error al guardar la foto', 'error');
+                                    }
+                                } catch (err) {
+                                    mostrarToast('Error de red al guardar la foto', 'error');
+                                } finally {
+                                    showLoading(false);
+                                }
+                            };
+                            img.src = evt.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    } catch (err) {
+                        mostrarToast('Error procesando imagen', 'error');
+                        showLoading(false);
+                    }
+                });
+            }
+            
+            fileInput.click();
+        };
         // ========================================================

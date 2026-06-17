@@ -15,7 +15,7 @@ window.TCONTROL_CONFIG = {
     HORA_ENTRADA_LIMITE: "07:45",  // Homologado
     HORA_SALIDA: "16:15",          // Homologado
     ALMUERZO_ACTIVO: true,
-    WHATSAPP_NUMBER: "593996356114",
+    WHATSAPP_NUMBER: "593963561149",
     WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
 };
 

@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Colección 'empleados'
+    match /empleados/{empleadoId} {
+      allow read: if true;
+      // Se requiere escritura/actualización para vincular tokens de dispositivos y flags de supervisor
+      allow write, update: if true; 
+    }
+
+    // Colección 'registros' (Marcaciones)
+    match /registros/{registroId} {
+      allow read: if true;
+      allow create, update: if true;
+      // Se requiere borrar registros durante el archivado histórico por lotes
+      allow delete: if true; 
+    }
+
+    // Colección 'dispositivos' (Vincular tokens de timbrado)
+    match /dispositivos/{deviceId} {
+      allow read, write: if true;
+    }
+
+    // Colección 'configuracion' (Configuración general del sistema)
+    match /configuracion/{configId} {
+      allow read, write: if true;
+    }
+
+    // Colección de consumos y auditorías de almuerzos
+    match /consumo_almuerzos/{almuerzoId} {
+      allow read, write: if true;
+    }
+    match /auditoria_almuerzos/{auditoriaId} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -246,7 +246,8 @@ window.FirebaseBackend = {
                 fechaNacimiento: empData.fechaNacimiento,
                 baseLat: empData.baseLat,
                 baseLng: empData.baseLng,
-                esSupervisor: empData.supervisor === 'SI'
+                esSupervisor: empData.supervisor === 'SI',
+                pagos_url: empData.id_dispositivo || ""
             }
         };
     },
@@ -359,6 +360,7 @@ window.FirebaseBackend = {
             horaEntrada: horaEntrada,
             horaSalida: horaSalida,
             almuerzo: ultimoAlmuerzo,
+            pagos_url: empData.id_dispositivo || "",
             error: null
         };
     },
@@ -731,7 +733,7 @@ window.FirebaseBackend = {
                 ubicacion: { lat: -0.128877, lng: -78.478967, radio: 250 },
                 horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "07:45", hora_salida: "16:15", almuerzo_activo: true, hora_inicio: "07:30", hora_fin: "16:15", marcacion_automatica: false, tiempo_automatico: 10 },
                 registro: { tolerancia_gps: 50, requiere_foto: false, permite_registro_manual: true },
-                otras: { whatsapp_number: "593999999999", mensaje_soporte: "Hola, necesito soporte técnico", modo_mantenimiento: false }
+                otras: { whatsapp_number: "593963561149", mensaje_soporte: "Hola, necesito soporte técnico", modo_mantenimiento: false }
             };
 
             if (configSnap.exists) {

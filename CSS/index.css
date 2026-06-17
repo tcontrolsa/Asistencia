@@ -1110,6 +1110,22 @@
             position: fixed;
             bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
             right: 20px;
+            z-index: 90;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+            /* Floating movement animation */
+            animation: whatsapp-float 4s ease-in-out infinite;
+        }
+
+        @media (min-width: 768px) {
+            .fab-whatsapp {
+                right: calc(50% - 300px + 20px);
+            }
+        }
+
+        .fab-whatsapp-btn {
             width: clamp(48px, 14vw, 56px);
             height: clamp(48px, 14vw, 56px);
             border-radius: 50%;
@@ -1118,18 +1134,117 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
+            box-shadow: 0 4px 16px rgba(37, 211, 102, 0.4);
             cursor: pointer;
-            z-index: 90;
             border: none;
+            pointer-events: auto;
+            position: relative;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
         }
 
-        .fab-whatsapp i {
+        .fab-whatsapp-btn i {
             font-size: clamp(24px, 7vw, 28px);
         }
 
-        .fab-whatsapp:active {
-            transform: scale(0.9);
+        .fab-whatsapp-btn:hover {
+            transform: scale(1.15);
+            box-shadow: 0 6px 20px rgba(37, 211, 102, 0.6);
+        }
+
+        .fab-whatsapp-btn:active {
+            transform: scale(0.95);
+        }
+
+        .whatsapp-tooltip {
+            background-color: #ffffff;
+            color: #1e293b;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
+            white-space: nowrap;
+            pointer-events: auto;
+            position: relative;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(10px);
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), visibility 0.3s;
+            border: 1px solid rgba(37, 211, 102, 0.15);
+            animation: tooltip-auto-reveal 6s ease-in-out 2s 1;
+        }
+
+        /* Tooltip arrow pointing to the button on the right */
+        .whatsapp-tooltip::after {
+            content: '';
+            position: absolute;
+            right: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-width: 6px 0 6px 6px;
+            border-style: solid;
+            border-color: transparent transparent transparent #ffffff;
+        }
+
+        /* When hovering either the button or the tooltip, display the tooltip */
+        .fab-whatsapp:hover .whatsapp-tooltip {
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: translateX(0) !important;
+        }
+
+        .whatsapp-pulse {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.5);
+            animation: whatsapp-pulse-anim 2s infinite;
+            pointer-events: none;
+        }
+
+        @keyframes whatsapp-float {
+            0% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-8px);
+            }
+            100% {
+                transform: translateY(0px);
+            }
+        }
+
+        @keyframes whatsapp-pulse-anim {
+            0% {
+                box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.6);
+            }
+            70% {
+                box-shadow: 0 0 0 15px rgba(37, 211, 102, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+            }
+        }
+
+        @keyframes tooltip-auto-reveal {
+            0% {
+                opacity: 0;
+                visibility: hidden;
+                transform: translateX(10px);
+            }
+            10%, 90% {
+                opacity: 1;
+                visibility: visible;
+                transform: translateX(0);
+            }
+            100% {
+                opacity: 0;
+                visibility: hidden;
+                transform: translateX(10px);
+            }
         }
 
         .photo-modal {
@@ -2305,5 +2420,191 @@
             .employee-photo-placeholder-profesional {
                 width: 120px;
                 height: 120px;
+            }
+        }
+
+        /* ========== ALMUERZO POP-UP MODAL STYLES ========== */
+        .almuerzo-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.65); /* Slate dark overlay */
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .almuerzo-modal-card {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 24px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+            width: 90%;
+            max-width: 420px;
+            padding: 30px 24px 24px 24px;
+            position: relative;
+            text-align: center;
+            animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .almuerzo-modal-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: #f1f5f9;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 20px;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .almuerzo-modal-close:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+            transform: scale(1.05);
+        }
+
+        .almuerzo-modal-header .almuerzo-modal-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            animation: bounce 2.2s infinite;
+        }
+
+        .almuerzo-modal-header h3 {
+            font-size: 22px;
+            color: #0f172a;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .almuerzo-modal-header p {
+            font-size: 14px;
+            color: #64748b;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        .almuerzo-modal-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .almuerzo-modal-option-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 2px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 20px 12px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        }
+
+        .almuerzo-modal-option-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+            border-color: #3b82f6;
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        }
+
+        .almuerzo-modal-option-card:active {
+            transform: scale(0.96);
+        }
+
+        .almuerzo-modal-option-card:hover .option-title {
+            color: #1d4ed8;
+        }
+
+        .option-icon {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+
+        .option-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 4px;
+            transition: color 0.2s;
+        }
+
+        .option-desc {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes scaleIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        /* ===== ESTILOS PARA EDICIÓN DE FOTO DE PERFIL (INDEX) ===== */
+        .photo-edit-badge {
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            width: clamp(24px, 7vw, 28px);
+            height: clamp(24px, 7vw, 28px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 3px solid white;
+            cursor: pointer;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+        .photo-edit-badge:hover {
+            transform: scale(1.1);
+            background: #1d4ed8;
+        }
+        .photo-edit-badge i {
+            font-size: clamp(12px, 3.5vw, 14px);
+        }
+
+        .profile-photo-container {
+            position: relative;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .profile-photo-container:hover {
+            transform: scale(1.02);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
+        }
+        .profile-photo-container:hover .photo-upload-overlay {
+            opacity: 1 !important;
+        }
+
+        @keyframes pulseGlowRed {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
             }
         }

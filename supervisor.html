@@ -9,11 +9,11 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260610_1">
+  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260612_2">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260610_1"></script>
+  <script src="./JS/firebase_backend.js?v=20260612_2"></script>
   <script>window.USE_FIREBASE = true;</script>
   <style>
     /* Estilos para el Creador Interactivo de Reportes */
@@ -134,8 +134,8 @@
       </div>
       <div id="sidebarSupervisorInfo" style="padding: 10px 16px; border-bottom: 1px dashed var(--g200); margin-bottom: 12px;"></div>
       <nav class="sidebar-nav">
-        <div class="nav-item active" data-panel="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></div>
-        <div class="nav-item" data-panel="asistencia"><i class="fas fa-calendar-day"></i><span>Asistencia</span></div>
+        <div class="nav-item active" data-panel="asistencia"><i class="fas fa-calendar-day"></i><span>Asistencia</span></div>
+        <div class="nav-item" data-panel="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></div>
         <div class="nav-item" data-panel="reportes" id="navItemReportes" style="display:none"><i
             class="fas fa-file-alt"></i><span>Reportes</span></div>
         <div class="nav-item" data-panel="opciones" id="navItemOpciones" style="display:none"><i
@@ -161,7 +161,7 @@
       </div>
 
       <!-- PANEL DASHBOARD -->
-      <div id="panel-dashboard" class="panel active">
+      <div id="panel-dashboard" class="panel">
         <div class="dashboard-header-sticky" style="position: sticky; top: 0; z-index: 100; background: #f8fafc; padding: 10px 0; border-bottom: 1px solid var(--g200); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
           <!-- Periodo Dropdown -->
           <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.02);">
@@ -388,8 +388,8 @@
       </div>
 
       <!-- PANEL ASISTENCIA - COMPACT HEADER AND TABLE -->
-      <div id="panel-asistencia" class="panel">
-        <div class="asistencia-header-row" style="background:#ffffff; border:1px solid var(--g200); border-radius:12px; padding:10px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px;">
+      <div id="panel-asistencia" class="panel active">
+        <div class="asistencia-header-row" style="background:#ffffff; border:1px solid var(--g200); border-radius:12px; padding:10px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
           <div class="cards-grid">
             <div class="kpi-card active" data-filter="todos" onclick="setFiltroAsistencia('todos')" style="--card-color: var(--blue); --active-bg: #eff6ff; --active-text: #1e40af; --shadow-color: rgba(37, 99, 235, 0.12);">
               <div class="kpi-header">
@@ -859,8 +859,8 @@
     </div>
   </div>
 
-  <script src="./JS/tcontrol_core.js?v=20260610_1"></script>
-  <script src="./JS/supervisor_core.js?v=20260610_1"></script>
+  <script src="./JS/tcontrol_core.js?v=20260612_2"></script>
+  <script src="./JS/supervisor_core.js?v=20260612_2"></script>
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil
     document.addEventListener("DOMContentLoaded", () => {

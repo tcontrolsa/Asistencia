@@ -122,10 +122,19 @@ function doGet(e) {
   }
   
   // Siempre responder como JSONP para evitar CORS
-  const callback = e.parameter.callback || 'callback';
+  const callback = (e && e.parameter && e.parameter.callback) || 'callback';
+  
+  // Validación de API Key
+  if (!e || !e.parameter || e.parameter.apiKey !== 'TCONTROL_SECURE_2026_XYZ') {
+    const jsonString = JSON.stringify({ error: "No autorizado: API Key inválida o ausente" });
+    return ContentService
+      .createTextOutput(`${callback}(${jsonString})`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
   const params = {};
   
-  // Copiar todos los parÃ¡metros excepto callback
+  // Copiar todos los parámetros excepto callback
   for (let key in e.parameter) {
     if (key !== 'callback') {
       params[key] = e.parameter[key];
@@ -154,6 +163,13 @@ function doPost(e) {
   try {
     if (e && e.postData && e.postData.contents) {
       var data = JSON.parse(e.postData.contents);
+      
+      // Validación de API Key
+      if (!data || data.apiKey !== 'TCONTROL_SECURE_2026_XYZ') {
+        return ContentService
+          .createTextOutput(JSON.stringify({ error: "No autorizado: API Key inválida o ausente" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
       
       if (data.accion === 'archivarRegistros') {
         var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
@@ -1528,7 +1544,7 @@ function obtenerConfiguraciones() {
         ubicacion: { lat: LAT_EMPRESA, lng: LNG_EMPRESA, radio: RADIO_METROS },
         horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "07:45", hora_salida: "16:15", almuerzo_activo: true, hora_inicio: "07:30", hora_fin: "16:15", marcacion_automatica: false, tiempo_automatico: 10 },
         registro: { tolerancia_gps: 50, requiere_foto: false, permite_registro_manual: true },
-        otras: { whatsapp_number: "593999999999", mensaje_soporte: "Hola, necesito soporte tÃ©cnico para el sistema CONTROL 2026", modo_mantenimiento: false, mensaje_mantenimiento: "Sistema en mantenimiento. Intente mÃ¡s tarde." }
+        otras: { whatsapp_number: "593963561149", mensaje_soporte: "Hola, necesito soporte tÃ©cnico para el sistema CONTROL 2026", modo_mantenimiento: false, mensaje_mantenimiento: "Sistema en mantenimiento. Intente mÃ¡s tarde." }
       };
       sheet.getRange(1, 1).setValue(JSON.stringify(configDefault));
     }

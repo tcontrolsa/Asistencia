@@ -30,11 +30,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
         media="print" onload="this.media='all'">
 
-    <link rel="stylesheet" href="./CSS/index.css?v=20260611_1">
+    <link rel="stylesheet" href="./CSS/index.css?v=20260615_2">
     <!-- ===== FIREBASE SDKS & BACKEND ===== -->
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-    <script src="./JS/firebase_backend.js?v=20260611_1"></script>
+    <script src="./JS/firebase_backend.js?v=20260615_2"></script>
 
     <script>
         // FIREBASE POR DEFECTO PARA TODOS LOS USUARIOS
@@ -69,6 +69,10 @@
                 <i class="fas fa-clock"></i>
                 <span>Extras</span>
             </button>
+            <button class="nav-item" id="navItemPagos" data-page="pagos">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <span>Pagos</span>
+            </button>
             <button class="nav-item" data-page="profile">
                 <i class="fas fa-user-circle"></i>
                 <span>Perfil</span>
@@ -86,9 +90,13 @@
         </div>
         <!-- =============================== -->
 
-        <button class="fab-whatsapp" id="fabWhatsApp" style="display: none;">
-            <i class="fab fa-whatsapp"></i>
-        </button>
+        <div class="fab-whatsapp" id="fabWhatsApp" style="display: none;">
+            <span class="whatsapp-tooltip">¿Necesitas soporte?</span>
+            <button class="fab-whatsapp-btn" aria-label="Soporte Técnico">
+                <i class="fab fa-whatsapp"></i>
+                <span class="whatsapp-pulse"></span>
+            </button>
+        </div>
     </div>
 
     <div id="loadingOverlay" class="loading-overlay hidden">
@@ -98,8 +106,8 @@
         </div>
     </div>
 
-    <script src="./JS/tcontrol_core.js?v=20260611_1"></script>
-    <script src="./JS/index_core.js?v=20260611_1"></script>
+    <script src="./JS/tcontrol_core.js?v=20260615_2"></script>
+    <script src="./JS/index_core.js?v=20260615_2"></script>
 </body>
 
 </html>

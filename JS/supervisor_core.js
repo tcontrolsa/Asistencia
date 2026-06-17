@@ -10,7 +10,7 @@
 
     let empCache = [];
     let periodos = [];
-    let panelActual = 'dashboard';
+    let panelActual = 'asistencia';
     let filtroAsistenciaActual = 'todos';
     const hoy = new Date().toISOString().split('T')[0];
     let estaActualizando = false;
@@ -71,6 +71,14 @@
 
     function formatearTimestampCompleto(ts) {
       if (!ts) return '';
+      
+      if (typeof ts === 'string') {
+        const parsed = parsearTimestamp(ts);
+        if (parsed) {
+          return parsed.timestampFormatted.replace(/\//g, '-');
+        }
+      }
+      
       let dateObj;
       if (typeof ts.toDate === 'function') dateObj = ts.toDate();
       else if (ts && typeof ts === 'object' && ts.seconds) dateObj = new Date(ts.seconds * 1000);
@@ -128,6 +136,46 @@
         hora: `${hour}:${minute}:${second}`,
         timestampFormatted: `${day}/${month}/${year} ${hour}:${minute}:${second}`
       };
+    }
+
+    function formatearFechaA_DMY(fecha) {
+      if (!fecha) return '';
+      if (typeof fecha.toDate === 'function') {
+        const d = fecha.toDate();
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+      }
+      if (fecha instanceof Date) {
+        const dd = String(fecha.getDate()).padStart(2, '0');
+        const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+        const yyyy = fecha.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+      }
+      const str = String(fecha).trim();
+      const matchDMY = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (matchDMY) {
+        const dd = matchDMY[1].padStart(2, '0');
+        const mm = matchDMY[2].padStart(2, '0');
+        const yyyy = matchDMY[3];
+        return `${dd}-${mm}-${yyyy}`;
+      }
+      const matchYMD = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (matchYMD) {
+        const yyyy = matchYMD[1];
+        const mm = matchYMD[2].padStart(2, '0');
+        const dd = matchYMD[3].padStart(2, '0');
+        return `${dd}-${mm}-${yyyy}`;
+      }
+      const d = new Date(str);
+      if (d && !isNaN(d.getTime())) {
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+      }
+      return str;
     }
 
     function obtenerMinutos(valor) {
@@ -500,7 +548,7 @@
         if (entr) {
           hoyP++;
           let m = obtenerMinutos(entr.hora);
-          if (m !== null && m > refEntradaHoy) hoyT++;
+          if (m !== null && m > refEntradaHoy + 5) hoyT++;
           if (sal) hoySalieron++;
         } else {
           hoyA++;
@@ -530,7 +578,7 @@
             let m = obtenerMinutos(r.hora);
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
             const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
-            if (m !== null && m > refEntradaR) tard++;
+            if (m !== null && m > refEntradaR + 5) tard++;
           });
           
           let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= periodo.inicio && r.fecha <= hoy_);
@@ -570,7 +618,7 @@
             let m = obtenerMinutos(firstE.hora);
             if (m !== null) {
               nE++;
-              if (m > HORA_ENTRADA_REF) {
+              if (m > HORA_ENTRADA_REF + 5) {
                 tardE++;
                 let diffMin = m - HORA_ENTRADA_REF;
                 minutosTardE += diffMin;
@@ -919,6 +967,25 @@
         }
       }
 
+      let sumAsist = data.reduce((acc, e) => acc + (parseInt(e.asist) || 0), 0);
+      let sumFaltas = data.reduce((acc, e) => acc + (parseInt(e.faltas) || 0), 0);
+      let sumTards = data.reduce((acc, e) => acc + (parseInt(e.tards) || 0), 0);
+      let sumAlmP = data.reduce((acc, e) => acc + (parseInt(e.almP) || 0), 0);
+      let sumAlmF = data.reduce((acc, e) => acc + (parseInt(e.almF) || 0), 0);
+      let avgPunt = data.length ? Math.round(data.reduce((acc, e) => acc + (parseFloat(e.punt) || 0), 0) / data.length) : 0;
+      let totalAlmPFinal = sumAlmP + (typeof totalAlmExt !== 'undefined' ? totalAlmExt : 0);
+
+      html += `<tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid var(--g300); position:sticky; bottom:0; z-index:10;">
+        <td><strong>TOTALES (${data.length})</strong></td>
+        <td>—</td>
+        <td>${sumAsist}</td>
+        <td>${sumFaltas}</td>
+        <td>${sumTards}</td>
+        <td>${totalAlmPFinal}</td>
+        <td>${sumAlmF}</td>
+        <td>${avgPunt}% (Prom.)</td>
+      </tr>`;
+
       html += `</tbody></table>`;
       $('tablaResumenMensual').innerHTML = html;
     }
@@ -937,7 +1004,7 @@
           sE += mins; nE++;
           const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
           const refEnt = esFestivoR ? 420 : HORA_ENTRADA_REF;
-          if (mins - refEnt > 1) { t++; m += mins - refEnt; }
+          if (mins - refEnt > 5) { t++; m += mins - refEnt; }
         });
         salidas.forEach(r => {
           let mins = obtenerMinutos(r.hora);
@@ -975,7 +1042,7 @@
       const refEntradaHoy = esFestivoHoy ? 420 : HORA_ENTRADA_REF;
       const refSalidaHoy = esFestivoHoy ? 900 : HORA_SALIDA_REF;
 
-      let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > refEntradaHoy; }).length;
+      let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > refEntradaHoy + 5; }).length;
       let salieron = empCache.filter(e => e.salidaHoy).length;
       let sinSalida = pres - salieron;
       
@@ -1010,7 +1077,7 @@
 
         let horaV = e.horaEntradaMs || eReg?.hora || eReg?.timestamp;
         let mEnt = e.entradaHoy ? obtenerMinutos(horaV) : null;
-        let tard = mEnt !== null && mEnt > refEntradaHoy;
+        let tard = mEnt !== null && mEnt > refEntradaHoy + 5;
 
         let eHtml = e.entradaHoy ? `<span class="editable-cell" ${clickEntrada}>${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'}${tard ? ` <span class="delta pos">+${formatearMinutos(mEnt - refEntradaHoy)}</span>` : ''}</span>` : `<span class="editable-cell empty" ${clickEntrada}>-</span>`;
 
@@ -1049,11 +1116,12 @@
                             <option value="Permiso Médico" ${razonAusenciaHoy === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
                             <option value="Permiso Personal" ${razonAusenciaHoy === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
                             <option value="Calamidad Doméstica" ${razonAusenciaHoy === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
-                            <option value="Otro" ${razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
+                            <option value="Trabajo de Campo" ${razonAusenciaHoy === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Trabajo de Campo</option>
+                            <option value="Otro" ${razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
                         </select>
                     </div>
                   `;
-                  if (razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica'].includes(razonAusenciaHoy)) {
+                  if (razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo'].includes(razonAusenciaHoy)) {
                        selectHtml += `<div style="font-size:10px; color:var(--indigo); margin-top:4px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
                   }
                   ausenciaHtml = selectHtml;
@@ -1203,7 +1271,33 @@
       }
       let html = `<table class="employee-table table-compact"><thead><tr><th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th><th>Área</th><th>Entrada</th><th>Salida</th><th>Modo</th><th>Extras</th><th>Estado</th><th>Razón Ausencia</th><th>Almuerzo</th></tr></thead><tbody>`;
       html += data.map(e => `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td><td>${escapeHtml(e.area || '—')}</td><td>${e._eH}</td><td>${e._sH}</td><td>${e._modo}</td><td>${e._extras}</td><td>${e._est}</td><td>${e._ausencia}</td><td>${e._toggle}</td></tr>`).join('');
-      html += `</tbody></table>`;
+      
+      let totalVisible = data.length;
+      let countEntradas = data.filter(e => e._entradaHoy).length;
+      let countSalidas = data.filter(e => e._salidaHoy).length;
+      let countAlmPlanta = data.filter(e => e._almuerzoHoy === 'SI' || e._almuerzoHoy === 'PLANTA').length;
+      let countCampo = data.filter(e => {
+        let modoStr = (e._modo || '').toUpperCase();
+        return modoStr.includes('CAMPO') || (e.registros || []).some(r => r.modo === 'CAMPO' && r.fecha === hoy);
+      }).length;
+      let countExtrasAut = data.filter(e => {
+        let extStr = (e._extras || '').toUpperCase();
+        return extStr.includes('AUTORIZADO') || extStr.includes('CAMPO');
+      }).length;
+
+      let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid var(--g300); position:sticky; bottom:0; z-index:10;">
+        <td><strong>TOTALES (${totalVisible})</strong></td>
+        <td>—</td>
+        <td>${countEntradas} Entradas</td>
+        <td>${countSalidas} Salidas</td>
+        <td>${countCampo} Campo</td>
+        <td>${countExtrasAut} Aut.</td>
+        <td>—</td>
+        <td>—</td>
+        <td>${countAlmPlanta} Planta</td>
+      </tr>`;
+      
+      html += `</tbody><tfoot>${footerHtml}</tfoot></table>`;
       $('asistenciaTablaContainer').innerHTML = html;
     }
     
@@ -1219,7 +1313,28 @@
         razonFinal = otra;
       }
       
-      mostrarLoader(true);
+      // OPTIMISTIC UPDATE
+      const emp = empCache.find(x => x.id === empleadoId);
+      let originalRegs = null;
+      if (emp) {
+        originalRegs = JSON.parse(JSON.stringify(emp.registros || []));
+        if (!emp.registros) emp.registros = [];
+        let fReg = emp.registros.find(r => r.tipo === 'FALTA' && r.fecha === hoy);
+        if (!fReg) {
+            fReg = {
+                id: `${empleadoId}_FALTA_${hoy}`,
+                empleadoId: empleadoId,
+                tipo: 'FALTA',
+                fecha: hoy,
+                razon_ausencia: razonFinal
+            };
+            emp.registros.push(fReg);
+        } else {
+            fReg.razon_ausencia = razonFinal;
+        }
+        cargarAsistencia(); // Update UI instantly
+      }
+
       try {
         const res = await jsonpRequest({
           accion: 'guardarRegistro',
@@ -1230,16 +1345,26 @@
         });
         if (res.ok) {
           mostrarToast('Razón de ausencia guardada', 'success');
+          // Silent background reload to keep in sync
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-          cargarAsistencia();
+          cargarDatosCompletos(true).then(() => {
+              cargarAsistencia();
+          }).catch(err => console.error("Error al recargar datos en segundo plano:", err));
         } else {
           mostrarToast(res.error || 'Error al guardar', 'error');
+          // Revert optimistic update
+          if (emp && originalRegs) {
+              emp.registros = originalRegs;
+              cargarAsistencia();
+          }
         }
       } catch (e) {
         mostrarToast('Error de conexión', 'error');
-      } finally {
-        mostrarLoader(false);
+        // Revert optimistic update
+        if (emp && originalRegs) {
+            emp.registros = originalRegs;
+            cargarAsistencia();
+        }
       }
     };
 
@@ -1375,7 +1500,7 @@
           if (m !== null) {
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
             const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
-            if (m > refEntradaR) {
+            if (m > refEntradaR + 5) {
               atrasos++;
               minutosAtrasos += m - refEntradaR;
             }
@@ -1436,7 +1561,7 @@
             const tipo = String(r.tipo || '').toUpperCase();
             if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
               let mE = obtenerMinutos(r.hora);
-              if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+              if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
                 let gap = mE - ultimoSalidaMins;
                 let clasif = clasificarGap(ultimoSalidaReg, gap);
                 if (clasif.tipo === 'medico') {
@@ -1497,8 +1622,10 @@
           let autorizado = regsDia.some(r => r.horasExtra === 'SI');
           if (esFestivo) {
             if (netWorked > 60) autorizado = true;
+            if (netWorked <= 60) autorizado = false;
           } else {
             if (netWorked >= 600) autorizado = true;
+            if (netWorked - 480 <= 60) autorizado = false;
           }
 
           let extraMins50Acum = 0;
@@ -1798,7 +1925,7 @@
           cE++;
           const esFestivo = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
           const refEnt = esFestivo ? 420 : HORA_ENTRADA_REF;
-          if (m > refEnt) tardT++;
+          if (m > refEnt + 5) tardT++;
         }
         else { sS += m; cS++; }
       });
@@ -1928,7 +2055,7 @@
         if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
           let mE = obtenerMinutos(primerReg.hora);
           let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
-          if (mE !== null && mE > refEntrada) atrasoMins = mE - refEntrada;
+          if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
         }
 
         let razonesBadges = [];
@@ -1943,6 +2070,17 @@
             else if (txt === 'salida_justificada') { txt = 'Entrada Justif.'; ico = '✅'; }
             let q = r.quien_justifica_entrada ? ` (${r.quien_justifica_entrada})` : '';
             razonesBadges.push(`<span class="pill" style="background:#e0e7ff; color:#3730a3; font-size:11px;">${ico} ${txt}${q}</span>`);
+          }
+          if (r.razon_salida_temprana) {
+            let txt = r.razon_salida_temprana;
+            let ico = '📌';
+            if (txt === 'permiso_medico') { txt = 'Permiso médico'; ico = '🏥'; }
+            else if (txt === 'cumpleanos') { txt = 'Cumpleaños'; ico = '🎂'; }
+            else if (txt === 'permiso_personal') { txt = 'Permiso personal'; ico = '📋'; }
+            else if (txt === 'salida_campo') { txt = 'Salida a Campo'; ico = '🚗'; }
+            else if (txt === 'salida_justificada') { txt = 'Justificada'; ico = '✅'; }
+            let q = r.quien_justifica ? ` (${r.quien_justifica})` : '';
+            razonesBadges.push(`<span class="pill" style="background:#fce7f3; color:#831843; font-size:11px;">${ico} ${txt}${q}</span>`);
           }
           if (r.tipo_salida && r.tipo_salida.includes('PERMISO')) {
             let txt = r.razon_permiso || 'Permiso';
@@ -1969,6 +2107,7 @@
             else if (txt === 'Permiso Médico') ico = '🩺';
             else if (txt === 'Permiso Personal') ico = '👤';
             else if (txt === 'Calamidad Doméstica') ico = '🏠';
+            else if (txt === 'Trabajo de Campo') ico = '🚗';
             else if (r.razon_justificac) ico = '✅';
             razonesBadges.push(`<span class="pill" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; font-size:11px;">${ico} ${escapeHtml(txt)}</span>`);
           }
@@ -2033,8 +2172,10 @@
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
         if (esFestivo) {
           if (netWorked > 60) autorizadoGlobal = true;
+          if (netWorked <= 60) autorizadoGlobal = false;
         } else {
           if (netWorked >= 600) autorizadoGlobal = true;
+          if (netWorked - 480 <= 60) autorizadoGlobal = false;
         }
 
         let extBadgeVal = autorizadoGlobal ? 'SI' : 'NO';
@@ -2135,12 +2276,16 @@
     <div class="detail-view">
       <div class="detail-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
         <div style="display:flex; gap:16px; align-items:center;">
-          ${photoCell(e, 'large')}
+          <div class="detail-photo-container" ${esAdminMaster ? `onclick="triggerPhotoUpload('${e.id}')" title="Subir nueva foto"` : ''}>
+            ${photoCell(e, 'large')}
+            ${esAdminMaster ? `<div class="photo-upload-overlay"><i class="fas fa-camera"></i></div>` : ''}
+          </div>
           <div class="detail-info">
             <div class="detail-name" ${esAdminMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')"` : ''}>${escapeHtml(e.nombre)}</div>
             <div class="detail-meta">
               <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')"` : ''}><i class="fas fa-id-card"></i> ${escapeHtml(e.id)}</span>
               <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')"` : ''}><i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}</span>
+              <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Editar enlace de Rol de Pagos"` : ''}><i class="fas fa-file-invoice-dollar"></i> ${e.id_dispositivo ? 'Con Rol' : 'Sin Rol'}</span>
               ${tardT > 0 ? `<span class="pill late" style="margin-left:8px"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` : '<span class="pill ok" style="margin-left:8px"><i class="fas fa-check-circle"></i> Puntual</span>'}
             </div>
           </div>
@@ -2280,6 +2425,24 @@
       if (!fecha) { mostrarToast('Ingrese una fecha válida', 'error'); return; }
       if (!cantidad || cantidad < 1) { mostrarToast('Ingrese una cantidad válida', 'error'); return; }
 
+      let supervisorName = "Supervisor";
+      try {
+        let sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}');
+        let id = sessionData.id || "";
+        if (id === "1058") {
+          supervisorName = "Admin Master";
+        } else if (id) {
+          let sup = empCache.find(x => x.id === id);
+          if (sup) supervisorName = sup.nombre;
+          else supervisorName = "Supervisor ID " + id;
+        }
+      } catch(e) {}
+      
+      let observacionesFinal = observaciones;
+      if (supervisorName) {
+        observacionesFinal = observacionesFinal ? `${observacionesFinal} (Creado por: ${supervisorName})` : `(Creado por: ${supervisorName})`;
+      }
+
       mostrarLoader(true);
       try {
         let res = await jsonpRequest({
@@ -2288,7 +2451,7 @@
           empresa: 'TCONTROL',
           fecha: fecha,
           tipo: 'Formulario',
-          observaciones: observaciones,
+          observaciones: observacionesFinal,
           cantidad: cantidad
         });
         mostrarLoader(false);
@@ -2432,44 +2595,125 @@
         const d = String(limite.getDate()).padStart(2, '0');
         const limiteStr = `${y}-${m}-${d}`;
 
-        mostrarToast('Buscando registros antiguos...', 'info');
+        mostrarToast('Buscando registros en Firebase...', 'info');
 
-        // 1. Obtener registros antiguos de Firebase
-        const snap = await db.collection('registros').where('fecha', '<', limiteStr).get();
+        // 1. Obtener registros de Firebase
+        const snap = await db.collection('registros').get();
 
         if (snap.empty) {
           mostrarLoader(false);
-          mostrarToast('No hay registros tan antiguos para archivar.', 'info');
+          mostrarToast('No hay registros para archivar.', 'info');
           return;
         }
 
         const registrosToArchive = [];
+        const limitDateNormalized = new Date(limite.getFullYear(), limite.getMonth(), limite.getDate()).getTime();
+
+        console.log("=== DIAGNÓSTICO DE ARCHIVADO ===");
+        console.log("Fecha límite original (limite):", limite);
+        console.log("Límite normalizado (limitDateNormalized):", limitDateNormalized, new Date(limitDateNormalized).toISOString());
+        console.log("Total registros en Firebase:", snap.size);
+
+        let countSinFecha = 0;
+        let countParseFail = 0;
+        let countMayorOIgual = 0;
+        let countMenores = 0;
+
         snap.forEach(doc => {
           let data = doc.data();
-          // Formatear el timestamp de Firebase (seconds/nanoseconds) a fecha legible estándar (24h)
-          let ts = data.timestamp;
-          if (ts) {
-            let dateObj;
-            if (ts && typeof ts.toDate === 'function') dateObj = ts.toDate();
-            else if (ts && ts.seconds) dateObj = new Date(ts.seconds * 1000);
-            else dateObj = new Date(ts);
+          let docFecha = data.fecha;
+          if (!docFecha) {
+            countSinFecha++;
+            return;
+          }
 
-            if (dateObj && !isNaN(dateObj.getTime())) {
-              const d = dateObj.getDate();
-              const m = dateObj.getMonth() + 1;
-              const y = dateObj.getFullYear();
-              const hh = String(dateObj.getHours()).padStart(2, '0');
-              const mm = String(dateObj.getMinutes()).padStart(2, '0');
-              const ss = String(dateObj.getSeconds()).padStart(2, '0');
-              ts = `${d}-${m}-${y} ${hh}:${mm}:${ss}`;
+          // Parsear y normalizar la fecha de forma robusta
+          let parsedDate = null;
+
+          if (typeof docFecha.toDate === 'function') {
+            // Es un Timestamp de Firebase
+            parsedDate = docFecha.toDate();
+          } else if (docFecha instanceof Date) {
+            // Es un objeto Date
+            parsedDate = docFecha;
+          } else {
+            // Es un string
+            let docFechaStr = String(docFecha).trim();
+            const matchDMY = docFechaStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+            if (matchDMY) {
+              const d = parseInt(matchDMY[1], 10);
+              const m = parseInt(matchDMY[2], 10);
+              const y = parseInt(matchDMY[3], 10);
+              parsedDate = new Date(y, m - 1, d);
             } else {
-              ts = String(ts);
+              const matchYMD = docFechaStr.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+              if (matchYMD) {
+                const y = parseInt(matchYMD[1], 10);
+                const m = parseInt(matchYMD[2], 10);
+                const d = parseInt(matchYMD[3], 10);
+                parsedDate = new Date(y, m - 1, d);
+              } else {
+                parsedDate = new Date(docFechaStr);
+              }
             }
           }
-          data.timestamp = ts || '';
 
-          registrosToArchive.push({ ...data, id: doc.id });
+          if (!parsedDate || isNaN(parsedDate.getTime())) {
+            countParseFail++;
+            if (countParseFail <= 5) {
+              console.warn(`[DIAGNOSTICO] Error al parsear fecha para doc ID ${doc.id}. Valor recibido:`, docFecha);
+            }
+            return;
+          }
+
+          const docDateNormalized = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate()).getTime();
+
+          // Si el registro es anterior a la fecha límite (excluyendo hoy si diasNum = 0)
+          if (docDateNormalized < limitDateNormalized) {
+            countMenores++;
+            // Formatear el timestamp de Firebase (seconds/nanoseconds) a fecha legible estándar (24h)
+            let ts = data.timestamp;
+            if (ts) {
+              let dateObj;
+              if (ts && typeof ts.toDate === 'function') dateObj = ts.toDate();
+              else if (ts && ts.seconds) dateObj = new Date(ts.seconds * 1000);
+              else dateObj = new Date(ts);
+
+              if (dateObj && !isNaN(dateObj.getTime())) {
+                const d = dateObj.getDate();
+                const m = dateObj.getMonth() + 1;
+                const y = dateObj.getFullYear();
+                const hh = String(dateObj.getHours()).padStart(2, '0');
+                const mm = String(dateObj.getMinutes()).padStart(2, '0');
+                const ss = String(dateObj.getSeconds()).padStart(2, '0');
+                ts = `${d}-${m}-${y} ${hh}:${mm}:${ss}`;
+              } else {
+                ts = String(ts);
+              }
+            }
+            data.timestamp = ts || '';
+            data.fecha = formatearFechaA_DMY(docFecha);
+
+            registrosToArchive.push({ ...data, id: doc.id });
+          } else {
+            countMayorOIgual++;
+            if (countMayorOIgual <= 5) {
+              console.log(`[DIAGNOSTICO] Registro omitido (hoy o futuro). ID: ${doc.id}, Fecha original:`, docFecha, `-> parsedDate:`, parsedDate.toISOString(), `-> docDateNormalized:`, docDateNormalized);
+            }
+          }
         });
+
+        console.log("=== FIN DIAGNÓSTICO ===");
+        console.log("- Sin campo 'fecha':", countSinFecha);
+        console.log("- Fallas de parseo:", countParseFail);
+        console.log("- Omitidos (hoy/futuro):", countMayorOIgual);
+        console.log("- Aceptados para archivar:", countMenores);
+
+        if (registrosToArchive.length === 0) {
+          mostrarLoader(false);
+          mostrarToast('No hay registros tan antiguos para archivar.', 'info');
+          return;
+        }
 
         const chunkSiz = 200;
         const totalRegistros = registrosToArchive.length;
@@ -2486,6 +2730,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' }, // Evitar preflight CORS estricto
             body: JSON.stringify({
+              apiKey: 'TCONTROL_SECURE_2026_XYZ',
               accion: 'archivarRegistros',
               registros: chunk
             })
@@ -2958,6 +3203,112 @@
       }
     };
 
+    let estaCompletandoSalidas = false;
+    function obtenerFechaYMD(dateObj = new Date()) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    function obtenerDiaSemanaLocal(dateObj) {
+      const dias = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
+      return dias[dateObj.getDay()];
+    }
+    async function autoCompletarSalidasFaltantes() {
+      if (estaCompletandoSalidas) return;
+      
+      let sessionData = {};
+      try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      const esAdminMaster = window.isMaster || (sessionData.id === "1058") || window.esAdminMaster;
+      if (!esAdminMaster) return;
+
+      estaCompletandoSalidas = true;
+      try {
+        const ahora = new Date();
+        const hoyStr = obtenerFechaYMD(ahora);
+        const horaActualStr = ahora.toTimeString().slice(0, 5);
+
+        const fechasAProcesar = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const fStr = obtenerFechaYMD(d);
+          if (fStr === hoyStr) {
+            if (horaActualStr >= "20:00") {
+              fechasAProcesar.push(fStr);
+            }
+          } else {
+            fechasAProcesar.push(fStr);
+          }
+        }
+
+        if (fechasAProcesar.length === 0) {
+          estaCompletandoSalidas = false;
+          return;
+        }
+
+        const snap = await db.collection('registros')
+          .where('fecha', 'in', fechasAProcesar)
+          .get();
+
+        const mapaRegs = {};
+        snap.docs.forEach(doc => {
+          const r = doc.data();
+          const key = `${r.empleadoId}_${r.fecha}`;
+          if (!mapaRegs[key]) mapaRegs[key] = {};
+          mapaRegs[key][r.tipo] = true;
+        });
+
+        const batch = db.batch();
+        let creados = 0;
+
+        for (const emp of empCache) {
+          if ((emp.cargo || '').toUpperCase() === 'SIN ASISTENCIA') continue;
+
+          for (const fecha of fechasAProcesar) {
+            const key = `${emp.id}_${fecha}`;
+            const regs = mapaRegs[key] || {};
+            
+            if (regs.ENTRADA && !regs.SALIDA) {
+              const horaSalida = "16:15:00";
+              const idLimpio = horaSalida.replace(/:/g, '');
+              const idDocumento = `${emp.id}_SALIDA_${fecha}_${idLimpio}`;
+              
+              const [yStr, mStr, dStr] = fecha.split('-');
+              const dateObj = new Date(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), 16, 15, 0);
+
+              batch.set(db.collection('registros').doc(idDocumento), {
+                empleadoId: emp.id,
+                nombre: emp.nombre,
+                fecha: fecha,
+                tipo: 'SALIDA',
+                hora: horaSalida,
+                almuerzo: 'NO',
+                modo: 'OFICINA',
+                horasExtra: 'NO',
+                justificado: 'NO',
+                timestamp: firebase.firestore.Timestamp.fromDate(dateObj),
+                dia: obtenerDiaSemanaLocal(dateObj),
+                observacion_automatica: "Auto-completado salida faltante a las 20:00"
+              });
+              creados++;
+            }
+          }
+        }
+
+        if (creados > 0) {
+          await batch.commit();
+          mostrarToast(`🤖 Auto-completadas ${creados} salidas faltantes (16:15).`, 'success');
+          localStorage.removeItem('tcontrol_registros_cache_v1');
+          await cargarDatosCompletos(true, true);
+        }
+      } catch (err) {
+        console.error("Error auto-completando salidas:", err);
+      } finally {
+        estaCompletandoSalidas = false;
+      }
+    }
+
     // ============================================================
     // CARGA DE DATOS
     // ============================================================
@@ -2979,7 +3330,31 @@
 
         const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
         if (sessionStr) {
-          try { mostrarInformacionSupervisor(JSON.parse(sessionStr)); } catch(e) {}
+          try {
+            const session = JSON.parse(sessionStr);
+            const id = session.id;
+            const esMaster = id === "1058" || window.isMaster || window.esAdminMaster;
+            const sup = empCache.find(x => x.id === id);
+            
+            if (!esMaster && (!sup || (sup.supervisor || '').trim().toUpperCase() !== 'SI')) {
+              console.warn("⚠️ Intento de acceso no autorizado detectado. Cerrando sesión...");
+              localStorage.removeItem('SUPERVISOR_SESSION');
+              location.reload();
+              return;
+            }
+
+            // Set global permissions
+            window.isMaster = esMaster;
+            if (esMaster) {
+              if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
+              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'flex';
+            } else {
+              if ($('navItemReportes')) $('navItemReportes').style.display = 'none';
+              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'none';
+            }
+
+            mostrarInformacionSupervisor(session);
+          } catch(e) {}
         }
 
         let periodoSelect = $('periodoMensual');
@@ -2988,6 +3363,7 @@
         if (tardanzaSelect) tardanzaSelect.innerHTML = periodos.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
 
         $('lastUpdate').textContent = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+        autoCompletarSalidasFaltantes();
         cargarPanelActual();
       } catch (e) {
         if (!silencioso) {
@@ -3001,6 +3377,7 @@
     function cargarPanelActual() {
       if (panelActual === 'dashboard') cargarDashboard();
       else if (panelActual === 'asistencia') cargarAsistencia();
+      else if (panelActual === 'reportes') inicializarReporteInteractivo();
     }
 
     // ============================================================
@@ -3283,7 +3660,7 @@
           if (m !== null) {
             const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
             const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
-            if (m > refEntradaR) {
+            if (m > refEntradaR + 5) {
               atrasos++;
               minutosAtrasos += m - refEntradaR;
             }
@@ -3404,8 +3781,10 @@
           let autorizado = regsDia.some(r => r.horasExtra === 'SI');
           if (esFestivo) {
             if (netWorked > 60) autorizado = true;
+            if (netWorked <= 60) autorizado = false;
           } else {
             if (netWorked >= 600) autorizado = true;
+            if (netWorked - 480 <= 60) autorizado = false;
           }
 
           let extraMins50Acum = 0;
@@ -3660,12 +4039,7 @@
         }
 
         bodyT.innerHTML = extras.map(ae => {
-          let dateStr = ae.fecha;
-          try {
-            if (dateStr && dateStr.includes('T')) {
-              dateStr = dateStr.split('T')[0];
-            }
-          } catch(e) {}
+          let dateStr = formatearFechaA_DMY(ae.fecha);
           return `<tr>
             <td style="font-family:'Fira Code',monospace;font-size:11px">${dateStr}</td>
             <td>
@@ -3761,6 +4135,39 @@
         rowHtml += '</tr>';
         return rowHtml;
       }).join('');
+
+      let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid var(--g300); position:sticky; bottom:0; z-index:10;">
+        <td><strong>TOTALES / PROMEDIOS</strong></td>`;
+        
+      COLUMNAS_DISPONIBLES.forEach(col => {
+        if (columnasCustomActivas.includes(col.id)) {
+          if (col.id === 'area') {
+            footerHtml += `<td>—</td>`;
+          } else {
+            let total = 0;
+            let count = 0;
+            data.forEach(e => {
+              let val = parseFloat(e[col.id]) || 0;
+              total += val;
+              count++;
+            });
+
+            let displayVal = '';
+            if (col.tipo === 'tiempo') {
+              displayVal = minutosAHHMMSS(total);
+            } else if (col.tipo === 'pct') {
+              let avg = count ? Math.round(total / count) : 0;
+              displayVal = `${avg}%`;
+            } else {
+              displayVal = total;
+            }
+            footerHtml += `<td style="text-align:center">${displayVal}</td>`;
+          }
+        }
+      });
+      footerHtml += '</tr>';
+      
+      bodyT.innerHTML += footerHtml;
 
       // Sync double scrollbars
       const tableScroll = $('reporteCustomScroll');
@@ -3890,12 +4297,7 @@
         headersHtml = '<th>Fecha</th><th>Descripción</th><th style="text-align:center;">Cantidad</th><th>Empresa/Destino</th><th>Observaciones</th><th>Tipo</th>';
         totalCols = 6;
         bodyHtml = extras.map(ae => {
-          let dateStr = ae.fecha;
-          try {
-            if (dateStr && dateStr.includes('T')) {
-              dateStr = dateStr.split('T')[0];
-            }
-          } catch(e) {}
+          let dateStr = formatearFechaA_DMY(ae.fecha);
           return `<tr>
             <td>${dateStr}</td>
             <td>${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
@@ -4041,12 +4443,7 @@
       if (fCargo === 'almuerzos extra') {
         headers = ['Fecha', 'Descripción', 'Cantidad', 'Empresa/Destino', 'Observaciones', 'Tipo'];
         filas = extras.map(ae => {
-          let dateStr = ae.fecha;
-          try {
-            if (dateStr && dateStr.includes('T')) {
-              dateStr = dateStr.split('T')[0];
-            }
-          } catch(e) {}
+          let dateStr = formatearFechaA_DMY(ae.fecha);
           return [
             dateStr,
             ae.nombre || 'Almuerzo Extra',
@@ -4171,12 +4568,7 @@
         totalMetaLabel = `Total Almuerzos Extras: ${totalQty} | Registros: ${extras.length}`;
 
         bodyHtml = extras.map(ae => {
-          let dateStr = ae.fecha;
-          try {
-            if (dateStr && dateStr.includes('T')) {
-              dateStr = dateStr.split('T')[0];
-            }
-          } catch(e) {}
+          let dateStr = formatearFechaA_DMY(ae.fecha);
           return `<tr>
             <td style="font-family:monospace;">${dateStr}</td>
             <td style="font-weight:600;">${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
@@ -4427,7 +4819,7 @@
       });
       
       // 2. Ordenar las columnas para que las estándar vayan primero y luego las custom
-      const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+      const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'id_dispositivo', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
       const finalKeys = [];
       
       COLUMNAS_ORDENADAS.forEach(k => {
@@ -4448,6 +4840,7 @@
         area: "Área",
         cargo: "Cargo",
         pin: "PIN",
+        id_dispositivo: "Dispositivo / Enlace Pagos",
         supervisor: "Supervisor",
         activo: "Activo",
         foto_url: "URL Foto",
@@ -4538,7 +4931,7 @@
         });
         
         // 2. Ordenar las columnas para que las estándar vayan primero y luego las custom
-        const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+        const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'id_dispositivo', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
         const finalKeys = [];
         
         COLUMNAS_ORDENADAS.forEach(k => {
@@ -4559,6 +4952,7 @@
           area: "Área",
           cargo: "Cargo",
           pin: "PIN",
+          id_dispositivo: "Dispositivo / Enlace Pagos",
           supervisor: "Supervisor (SI/NO)",
           activo: "Activo (SI/NO)",
           foto_url: "URL Foto",
@@ -4856,4 +5250,90 @@
         mostrarLoader(false);
         mostrarToast('Error de red al enviar la actualización masiva: ' + err.message, 'error');
       }
+    };
+
+    window.triggerPhotoUpload = function(empleadoId) {
+      if (!window.esAdminMaster && !window.isMaster) {
+        mostrarToast('Solo el administrador puede cambiar las fotos de los empleados.', 'error');
+        return;
+      }
+      
+      let fileInput = document.getElementById('hiddenPhotoInput');
+      if (!fileInput) {
+        fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.id = 'hiddenPhotoInput';
+        fileInput.accept = 'image/*';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+        
+        fileInput.addEventListener('change', async (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+          
+          mostrarLoader(true);
+          
+          try {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+              const img = new Image();
+              img.onload = async function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const maxSize = 160;
+                let w = img.width;
+                let h = img.height;
+                
+                if (w > h) {
+                  if (w > maxSize) {
+                    h = Math.round((h * maxSize) / w);
+                    w = maxSize;
+                  }
+                } else {
+                  if (h > maxSize) {
+                    w = Math.round((w * maxSize) / h);
+                    h = maxSize;
+                  }
+                }
+                
+                canvas.width = w;
+                canvas.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+                
+                const base64Str = canvas.toDataURL('image/jpeg', 0.75);
+                
+                try {
+                  const res = await jsonpRequest({
+                    accion: 'actualizarEmpleado',
+                    empleadoId: fileInput.dataset.empleadoId,
+                    campo: 'foto_url',
+                    valor: base64Str
+                  });
+                  
+                  if (res.ok) {
+                    mostrarToast('Foto actualizada correctamente', 'success');
+                    await cargarDatosCompletos();
+                    if (panelActual === 'detalle') mostrarDetalle(fileInput.dataset.empleadoId);
+                  } else {
+                    mostrarToast(res.error || 'Error al guardar la foto', 'error');
+                  }
+                } catch (err) {
+                  mostrarToast('Error de red al guardar la foto', 'error');
+                } finally {
+                  mostrarLoader(false);
+                }
+              };
+              img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+          } catch (err) {
+            mostrarToast('Error procesando imagen', 'error');
+            mostrarLoader(false);
+          }
+        });
+      }
+      
+      fileInput.dataset.empleadoId = empleadoId;
+      fileInput.click();
     };
