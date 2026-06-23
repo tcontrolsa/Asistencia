@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico de Cumpleaños - TCONTROL</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f8fafc; padding: 40px 20px; font-family: system-ui, -apple-system, sans-serif; }
+        .card { border-radius: 16px; border: none; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 900px;">
+        <div class="card p-4 mb-4">
+            <h2 class="fw-bold text-primary mb-2">Diagnóstico de Cumpleaños</h2>
+            <p class="text-muted">Este archivo lee la base de datos de Firebase para verificar los datos de cumpleaños y detectar por qué no se activa la animación.</p>
+            
+            <div class="row text-center mt-3">
+                <div class="col-6 col-sm-3 mb-2">
+                    <div class="bg-light p-2 rounded">
+                        <small class="text-muted d-block">Fecha Local Hoy</small>
+                        <strong id="lblFechaLocal">--</strong>
+                    </div>
+                </div>
+                <div class="col-6 col-sm-3 mb-2">
+                    <div class="bg-light p-2 rounded">
+                        <small class="text-muted d-block">Día / Mes Local</small>
+                        <strong id="lblDiaMesLocal">--</strong>
+                    </div>
+                </div>
+                <div class="col-6 col-sm-3 mb-2">
+                    <div class="bg-light p-2 rounded">
+                        <small class="text-muted d-block">Fecha UTC Hoy</small>
+                        <strong id="lblFechaUTC">--</strong>
+                    </div>
+                </div>
+                <div class="col-6 col-sm-3 mb-2">
+                    <div class="bg-light p-2 rounded">
+                        <small class="text-muted d-block">Día / Mes UTC</small>
+                        <strong id="lblDiaMesUTC">--</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-4">
+            <h4 class="fw-bold mb-3">Lista de Empleados y Validación de Cumpleaños</h4>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre</th>
+                            <th>Fecha Nacimiento (Firestore)</th>
+                            <th>Tipo de Dato</th>
+                            <th>¿Cumpleaños Hoy?</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaEmpleados">
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <div class="mt-2 text-muted">Conectando a Firebase...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuración de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDHAOvwmq4nt4IdalNdowYcak0clwEvFc4",
+            authDomain: "tcontrol-asistencia.firebaseapp.com",
+            projectId: "tcontrol-asistencia",
+            storageBucket: "tcontrol-asistencia.firebasestorage.app",
+            messagingSenderId: "400445408344",
+            appId: "1:400445408344:web:1ef803575febd8d311362d",
+            measurementId: "G-X0NRST4Y8L"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Mostrar fecha actual
+        const hoy = new Date();
+        document.getElementById('lblFechaLocal').textContent = hoy.toLocaleDateString();
+        document.getElementById('lblDiaMesLocal').textContent = hoy.getDate() + ' / ' + (hoy.getMonth() + 1);
+        document.getElementById('lblFechaUTC').textContent = hoy.toUTCString().substring(0, 16);
+        document.getElementById('lblDiaMesUTC').textContent = hoy.getUTCDate() + ' / ' + (hoy.getUTCMonth() + 1);
+
+        // Copia exacta de esCumpleanos
+        function esCumpleanos(fechaNac) {
+            if (!fechaNac) return false;
+
+            let dia, mes;
+            const hoy = new Date();
+
+            if (fechaNac && typeof fechaNac.toDate === 'function') {
+                fechaNac = fechaNac.toDate();
+            } else if (fechaNac && typeof fechaNac === 'object' && fechaNac.seconds !== undefined) {
+                fechaNac = new Date(fechaNac.seconds * 1000);
+            }
+
+            if (typeof fechaNac === 'string') {
+                const fechaLimpia = fechaNac.split('T')[0].trim();
+                
+                if (fechaLimpia.includes('-')) {
+                    const partes = fechaLimpia.split('-');
+                    if (partes.length >= 3) {
+                        if (partes[0].length === 4) {
+                            dia = parseInt(partes[2], 10);
+                            mes = parseInt(partes[1], 10);
+                        } else {
+                            dia = parseInt(partes[0], 10);
+                            mes = parseInt(partes[1], 10);
+                        }
+                    }
+                } else if (fechaLimpia.includes('/')) {
+                    const partes = fechaLimpia.split('/');
+                    if (partes.length >= 2) {
+                        if (partes.length >= 3 && partes[0].length === 4) {
+                            dia = parseInt(partes[2], 10);
+                            mes = parseInt(partes[1], 10);
+                        } else {
+                            dia = parseInt(partes[0], 10);
+                            mes = parseInt(partes[1], 10);
+                        }
+                    }
+                }
+            }
+
+            if (fechaNac instanceof Date || Object.prototype.toString.call(fechaNac) === '[object Date]') {
+                if (!isNaN(fechaNac.getTime())) {
+                    const diaUTC = fechaNac.getUTCDate();
+                    const mesUTC = fechaNac.getUTCMonth() + 1;
+                    
+                    const diaLocal = fechaNac.getDate();
+                    const mesLocal = fechaNac.getMonth() + 1;
+
+                    const matchUTC = hoy.getDate() === diaUTC && (hoy.getMonth() + 1) === mesUTC;
+                    const matchLocal = hoy.getDate() === diaLocal && (hoy.getMonth() + 1) === mesLocal;
+
+                    return matchUTC || matchLocal;
+                }
+            }
+
+            if (dia === undefined || mes === undefined) {
+                const d = new Date(fechaNac);
+                if (!isNaN(d.getTime())) {
+                    dia = d.getUTCDate();
+                    mes = d.getUTCMonth() + 1;
+                }
+            }
+
+            if (dia === undefined || mes === undefined) {
+                return false;
+            }
+
+            return hoy.getDate() === dia && (hoy.getMonth() + 1) === mes;
+        }
+
+        async function cargarDatos() {
+            const tbody = document.getElementById('tablaEmpleados');
+            try {
+                const querySnap = await db.collection('empleados').get();
+                tbody.innerHTML = '';
+                
+                if (querySnap.empty) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hay empleados registrados en Firebase.</td></tr>';
+                    return;
+                }
+
+                querySnap.docs.forEach(doc => {
+                    const data = doc.data();
+                    const rawVal = data.fechaNacimiento;
+                    
+                    let tipoDato = typeof rawVal;
+                    let displayVal = 'Nulo / Vacío';
+
+                    if (rawVal !== undefined && rawVal !== null) {
+                        if (rawVal.toDate) {
+                            tipoDato = 'Firestore Timestamp';
+                            displayVal = rawVal.toDate().toLocaleString();
+                        } else if (rawVal.seconds) {
+                            tipoDato = 'Object (seconds)';
+                            displayVal = new Date(rawVal.seconds * 1000).toLocaleString();
+                        } else if (rawVal instanceof Date) {
+                            tipoDato = 'Date Object';
+                            displayVal = rawVal.toLocaleString();
+                        } else {
+                            displayVal = String(rawVal);
+                        }
+                    }
+
+                    const result = esCumpleanos(rawVal);
+                    const classBg = result ? 'table-success font-weight-bold text-success' : '';
+                    const badges = result ? '<span class="badge bg-success">🎉 ¡Feliz Cumpleaños!</span>' : '<span class="badge bg-secondary">No</span>';
+
+                    tbody.innerHTML += `
+                        <tr class="${classBg}">
+                            <td><code>${doc.id}</code></td>
+                            <td>${data.nombre || 'Sin Nombre'}</td>
+                            <td><code>${displayVal}</code></td>
+                            <td><span class="badge bg-light text-dark border">${tipoDato}</span></td>
+                            <td>${badges}</td>
+                        </tr>
+                    `;
+                });
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">Error al conectar a Firebase: ${err.message}</td></tr>`;
+            }
+        }
+
+        cargarDatos();
+    </script>
+</body>
+</html>

@@ -2020,6 +2020,9 @@
             const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
             const stats = calcularEstadisticas();
             const areaInfo = iconoDeArea(empleado.area);
+            const hoyDate = new Date();
+            const minDia = hoyDate.getHours() * 60 + hoyDate.getMinutes();
+            const esDespuesDeAlmuerzo = minDia > 840; // Después de las 14:00
 
             // Crear globos persistentes que permanecen todo el día (via elementos fixed)
             if (esCumpleanosHoy && !document.getElementById('birthdayBalloons')) {
@@ -2156,17 +2159,21 @@
                                     <div class="unified-value ${tieneSalida ? 'success' : 'pending'}" style="font-size: 17px;">${horaSalidaMostrar}</div>
                                 </div>
                             </div>
-                            <!-- Tarjeta de Almuerzo -->
+                            
                             <!-- Tarjeta de Almuerzo: Ahora proporcional e integrada en el grid -->
-                            <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'lunch-animated-no' : ''}" 
-                                 onclick="mostrarPopupAlmuerzo(true)"
-                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; cursor: pointer;">
-                                
+                            <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') || esCumpleanosHoy ? 'lunch-animated-no' : ''}" 
+                                 onclick="${esCumpleanosHoy ? "mostrarToast('Hoy es su cumpleaños, no aplica registro de almuerzo', 'info')" : 'mostrarPopupAlmuerzo(true)'}"
+                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; cursor: ${esCumpleanosHoy ? 'default' : 'pointer'}; ${esCumpleanosHoy ? 'opacity: 0.85;' : ''}">
+                                 
                                 <div class="status-icon" style="height: 70px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; position: relative;">
-                                    ${(almuerzo === 'SI' || almuerzo === 'PLANTA')
+                                    ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy
                     ? `
                                         <div style="position: absolute; width: 60px; height: 60px; background: radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
                                         <img src="almuerzo.gif" alt="Almuerzo" style="width: 90px; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)); animation: float-img 3s ease-in-out infinite;">
+                                        `
+                    : esCumpleanosHoy
+                    ? `
+                                        <i class="fas fa-birthday-cake" style="font-size: 26px; color: #db2777; filter: drop-shadow(0 2px 4px rgba(219,39,119,0.2));"></i>
                                         `
                     : `
                                         <i class="fas fa-utensils" style="font-size: 24px; color: var(--warning);"></i>
@@ -2175,8 +2182,8 @@
                                 </div>
 
                                 <div class="status-label" style="font-size: 10px;">ALMUERZO</div>
-                                <div class="status-value" style="font-size: clamp(12px, 3.5vw, 14px); font-weight: 800; ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'color:#059669;' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'color:#2563eb;' : ''}">
-                                    ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Sí' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'No' : '---'}
+                                <div class="status-value" style="font-size: ${esDespuesDeAlmuerzo && (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'clamp(10px, 3.2vw, 12px)' : 'clamp(12px, 3.5vw, 14px)'}; font-weight: 800; ${esCumpleanosHoy ? 'color:#db2777;' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'color:#059669;' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'color:#2563eb;' : ''}">
+                                    ${esCumpleanosHoy ? 'No aplica' : esDespuesDeAlmuerzo && (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Almuerzo Consumido' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Sí' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'No' : '---'}
                                 </div>
 
                                 <style>
@@ -2269,6 +2276,18 @@
                 if (!clockEl && !btnTime) return; // No cortamos el intervalo para permitir que se recupere si volvemos a la home
 
                 const ahora = new Date();
+
+                // Si es después de las 14:00 PM (840 minutos) y el modal de almuerzo está abierto, quitarlo
+                const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
+                if (minutosDia > 840) {
+                    const modal = document.getElementById('almuerzoModal');
+                    if (modal) {
+                        modal.remove();
+                        if (typeof currentPage !== 'undefined' && currentPage === 'home') {
+                            renderHomePage();
+                        }
+                    }
+                }
                 const hh = String(ahora.getHours()).padStart(2, '0');
                 const mm = String(ahora.getMinutes()).padStart(2, '0');
                 const ss = String(ahora.getSeconds()).padStart(2, '0');
@@ -2326,10 +2345,23 @@
         window.mostrarPopupAlmuerzo = function (manual = false) {
             if (document.getElementById('almuerzoModal')) return;
 
+            const ahora = new Date();
+            const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
+            const esHoraEdicionManana = minutosDia < 570; // Hasta las 09:30
+            const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840; // De 12:25 a 14:00
+
+            if (manual) {
+                if (!esHoraEdicionManana && !esHoraAlmuerzo) {
+                    if (minutosDia >= 570 && minutosDia < 745) {
+                        mostrarToast('La modificación de almuerzo finalizó a las 09:30. Se habilitará el registro de 12:25 a 14:00.', 'info');
+                    } else {
+                        mostrarToast('El registro de almuerzo ya no está disponible.', 'info');
+                    }
+                    return;
+                }
+            }
+
             if (!manual) {
-                const ahora = new Date();
-                const minutosDia = SecurityHelper ? SecurityHelper.obtenerMinutosDia(ahora) : (ahora.getHours() * 60 + ahora.getMinutes());
-                const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840;
                 if (!esHoraAlmuerzo) return;
 
                 const alm = empleado.almuerzo || estado.almuerzo;
@@ -2400,6 +2432,7 @@
 
         window.evaluarPopupAlmuerzo = function () {
             if (!isAuthenticated || !empleado || !empleado.id) return;
+            if (esCumpleanos(empleado.fechaNacimiento)) return; // No aplica en cumpleaños
             const ahora = new Date();
             const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
             const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840;
@@ -4117,20 +4150,88 @@
             let dia, mes;
             const hoy = new Date();
 
-            // Caso 1: Formato DD/MM/YYYY
-            if (typeof fechaNac === 'string' && fechaNac.includes('/')) {
-                const partes = fechaNac.split('/');
-                if (partes.length >= 2) {
-                    dia = parseInt(partes[0]);
-                    mes = parseInt(partes[1]);
+            // 1. Si es un objeto Timestamp de Firestore o un objeto serializado con seconds
+            if (fechaNac && typeof fechaNac.toDate === 'function') {
+                fechaNac = fechaNac.toDate();
+            } else if (fechaNac && typeof fechaNac === 'object' && fechaNac.seconds !== undefined) {
+                fechaNac = new Date(fechaNac.seconds * 1000);
+            }
+
+            // 2. Si es una cadena de texto (ej: "1990-06-18", "18/06/1990")
+            if (typeof fechaNac === 'string') {
+                const fechaLimpia = fechaNac.split('T')[0].trim();
+                
+                if (fechaLimpia.includes('-')) {
+                    const partes = fechaLimpia.split('-');
+                    if (partes.length >= 3) {
+                        let tempDia, tempMes;
+                        if (partes[0].length === 4) {
+                            // YYYY-MM-DD
+                            tempDia = parseInt(partes[2], 10);
+                            tempMes = parseInt(partes[1], 10);
+                        } else {
+                            // DD-MM-YYYY
+                            tempDia = parseInt(partes[0], 10);
+                            tempMes = parseInt(partes[1], 10);
+                        }
+                        if (!isNaN(tempDia) && !isNaN(tempMes)) {
+                            dia = tempDia;
+                            mes = tempMes;
+                        }
+                    }
+                } else if (fechaLimpia.includes('/')) {
+                    const partes = fechaLimpia.split('/');
+                    if (partes.length >= 2) {
+                        let tempDia, tempMes;
+                        if (partes.length >= 3 && partes[0].length === 4) {
+                            // YYYY/MM/DD
+                            tempDia = parseInt(partes[2], 10);
+                            tempMes = parseInt(partes[1], 10);
+                        } else {
+                            // DD/MM o DD/MM/YYYY
+                            tempDia = parseInt(partes[0], 10);
+                            tempMes = parseInt(partes[1], 10);
+                        }
+                        if (!isNaN(tempDia) && !isNaN(tempMes)) {
+                            dia = tempDia;
+                            mes = tempMes;
+                        }
+                    }
                 }
             }
-            // Caso 2: Formato ISO (YYYY-MM-DD...) o ya es un objeto Date
-            else {
+
+            // 3. Si es un objeto Date (o se convirtió a Date desde un Timestamp)
+            if (fechaNac instanceof Date || Object.prototype.toString.call(fechaNac) === '[object Date]') {
+                if (!isNaN(fechaNac.getTime())) {
+                    // Para evitar desfaces: comparamos tanto el valor UTC como el valor Local.
+                    // Si cualquiera de los dos coincide con hoy, se considera cumpleaños.
+                    const diaUTC = fechaNac.getUTCDate();
+                    const mesUTC = fechaNac.getUTCMonth() + 1;
+                    
+                    const diaLocal = fechaNac.getDate();
+                    const mesLocal = fechaNac.getMonth() + 1;
+
+                    const matchUTC = hoy.getDate() === diaUTC && (hoy.getMonth() + 1) === mesUTC;
+                    const matchLocal = hoy.getDate() === diaLocal && (hoy.getMonth() + 1) === mesLocal;
+
+                    const matched = matchUTC || matchLocal;
+                    if (matched) console.log('🎯 ¡Coincidencia de cumpleaños detectada (Date)!');
+                    return matched;
+                }
+            }
+
+            // Fallback: Si no se pudo procesar pero es parseable por Date
+            if (dia === undefined || mes === undefined) {
                 const d = new Date(fechaNac);
                 if (!isNaN(d.getTime())) {
-                    dia = d.getDate();
-                    mes = d.getMonth() + 1;
+                    const diaUTC = d.getUTCDate();
+                    const mesUTC = d.getUTCMonth() + 1;
+                    
+                    const diaLocal = d.getDate();
+                    const mesLocal = d.getMonth() + 1;
+
+                    return (hoy.getDate() === diaUTC && (hoy.getMonth() + 1) === mesUTC) ||
+                           (hoy.getDate() === diaLocal && (hoy.getMonth() + 1) === mesLocal);
                 }
             }
 

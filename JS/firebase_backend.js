@@ -1310,11 +1310,11 @@ window.FirebaseBackend = {
             ayer.setDate(ayer.getDate() - 1);
             const ayerStr = this._hoyStr(ayer);
 
-            if (cacheData.lastSync) {
+            if (cacheData.lastSync && !params.force) {
                 console.log("⚡ Usando caché local. Obteniendo solo registros desde:", ayerStr);
                 query = query.where('fecha', '>=', ayerStr);
             } else {
-                console.log("📥 Caché vacío. Obteniendo últimos 60 días desde:", limiteStr);
+                console.log("📥 Obteniendo registros desde Firestore (últimos 60 días):", limiteStr);
                 query = query.where('fecha', '>=', limiteStr);
             }
 
@@ -1359,7 +1359,7 @@ window.FirebaseBackend = {
                 } catch(e) { console.warn("Error consultando archivados:", e); }
             };
             
-            if (params.force) {
+            if (params.forceSheets || params.forceAll) {
                 console.log("📥 Forzando obtención de registros archivados de Sheets (Bloqueante)...");
                 await _fetchArchivados();
             } else if (horasArchivados > 12) {
@@ -1390,7 +1390,7 @@ window.FirebaseBackend = {
                 } catch(e) { console.warn("Error consultando almuerzos extras:", e); }
             };
 
-            if (params.force) {
+            if (params.forceSheets || params.forceAll) {
                 console.log("📥 Forzando obtención de almuerzos extras de Sheets...");
                 await _fetchAlmuerzosExtra();
             } else if (horasAlmuerzos > 12) {

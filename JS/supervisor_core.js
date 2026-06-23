@@ -21,6 +21,21 @@
     // ============================================================
     function $(id) { return document.getElementById(id); }
 
+    function camelCaseToTitle(key) {
+      const result = String(key || '').replace(/([A-Z])/g, " $1");
+      return result.charAt(0).toUpperCase() + result.slice(1);
+    }
+
+    function debounce(fn, delay) {
+      let timeoutId;
+      return function (...args) {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          fn.apply(this, args);
+        }, delay);
+      };
+    }
+
     function clasificarGap(salidaReg, gap) {
       if (!salidaReg) return { tipo: 'justificar', mins: gap };
       const razon = String(salidaReg.razon_salida || '').toLowerCase();
@@ -1182,61 +1197,7 @@
       filtrarAsistenciaTabla();
     }
 
-    // editarValorRegistro duplicada eliminada, la función unificada se encuentra abajo como window.editarValorRegistro
 
-
-    async function editarMetaEmpleado(empleadoId, campo, valorActual) {
-      let nuevoValor = prompt(`Editar ${campo.toUpperCase()} para el empleado ${empleadoId}:`, valorActual);
-      if (nuevoValor === null || nuevoValor === "") return;
-
-      mostrarLoader(true);
-      try {
-        const res = await jsonpRequest({
-          accion: 'actualizarEmpleado',
-          empleadoId: empleadoId,
-          campo: campo,
-          valor: nuevoValor
-        });
-
-        if (res.ok) {
-          mostrarToast('Empleado actualizado correctamente', 'success');
-          await cargarDatosCompletos();
-          mostrarDetalle(campo === 'id' ? nuevoValor : empleadoId);
-        } else {
-          mostrarToast(res.error || 'Error al actualizar', 'error');
-        }
-      } catch (e) {
-        mostrarToast('Error de conexión', 'error');
-      } finally {
-        mostrarLoader(false);
-      }
-    }
-
-    async function eliminarRegistroSupervisor(docId, empleadoId, fecha, tipo) {
-      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
-      if (!confirm('¿Está seguro de eliminar este registro permanentemente?')) return;
-      mostrarLoader(true);
-      try {
-        const res = await jsonpRequest({ 
-          accion: 'eliminarRegistro', 
-          docId: docId,
-          empleadoId: empleadoId,
-          fecha: fecha,
-          tipo: tipo
-        });
-        if (res.ok) {
-          mostrarToast('Registro eliminado', 'success');
-          await cargarDatosCompletos();
-          if (panelActual === 'detalle') mostrarDetalle(empleadoId);
-        } else {
-          mostrarToast(res.error || 'Error al eliminar', 'error');
-        }
-      } catch (e) {
-        mostrarToast('Error de conexión', 'error');
-      } finally {
-        mostrarLoader(false);
-      }
-    }
 
     function setFiltroAsistencia(filtro) {
       filtroAsistenciaActual = filtro;
@@ -1347,7 +1308,7 @@
           mostrarToast('Razón de ausencia guardada', 'success');
           // Silent background reload to keep in sync
           limpiarCachesLocales();
-          cargarDatosCompletos(true).then(() => {
+          cargarDatosCompletos(true, true).then(() => {
               cargarAsistencia();
           }).catch(err => console.error("Error al recargar datos en segundo plano:", err));
         } else {
@@ -1897,7 +1858,7 @@
 
       // Definir esAdminMaster de forma global para los closures si es necesario, 
       // pero aquí lo usaremos dentro de mostrarDetalle.
-      const esAdminMaster = (sessionData.id === ADMIN_ID);
+      const esAdminMaster = (String(sessionData.id) === ADMIN_ID);
       window.esAdminMaster = esAdminMaster; // Asegurarlo en el scope global por si acaso lo llaman desde onclicks dinámicos
 
       let e = empCache.find(x => x.id === id);
@@ -2429,7 +2390,7 @@
       try {
         let sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}');
         let id = sessionData.id || "";
-        if (id === "1058") {
+        if (String(id) === "1058") {
           supervisorName = "Admin Master";
         } else if (id) {
           let sup = empCache.find(x => x.id === id);
@@ -2456,9 +2417,12 @@
         });
         mostrarLoader(false);
         if (res?.error) { mostrarToast(res.error, 'error'); return; }
-        mostrarToast('Almuerzo Extra registrado', 'success');
         cerrarModal();
-        cargarDatosCompletos(true);
+        cargarDatosCompletos(true, true, true).then(() => {
+          if (panelActual === 'reportes' && $('filtroCargoReporte')?.value === 'almuerzos extra') {
+            filtrarReporteInteractivo();
+          }
+        });
       } catch (e) {
         mostrarLoader(false);
         mostrarToast('Error: ' + e.message, 'error');
@@ -2477,12 +2441,13 @@
           campo: 'hora',
           valor: hora
         });
-
         if (res.ok) {
           mostrarToast('Registro completado', 'success');
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-          if (panelActual === 'detalle') mostrarDetalle(empleadoId);
+          cargarDatosCompletos(true, true).then(() => {
+            if (panelActual === 'detalle') mostrarDetalle(empleadoId);
+            else if (panelActual === 'asistencia') cargarAsistencia();
+          });
         } else {
           mostrarToast(res.error || 'Error', 'error');
         }
@@ -2505,13 +2470,13 @@
           empleadoId: empleadoId,
           fecha: fecha,
           tipo: tipo
-        });
-        if (res.ok) {
+        });        if (res.ok) {
           mostrarToast('Registro eliminado', 'success');
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-          if (panelActual === 'detalle') mostrarDetalle(empleadoId);
-          else if (panelActual === 'asistencia') cargarAsistencia();
+          cargarDatosCompletos(true, true).then(() => {
+            if (panelActual === 'detalle') mostrarDetalle(empleadoId);
+            else if (panelActual === 'asistencia') cargarAsistencia();
+          });
         } else {
           mostrarToast(res.error || 'Error al eliminar', 'error');
         }
@@ -2587,6 +2552,13 @@
       if (!confirm(`¿Estás seguro de mover permanentemente los registros de hace más de ${diasNum} días a la hoja de cálculo REGISTROS?\n\nEsto limpiará tu Firebase y reducirá los costos. Esta acción es irreversible en Firebase.`)) return;
 
       mostrarLoader(true);
+      mostrarToast('Autocompletando salidas faltantes recientes...', 'info');
+      try {
+        await autoCompletarSalidasFaltantes();
+      } catch (err) {
+        console.warn("Fallo al autocompletar salidas antes del archivado:", err);
+      }
+
       try {
         const limite = new Date();
         limite.setDate(limite.getDate() - diasNum);
@@ -2822,9 +2794,10 @@
           mostrarToast('Registro guardado', 'success');
           cerrarModalManual();
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-          if (panelActual === 'detalle') mostrarDetalle(eid);
-          else cargarAsistencia();
+          cargarDatosCompletos(true, true).then(() => {
+            if (panelActual === 'detalle') mostrarDetalle(eid);
+            else cargarAsistencia();
+          });
         } else {
           mostrarToast(res.error || 'Error', 'error');
         }
@@ -3011,9 +2984,10 @@
         });
         if (res.ok) {
           mostrarToast('Empleado actualizado', 'success');
-          await cargarDatosCompletos();
           const finalId = (campo === 'id') ? nuevo : empleadoId;
-          if (panelActual === 'detalle') mostrarDetalle(finalId);
+          cargarDatosCompletos(false, true).then(() => {
+            if (panelActual === 'detalle') mostrarDetalle(finalId);
+          });
         } else {
           mostrarToast(res.error || 'Error', 'error');
         }
@@ -3059,8 +3033,9 @@
           mostrarToast(`Éxito: ${res.procesados} registros procesados`, 'success');
           cerrarModalMasivo();
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-          cargarAsistencia();
+          cargarDatosCompletos(true, true).then(() => {
+            cargarAsistencia();
+          });
         } else {
           mostrarToast(res.error || 'Error', 'error');
         }
@@ -3104,7 +3079,7 @@
       let sessionData = {};
       try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
       if (sessionData.id) {
-        if (sessionData.id === "1058") {
+        if (String(sessionData.id) === "1058") {
           supervisorName = "Admin Master";
         } else {
           let sup = empCache.find(x => x.id === sessionData.id);
@@ -3219,28 +3194,25 @@
       
       let sessionData = {};
       try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
-      const esAdminMaster = window.isMaster || (sessionData.id === "1058") || window.esAdminMaster;
-      if (!esAdminMaster) return;
+      if (!sessionData.id) {
+        console.log("🤖 [Auto-completar] Cancelado: No hay sesión de supervisor activa.");
+        return;
+      }
 
       estaCompletandoSalidas = true;
+      console.log("🤖 [Auto-completar] Iniciando verificación...");
       try {
         const ahora = new Date();
         const hoyStr = obtenerFechaYMD(ahora);
-        const horaActualStr = ahora.toTimeString().slice(0, 5);
 
         const fechasAProcesar = [];
-        for (let i = 0; i < 7; i++) {
+        for (let i = 1; i <= 7; i++) {
           const d = new Date();
           d.setDate(d.getDate() - i);
           const fStr = obtenerFechaYMD(d);
-          if (fStr === hoyStr) {
-            if (horaActualStr >= "20:00") {
-              fechasAProcesar.push(fStr);
-            }
-          } else {
-            fechasAProcesar.push(fStr);
-          }
+          fechasAProcesar.push(fStr);
         }
+        console.log("🤖 [Auto-completar] Fechas anteriores a procesar (últimos 7 días):", fechasAProcesar);
 
         if (fechasAProcesar.length === 0) {
           estaCompletandoSalidas = false;
@@ -3251,10 +3223,13 @@
           .where('fecha', 'in', fechasAProcesar)
           .get();
 
+        console.log(`🤖 [Auto-completar] Registros recuperados de Firestore: ${snap.size}`);
+
         const mapaRegs = {};
         snap.docs.forEach(doc => {
           const r = doc.data();
-          const key = `${r.empleadoId}_${r.fecha}`;
+          const empIdStr = String(r.empleadoId || '').trim();
+          const key = `${empIdStr}_${r.fecha}`;
           if (!mapaRegs[key]) mapaRegs[key] = {};
           mapaRegs[key][r.tipo] = true;
         });
@@ -3262,48 +3237,63 @@
         const batch = db.batch();
         let creados = 0;
 
+        console.log(`🤖 [Auto-completar] Analizando ${empCache.length} empleados de la cache...`);
+
         for (const emp of empCache) {
           if ((emp.cargo || '').toUpperCase() === 'SIN ASISTENCIA') continue;
+          const empIdStr = String(emp.id || '').trim();
 
           for (const fecha of fechasAProcesar) {
-            const key = `${emp.id}_${fecha}`;
+            const key = `${empIdStr}_${fecha}`;
             const regs = mapaRegs[key] || {};
             
             if (regs.ENTRADA && !regs.SALIDA) {
-              const horaSalida = "16:15:00";
-              const idLimpio = horaSalida.replace(/:/g, '');
-              const idDocumento = `${emp.id}_SALIDA_${fecha}_${idLimpio}`;
-              
-              const [yStr, mStr, dStr] = fecha.split('-');
-              const dateObj = new Date(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), 16, 15, 0);
+              console.log(`🤖 [Auto-completar] ¡Detectado! Empleado: ${emp.nombre} (${empIdStr}) el día ${fecha} tiene ENTRADA pero no SALIDA.`);
+              try {
+                const horaSalida = "16:15:00";
+                const idLimpio = horaSalida.replace(/:/g, '');
+                const idDocumento = `${empIdStr}_SALIDA_${fecha}_${idLimpio}`;
+                
+                const [yStr, mStr, dStr] = fecha.split('-');
+                const dateObj = new Date(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), 16, 15, 0);
+                
+                const timestampVal = (window.firebase && firebase.firestore && firebase.firestore.Timestamp) 
+                  ? firebase.firestore.Timestamp.fromDate(dateObj) 
+                  : dateObj;
 
-              batch.set(db.collection('registros').doc(idDocumento), {
-                empleadoId: emp.id,
-                nombre: emp.nombre,
-                fecha: fecha,
-                tipo: 'SALIDA',
-                hora: horaSalida,
-                almuerzo: 'NO',
-                modo: 'OFICINA',
-                horasExtra: 'NO',
-                justificado: 'NO',
-                timestamp: firebase.firestore.Timestamp.fromDate(dateObj),
-                dia: obtenerDiaSemanaLocal(dateObj),
-                observacion_automatica: "Auto-completado salida faltante a las 20:00"
-              });
-              creados++;
+                batch.set(db.collection('registros').doc(idDocumento), {
+                  empleadoId: empIdStr,
+                  nombre: emp.nombre || '',
+                  fecha: fecha,
+                  tipo: 'SALIDA',
+                  hora: horaSalida,
+                  almuerzo: 'NO',
+                  modo: 'OFICINA',
+                  horasExtra: 'NO',
+                  justificado: 'NO',
+                  timestamp: timestampVal,
+                  dia: obtenerDiaSemanaLocal(dateObj),
+                  observacion_automatica: "Auto-completado salida faltante"
+                });
+                creados++;
+              } catch (innerErr) {
+                console.error(`🤖 [Auto-completar] Error preparando registro para ${emp.nombre}:`, innerErr);
+              }
             }
           }
         }
 
         if (creados > 0) {
+          console.log(`🤖 [Auto-completar] Guardando ${creados} salidas en Firebase...`);
           await batch.commit();
           mostrarToast(`🤖 Auto-completadas ${creados} salidas faltantes (16:15).`, 'success');
           localStorage.removeItem('tcontrol_registros_cache_v1');
           await cargarDatosCompletos(true, true);
+        } else {
+          console.log("🤖 [Auto-completar] No se encontraron salidas faltantes por completar.");
         }
       } catch (err) {
-        console.error("Error auto-completando salidas:", err);
+        console.error("🤖 [Auto-completar] Error auto-completando salidas:", err);
       } finally {
         estaCompletandoSalidas = false;
       }
@@ -3312,12 +3302,16 @@
     // ============================================================
     // CARGA DE DATOS
     // ============================================================
-    async function cargarDatosCompletos(force = false, silencioso = false) {
+    async function cargarDatosCompletos(force = false, silencioso = false, forceSheets = false) {
       if (estaActualizando) return;
       estaActualizando = true;
       if (!silencioso) mostrarLoader(true);
       try {
-        const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor', force: force });
+        const res = await jsonpRequest({ 
+          accion: 'obtenerDatosSupervisor', 
+          force: force,
+          forceSheets: forceSheets
+        });
         if (!silencioso) mostrarLoader(false);
         estaActualizando = false;
         if (!res || res.error) {
@@ -3333,7 +3327,7 @@
           try {
             const session = JSON.parse(sessionStr);
             const id = session.id;
-            const esMaster = id === "1058" || window.isMaster || window.esAdminMaster;
+            const esMaster = String(id) === "1058" || window.isMaster || window.esAdminMaster;
             const sup = empCache.find(x => x.id === id);
             
             if (!esMaster && (!sup || (sup.supervisor || '').trim().toUpperCase() !== 'SI')) {
@@ -3402,7 +3396,7 @@
         if (res.error) {
           mostrarError(res.error);
         } else if (res.valido) {
-          const esMaster = res.empleado.id === "1058";
+          const esMaster = String(res.empleado.id) === "1058";
           if (res.empleado.esSupervisor || esMaster) {
             const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
             localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
@@ -3455,7 +3449,7 @@
       let nombre = "Supervisor";
       let id = session.id || "";
       
-      if (id === "1058") {
+      if (String(id) === "1058") {
         nombre = "Admin Master";
       } else {
         let sup = empCache.find(x => x.id === id);
@@ -3474,7 +3468,7 @@
       if (sessionStr) {
         try {
           const session = JSON.parse(sessionStr);
-          window.isMaster = (session.id === "1058");
+          window.isMaster = (String(session.id) === "1058");
           mostrarInformacionSupervisor(session);
           if (window.isMaster) {
             if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
@@ -3542,7 +3536,7 @@
     $('btnRefresh').addEventListener('click', async () => {
       limpiarCachesLocales();
       mostrarToast('Borrando caché local de registros...', 'info');
-      await cargarDatosCompletos(true);
+      await cargarDatosCompletos(true, false, true);
     });
     $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
     $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
@@ -3562,6 +3556,26 @@
     document.getElementById('masivoModal').addEventListener('click', e => {
       if (e.target === document.getElementById('masivoModal')) cerrarModalMasivo();
     });
+
+    // Buscadores Debounced para optimización de rendimiento
+    const inputSearchAsistencia = $('searchAsistencia');
+    if (inputSearchAsistencia) {
+      inputSearchAsistencia.addEventListener('input', debounce(() => {
+        filtrarAsistenciaTabla();
+      }, 250));
+    }
+    const inputSearchReportes = $('searchReportes');
+    if (inputSearchReportes) {
+      inputSearchReportes.addEventListener('input', debounce(() => {
+        filtrarTablaReportes();
+      }, 250));
+    }
+    const inputSearchReportesCustom = $('searchReportesCustom');
+    if (inputSearchReportesCustom) {
+      inputSearchReportesCustom.addEventListener('input', debounce(() => {
+        filtrarReporteInteractivo();
+      }, 250));
+    }
 
     // Inicio
     console.log("🛠️ Iniciando Panel Supervisor...");
@@ -4848,11 +4862,7 @@
         baseLng: "Longitud",
         fechaNacimiento: "F. Nacimiento"
       };
-      
-      function camelCaseToTitle(key) {
-        const result = key.replace(/([A-Z])/g, " $1");
-        return result.charAt(0).toUpperCase() + result.slice(1);
-      }
+
       
       function keyToHeaderLabel(key) {
         if (MAPA_COLUMNAS_ESTANDAR[key]) return MAPA_COLUMNAS_ESTANDAR[key];
@@ -4960,11 +4970,7 @@
           baseLng: "Longitud Base",
           fechaNacimiento: "Fecha Nacimiento"
         };
-        
-        function camelCaseToTitle(key) {
-          const result = key.replace(/([A-Z])/g, " $1");
-          return result.charAt(0).toUpperCase() + result.slice(1);
-        }
+
         
         function keyToHeaderLabel(key) {
           if (MAPA_HEADER_LABEL[key]) return MAPA_HEADER_LABEL[key];
@@ -5242,7 +5248,7 @@
           _vistaPreviaMasivaCache = [];
           
           limpiarCachesLocales();
-          await cargarDatosCompletos(true);
+          cargarDatosCompletos(true, true);
         } else {
           mostrarToast(res?.error || 'Error al guardar los datos de empleados.', 'error');
         }
@@ -5313,8 +5319,10 @@
                   
                   if (res.ok) {
                     mostrarToast('Foto actualizada correctamente', 'success');
-                    await cargarDatosCompletos();
-                    if (panelActual === 'detalle') mostrarDetalle(fileInput.dataset.empleadoId);
+                    mostrarLoader(false);
+                    cargarDatosCompletos(false, true).then(() => {
+                      if (panelActual === 'detalle') mostrarDetalle(fileInput.dataset.empleadoId);
+                    });
                   } else {
                     mostrarToast(res.error || 'Error al guardar la foto', 'error');
                   }

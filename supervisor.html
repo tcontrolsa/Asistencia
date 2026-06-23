@@ -13,7 +13,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260612_2"></script>
+  <script src="./JS/firebase_backend.js?v=20260623_3"></script>
   <script>window.USE_FIREBASE = true;</script>
   <style>
     /* Estilos para el Creador Interactivo de Reportes */
@@ -171,7 +171,7 @@
 
           <!-- Buscar Empleado -->
           <div style="flex: 1; min-width: 200px; max-width: 300px; position: relative;">
-            <input type="text" id="searchReportes" class="search-input" placeholder="Buscar empleado..." oninput="filtrarTablaReportes()" style="margin: 0; border-radius: 10px; padding: 6px 12px 6px 32px; font-size: 12px; height: 32px; width: 100%;">
+            <input type="text" id="searchReportes" class="search-input" placeholder="Buscar empleado..." style="margin: 0; border-radius: 10px; padding: 6px 12px 6px 32px; font-size: 12px; height: 32px; width: 100%;">
             <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--g400); font-size: 11px;"></i>
           </div>
 
@@ -449,7 +449,7 @@
             </div>
           </div>
           <div class="search-box" style="margin:0; display:flex; gap:12px; align-items:center;">
-            <input type="text" id="searchAsistencia" class="search-input" placeholder="Buscar por nombre o ID..." oninput="filtrarAsistenciaTabla()" style="flex:1; margin:0; border-radius:8px; padding:8px 12px; height:36px;">
+            <input type="text" id="searchAsistencia" class="search-input" placeholder="Buscar por nombre o ID..." style="flex:1; margin:0; border-radius:8px; padding:8px 12px; height:36px;">
           </div>
         </div>
         <div class="table-wrapper">
@@ -493,7 +493,7 @@
           <div style="border-top:1px dashed var(--g300); padding-top:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
               <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                <div class="search-box" style="margin:0;"><input type="text" id="searchReportesCustom" class="search-input" placeholder="Filtrar por empleado o área..." oninput="filtrarReporteInteractivo()" style="max-width:320px; border-radius:10px;"></div>
+                <div class="search-box" style="margin:0;"><input type="text" id="searchReportesCustom" class="search-input" placeholder="Filtrar por empleado o área..." style="max-width:320px; border-radius:10px;"></div>
                 <div class="quick-filters" id="filtrosRapidosCargo" style="display:flex; gap:6px; flex-wrap:wrap;">
                   <button class="btn btn-filter active" onclick="setFiltroRapidoReporte('', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">TODOS</button>
                   <button class="btn btn-filter" onclick="setFiltroRapidoReporte('pasante', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Pasante</button>
@@ -859,8 +859,8 @@
     </div>
   </div>
 
-  <script src="./JS/tcontrol_core.js?v=20260612_2"></script>
-  <script src="./JS/supervisor_core.js?v=20260612_2"></script>
+  <script src="./JS/tcontrol_core.js?v=20260623_3"></script>
+  <script src="./JS/supervisor_core.js?v=20260623_3"></script>
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil
     document.addEventListener("DOMContentLoaded", () => {
