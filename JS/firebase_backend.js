@@ -188,18 +188,16 @@ window.FirebaseBackend = {
         // 3. CASO GENERAL: Búsqueda por PIN único (Login Empleado)
         if (!empDoc) {
             console.log("🔎 Búsqueda general por PIN en toda la colección.");
-            // Probar como String
-            let query = await db.collection('empleados').where('pin', '==', pin.toString()).get();
-            if (query.empty) {
-                // Probar como Number
-                const pinNum = parseInt(pin);
-                if (!isNaN(pinNum)) {
-                    query = await db.collection('empleados').where('pin', '==', pinNum).get();
-                }
+            const pinStr = pin.toString();
+            const pinNum = parseInt(pin);
+            const queries = [db.collection('empleados').where('pin', '==', pinStr).get()];
+            if (!isNaN(pinNum)) {
+                queries.push(db.collection('empleados').where('pin', '==', pinNum).get());
             }
-            
-            if (!query.empty) {
-                empDoc = query.docs[0];
+            const snaps = await Promise.all(queries);
+            const activeSnap = snaps.find(s => s && !s.empty);
+            if (activeSnap) {
+                empDoc = activeSnap.docs[0];
                 empData = empDoc.data();
             }
         }
@@ -541,13 +539,22 @@ window.FirebaseBackend = {
             }
         }
 
+        let almuerzo = data.almuerzo || "";
+        if (data.tipo === 'SALIDA') {
+            const hPartes = horaStr.split(':');
+            const minDelDia = parseInt(hPartes[0]) * 60 + parseInt(hPartes[1]);
+            if (minDelDia < 570) { // Antes de las 09:30 a.m.
+                almuerzo = "NO";
+            }
+        }
+
         // Guardar en Firestore
         const nuevoRegistro = {
             fecha: fechaStr,
             empleadoId: empleadoId,
             nombre: infoEmpleado.nombre,
             tipo: data.tipo,
-            almuerzo: data.almuerzo || "",
+            almuerzo: almuerzo,
             hora: horaStr,
             lat: parseFloat(data.lat) || null,
             lng: parseFloat(data.lng) || null,
@@ -1475,13 +1482,23 @@ window.FirebaseBackend = {
 
             // Eliminar duplicados por (empleadoId + fecha + tipo + hora)
             Object.keys(empleadosMap).forEach(eid => {
+                const emp = empleadosMap[eid];
                 const seen = new Set();
-                empleadosMap[eid].registros = empleadosMap[eid].registros.filter(r => {
+                emp.registros = emp.registros.filter(r => {
                     const key = `${r.fecha}|${r.tipo}|${(r.hora || '').slice(0, 5)}`;
                     if (seen.has(key)) return false;
                     seen.add(key);
                     return true;
                 });
+
+                // Automatización silenciosa: si ya registró su salida antes de las 09:30, quite el almuerzo
+                if (emp.salidaHoy && emp.horaSalida) {
+                    const parts = emp.horaSalida.split(':');
+                    const mins = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                    if (mins < 570) {
+                        emp.almuerzoHoy = "NO";
+                    }
+                }
             });
 
             return {

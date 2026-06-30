@@ -323,7 +323,7 @@ function procesarAccion(params) {
       return registrarDispositivoConPIN(params.empleadoId, params.pin, params.deviceToken);
       
     case 'verificarPIN':
-      return verificarPIN(params.pin, params.deviceToken);
+      return verificarPIN(params.pin, params.deviceToken, params.empleadoId);
       
     case 'obtenerEstado':
       return obtenerEstadoPorIdODevice(params.id, params.deviceToken);
@@ -455,37 +455,39 @@ function procesarAccion(params) {
 }
 
 function normalizarHeaderAKey(header) {
-  var clean = String(header).trim().toUpperCase();
+  if (header === null || header === undefined) return "";
+  var clean = String(header).trim().toLowerCase();
   
-  if (clean === "ID/CÉDULA" || clean === "ID/CEDULA" || clean === "ID" || clean === "CEDULA" || clean === "CÉDULA") return "id";
-  if (clean === "NOMBRE COMPLETO" || clean === "NOMBRE") return "nombre";
-  if (clean === "ÁREA" || clean === "AREA") return "area";
-  if (clean === "CARGO") return "cargo";
-  if (clean === "PIN") return "pin";
-  if (clean === "SUPERVISOR (SI/NO)" || clean === "SUPERVISOR") return "supervisor";
-  if (clean === "ACTIVO (SI/NO)" || clean === "ACTIVO") return "activo";
-  if (clean === "URL FOTO" || clean === "FOTO" || clean === "FOTO URL" || clean === "FOTO_URL") return "foto_url";
-  if (clean === "LATITUD BASE" || clean === "LATITUD" || clean === "BASELAT" || clean === "LATITUD_BASE") return "baseLat";
-  if (clean === "LONGITUD BASE" || clean === "LONGITUD" || clean === "BASELNG" || clean === "LONGITUD_BASE") return "baseLng";
-  if (clean === "FECHA NACIMIENTO" || clean === "FECHA_NACIMIENTO" || clean === "F. NACIMIENTO" || clean === "FECHANACIMIENTO") return "fechaNacimiento";
-  
-  // Normalizar encabezados personalizados a camelCase
-  var conAcentos = "ÁÉÍÓÚÜÑáéíóúüñ";
-  var sinAcentos = "AEIOUUNaeiouun";
-  var h = "";
+  // Quitar acentos para comparación robusta
+  var conAcentos = "áéíóúüñ";
+  var sinAcentos = "aeiouun";
+  var s = "";
   for (var i = 0; i < clean.length; i++) {
     var char = clean.charAt(i);
     var idx = conAcentos.indexOf(char);
-    h += idx !== -1 ? sinAcentos.charAt(idx) : char;
+    s += idx !== -1 ? sinAcentos.charAt(idx) : char;
   }
   
-  h = h.toLowerCase().replace(/[^a-z0-9_ ]/g, "");
-  var parts = h.split(/[\s_]+/);
+  if (s === "id/cedula" || s === "id / cedula" || s === "id" || s === "cedula") return "id";
+  if (s === "nombre completo" || s === "nombre") return "nombre";
+  if (s === "area") return "area";
+  if (s === "cargo") return "cargo";
+  if (s === "pin") return "pin";
+  if (s === "dispositivo / enlace pagos" || s === "dispositivo" || s === "enlace pagos" || s === "dispositivo/enlace pagos" || s === "id_dispositivo") return "id_dispositivo";
+  if (s === "supervisor (si/no)" || s === "supervisor") return "supervisor";
+  if (s === "activo (si/no)" || s === "activo") return "activo";
+  if (s === "url foto" || s === "foto" || s === "foto url" || s === "foto_url") return "foto_url";
+  if (s === "latitud base" || s === "latitud" || s === "baselat" || s === "latitud_base") return "baseLat";
+  if (s === "longitud base" || s === "longitud" || s === "baselng" || s === "longitud_base") return "baseLng";
+  if (s === "fecha nacimiento" || s === "fecha_nacimiento" || s === "f. nacimiento" || s === "fechanacimiento") return "fechaNacimiento";
+  if (s === "autorizar extras (si/no)" || s === "autorizar extras" || s === "authextras" || s === "auth extras") return "authExtras";
+  
+  // Normalizar encabezados personalizados a camelCase
+  s = s.replace(/[^a-z0-9_ ]/g, "");
+  var parts = s.split(/[\s_]+/);
   var key = parts[0];
   for (var j = 1; j < parts.length; j++) {
-    if (parts[j]) {
-      key += parts[j].charAt(0).toUpperCase() + parts[j].slice(1);
-    }
+    key += parts[j].charAt(0).toUpperCase() + parts[j].slice(1);
   }
   return key;
 }
@@ -572,22 +574,41 @@ function leerHojaActualizar() {
       return { error: "La hoja 'ACTUALIZAR' está vacía o solo contiene cabeceras." };
     }
     
-    // Obtener cabeceras y mapearlas a keys camelCase
-    const headers = dataRange[0];
-    const keys = headers.map(function(h) {
-      return normalizarHeaderAKey(h);
-    });
+    // Buscar la fila de cabeceras de forma dinámica
+    let headerRowIdx = -1;
+    let keys = [];
+    let idxId = -1;
+    let idxNombre = -1;
     
-    const idxId = keys.indexOf("id");
-    const idxNombre = keys.indexOf("nombre");
-    
-    if (idxId === -1 || idxNombre === -1) {
-      return { error: "La hoja 'ACTUALIZAR' debe contener al menos las columnas 'ID/Cédula' y 'Nombre completo'." };
+    // Buscamos en las primeras 10 filas
+    const maxHeaderRowsSearch = Math.min(dataRange.length, 10);
+    for (let rIdx = 0; rIdx < maxHeaderRowsSearch; rIdx++) {
+      const row = dataRange[rIdx];
+      const tempKeys = row.map(function(h) {
+        return normalizarHeaderAKey(h);
+      });
+      const tempIdxId = tempKeys.indexOf("id");
+      const tempIdxNombre = tempKeys.indexOf("nombre");
+      if (tempIdxId !== -1 && tempIdxNombre !== -1) {
+        headerRowIdx = rIdx;
+        keys = tempKeys;
+        idxId = tempIdxId;
+        idxNombre = tempIdxNombre;
+        break;
+      }
     }
     
+    if (headerRowIdx === -1) {
+      const headersFallback = dataRange[0] || [];
+      return { 
+        error: "La hoja 'ACTUALIZAR' debe contener al menos las columnas 'ID/Cédula' y 'Nombre completo'. Primera fila encontrada: " + headersFallback.join(", ") 
+      };
+    }
+    
+    const headers = dataRange[headerRowIdx];
     const empleados = [];
-    // Omitir cabecera (i = 0)
-    for (let i = 1; i < dataRange.length; i++) {
+    // Omitir cabecera y filas anteriores
+    for (let i = headerRowIdx + 1; i < dataRange.length; i++) {
       const r = dataRange[i];
       const id = r[idxId] ? String(r[idxId]).trim() : '';
       const nombre = r[idxNombre] ? String(r[idxNombre]).trim() : '';
@@ -836,14 +857,48 @@ function registrarDispositivoConPIN(empleadoId, pin, deviceToken) {
   } finally { lock.releaseLock(); }
 }
 
-function verificarPIN(pin, deviceToken) {
+function verificarPIN(pin, deviceToken, empleadoId) {
   try {
     const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
     const data = sheet.getDataRange().getValues();
+    
+    // 1. CASO MAESTRO: Si es la clave maestra
+    if (pin === "TCONTROL2026") {
+      // Intentar cargar el administrador 1058
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][COLUMNAS_EMPLEADOS.ID].toString().trim() === "1058") {
+          const idEmpleado = "1058";
+          const info = obtenerEstadoPorIdODevice(idEmpleado, null);
+          return {
+            valido: true,
+            empleado: {
+              id: idEmpleado,
+              nombre: data[i][COLUMNAS_EMPLEADOS.NOMBRE],
+              area: data[i][COLUMNAS_EMPLEADOS.AREA],
+              cargo: data[i][COLUMNAS_EMPLEADOS.CARGO] || "",
+              fechaNacimiento: data[i][COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO] || "",
+              foto_url: convertirUrlDrive(data[i][COLUMNAS_EMPLEADOS.FOTO_URL] || ''),
+              tieneEntrada: info.tieneEntrada || false,
+              tieneSalida: info.tieneSalida || false,
+              horaEntrada: info.horaEntrada || null,
+              horaSalida: info.horaSalida || null,
+              almuerzo: info.almuerzo || null,
+              esSupervisor: true
+            }
+          };
+        }
+      }
+    }
+
+    // 2. CASO GENERAL
     for (let i = 1; i < data.length; i++) {
+      const idGuardado = data[i][COLUMNAS_EMPLEADOS.ID]?.toString().trim();
       const pinGuardado = data[i][COLUMNAS_EMPLEADOS.PIN]?.toString().trim();
       const activo = esEmpleadoActivo(data[i][COLUMNAS_EMPLEADOS.ACTIVO]);
-      if (pinGuardado === pin && activo) {
+      
+      const idCoincide = !empleadoId || (idGuardado === empleadoId.toString().trim());
+      
+      if (idCoincide && pinGuardado === pin && activo) {
         const tokenGuardado = data[i][COLUMNAS_EMPLEADOS.DEVICE_TOKEN]?.toString().trim();
         if (tokenGuardado !== deviceToken) {
           sheet.getRange(i + 1, COLUMNAS_EMPLEADOS.DEVICE_TOKEN + 1).setValue(deviceToken);
@@ -1330,7 +1385,7 @@ function obtenerDatosSupervisorConTimestamp() {
     const empleadosData = sheetEmpleados.getDataRange().getValues();
     const registrosData = sheetRegistros.getDataRange().getValues();
     const timeZone = Session.getScriptTimeZone();
-    const hoyStr = Utilities.formatDate(new Date(), timeZone, 'yyyy-MM-dd');
+    const hoyStr = formatearFecha(new Date());
     
     // Procesar registros
     const registros = [];
@@ -1343,7 +1398,7 @@ function obtenerDatosSupervisorConTimestamp() {
       let horaStr = fila[COLUMNAS.HORA]?.toString() || '';
       
       if (fila[COLUMNAS.FECHA] instanceof Date) {
-        fechaStr = Utilities.formatDate(fila[COLUMNAS.FECHA], timeZone, 'yyyy-MM-dd');
+        fechaStr = formatearFecha(fila[COLUMNAS.FECHA]);
       } else if (typeof fila[COLUMNAS.FECHA] === 'string') {
         fechaStr = fila[COLUMNAS.FECHA];
       }

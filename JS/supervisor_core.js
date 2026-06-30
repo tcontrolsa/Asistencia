@@ -12,7 +12,68 @@
     let periodos = [];
     let panelActual = 'asistencia';
     let filtroAsistenciaActual = 'todos';
-    const hoy = new Date().toISOString().split('T')[0];
+    
+    function getLocalHoyStr(date = new Date()) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function calcularAlmuerzosPeriodo(e, R_INI, R_FIN) {
+      let todosRegs = e.registros || [];
+      let regsPeriodo = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN);
+      let fechasAsistidas = new Set(regsPeriodo.filter(r => r.tipo === 'ENTRADA').map(r => normalizarFechaStr(r.fecha)).filter(Boolean));
+      const esSinAsis = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+
+      let almPlanta = 0;
+      let almFuera = 0;
+
+      let regsPorFecha = {};
+      regsPeriodo.forEach(r => {
+        const fNorm = normalizarFechaStr(r.fecha);
+        if (!fNorm) return;
+        if (!regsPorFecha[fNorm]) regsPorFecha[fNorm] = [];
+        regsPorFecha[fNorm].push(r);
+      });
+
+      Object.keys(regsPorFecha).forEach(fNorm => {
+        if (!fechasAsistidas.has(fNorm) && !esSinAsis) {
+          return;
+        }
+        let regsDia = regsPorFecha[fNorm];
+
+        // Automatización silenciosa: si ya registró su salida antes de las 09:30, quite el almuerzo
+        let salidaTemprana = regsDia.some(r => {
+          if (r.tipo === 'SALIDA' && r.hora) {
+            const parts = r.hora.split(':');
+            const mins = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+            return mins < 570; // 09:30
+          }
+          return false;
+        });
+
+        if (salidaTemprana) {
+          almFuera++;
+          return;
+        }
+
+        let regsAlm = regsDia.filter(r => r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO');
+        let regPrincipal = regsAlm.find(r => r.tipo === 'ENTRADA') || regsAlm[0];
+        if (regPrincipal) {
+          const valAlm = regPrincipal.almuerzo;
+          if (valAlm === 'SI' || valAlm === 'PLANTA') {
+            almPlanta++;
+          } else if (valAlm === 'NO' || valAlm === 'FUERA') {
+            almFuera++;
+          }
+        }
+      });
+
+      return { almPlanta, almFuera };
+    }
+    
+    let hoy = getLocalHoyStr();
     let estaActualizando = false;
     let _sortReportes = { col: null, dir: 'asc' };
 
@@ -252,14 +313,7 @@
       return String(horas).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ':' + String(segs).padStart(2, '0');
     }
 
-    function calcularDistancia(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
+
 
     function esFeriadoODomingo(fechaStr) {
       if (!fechaStr) return false;
@@ -548,7 +602,7 @@
     // DASHBOARD
     // ============================================================
     function cargarDashboard() {
-      let hoy = new Date().toISOString().split('T')[0];
+      let hoy = getLocalHoyStr();
       let circ = 2 * Math.PI * 54;
       let dc = document.getElementById('donutCircle');
       if (dc) { dc.style.strokeDasharray = circ; dc.style.strokeDashoffset = circ; }
@@ -577,7 +631,7 @@
       if($('legendAusentes')) $('legendAusentes').textContent = hoyA;
       if($('legendSalieron')) $('legendSalieron').textContent = hoySalieron;
 
-      const hoy_ = new Date().toISOString().split('T')[0];
+      const hoy_ = getLocalHoyStr();
       let periodo = periodos[0];
       if (periodo && empCache.length) {
         // Solo días hábiles transcurridos (no futuros) para cálculos correctos
@@ -596,10 +650,8 @@
             if (m !== null && m > refEntradaR + 5) tard++;
           });
           
-          let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= periodo.inicio && r.fecha <= hoy_);
-          registrosAlmuerzo.forEach(r => {
-            if (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA') almP++;
-          });
+          const resAlm = calcularAlmuerzosPeriodo(e, periodo.inicio, hoy_);
+          almP += resAlm.almPlanta;
         });
         let aPct = calcularPct(asist, totalPos);
         let pPct = asist ? Math.round((1 - tard / asist) * 100) : 0;
@@ -933,6 +985,9 @@
 
     function cargarResumenMensual() {
       cargarReportes();
+      if (typeof actualizarReporteInteractivo === 'function') {
+        actualizarReporteInteractivo();
+      }
     }
 
     function filtrarResumenMensual() {
@@ -1046,6 +1101,7 @@
     // ============================================================
     // ASISTENCIA - 7 CARDS
     function cargarAsistencia() {
+      hoy = getLocalHoyStr();
       const esAdminMaster = window.isMaster || false;
       // Ordenar empleados alfabéticamente
       empCache.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
@@ -1064,15 +1120,22 @@
       let extrasHoy = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy);
       let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
 
-      let almPlanta = empCache.filter(e => (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA')).length + totalExtrasHoy;
-      let almFuera = empCache.filter(e => (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA')).length;
+      let almPlanta = empCache.filter(e => {
+        const esPresenteOAlm = e.entradaHoy || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+        return esPresenteOAlm && (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA');
+      }).length + totalExtrasHoy;
+      let almFuera = empCache.filter(e => {
+        const esPresenteOAlm = e.entradaHoy || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+        return esPresenteOAlm && (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA');
+      }).length;
 
       $('asisTotal').textContent = total;
-      $('asisPresentes').textContent = pres;
+      $('asisPresentes').textContent = pres - salieron;
       $('asisAusentes').textContent = ausentes;
       $('asisTardanzas').textContent = tards;
       $('asisSalieron').textContent = salieron;
       if ($('asisSinSalida')) $('asisSinSalida').textContent = sinSalida;
+      if ($('asisVisitantes')) $('asisVisitantes').textContent = totalExtrasHoy;
       $('asisAlmuerzoPlanta').textContent = almPlanta;
       $('asisAlmuerzoFuera').textContent = almFuera;
       if ($('asisAlmuerzoPlantaSub')) {
@@ -1131,12 +1194,12 @@
                             <option value="Permiso Médico" ${razonAusenciaHoy === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
                             <option value="Permiso Personal" ${razonAusenciaHoy === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
                             <option value="Calamidad Doméstica" ${razonAusenciaHoy === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
-                            <option value="Trabajo de Campo" ${razonAusenciaHoy === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Trabajo de Campo</option>
-                            <option value="Otro" ${razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
+                            <option value="Salida a Campo" ${razonAusenciaHoy === 'Salida a Campo' || razonAusenciaHoy === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Salida a Campo</option>
+                            <option value="Otro" ${razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
                         </select>
                     </div>
                   `;
-                  if (razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo'].includes(razonAusenciaHoy)) {
+                  if (razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaHoy)) {
                        selectHtml += `<div style="font-size:10px; color:var(--indigo); margin-top:4px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
                   }
                   ausenciaHtml = selectHtml;
@@ -1190,7 +1253,8 @@
             _entradaHoy: false,
             _salidaHoy: false,
             _tard: false,
-            _almuerzoHoy: 'SI'
+            _almuerzoHoy: 'SI',
+            isVisitante: true
          });
       });
 
@@ -1215,11 +1279,21 @@
       let q = ($('searchAsistencia')?.value || '').toLowerCase();
       let data = (window._asisData || []).filter(e => {
         if (q && !e.nombre.toLowerCase().includes(q) && !(e.area || '').toLowerCase().includes(q) && !(e.id || '').includes(q)) return false;
-        if (filtroAsistenciaActual === 'presente' && !e._entradaHoy) return false;
-        if (filtroAsistenciaActual === 'ausente' && e._entradaHoy) return false;
+        if (filtroAsistenciaActual === 'presente' && (!e._entradaHoy || e._salidaHoy)) return false;
+        if (filtroAsistenciaActual === 'ausente' && (e._entradaHoy || e.isVisitante)) return false;
         if (filtroAsistenciaActual === 'tardanza' && !e._tard) return false;
-        if (filtroAsistenciaActual === 'almuerzo_si' && e._almuerzoHoy !== 'SI') return false;
-        if (filtroAsistenciaActual === 'almuerzo_no' && e._almuerzoHoy !== 'NO') return false;
+        if (filtroAsistenciaActual === 'almuerzo_si') {
+          if (e.isVisitante) {
+            // Permitir visitante/extra
+          } else {
+            const esPresenteOAlm = e._entradaHoy || e.isSinAsistencia;
+            if (!esPresenteOAlm || (e._almuerzoHoy !== 'SI' && e._almuerzoHoy !== 'PLANTA')) return false;
+          }
+        }
+        if (filtroAsistenciaActual === 'almuerzo_no') {
+          const esPresenteOAlm = e._entradaHoy || e.isSinAsistencia;
+          if (!esPresenteOAlm || (e._almuerzoHoy !== 'NO' && e._almuerzoHoy !== 'FUERA')) return false;
+        }
         if (filtroAsistenciaActual === 'salieron' && !e._salidaHoy) return false;
         if (filtroAsistenciaActual === 'sin_salida' && (!e._entradaHoy || e._salidaHoy)) return false;
         return true;
@@ -1230,13 +1304,14 @@
         $('asistenciaTablaContainer').innerHTML = '<div class="empty-state"><i class="fas fa-users-slash"></i><p>No hay empleados que coincidan con el filtro</p></div>';
         return;
       }
-      let html = `<table class="employee-table table-compact"><thead><tr><th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th><th>Área</th><th>Entrada</th><th>Salida</th><th>Modo</th><th>Extras</th><th>Estado</th><th>Razón Ausencia</th><th>Almuerzo</th></tr></thead><tbody>`;
-      html += data.map(e => `<tr onclick="mostrarDetalle('${e.id}')"><td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td><td>${escapeHtml(e.area || '—')}</td><td>${e._eH}</td><td>${e._sH}</td><td>${e._modo}</td><td>${e._extras}</td><td>${e._est}</td><td>${e._ausencia}</td><td>${e._toggle}</td></tr>`).join('');
-      
+
       let totalVisible = data.length;
       let countEntradas = data.filter(e => e._entradaHoy).length;
       let countSalidas = data.filter(e => e._salidaHoy).length;
-      let countAlmPlanta = data.filter(e => e._almuerzoHoy === 'SI' || e._almuerzoHoy === 'PLANTA').length;
+      let countAlmPlanta = data.filter(e => {
+        const esPresenteOAlm = e._entradaHoy || e.isSinAsistencia;
+        return esPresenteOAlm && (e._almuerzoHoy === 'SI' || e._almuerzoHoy === 'PLANTA');
+      }).length;
       let countCampo = data.filter(e => {
         let modoStr = (e._modo || '').toUpperCase();
         return modoStr.includes('CAMPO') || (e.registros || []).some(r => r.modo === 'CAMPO' && r.fecha === hoy);
@@ -1246,18 +1321,78 @@
         return extStr.includes('AUTORIZADO') || extStr.includes('CAMPO');
       }).length;
 
-      let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid var(--g300); position:sticky; bottom:0; z-index:10;">
-        <td><strong>TOTALES (${totalVisible})</strong></td>
-        <td>—</td>
-        <td>${countEntradas} Entradas</td>
-        <td>${countSalidas} Salidas</td>
-        <td>${countCampo} Campo</td>
-        <td>${countExtrasAut} Aut.</td>
-        <td>—</td>
-        <td>—</td>
-        <td>${countAlmPlanta} Planta</td>
-      </tr>`;
-      
+      const colDefs = {
+        'Empleado': {
+          header: `<th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th>`,
+          body: e => `<td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td>`,
+          footer: `<td><strong>TOTALES (${totalVisible})</strong></td>`
+        },
+        'Área': {
+          header: `<th>Área</th>`,
+          body: e => `<td>${escapeHtml(e.area || '—')}</td>`,
+          footer: `<td>—</td>`
+        },
+        'Entrada': {
+          header: `<th>Entrada</th>`,
+          body: e => `<td>${e._eH}</td>`,
+          footer: `<td>${countEntradas} Entradas</td>`
+        },
+        'Salida': {
+          header: `<th>Salida</th>`,
+          body: e => `<td>${e._sH}</td>`,
+          footer: `<td>${countSalidas} Salidas</td>`
+        },
+        'Modo': {
+          header: `<th>Modo</th>`,
+          body: e => `<td>${e._modo}</td>`,
+          footer: `<td>${countCampo} Campo</td>`
+        },
+        'Extras': {
+          header: `<th>Extras</th>`,
+          body: e => `<td>${e._extras}</td>`,
+          footer: `<td>${countExtrasAut} Aut.</td>`
+        },
+        'Estado': {
+          header: `<th>Estado</th>`,
+          body: e => `<td>${e._est}</td>`,
+          footer: `<td>—</td>`
+        },
+        'Razón Ausencia': {
+          header: `<th>Razón Ausencia</th>`,
+          body: e => `<td>${e._ausencia}</td>`,
+          footer: `<td>—</td>`
+        },
+        'Almuerzo': {
+          header: `<th>Almuerzo</th>`,
+          body: e => `<td>${e._toggle}</td>`,
+          footer: `<td>${countAlmPlanta} Planta</td>`
+        }
+      };
+
+      const activeColsMap = {
+        'todos': ['Empleado', 'Área', 'Entrada', 'Salida', 'Modo', 'Extras', 'Estado', 'Razón Ausencia', 'Almuerzo'],
+        'presente': ['Empleado', 'Área', 'Entrada', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
+        'ausente': ['Empleado', 'Área', 'Estado', 'Razón Ausencia', 'Almuerzo'],
+        'tardanza': ['Empleado', 'Área', 'Entrada', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
+        'almuerzo_si': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
+        'almuerzo_no': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
+        'salieron': ['Empleado', 'Área', 'Salida', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
+        'sin_salida': ['Empleado', 'Área', 'Entrada', 'Salida', 'Modo', 'Extras', 'Estado', 'Almuerzo']
+      };
+
+      const activeCols = activeColsMap[filtroAsistenciaActual] || activeColsMap['todos'];
+
+      let headersHtml = activeCols.map(c => colDefs[c].header).join('');
+      let html = `<table class="employee-table table-compact"><thead><tr>${headersHtml}</tr></thead><tbody>`;
+
+      html += data.map(e => {
+        let cellsHtml = activeCols.map(c => colDefs[c].body(e)).join('');
+        return `<tr onclick="mostrarDetalle('${e.id}')">${cellsHtml}</tr>`;
+      }).join('');
+
+      let footerCellsHtml = activeCols.map(c => colDefs[c].footer).join('');
+      let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid var(--g300); position:sticky; bottom:0; z-index:10;">${footerCellsHtml}</tr>`;
+
       html += `</tbody><tfoot>${footerHtml}</tfoot></table>`;
       $('asistenciaTablaContainer').innerHTML = html;
     }
@@ -1436,7 +1571,7 @@
       let periodo = periodos[parseInt($('periodoMensual')?.value || 0)];
       if (!periodo || !empCache.length) return;
 
-      const hoyRep = new Date().toISOString().split('T')[0];
+      const hoyRep = getLocalHoyStr();
       const fechaFiltro = $('filtroFechaReportes')?.value;
       const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
       const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
@@ -1468,11 +1603,9 @@
           }
         });
         
-        let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= R_INI && r.fecha <= R_FIN);
-        registrosAlmuerzo.forEach(r => {
-          if (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA') almPlanta++;
-          if (r.almuerzo === 'NO' || r.almuerzo === 'FUERA') almFuera++;
-        });
+        const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
+        almPlanta = resAlm.almPlanta;
+        almFuera = resAlm.almFuera;
         let puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
 
         // HORAS EXTRAS Y CAMPO LOGIC
@@ -1718,24 +1851,111 @@
 
     window.cargarReportesConFiltroFecha = function() {
       const inputFecha = $('filtroFechaReportes');
+      const inputFechaDash = $('filtroFechaDashboard');
       const btnLimpiar = $('btnLimpiarFechaRep');
-      if (inputFecha && inputFecha.value) {
+      const btnLimpiarDash = $('btnLimpiarFechaDash');
+      
+      const hasValue = (inputFecha && inputFecha.value) || (inputFechaDash && inputFechaDash.value);
+      if (hasValue) {
         if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+        if (btnLimpiarDash) btnLimpiarDash.style.display = 'inline-block';
       } else {
         if (btnLimpiar) btnLimpiar.style.display = 'none';
+        if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
       }
       cargarReportes();
+      if (typeof actualizarReporteInteractivo === 'function') {
+        actualizarReporteInteractivo();
+      }
     };
 
     window.limpiarFiltroFechaReportes = function() {
       const inputFecha = $('filtroFechaReportes');
+      const inputFechaDash = $('filtroFechaDashboard');
       const btnLimpiar = $('btnLimpiarFechaRep');
+      const btnLimpiarDash = $('btnLimpiarFechaDash');
+      
       if (inputFecha) inputFecha.value = '';
+      if (inputFechaDash) inputFechaDash.value = '';
       if (btnLimpiar) btnLimpiar.style.display = 'none';
+      if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
+      
       cargarReportes();
+      if (typeof actualizarReporteInteractivo === 'function') {
+        actualizarReporteInteractivo();
+      }
+    };
+
+    window.syncPeriodo = function(source) {
+      if (source === 'dash') {
+        const val = $('periodoMensualDash')?.value;
+        const selRep = $('periodoMensual');
+        if (selRep && val !== undefined) {
+          selRep.value = val;
+        }
+      } else {
+        const val = $('periodoMensual')?.value;
+        const selDash = $('periodoMensualDash');
+        if (selDash && val !== undefined) {
+          selDash.value = val;
+        }
+      }
+      cargarResumenMensual();
+    };
+
+    window.syncFecha = function(source) {
+      if (source === 'dash') {
+        const val = $('filtroFechaDashboard')?.value;
+        const inpRep = $('filtroFechaReportes');
+        if (inpRep && val !== undefined) {
+          inpRep.value = val;
+        }
+        
+        const btnLimpiarRep = $('btnLimpiarFechaRep');
+        const btnLimpiarDash = $('btnLimpiarFechaDash');
+        if (val) {
+          if (btnLimpiarRep) btnLimpiarRep.style.display = 'inline-block';
+          if (btnLimpiarDash) btnLimpiarDash.style.display = 'inline-block';
+        } else {
+          if (btnLimpiarRep) btnLimpiarRep.style.display = 'none';
+          if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
+        }
+      } else {
+        const val = $('filtroFechaReportes')?.value;
+        const inpDash = $('filtroFechaDashboard');
+        if (inpDash && val !== undefined) {
+          inpDash.value = val;
+        }
+        
+        const btnLimpiarRep = $('btnLimpiarFechaRep');
+        const btnLimpiarDash = $('btnLimpiarFechaDash');
+        if (val) {
+          if (btnLimpiarRep) btnLimpiarRep.style.display = 'inline-block';
+          if (btnLimpiarDash) btnLimpiarDash.style.display = 'inline-block';
+        } else {
+          if (btnLimpiarRep) btnLimpiarRep.style.display = 'none';
+          if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
+        }
+      }
+      cargarReportesConFiltroFecha();
+    };
+
+    window.limpiarFiltroFechaDashboard = function() {
+      const inpDash = $('filtroFechaDashboard');
+      const inpRep = $('filtroFechaReportes');
+      if (inpDash) inpDash.value = '';
+      if (inpRep) inpRep.value = '';
+      
+      const btnLimpiarRep = $('btnLimpiarFechaRep');
+      const btnLimpiarDash = $('btnLimpiarFechaDash');
+      if (btnLimpiarRep) btnLimpiarRep.style.display = 'none';
+      if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
+      
+      cargarReportesConFiltroFecha();
     };
 
     function filtrarTablaReportes() {
+      if (!$('tablaReportes')) return;
       let q = ($('searchReportes')?.value || '').toLowerCase();
       let data = (window._reportesData || []).filter(e => !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q));
       const columnasVisibles = obtenerColumnasVisibles();
@@ -1874,7 +2094,8 @@
 
       let entT = regs.filter(r => r.tipo === 'ENTRADA').length;
       let salT = regs.filter(r => r.tipo === 'SALIDA').length;
-      let almP = regs.filter(r => r.tipo === 'ENTRADA' && (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA')).length;
+      const resAlm = calcularAlmuerzosPeriodo(e, periodoSeleccionado.inicio, periodoSeleccionado.fin);
+      let almP = resAlm.almPlanta;
       let dias = new Set(regs.filter(r => r.tipo === 'ENTRADA').map(r => r.fecha)).size;
 
       let sE = 0, cE = 0, sS = 0, cS = 0, tardT = 0;
@@ -2068,7 +2289,7 @@
             else if (txt === 'Permiso Médico') ico = '🩺';
             else if (txt === 'Permiso Personal') ico = '👤';
             else if (txt === 'Calamidad Doméstica') ico = '🏠';
-            else if (txt === 'Trabajo de Campo') ico = '🚗';
+            else if (txt === 'Trabajo de Campo' || txt === 'Salida a Campo') { txt = 'Salida a Campo'; ico = '🚗'; }
             else if (r.razon_justificac) ico = '✅';
             razonesBadges.push(`<span class="pill" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; font-size:11px;">${ico} ${escapeHtml(txt)}</span>`);
           }
@@ -2344,17 +2565,21 @@
       document.querySelectorAll('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.panel === panel));
       document.querySelectorAll('.panel').forEach(x => x.classList.toggle('active', x.id === 'panel-' + panel));
       let titles = { 
-        dashboard: 'Dashboard Ejecutivo', 
+        dashboard: 'Dashboard', 
+        reportes: 'Reporte Interactivo',
         asistencia: 'Control de Asistencia', 
         detalle: 'Detalle de Empleado',
-        reportes: 'Creador Interactivo de Reportes',
         opciones: 'Opciones adicionales'
       };
       $('pageTitle').textContent = titles[panel] || 'Supervisor';
       if (panel !== 'detalle') {
-        if (panel === 'dashboard') cargarDashboard();
+        if (panel === 'dashboard') {
+          cargarDashboard();
+        }
+        else if (panel === 'reportes') {
+          inicializarReporteInteractivo();
+        }
         else if (panel === 'asistencia') cargarAsistencia();
-        else if (panel === 'reportes') inicializarReporteInteractivo();
       }
     }
 
@@ -2419,7 +2644,7 @@
         if (res?.error) { mostrarToast(res.error, 'error'); return; }
         cerrarModal();
         cargarDatosCompletos(true, true, true).then(() => {
-          if (panelActual === 'reportes' && $('filtroCargoReporte')?.value === 'almuerzos extra') {
+          if (panelActual === 'dashboard' && $('filtroCargoReporte')?.value === 'almuerzos extra') {
             filtrarReporteInteractivo();
           }
         });
@@ -3179,6 +3404,7 @@
     };
 
     let estaCompletandoSalidas = false;
+    let ultimoChequeoAutoCompletar = 0;
     function obtenerFechaYMD(dateObj = new Date()) {
       const y = dateObj.getFullYear();
       const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -3191,6 +3417,12 @@
     }
     async function autoCompletarSalidasFaltantes() {
       if (estaCompletandoSalidas) return;
+      
+      const ahoraMs = new Date().getTime();
+      if (ahoraMs - ultimoChequeoAutoCompletar < 1800000) {
+        console.log("🤖 [Auto-completar] Omitido: verificación realizada hace menos de 30 minutos.");
+        return;
+      }
       
       let sessionData = {};
       try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
@@ -3273,7 +3505,9 @@
                   justificado: 'NO',
                   timestamp: timestampVal,
                   dia: obtenerDiaSemanaLocal(dateObj),
-                  observacion_automatica: "Auto-completado salida faltante"
+                  observacion_automatica: "Auto-completado salida faltante",
+                  observaciones: "No registró salida",
+                  razon_salida: "No registró salida"
                 });
                 creados++;
               } catch (innerErr) {
@@ -3283,6 +3517,7 @@
           }
         }
 
+        ultimoChequeoAutoCompletar = new Date().getTime();
         if (creados > 0) {
           console.log(`🤖 [Auto-completar] Guardando ${creados} salidas en Firebase...`);
           await batch.commit();
@@ -3305,7 +3540,18 @@
     async function cargarDatosCompletos(force = false, silencioso = false, forceSheets = false) {
       if (estaActualizando) return;
       estaActualizando = true;
-      if (!silencioso) mostrarLoader(true);
+      if (!silencioso) {
+        mostrarLoader(true);
+      } else {
+        const bgSync = $('bgSyncIndicator');
+        if (bgSync) bgSync.classList.remove('hidden');
+        const detContent = $('detalleContent');
+        if (detContent && panelActual === 'detalle') {
+          detContent.style.opacity = '0.6';
+          detContent.style.pointerEvents = 'none';
+          detContent.style.transition = 'opacity 0.2s ease';
+        }
+      }
       try {
         const res = await jsonpRequest({ 
           accion: 'obtenerDatosSupervisor', 
@@ -3314,6 +3560,15 @@
         });
         if (!silencioso) mostrarLoader(false);
         estaActualizando = false;
+
+        const bgSync = $('bgSyncIndicator');
+        if (bgSync) bgSync.classList.add('hidden');
+        const detContent = $('detalleContent');
+        if (detContent) {
+          detContent.style.opacity = '1';
+          detContent.style.pointerEvents = 'auto';
+        }
+
         if (!res || res.error) {
           if (!silencioso) mostrarToast(res?.error || 'Error al cargar datos', 'error');
           return;
@@ -3352,8 +3607,10 @@
         }
 
         let periodoSelect = $('periodoMensual');
+        let periodoSelectDash = $('periodoMensualDash');
         let tardanzaSelect = $('periodoTardanzas');
         if (periodoSelect) periodoSelect.innerHTML = periodos.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
+        if (periodoSelectDash) periodoSelectDash.innerHTML = periodos.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
         if (tardanzaSelect) tardanzaSelect.innerHTML = periodos.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
 
         $('lastUpdate').textContent = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
@@ -3364,22 +3621,38 @@
           mostrarLoader(false);
           mostrarToast('Error de conexión: ' + e.message, 'error');
         }
+        const bgSync = $('bgSyncIndicator');
+        if (bgSync) bgSync.classList.add('hidden');
+        const detContent = $('detalleContent');
+        if (detContent) {
+          detContent.style.opacity = '1';
+          detContent.style.pointerEvents = 'auto';
+        }
         estaActualizando = false;
       }
     }
 
     function cargarPanelActual() {
-      if (panelActual === 'dashboard') cargarDashboard();
+      if (panelActual === 'dashboard') {
+        cargarDashboard();
+      }
+      else if (panelActual === 'reportes') {
+        inicializarReporteInteractivo();
+      }
       else if (panelActual === 'asistencia') cargarAsistencia();
-      else if (panelActual === 'reportes') inicializarReporteInteractivo();
     }
 
     // ============================================================
     // GESTIÓN DE SESIÓN SUPERVISOR
     // ============================================================
     async function intentarLoginSupervisor() {
+      const user = $('supUser').value.trim();
       const pin = $('supPin').value.trim();
 
+      if (!user) {
+        mostrarError('Ingrese su usuario');
+        return;
+      }
       if (!pin) {
         mostrarError('Ingrese su contraseña');
         return;
@@ -3390,8 +3663,8 @@
 
       try {
         const deviceToken = generarDeviceToken();
-        // Búsqueda solo por PIN para unificar el sistema
-        const res = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken });
+        // Búsqueda por Usuario (empleadoId) y PIN (contraseña)
+        const res = await jsonpRequest({ accion: 'verificarPIN', empleadoId: user, pin: pin, deviceToken: deviceToken });
 
         if (res.error) {
           mostrarError(res.error);
@@ -3533,6 +3806,31 @@
     initScrollSync('monthlyTopScroll', 'reportesScrollWrap');
     initScrollSync('customRepTopScroll', 'reporteCustomScroll');
 
+    // Sincronización en tiempo real en segundo plano (cada 2 minutos)
+    setInterval(() => {
+      const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+      if (!sessionStr) return; // No hacer nada si no hay sesión activa
+
+      // Pausar sincronización si el navegador está en segundo plano (ahorro de batería y datos)
+      if (document.hidden) return;
+
+      // Pausar sincronización si el supervisor tiene algún modal de edición/justificación abierto
+      const modalesVisibles = ['extraLunchModal', 'justificarModal', 'manualRegistroModal', 'masivoModal']
+        .some(id => {
+          const el = $(id);
+          return el && !el.classList.contains('hidden');
+        });
+
+      if (modalesVisibles) return;
+
+      console.log("🤖 [Real-Time Sync] Sincronizando datos de asistencia desde Firebase...");
+
+      // Realizar actualización silenciosa de los datos desde Firebase (usando caché, force = false)
+      cargarDatosCompletos(false, true).catch(err => {
+        console.error("🤖 [Real-Time Sync] Error al sincronizar datos:", err);
+      });
+    }, 120000);
+
     $('btnRefresh').addEventListener('click', async () => {
       limpiarCachesLocales();
       mostrarToast('Borrando caché local de registros...', 'info');
@@ -3567,12 +3865,16 @@
     const inputSearchReportes = $('searchReportes');
     if (inputSearchReportes) {
       inputSearchReportes.addEventListener('input', debounce(() => {
-        filtrarTablaReportes();
+        const customSearch = $('searchReportesCustom');
+        if (customSearch) customSearch.value = inputSearchReportes.value;
+        filtrarReporteInteractivo();
       }, 250));
     }
     const inputSearchReportesCustom = $('searchReportesCustom');
     if (inputSearchReportesCustom) {
       inputSearchReportesCustom.addEventListener('input', debounce(() => {
+        const topSearch = $('searchReportes');
+        if (topSearch) topSearch.value = inputSearchReportesCustom.value;
         filtrarReporteInteractivo();
       }, 250));
     }
@@ -3585,9 +3887,12 @@
     verificarEstadoSupervisor();
 
     // Eventos Login
+    if ($('supUser')) {
+      $('supUser').addEventListener('keypress', e => { if (e.key === 'Enter') intentarLoginSupervisor(); });
+      setTimeout(() => $('supUser').focus(), 500);
+    }
     if ($('supPin')) {
       $('supPin').addEventListener('keypress', e => { if (e.key === 'Enter') intentarLoginSupervisor(); });
-      setTimeout(() => $('supPin').focus(), 500);
     }
 
     // Escuchar actualización de datos en segundo plano
@@ -3604,9 +3909,15 @@
       }
     });
 
-    // Asegurar que al hacer clic en cualquier parte del card se enfoque el input
+    // Asegurar que al hacer clic en cualquier parte del card se enfoque el input adecuado
     if (document.querySelector('.login-card')) {
-      document.querySelector('.login-card').addEventListener('click', () => $('supPin').focus());
+      document.querySelector('.login-card').addEventListener('click', () => {
+        if ($('supUser') && !$('supUser').value) {
+          $('supUser').focus();
+        } else if ($('supPin')) {
+          $('supPin').focus();
+        }
+      });
     }
     if ($('btnIngresarSup')) $('btnIngresarSup').addEventListener('click', intentarLoginSupervisor);
     if ($('togglePin')) {
@@ -3641,26 +3952,26 @@
     let _reportesCustomData = [];
 
     window.inicializarReporteInteractivo = function() {
-      const selectPeriodo = $('periodoCustomReportes');
-      if (selectPeriodo && periodos.length) {
-        selectPeriodo.innerHTML = periodos.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
-      }
       actualizarReporteInteractivo();
     };
 
     window.actualizarReporteInteractivo = function() {
-      const selectPeriodo = $('periodoCustomReportes');
+      const selectPeriodo = $('periodoMensual');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
       if (!periodo || !empCache.length) return;
 
-      const hoyRep = new Date().toISOString().split('T')[0];
+      const fechaFiltro = $('filtroFechaReportes')?.value;
+      const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
+      const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
+
+      const hoyRep = getLocalHoyStr();
       
       // Calcular estadísticas de manera idéntica a cargarReportes()
       _reportesCustomData = empCache.map(e => {
-        let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
-        let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
-        let diasLaborablesTotal = obtenerDiasHabiles(periodo.inicio, periodo.fin);
+        let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
+        let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
+        let diasLaborablesTotal = obtenerDiasHabiles(R_INI, R_FIN);
         let diasLaborables = diasLaborablesTotal.filter(d => d <= hoyRep);
         let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f)).size;
 
@@ -3681,11 +3992,9 @@
           }
         });
 
-        let registrosAlmuerzo = (e.registros || []).filter(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO') && r.fecha >= periodo.inicio && r.fecha <= periodo.fin);
-        registrosAlmuerzo.forEach(r => {
-          if (r.almuerzo === 'SI' || r.almuerzo === 'PLANTA') almPlanta++;
-          if (r.almuerzo === 'NO' || r.almuerzo === 'FUERA') almFuera++;
-        });
+        const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
+        almPlanta = resAlm.almPlanta;
+        almFuera = resAlm.almFuera;
         let puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
 
         let horasExtra50 = 0;
@@ -3700,8 +4009,8 @@
 
         // Generar lista de todas las fechas en el rango
         let todasLasFechas = [];
-        let currDate = new Date(periodo.inicio + 'T00:00:00');
-        let endDate = new Date(periodo.fin + 'T00:00:00');
+        let currDate = new Date(R_INI + 'T00:00:00');
+        let endDate = new Date(R_FIN + 'T00:00:00');
         while (currDate <= endDate) {
           todasLasFechas.push(currDate.toISOString().split('T')[0]);
           currDate.setDate(currDate.getDate() + 1);
@@ -3893,10 +4202,7 @@
         const isActiva = columnasCustomActivas.includes(col.id);
         const chip = document.createElement('div');
         chip.className = `chip-item ${isActiva ? 'activa' : 'disponible'}`;
-        chip.style.margin = '2px';
-        chip.style.display = 'inline-flex';
-        chip.style.cursor = 'pointer';
-        chip.innerHTML = `${isActiva ? '<i class="fas fa-check"></i>' : '<i class="fas fa-plus"></i>'} ${col.label}`;
+        chip.innerHTML = `${isActiva ? '<i class="fas fa-check-circle" style="color: #2563eb;"></i>' : '<i class="far fa-circle" style="opacity: 0.5;"></i>'} ${col.label}`;
         
         chip.addEventListener('click', () => {
           if (isActiva) {
@@ -4003,7 +4309,7 @@
           $('reportsLayoutContainer').style.display = 'none';
         }
 
-        const selectPeriodo = $('periodoCustomReportes');
+        const selectPeriodo = $('periodoMensual');
         const idx = parseInt(selectPeriodo?.value || 0);
         let periodo = periodos[idx];
         let pInicio = periodo ? periodo.inicio : '';
@@ -4117,7 +4423,7 @@
       }
 
       bodyT.innerHTML = data.map(e => {
-        let rowHtml = `<tr><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td>`;
+        let rowHtml = `<tr onclick="mostrarDetalle('${e.id}')" style="cursor:pointer"><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td>`;
 
         COLUMNAS_DISPONIBLES.forEach(col => {
           if (columnasCustomActivas.includes(col.id)) {
@@ -4271,7 +4577,7 @@
     window.exportarExcelReporteCustom = function() {
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
       let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-      const selectPeriodo = $('periodoCustomReportes');
+      const selectPeriodo = $('periodoMensual');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
       let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
@@ -4415,7 +4721,7 @@
     window.exportarGoogleSheetsReporteCustom = async function() {
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
       let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-      const selectPeriodo = $('periodoCustomReportes');
+      const selectPeriodo = $('periodoMensual');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
       let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
@@ -4531,7 +4837,7 @@
     window.imprimirReporteCustom = function() {
       let q = ($('searchReportesCustom')?.value || '').toLowerCase();
       let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-      const selectPeriodo = $('periodoCustomReportes');
+      const selectPeriodo = $('periodoMensual');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
       let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
@@ -4928,7 +5234,7 @@
         const ignoreKeys = new Set([
           'registros', 'entradaHoy', 'salidaHoy', 'almuerzoHoy', 
           'horaEntrada', 'horaSalida', 'horaEntradaMs', 'horaSalidaMs', 
-          'deviceToken', 'id_dispositivo'
+          'deviceToken', 'esSupervisor', 'creado'
         ]);
         
         const keysEncontradas = new Set();
@@ -4941,7 +5247,7 @@
         });
         
         // 2. Ordenar las columnas para que las estándar vayan primero y luego las custom
-        const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'id_dispositivo', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+        const COLUMNAS_ORDENADAS = ['id', 'nombre', 'area', 'cargo', 'pin', 'id_dispositivo', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento', 'authExtras'];
         const finalKeys = [];
         
         COLUMNAS_ORDENADAS.forEach(k => {
@@ -4968,7 +5274,8 @@
           foto_url: "URL Foto",
           baseLat: "Latitud Base",
           baseLng: "Longitud Base",
-          fechaNacimiento: "Fecha Nacimiento"
+          fechaNacimiento: "Fecha Nacimiento",
+          authExtras: "Autorizar Extras (SI/NO)"
         };
 
         

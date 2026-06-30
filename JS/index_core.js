@@ -312,16 +312,6 @@
         }
 
         // ========== FUNCIONES DE DISTANCIA ==========
-        function calcularDistancia(lat1, lon1, lat2, lon2) {
-            const R = 6371e3;
-            const φ1 = lat1 * Math.PI / 180;
-            const φ2 = lat2 * Math.PI / 180;
-            const Δφ = (lat2 - lat1) * Math.PI / 180;
-            const Δλ = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        }
-
         function verificarDistanciaEmpresa() {
             if (!posicion.lat || !posicion.lng) {
                 mostrarToast('Obteniendo ubicación...', 'info');
@@ -813,11 +803,13 @@
         async function procederConRegistro() {
             if (!verificarDistanciaEmpresa()) return;
 
-            // Solicitar confirmación para cancelar el almuerzo en caso de salida antes de las 10:00 a.m.
+            // Cancelación silenciosa antes de las 09:30 o confirmación antes de las 10:00 a.m.
             if (empleado.tipoRegistro === 'SALIDA') {
                 const ahora = new Date();
                 const minDelDia = ahora.getHours() * 60 + ahora.getMinutes();
-                if (minDelDia < 600) { // Antes de las 10:00 a.m.
+                if (minDelDia < 570) { // Antes de las 09:30 a.m.
+                    empleado.almuerzo = 'NO'; // Cancelación silenciosa y automática
+                } else if (minDelDia < 600) { // Entre 09:30 a.m. y 10:00 a.m.
                     const deseaCancelar = confirm("❓ Vas a registrar tu salida antes de la hora de almuerzo.\n\n¿Deseas cancelar el almuerzo del día de hoy?");
                     if (deseaCancelar) {
                         empleado.almuerzo = 'NO';
@@ -827,7 +819,8 @@
 
             // Advertencia para marcación sospechosa (Entrada muy reciente y marcando Salida)
             if (empleado.tipoRegistro === 'SALIDA' && Array.isArray(registrosCompletos)) {
-                const hoyStr = new Date().toISOString().split('T')[0];
+                const dHoy = new Date();
+                const hoyStr = `${dHoy.getFullYear()}-${String(dHoy.getMonth() + 1).padStart(2, '0')}-${String(dHoy.getDate()).padStart(2, '0')}`;
                 const entradaHoy = registrosCompletos.find(r => r.fecha === hoyStr && r.tipo === 'ENTRADA');
                 if (entradaHoy) {
                     const tsEntrada = entradaHoy.timestamp || entradaHoy.hora;
@@ -1775,6 +1768,7 @@
         }
 
         function renderFaltasMasivas() {
+            currentPage = 'justificar_faltas';
             if (faltasPendientes.length === 0) {
                 renderHomePage();
                 return;
@@ -1812,6 +1806,7 @@
                             <option value="Permiso médico">🏥 Permiso Médico</option>
                             <option value="Calamidad doméstica">🏠 Calamidad Doméstica</option>
                             <option value="Permiso personal">👤 Permiso Personal</option>
+                            <option value="Salida a Campo">🚗 Salida a Campo</option>
                             <option value="Falta injustificada">❌ Falta Injustificada</option>
                         </select>
                     </div>
@@ -1946,6 +1941,7 @@
                     if (rFalta.includes('VACACIONES')) return { label: 'VACACIONES', icon: '🏖️', color: '#3b82f6' };
                     if (rFalta.includes('MEDICO')) return { label: 'PERMISO MEDICO', icon: '🏥', color: '#ef4444' };
                     if (rFalta.includes('PERSONAL')) return { label: 'PERMISO PERSONAL', icon: '👤', color: '#8b5cf6' };
+                    if (rFalta.includes('CAMPO')) return { label: 'SALIDA A CAMPO', icon: '🚗', color: '#f59e0b' };
                     return { label: rFalta || 'AUSENCIA JUSTIFICADA', icon: '🏖️', color: '#3b82f6' };
                 default:
                     return { label: 'EN ACTIVIDAD', icon: '⚙️', color: '#10b981' };
@@ -1954,6 +1950,7 @@
 
         // ========== RENDER HOME (CREDENCIAL) ==========
         function renderHomePage() {
+            currentPage = 'home';
             const mainContent = document.getElementById('mainContent');
             const nombreCompleto = empleado.nombre || 'EMPLEADO';
             const partes = nombreCompleto.split(' ');

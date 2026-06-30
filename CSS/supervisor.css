@@ -159,11 +159,7 @@
       color: var(--amber) !important;
       box-shadow: inset 3px 0 0 var(--amber) !important;
     }
-    .nav-item[href="visor_empleado.html"]:hover {
-      background: var(--pink-lt) !important;
-      color: var(--pink) !important;
-      transform: translateX(4px);
-    }
+
 
     .sidebar-footer {
       padding: var(--pad);
@@ -2596,4 +2592,40 @@
 
     .detail-photo-container:hover .photo-upload-overlay {
       opacity: 1;
+    }
+
+    /* ===== ESTILOS DEL CREADOR INTERACTIVO DE REPORTES ===== */
+    .chip-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 600;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      user-select: none;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      border: 1px solid transparent;
+      margin: 3px !important;
+    }
+    .chip-item.activa {
+      background: #eff6ff !important;
+      color: #1e40af !important;
+      border-color: rgba(37, 99, 235, 0.2) !important;
+    }
+    .chip-item.activa:hover {
+      background: #dbeafe !important;
+      transform: translateY(-1px);
+    }
+    .chip-item.disponible {
+      background: #ffffff !important;
+      color: var(--g500) !important;
+      border-color: var(--g200) !important;
+    }
+    .chip-item.disponible:hover {
+      background: var(--g50) !important;
+      color: var(--g700) !important;
+      border-color: var(--g300) !important;
+      transform: translateY(-1px);
     }
