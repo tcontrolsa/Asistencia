@@ -52,6 +52,8 @@ window.FirebaseBackend = {
                     return await this.obtenerConfiguraciones(params);
                 case 'guardarConfiguraciones':
                     return await this.guardarConfiguraciones(params);
+                case 'toggleEmergencia':
+                    return await this.toggleEmergencia(params);
                 case 'verificarClaveGuardia':
                     return await this.verificarClaveGuardia(params);
                 case 'obtenerListaCatering':
@@ -94,6 +96,10 @@ window.FirebaseBackend = {
                     return await this._post(params);
                 case 'leerHojaActualizar':
                     return await this._jsonp(params);
+                case 'registrarLog':
+                    return await this.registrarLog(params);
+                case 'guardarPermisoSupervisor':
+                    return await this.guardarPermisoSupervisor(params);
                 // Acciones exclusivas de Google Apps Script (Sheets)
                 case 'registrarAlmuerzoExtra':
                 case 'archivarRegistros':
@@ -306,7 +312,8 @@ window.FirebaseBackend = {
         let ultimoAlmuerzo = null;
 
         regQuery.docs.forEach(doc => {
-            const data = doc.data();
+            const data = this._processDoc(doc.id, doc.data());
+            if (!data) return;
 
             // Detección robusta de "hoy"
             let esHoy = false;
@@ -377,7 +384,8 @@ window.FirebaseBackend = {
 
         let registros = [];
         querySnap.forEach(doc => {
-            const data = doc.data();
+            const data = this._processDoc(doc.id, doc.data());
+            if (!data) return;
             let tsVal = null;
             if (data.timestamp) {
                 if (typeof data.timestamp.toDate === 'function') {
@@ -405,67 +413,75 @@ window.FirebaseBackend = {
                 razon_entrada_tardia: data.razon_entrada_tardia || '',
                 quien_justifica_entrada: data.quien_justifica_entrada || '',
                 tipo_salida: data.tipo_salida || '',
-                razon_permiso: data.razon_permiso || ''
+                razon_permiso: data.razon_permiso || '',
+                estado: data.estado || '',
+                estado_timestamp: data.estado_timestamp ? (data.estado_timestamp.toDate ? data.estado_timestamp.toDate().getTime() : new Date(data.estado_timestamp).getTime()) : null,
+                permiso_personal_mins: data.permiso_personal_mins || 0,
+                permiso_medico_mins: data.permiso_medico_mins || 0
             });
         });
 
         // --- INICIO: Integración de Registros Archivados ---
-        const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${empleadoId}_v1`;
-        let archivadosData = { registros: [], lastSync: null };
-        try {
-            const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
-            if (storedArch) archivadosData = JSON.parse(storedArch);
-        } catch(e) { console.warn("Error leyendo caché archivados:", e); }
-
-        // Cache por 30 minutos (antes era 12 horas) para evitar falsas faltas tras archivar
-        const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-        const _fetchArchivados = async () => {
+        if (params.incluirArchivados !== false) {
+            const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${empleadoId}_v1`;
+            let archivadosData = { registros: [], lastSync: null };
             try {
-                const resJson = await this._jsonp({ 
-                    accion: 'obtenerRegistrosArchivados',
-                    empleadoId: empleadoId 
-                });
-                if (resJson.ok && resJson.registros) {
-                    archivadosData.registros = resJson.registros;
-                    archivadosData.lastSync = new Date().toISOString();
-                    try {
-                        localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
-                        console.log("✅ Registros archivados de Sheets actualizados para el empleado.");
-                        window.dispatchEvent(new Event('archivadosActualizados'));
-                    } catch(e) {}
-                }
-            } catch(e) { console.warn("Error consultando archivados:", e); }
-        };
+                const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+                if (storedArch) archivadosData = JSON.parse(storedArch);
+            } catch(e) { console.warn("Error leyendo caché archivados:", e); }
 
-        if (params.force) {
-            console.log(`📥 Forzando sincronización de registros archivados de Sheets para empleado ${empleadoId}...`);
-            await _fetchArchivados();
-        } else if (horasArchivados > 0.5) { 
-            console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
-            await _fetchArchivados(); // Ahora espera para no generar faltas falsas en la UI
+            // Cache por 30 minutos (antes era 12 horas) para evitar falsas faltas tras archivar
+            const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
+            const _fetchArchivados = async () => {
+                try {
+                    const resJson = await this._jsonp({ 
+                        accion: 'obtenerRegistrosArchivados',
+                        empleadoId: empleadoId 
+                    });
+                    if (resJson.ok && resJson.registros) {
+                        archivadosData.registros = resJson.registros;
+                        archivadosData.lastSync = new Date().toISOString();
+                        try {
+                            localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
+                            console.log("✅ Registros archivados de Sheets actualizados para el empleado.");
+                            window.dispatchEvent(new Event('archivadosActualizados'));
+                        } catch(e) {}
+                    }
+                } catch(e) { console.warn("Error consultando archivados:", e); }
+            };
+
+            if (params.force) {
+                console.log(`📥 Forzando sincronización de registros archivados de Sheets para empleado ${empleadoId}...`);
+                await _fetchArchivados();
+            } else if (horasArchivados > 0.5) { 
+                console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
+                await _fetchArchivados(); // Ahora espera para no generar faltas falsas en la UI
+            }
+
+            // Filtrar archivados del empleado actual y mapearlos al formato esperado
+            const archivadosDelEmpleado = archivadosData.registros.filter(r => r.empleadoId === empleadoId).map(data => ({
+                fecha: this._normFecha(data.fecha),
+                tipo: data.tipo,
+                hora: this._limpiarHora(data.hora),
+                almuerzo: data.almuerzo || '',
+                dispositivo: data.dispositivo || '',
+                timestamp: data.timestamp || null,
+                dia: data.dia || '',
+                modo: data.modo || 'OFICINA',
+                horasExtra: data.horasExtra || 'NO',
+                autoriza: data.autoriza || '',
+                razon_salida_temprana: data.razonSalidaTemprana || data.razon_salida_temprana || '',
+                quien_justifica: data.quienJustifica || data.quien_justifica || '',
+                razon_entrada_tardia: data.razonEntradaTardia || data.razon_entrada_tardia || '',
+                quien_justifica_entrada: data.quienJustificaEntrada || data.quien_justifica_entrada || '',
+                tipo_salida: data.tipoSalida || data.tipo_salida || '',
+                razon_permiso: data.razonPermiso || data.razon_permiso || '',
+                permiso_personal_mins: data.permiso_personal_mins || 0,
+                permiso_medico_mins: data.permiso_medico_mins || 0
+            }));
+
+            registros = registros.concat(archivadosDelEmpleado);
         }
-
-        // Filtrar archivados del empleado actual y mapearlos al formato esperado
-        const archivadosDelEmpleado = archivadosData.registros.filter(r => r.empleadoId === empleadoId).map(data => ({
-            fecha: this._normFecha(data.fecha),
-            tipo: data.tipo,
-            hora: this._limpiarHora(data.hora),
-            almuerzo: data.almuerzo || '',
-            dispositivo: data.dispositivo || '',
-            timestamp: data.timestamp || null,
-            dia: data.dia || '',
-            modo: data.modo || 'OFICINA',
-            horasExtra: data.horasExtra || 'NO',
-            autoriza: data.autoriza || '',
-            razon_salida_temprana: data.razonSalidaTemprana || data.razon_salida_temprana || '',
-            quien_justifica: data.quienJustifica || data.quien_justifica || '',
-            razon_entrada_tardia: data.razonEntradaTardia || data.razon_entrada_tardia || '',
-            quien_justifica_entrada: data.quienJustificaEntrada || data.quien_justifica_entrada || '',
-            tipo_salida: data.tipoSalida || data.tipo_salida || '',
-            razon_permiso: data.razonPermiso || data.razon_permiso || ''
-        }));
-
-        registros = registros.concat(archivadosDelEmpleado);
         // --- FIN: Integración de Registros Archivados ---
 
         // Ordenar en cliente (de más reciente a más antiguo)
@@ -495,7 +511,10 @@ window.FirebaseBackend = {
         let ahora = new Date();
         let fechaRegistro = ahora;
 
-        if (data.tipo === 'FALTA' && data.fecha_falta) {
+        const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
+        const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
+
+        if (esAusenciaTipo(data.tipo) && data.fecha_falta) {
             const partes = data.fecha_falta.toString().trim().split('-');
             if (partes.length === 3) {
                 fechaRegistro = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
@@ -509,31 +528,59 @@ window.FirebaseBackend = {
         const h = ahora.getHours().toString().padStart(2, '0');
         const m = ahora.getMinutes().toString().padStart(2, '0');
         const s = ahora.getSeconds().toString().padStart(2, '0');
-        const horaStr = data.tipo === 'FALTA' ? "00:00:00" : `${h}:${m}:${s}`;
+        const horaStr = esAusenciaTipo(data.tipo) ? "00:00:00" : `${h}:${m}:${s}`;
 
         const modo = data.modo || "OFICINA";
         const horasExtra = modo === "CAMPO" ? "SI" : "NO";
         const autoriza = modo === "CAMPO" ? "SISTEMA (CAMPO)" : "";
 
-        // Evitar duplicados (excepto FALTA/ESTADO)
-        if (!["ESTADO", "FALTA"].includes(data.tipo)) {
+        // Lógica de Estado de Emergencia dentro de ENTRADA
+        if (data.tipo === 'ESTADO') {
+            const hoyActualStr = `${ahora.getFullYear()}-${(ahora.getMonth() + 1).toString().padStart(2, '0')}-${ahora.getDate().toString().padStart(2, '0')}`;
+            const entradaSnap = await db.collection('registros')
+                .where('empleadoId', '==', empleadoId)
+                .where('tipo', '==', 'ENTRADA')
+                .get();
+                
+            let entradaDocId = null;
+            entradaSnap.forEach(doc => {
+                const docData = this._processDoc(doc.id, doc.data());
+                if (docData && docData.fecha === hoyActualStr) {
+                    entradaDocId = doc.id;
+                }
+            });
+            
+            if (entradaDocId) {
+                await db.collection('registros').doc(entradaDocId).update({
+                    estado: data.razon_ausencia || "A salvo",
+                    estado_timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                return { ok: true, msg: "Estado de emergencia guardado en la Entrada de hoy" };
+            } else {
+                return { error: "Debes haber registrado tu ENTRADA de hoy para poder reportar tu estado de emergencia" };
+            }
+        }
+
+        // Evitar duplicados (excepto ausencias/ESTADO)
+        if (esMarcacionOrdinaria(data.tipo) && data.tipo !== 'ESTADO') {
             const hoyActualStr = `${ahora.getFullYear()}-${(ahora.getMonth() + 1).toString().padStart(2, '0')}-${ahora.getDate().toString().padStart(2, '0')}`;
             const dupQuery = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
-                .where('fecha', '==', hoyActualStr)
-                // Sin orderBy para no requerir índice compuesto en Firebase
+                // Sin orderBy ni fecha en query para evitar requerir índice compuesto en Firebase
                 .get();
 
             if (!dupQuery.empty) {
-                // Ordenar en el cliente para encontrar el más reciente de hoy
-                let docs = dupQuery.docs.map(d => d.data());
+                // Procesar y ordenar localmente
+                let docs = dupQuery.docs.map(d => this._processDoc(d.id, d.data())).filter(Boolean);
+                docs = docs.filter(d => d.fecha === hoyActualStr);
+
                 docs.sort((a, b) => {
                     let ta = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
                     let tb = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
                     return tb - ta; // Descendente
                 });
 
-                if (docs[0].tipo === data.tipo) {
+                if (docs.length > 0 && docs[0].tipo === data.tipo) {
                     return { error: `Ya registraste tu ${data.tipo} recientemente hoy` };
                 }
             }
@@ -548,30 +595,23 @@ window.FirebaseBackend = {
             }
         }
 
-        // Guardar en Firestore
+        // Guardar en Firestore (Minimización de campos a 11 campos clave)
         const nuevoRegistro = {
-            fecha: fechaStr,
             empleadoId: empleadoId,
             nombre: infoEmpleado.nombre,
             tipo: data.tipo,
             almuerzo: almuerzo,
-            hora: horaStr,
             lat: parseFloat(data.lat) || null,
             lng: parseFloat(data.lng) || null,
             dispositivo: data.dispositivo || "",
-            timestamp: data.tipo === 'FALTA' ? firebase.firestore.Timestamp.fromDate(fechaRegistro) : firebase.firestore.FieldValue.serverTimestamp(),
-            dia: this._obtenerDiaSemana(fechaRegistro),
+            timestamp: esAusenciaTipo(data.tipo) ? firebase.firestore.Timestamp.fromDate(fechaRegistro) : firebase.firestore.FieldValue.serverTimestamp(),
             modo: modo,
             horasExtra: horasExtra,
-            autoriza: autoriza,
-            razon_salida_temprana: data.razon_salida || "",
-            quien_justifica: data.quien_justifica || "",
-            razon_entrada_tardia: data.razon_entrada_tardia || "",
-            quien_justifica_entrada: data.quien_justifica_entrada || "",
-            tipo_salida: data.tipo_salida || "",
-            razon_permiso: data.razon_permiso || "",
-            razon_ausencia: data.razon_ausencia || ""
+            autoriza: autoriza
         };
+        if (esAusenciaTipo(data.tipo)) {
+            nuevoRegistro.razon_ausencia = data.razon_ausencia || "";
+        }
 
         const hoyStrLocal = this._hoyStr();
         const isPastDate = fechaStr < hoyStrLocal;
@@ -580,7 +620,8 @@ window.FirebaseBackend = {
         // para evitar el dual-write y duplicados, ya que el archivo ocurre por día.
         if (isPastDate) {
             try {
-                await this._jsonp(params);
+                const sheetsParams = { ...params, accion: 'guardarRegistro' };
+                await this._jsonp(sheetsParams);
             } catch (e) {
                 console.warn("⚠️ Error al sincronizar histórico con Sheets:", e);
                 return { error: "Error de conexión con histórico: " + e.message };
@@ -707,7 +748,8 @@ window.FirebaseBackend = {
 
         let registroDocId = null;
         regSnap.forEach(doc => {
-            const data = doc.data();
+            const data = this._processDoc(doc.id, doc.data());
+            if (!data) return;
             let esHoy = false;
             if (data.fecha === hoyStr || data.fecha === hoyStrAlt) esHoy = true;
             else if (data.timestamp) {
@@ -770,14 +812,37 @@ window.FirebaseBackend = {
                     otras: { ...configDefault.otras, ...(configFinal.otras || {}) }
                 };
 
+                const emSnap = await db.collection('configuracion').doc('emergencia').get();
+                resultado.emergencia = emSnap.exists ? emSnap.data() : { activa: false, nombre: '', habilitadoPor: '', fecha: '' };
+
                 console.log("🚀 Configuración cargada desde Firebase:", resultado);
                 return resultado;
             }
 
             console.warn("⚠️ No se encontró el documento 'configuracion/sistema', usando valores por defecto.");
+            const emSnap2 = await db.collection('configuracion').doc('emergencia').get();
+            configDefault.emergencia = emSnap2.exists ? emSnap2.data() : { activa: false, nombre: '', habilitadoPor: '', fecha: '' };
             return configDefault;
         } catch (error) {
             console.error("🔥 Error en obtenerConfiguraciones:", error);
+            return { error: error.message };
+        }
+    },
+
+    async toggleEmergencia(params) {
+        try {
+            const activa = params.activa === 'true' || params.activa === true;
+            const nombre = params.nombre || '';
+            const empleadoId = params.empleadoId || '';
+            await db.collection('configuracion').doc('emergencia').set({
+                activa: activa,
+                nombre: nombre,
+                habilitadoPor: empleadoId,
+                fecha: this._hoyStr()
+            });
+            return { ok: true };
+        } catch (error) {
+            console.error("🔥 Error en toggleEmergencia:", error);
             return { error: error.message };
         }
     },
@@ -800,17 +865,19 @@ window.FirebaseBackend = {
         const hoy = new Date();
         const hoyStr = params.fecha || new Date().toISOString().split('T')[0];
 
-        // Buscar registro de entrada de ese día para este empleado
-        const regSnap = await db.collection('registros')
+        // Buscar registro de entrada/almuerzo del empleado sin filtrar por fecha en query
+        const allSnap = await db.collection('registros')
             .where('empleadoId', '==', id)
-            .where('fecha', '==', hoyStr)
             .where('tipo', 'in', ['ENTRADA', 'SOLO_ALMUERZO'])
             .get();
+
+        const docs = allSnap.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
+        const matchedReg = docs.find(r => r.fecha === hoyStr);
 
         const hoyStrLocal = this._hoyStr();
         const isPastDate = hoyStr < hoyStrLocal;
 
-        if (regSnap.empty) {
+        if (!matchedReg) {
             if (isPastDate) {
                 // Para fechas anteriores, si no está en Firebase, debe estar en Sheets.
                 // Lo enviamos a Sheets y NO lo creamos en Firebase para evitar dualidad.
@@ -831,21 +898,18 @@ window.FirebaseBackend = {
                 const idDocumento = `${id}_SOLO_ALMUERZO_${hoyStr}_${idLimpio}`;
                 
                 await db.collection('registros').doc(idDocumento).set({
-                    fecha: hoyStr,
                     empleadoId: id,
                     nombre: nombre,
                     tipo: 'SOLO_ALMUERZO',
                     almuerzo: nuevoAlmuerzo,
-                    hora: horaStr,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    dia: this._obtenerDiaSemana(hoy),
                     modo: 'OFICINA',
                     horasExtra: 'NO'
                 });
             }
         } else {
             // Actualizar el existente en Firebase
-            await db.collection('registros').doc(regSnap.docs[0].id).update({
+            await db.collection('registros').doc(matchedReg.id).update({
                 almuerzo: nuevoAlmuerzo
             });
             
@@ -898,11 +962,17 @@ window.FirebaseBackend = {
         if (!docId && empleadoId) {
             const query = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
-                .where('fecha', '==', fecha)
                 .where('tipo', '==', tipo)
                 .get();
-            if (!query.empty) {
-                docId = query.docs[0].id;
+            let matchedDoc = null;
+            query.forEach(doc => {
+                const docData = this._processDoc(doc.id, doc.data());
+                if (docData && docData.fecha === fecha) {
+                    matchedDoc = doc;
+                }
+            });
+            if (matchedDoc) {
+                docId = matchedDoc.id;
             }
         }
 
@@ -916,12 +986,17 @@ window.FirebaseBackend = {
                 const [hour, minute, second] = tPart.split(':').map(Number);
                 const dateObj = new Date(year, month - 1, day, hour, minute, second);
                 updateData.timestamp = firebase.firestore.Timestamp.fromDate(dateObj);
-                updateData.fecha = parsed.fecha;
-                updateData.hora = parsed.hora;
-                updateData.dia = this._obtenerDiaSemana(new Date(parsed.fecha + 'T12:00:00'));
             } else {
                 updateData[campo] = valor;
-                updateData.timestamp = firebase.firestore.Timestamp.fromDate(new Date());
+                if (campo === 'hora') {
+                     const oldDoc = await db.collection('registros').doc(docId).get();
+                     if (oldDoc.exists && oldDoc.data().timestamp) {
+                         const oldDate = oldDoc.data().timestamp.toDate ? oldDoc.data().timestamp.toDate() : new Date(oldDoc.data().timestamp);
+                         const [h, m, s] = valor.split(':').map(Number);
+                         const newDate = new Date(oldDate.getFullYear(), oldDate.getMonth(), oldDate.getDate(), h || 0, m || 0, s || 0);
+                         updateData.timestamp = firebase.firestore.Timestamp.fromDate(newDate);
+                     }
+                }
             }
             await db.collection('registros').doc(docId).update(updateData);
             return { ok: true };
@@ -954,17 +1029,19 @@ window.FirebaseBackend = {
             if (!empDoc.exists) return { error: "Empleado no existe" };
             const empData = empDoc.data();
 
+            const fechaPartes = fecha.split('-').map(Number);
+            const [h, m, s] = valor.split(':').map(Number);
+            const dateObj = new Date(fechaPartes[0], fechaPartes[1] - 1, fechaPartes[2], h || 0, m || 0, s || 0);
+
             await db.collection('registros').add({
                 empleadoId: empleadoId,
                 nombre: empData.nombre,
-                fecha: fecha,
                 tipo: tipo,
-                hora: valor,
                 almuerzo: params.almuerzo || "NO",
                 modo: params.modo || "OFICINA",
                 horasExtra: params.horasExtra || "NO",
                 observacion: params.observacion || "",
-                timestamp: firebase.firestore.Timestamp.fromDate(new Date())
+                timestamp: firebase.firestore.Timestamp.fromDate(dateObj)
             });
             return { ok: true };
         }
@@ -979,17 +1056,19 @@ window.FirebaseBackend = {
         const razon = params.razon || 'Justificado';
 
         try {
-            // 1. Buscar registros del empleado en esa fecha en Firebase
-            const snap = await db.collection('registros')
+            // 1. Buscar registros del empleado sin fecha en query en Firebase
+            const allSnap = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
-                .where('fecha', '==', fecha)
                 .get();
 
-            if (!snap.empty) {
+            const docs = allSnap.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
+            const matchedDocs = docs.filter(data => data.fecha === fecha);
+
+            if (matchedDocs.length > 0) {
                 // Actualizar todos los registros existentes para ese día
                 const batch = db.batch();
-                snap.docs.forEach(doc => {
-                    batch.update(doc.ref, {
+                matchedDocs.forEach(d => {
+                    batch.update(db.collection('registros').doc(d.id), {
                         justificado: 'SI',
                         quien_justifica: supervisor,
                         razon_justificac: razon,
@@ -1002,19 +1081,20 @@ window.FirebaseBackend = {
                 const empDoc = await db.collection('empleados').doc(empleadoId).get();
                 const nombre = empDoc.exists ? empDoc.data().nombre : empleadoId;
                 
+                const fechaPartes = fecha.split('-').map(Number);
+                const fechaObj = new Date(fechaPartes[0], fechaPartes[1] - 1, fechaPartes[2], 0, 0, 0);
+
                 await db.collection('registros').add({
                     empleadoId: empleadoId,
                     nombre: nombre,
-                    fecha: fecha,
                     tipo: 'JUSTIFICACION',
-                    hora: '00:00:00',
                     almuerzo: 'NO',
                     modo: 'OFICINA',
                     horasExtra: 'NO',
                     justificado: 'SI',
                     quien_justifica: supervisor,
                     razon_justificac: razon,
-                    timestamp: firebase.firestore.Timestamp.fromDate(new Date())
+                    timestamp: firebase.firestore.Timestamp.fromDate(fechaObj)
                 });
             }
 
@@ -1050,14 +1130,14 @@ window.FirebaseBackend = {
             .where('empleadoId', '==', id)
             .get();
 
-        return query.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        return query.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
     },
 
     async obtenerReporteMensual(params) {
         // En Firebase, si no hay índices complejos, esto puede ser lento si bajamos todo.
         // Pero para el sistema TCONTROL solemos bajar los últimos 30-60 días.
         const query = await db.collection('registros').get();
-        return query.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        return query.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
     },
 
     async verificarClaveGuardia(params) {
@@ -1319,17 +1399,20 @@ window.FirebaseBackend = {
 
             if (cacheData.lastSync && !params.force) {
                 console.log("⚡ Usando caché local. Obteniendo solo registros desde:", ayerStr);
-                query = query.where('fecha', '>=', ayerStr);
+                query = query.where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(ayerStr + 'T00:00:00')));
             } else {
                 console.log("📥 Obteniendo registros desde Firestore (últimos 60 días):", limiteStr);
-                query = query.where('fecha', '>=', limiteStr);
+                query = query.where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(limiteStr + 'T00:00:00')));
             }
 
             const regSnap = await query.get();
 
             // Combinar registros obtenidos con el caché
             regSnap.forEach(doc => {
-                cacheData.registros[doc.id] = { ...doc.data(), id: doc.id };
+                const docData = this._processDoc(doc.id, doc.data());
+                if (docData) {
+                    cacheData.registros[doc.id] = docData;
+                }
             });
 
             // Limpiar caché de registros más antiguos que 60 días para liberar memoria
@@ -1427,7 +1510,9 @@ window.FirebaseBackend = {
                 horasExtra: reg.horasExtra || '',
                 autoriza: reg.autoriza || '',
                 justificado: reg.justificado || '',
-                razon_justificac: reg.razon_justificac || ''
+                razon_justificac: reg.razon_justificac || '',
+                permiso_personal_mins: reg.permiso_personal_mins || 0,
+                permiso_medico_mins: reg.permiso_medico_mins || 0
             })).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
 
             // Registros de Firebase: también normalizar fecha por si acaso
@@ -1501,9 +1586,21 @@ window.FirebaseBackend = {
                 }
             });
 
+            // Leer alerta de emergencia
+            let emergencia = { activa: false, nombre: '', habilitadoPor: '', fecha: '' };
+            try {
+                const emSnap = await db.collection('configuracion').doc('emergencia').get();
+                if (emSnap.exists) {
+                    emergencia = emSnap.data();
+                }
+            } catch(e) {
+                console.error("Error al leer emergencia en obtenerDatosSupervisor:", e);
+            }
+
             return {
                 empleados: Object.values(empleadosMap),
                 almuerzosExtra: almuerzosExtraData.almuerzos || [],
+                emergencia: emergencia,
                 timestamp: new Date().toISOString()
             };
         } catch (error) {
@@ -1576,11 +1673,17 @@ window.FirebaseBackend = {
             console.log(`⚡ Iniciando regularización masiva para el ${fecha}...`);
 
             const empsSnap = await db.collection('empleados').get();
-            const regsSnap = await db.collection('registros').where('fecha', '==', fecha).get();
+            const tInicio = firebase.firestore.Timestamp.fromDate(new Date(fecha + 'T00:00:00'));
+            const tFin = firebase.firestore.Timestamp.fromDate(new Date(fecha + 'T23:59:59'));
+            const regsSnap = await db.collection('registros')
+                .where('timestamp', '>=', tInicio)
+                .where('timestamp', '<=', tFin)
+                .get();
 
             const regsByEmp = {};
             regsSnap.docs.forEach(d => {
-                const data = d.data();
+                const data = this._processDoc(d.id, d.data());
+                if (!data) return;
                 if (!regsByEmp[data.empleadoId]) regsByEmp[data.empleadoId] = { E: false, S: false };
                 if (data.tipo === 'ENTRADA' || data.tipo === 'RETORNO_CAMPO') regsByEmp[data.empleadoId].E = true;
                 if (data.tipo === 'SALIDA' || data.tipo === 'SALIDA_CAMPO') regsByEmp[data.empleadoId].S = true;
@@ -1597,13 +1700,12 @@ window.FirebaseBackend = {
                 // Entrada
                 if (!status.E || !soloFaltantes) {
                     const ref = db.collection('registros').doc();
+                    const eDate = new Date(fecha + 'T' + (horaE || '07:30:00'));
                     batch.set(ref, {
                         empleadoId: eid,
-                        fecha: fecha,
                         tipo: 'ENTRADA',
-                        hora: horaE,
                         modo: 'OFICINA',
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        timestamp: firebase.firestore.Timestamp.fromDate(eDate)
                     });
                     count++;
                 }
@@ -1611,13 +1713,12 @@ window.FirebaseBackend = {
                 // Salida
                 if (!status.S || !soloFaltantes) {
                     const ref = db.collection('registros').doc();
+                    const sDate = new Date(fecha + 'T' + (horaS || '16:15:00'));
                     batch.set(ref, {
                         empleadoId: eid,
-                        fecha: fecha,
                         tipo: 'SALIDA',
-                        hora: horaS,
                         modo: 'OFICINA',
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        timestamp: firebase.firestore.Timestamp.fromDate(sDate)
                     });
                     count++;
                 }
@@ -1671,33 +1772,53 @@ window.FirebaseBackend = {
             const callbackName = 'cb_' + Math.floor(Math.random() * 1000000);
             const api_url = (window.TCONTROL_CONFIG && window.TCONTROL_CONFIG.API_URL) || window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             
+            let settled = false;
+            const script = document.createElement('script');
+
+            // Replace callback with a no-op instead of deleting it.
+            // Removing a <script> from the DOM does NOT cancel the in-flight
+            // HTTP request — the browser will still execute the response.
+            // A no-op absorbs the late call and avoids ReferenceError.
+            const cleanup = () => {
+                window[callbackName] = function() {};
+                setTimeout(() => { delete window[callbackName]; }, 60000);
+                if (script.parentNode) script.parentNode.removeChild(script);
+            };
+
             const timeout = setTimeout(() => {
-                delete window[callbackName];
+                if (settled) return;
+                settled = true;
+                cleanup();
                 reject(new Error("Timeout en la conexión con Sheets"));
             }, 25000);
 
             window[callbackName] = (data) => {
+                if (settled) return;
+                settled = true;
                 clearTimeout(timeout);
-                delete window[callbackName];
+                cleanup();
                 resolve(data);
             };
 
             const url = new URL(api_url);
             url.searchParams.set('callback', callbackName);
-    url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
+            url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
             for (let key in params) {
                 url.searchParams.set(key, params[key]);
             }
 
-            const script = document.createElement('script');
             script.src = url.toString();
             script.onerror = () => {
+                if (settled) return;
+                settled = true;
                 clearTimeout(timeout);
-                delete window[callbackName];
+                cleanup();
                 reject(new Error("Error de red al conectar con Sheets"));
             };
+            script.onload = () => {
+                if (script.parentNode) script.parentNode.removeChild(script);
+            };
             document.body.appendChild(script);
-            script.onload = () => script.remove();
         });
     },
 
@@ -1731,6 +1852,53 @@ window.FirebaseBackend = {
         return url;
     },
 
+    _processDoc(id, data) {
+        if (!data) return null;
+        const res = { id, ...data };
+        if (data.timestamp) {
+            let d;
+            if (typeof data.timestamp.toDate === 'function') {
+                d = data.timestamp.toDate();
+            } else if (data.timestamp instanceof Date) {
+                d = data.timestamp;
+            } else {
+                d = new Date(data.timestamp);
+            }
+            if (d && !isNaN(d.getTime())) {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                res.fecha = `${y}-${m}-${day}`;
+                
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                const ss = String(d.getSeconds()).padStart(2, '0');
+                res.hora = `${hh}:${mm}:${ss}`;
+                
+                res.dia = this._obtenerDiaSemana(d);
+            }
+        }
+
+        // Si el tipo es de ausencia, calcular dinámicamente hora y razon_ausencia si no están
+        const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
+        const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
+
+        if (esAusenciaTipo(res.tipo)) {
+            res.hora = '00:00:00';
+            if (!res.razon_ausencia) {
+                const t = String(res.tipo).toUpperCase();
+                if (t === 'VACACIONES' || t === 'VACACION') res.razon_ausencia = 'Vacación';
+                else if (t === 'PERMISO_MEDICO') res.razon_ausencia = 'Permiso Médico';
+                else if (t === 'PERMISO_PERSONAL') res.razon_ausencia = 'Permiso Personal';
+                else if (t === 'CALAMIDAD_DOMESTICA') res.razon_ausencia = 'Calamidad Doméstica';
+                else if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') res.razon_ausencia = 'Salida a Campo';
+                else res.razon_ausencia = res.tipo;
+            }
+        }
+
+        return res;
+    },
+
     _limpiarHora(hora) {
         if (!hora) return "";
         let hStr = hora.toString();
@@ -1755,6 +1923,86 @@ window.FirebaseBackend = {
             return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         }
         return s;
+    },
+
+    async registrarLog(params) {
+        try {
+            const data = params.datos ? (typeof params.datos === 'string' ? JSON.parse(params.datos) : params.datos) : params;
+            await db.collection('logs').add({
+                ...data,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            return { ok: true };
+        } catch (e) {
+            console.error("Error in registrarLog:", e);
+            return { error: e.message };
+        }
+    },
+
+    async guardarPermisoSupervisor(params) {
+        try {
+            const empleadoId = params.empleadoId?.toString();
+            const fecha = params.fecha; // YYYY-MM-DD
+            const tipo = params.tipo; // "personal" o "medico"
+            const minutos = parseInt(params.mins !== undefined ? params.mins : params.minutos) || 0;
+
+            if (!empleadoId || !fecha) return { error: "Parámetros incompletos" };
+
+            const hoyStrLocal = this._hoyStr();
+            const isPastDate = fecha < hoyStrLocal;
+
+            if (isPastDate) {
+                try {
+                    const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
+                    return await this._jsonp(sheetsParams);
+                } catch(e) {
+                    console.warn("Error writing past permission to Sheets:", e);
+                    return { error: "Error de conexión con Sheets: " + e.message };
+                }
+            }
+
+            // Buscar la entrada de ese día
+            const regSnap = await db.collection('registros')
+                .where('empleadoId', '==', empleadoId)
+                .where('tipo', '==', 'ENTRADA')
+                .get();
+
+            let entryDocId = null;
+            regSnap.forEach(doc => {
+                const docData = this._processDoc(doc.id, doc.data());
+                if (docData && docData.fecha === fecha) {
+                    entryDocId = doc.id;
+                }
+            });
+
+            if (entryDocId) {
+                const updateField = tipo === 'personal' ? 'permiso_personal_mins' : 'permiso_medico_mins';
+                await db.collection('registros').doc(entryDocId).update({
+                    [updateField]: minutos
+                });
+                
+                // Invalidate local storage cache to force refetch of all days
+                try {
+                    localStorage.removeItem('tcontrol_registros_cache_v1');
+                    localStorage.removeItem(`tcontrol_archivados_cache_${empleadoId}_v1`);
+                } catch(e) {}
+
+                // Sincronizar en Sheets (dual write)
+                try {
+                    const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
+                    await this._jsonp(sheetsParams);
+                } catch(e) {
+                    console.warn("Error dual write to Sheets:", e);
+                }
+                
+                return { ok: true };
+            } else {
+                return { error: "No se encontró registro de entrada para ese día en Firebase" };
+            }
+        } catch (e) {
+            console.error("Error in guardarPermisoSupervisor:", e);
+            return { error: e.message };
+        }
     }
 };
 

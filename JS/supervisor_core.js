@@ -333,7 +333,6 @@
         '4/30',  // Feriado decretado
         '5/1',   // Día del Trabajo
         '5/25',  // Batalla del Pichincha
-        '6/26',  // Feriado decretado
         '8/10',  // Primer Grito de Independencia
         '10/9',  // Independencia de Guayaquil
         '11/2',  // Día de los Difuntos
@@ -461,22 +460,33 @@
       }
       return new Promise((resolve, reject) => {
         const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
-        const timeout = setTimeout(() => {
-          delete window[cbName];
+        let settled = false;
+        const script = document.createElement('script');
+
+        const cleanup = () => {
+          window[cbName] = function() {};
+          setTimeout(() => { delete window[cbName]; }, 60000);
           if (script.parentNode) script.parentNode.removeChild(script);
+        };
+
+        const timeout = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
           reject(new Error('Timeout'));
         }, 20000);
 
         window[cbName] = function (data) {
+          if (settled) return;
+          settled = true;
           clearTimeout(timeout);
-          delete window[cbName];
-          if (script.parentNode) script.parentNode.removeChild(script);
+          cleanup();
           resolve(data);
         };
 
         const url = new URL(API_URL);
         url.searchParams.set('callback', cbName);
-    url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
+        url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
 
         // Inyectar credenciales de supervisor si existen
         const session = localStorage.getItem('SUPERVISOR_SESSION');
@@ -487,17 +497,17 @@
         }
 
         params.apiKey = 'TCONTROL_SECURE_2026_XYZ';
-    Object.entries(params).forEach(([k, v]) => {
+        Object.entries(params).forEach(([k, v]) => {
           if (k === 'empleadoId' || k === 'deviceToken') return; // Evitar duplicar
           if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
         });
 
-        const script = document.createElement('script');
         script.src = url.toString();
         script.onerror = () => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timeout);
-          delete window[cbName];
-          if (script.parentNode) script.parentNode.removeChild(script);
+          cleanup();
           reject(new Error('Error de red'));
         };
         document.body.appendChild(script);
@@ -1164,7 +1174,10 @@
         let mSal = e.salidaHoy ? obtenerMinutos(sHoraV) : null;
         let sHtml = e.salidaHoy ? `<span class="editable-cell" ${clickSalida}>${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}${mSal - refSalidaHoy > 1 ? ` <span class="delta neg">+${formatearMinutos(mSal - refSalidaHoy)}</span>` : ''}</span>` : (e.entradaHoy ? `<span class="editable-cell empty" ${clickSalida}>Pendiente</span>` : `<span class="editable-cell empty" ${clickSalida}>-</span>`);
 
-        let fReg = (e.registros || []).find(r => r.tipo === 'FALTA' && r.fecha === hoy);
+        let fReg = (e.registros || []).find(r => {
+             const t = String(r.tipo).toUpperCase();
+             return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
+        });
         let razonAusenciaHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : '';
         let isSinAsistencia = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
 
@@ -1410,23 +1423,29 @@
         razonFinal = otra;
       }
       
+      const mappedTipo = mapRazonAusenciaATipo(razonFinal);
+
       // OPTIMISTIC UPDATE
       const emp = empCache.find(x => x.id === empleadoId);
       let originalRegs = null;
       if (emp) {
         originalRegs = JSON.parse(JSON.stringify(emp.registros || []));
         if (!emp.registros) emp.registros = [];
-        let fReg = emp.registros.find(r => r.tipo === 'FALTA' && r.fecha === hoy);
+        let fReg = emp.registros.find(r => {
+             const t = String(r.tipo).toUpperCase();
+             return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
+        });
         if (!fReg) {
             fReg = {
-                id: `${empleadoId}_FALTA_${hoy}`,
+                id: `${empleadoId}_${mappedTipo}_${hoy}`,
                 empleadoId: empleadoId,
-                tipo: 'FALTA',
+                tipo: mappedTipo,
                 fecha: hoy,
                 razon_ausencia: razonFinal
             };
             emp.registros.push(fReg);
         } else {
+            fReg.tipo = mappedTipo;
             fReg.razon_ausencia = razonFinal;
         }
         cargarAsistencia(); // Update UI instantly
@@ -1436,7 +1455,7 @@
         const res = await jsonpRequest({
           accion: 'guardarRegistro',
           id: empleadoId,
-          tipo: 'FALTA',
+          tipo: mappedTipo,
           fecha_falta: hoy,
           razon_ausencia: razonFinal
         });
@@ -1461,6 +1480,103 @@
         if (emp && originalRegs) {
             emp.registros = originalRegs;
             cargarAsistencia();
+        }
+      }
+    };
+
+    window.guardarRazonAusenciaFecha = async function(empleadoId, fecha, valorSeleccionado) {
+      let sessionData = {};
+      try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      const supervisorId = String(sessionData.id || '');
+      const AUTORIZADOS = ['7', '1058'];
+      if (!AUTORIZADOS.includes(supervisorId)) {
+        if (typeof mostrarToast === 'function') mostrarToast('No autorizado para modificar razones de ausencia.', 'error');
+        return;
+      }
+
+      let razonFinal = valorSeleccionado;
+      if (valorSeleccionado === 'Otro') {
+        let otra = prompt("Ingrese la razón de la ausencia:");
+        if (!otra) {
+            const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+            mostrarDetalle(empleadoId, idxSel);
+            return;
+        }
+        razonFinal = otra;
+      }
+
+      const mappedTipo = mapRazonAusenciaATipo(razonFinal);
+
+      // Optimistic update of local cache
+      const emp = empCache.find(x => x.id === empleadoId);
+      let originalRegs = null;
+      if (emp) {
+        originalRegs = JSON.parse(JSON.stringify(emp.registros || []));
+        if (!emp.registros) emp.registros = [];
+        let fReg = emp.registros.find(r => {
+             const t = String(r.tipo).toUpperCase();
+             return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === fecha;
+        });
+        if (!fReg) {
+            fReg = {
+                id: `${empleadoId}_${mappedTipo}_${fecha}_000000`,
+                empleadoId: empleadoId,
+                tipo: mappedTipo,
+                fecha: fecha,
+                razon_ausencia: razonFinal
+            };
+            emp.registros.push(fReg);
+        } else {
+            fReg.tipo = mappedTipo;
+            fReg.razon_ausencia = razonFinal;
+        }
+        // Force refresh the detail view with current period selection
+        const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+        mostrarDetalle(empleadoId, idxSel);
+      }
+
+      try {
+        let res;
+        if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
+          res = await window.FirebaseBackend.guardarRegistro({
+            id: empleadoId,
+            tipo: mappedTipo,
+            fecha_falta: fecha,
+            razon_ausencia: razonFinal
+          });
+        } else {
+          res = await jsonpRequest({
+            accion: 'guardarRegistro',
+            id: empleadoId,
+            tipo: mappedTipo,
+            fecha_falta: fecha,
+            razon_ausencia: razonFinal
+          });
+        }
+
+        if (res && (res.ok || !res.error)) {
+          if (typeof mostrarToast === 'function') mostrarToast('Razón de ausencia guardada con éxito', 'success');
+          // Reload in background to keep data in sync
+          limpiarCachesLocales();
+          cargarDatosCompletos(true, true).then(() => {
+              const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+              mostrarDetalle(empleadoId, idxSel);
+          }).catch(err => console.error("Error al recargar datos:", err));
+        } else {
+          if (typeof mostrarToast === 'function') mostrarToast(res?.error || 'Error al guardar razón', 'error');
+          // Revert optimistic update
+          if (emp && originalRegs) {
+              emp.registros = originalRegs;
+              const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+              mostrarDetalle(empleadoId, idxSel);
+          }
+        }
+      } catch (e) {
+        if (typeof mostrarToast === 'function') mostrarToast('Error de conexión al guardar razón', 'error');
+        if (emp && originalRegs) {
+            emp.registros = originalRegs;
+            const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+            mostrarDetalle(empleadoId, idxSel);
         }
       }
     };
@@ -1632,7 +1748,10 @@
         todasLasFechas.forEach(fecha => {
           const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
-          const isJustificado = regsDia.some(r => r.justificado === 'SI');
+          const isJustificado = regsDia.some(r =>
+            r.justificado === 'SI' ||
+            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+          );
 
           if (regsDia.length === 0) {
             if (!esFestivo && diasLaborables.includes(fecha)) {
@@ -1767,9 +1886,14 @@
           }
 
           if (!isJustificado) {
-            let missingMinutes = 0;
-            missingMinutes = Math.max(0, 480 - netWorked);
-            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
+            let missingMinutes = Math.max(0, 480 - netWorked);
+            // Sumar minutos de permiso asignados manualmente por supervisor
+            const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
+            const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+            const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+            totalTiempoPersonal += persMins;
+            totalTiempoMedico   += medMins;
+            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             totalTiempoPorJustificar += unaccountedMissing;
           }
@@ -2167,12 +2291,26 @@
       });
 
       // Mostrar todos los días del período
+      // Acumuladores para la fila de totales
+      let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0;
+      let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
+      let totExtra50 = 0, totExtra100 = 0;
+      let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0; // NUEVO
+      const esSuperPermiso = ['7','1058'].includes(String(sessionData.id || ''));
+
       let filas = fechasOrdenadas.map(f => {
         let d = porDia[f];
         let regsDia = d.registros;
         const dayOfWeek = new Date(f + 'T12:00:00').getDay();
         const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
-        const isJustificado = regsDia.some(r => r.justificado === 'SI');
+        const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
+        const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
+
+        const isJustificado = regsDia.some(r =>
+          r.justificado === 'SI' ||
+          esAusenciaTipo(r.tipo) ||
+          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+        );
 
         let periodosDia = [];
         let entradaPendiente = null;
@@ -2296,7 +2434,48 @@
           }
         });
 
-        let razonesCompletas = razonesBadges.length > 0 ? `<div style="display:flex; flex-direction:column; gap:4px;">${razonesBadges.join('')}</div>` : '';
+        // RAZÓN: solo mostrar razón de ausencia del día (vacación, feriado, fin de semana, permiso)
+        // ponytail: badges de salida/campo se omiten aquí — ya visibles en otras columnas
+        let razonDia = '';
+        if (dayOfWeek === 0)      razonDia = '🅢 Domingo';
+        else if (dayOfWeek === 6) razonDia = '🅢 Sábado';
+        else if (esFeriadoODomingo(f)) razonDia = '🏛️ Feriado';
+
+        let razonAusenciaVal = '';
+        let razonJustificadaVal = '';
+        regsDia.forEach(r => {
+          if (r.razon_ausencia) {
+            razonAusenciaVal = r.razon_ausencia;
+          } else if (r.tipo && esAusenciaTipo(r.tipo)) {
+            const t = r.tipo.toUpperCase();
+            if (t === 'VACACIONES' || t === 'VACACION') razonAusenciaVal = 'Vacación';
+            else if (t === 'PERMISO_MEDICO') razonAusenciaVal = 'Permiso Médico';
+            else if (t === 'PERMISO_PERSONAL') razonAusenciaVal = 'Permiso Personal';
+            else if (t === 'CALAMIDAD_DOMESTICA') razonAusenciaVal = 'Calamidad Doméstica';
+            else if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') razonAusenciaVal = 'Salida a Campo';
+            else razonAusenciaVal = r.tipo;
+          } else if (r.justificado === 'SI' && r.razon_justificac) {
+            razonJustificadaVal = r.razon_justificac;
+          }
+        });
+
+        let selectRazonHtml = `
+          <select onchange="window.guardarRazonAusenciaFecha('${e.id}', '${f}', this.value)" ${!esSuperPermiso ? 'disabled' : ''} style="font-size:10px; border:1px solid #d1d5db; border-radius:6px; padding:2px 4px; background:#f8fafc; cursor:pointer; width:110px;">
+            <option value="">-- Sin Razón --</option>
+            <option value="Vacación" ${razonAusenciaVal === 'Vacación' || razonAusenciaVal === 'Vacacion' ? 'selected' : ''}>🏖️ Vacación</option>
+            <option value="Permiso Médico" ${razonAusenciaVal === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
+            <option value="Permiso Personal" ${razonAusenciaVal === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
+            <option value="Calamidad Doméstica" ${razonAusenciaVal === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
+            <option value="Salida a Campo" ${razonAusenciaVal === 'Salida a Campo' || razonAusenciaVal === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Salida a Campo</option>
+            <option value="Otro" ${razonAusenciaVal && !['Vacación','Vacacion','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaVal) ? 'selected' : ''}>✏️ Otro...</option>
+          </select>
+        `;
+        if (razonAusenciaVal && !['Vacación','Vacacion','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaVal)) {
+            selectRazonHtml += `<div style="font-size:9px; color:var(--indigo); margin-top:2px; font-weight:700;">${escapeHtml(razonAusenciaVal)}</div>`;
+        } else if (razonJustificadaVal) {
+            selectRazonHtml += `<div style="font-size:9px; color:var(--green); margin-top:2px; font-weight:700;">Justif: ${escapeHtml(razonJustificadaVal)}</div>`;
+        }
+
         let rowStyle = "";
         let badgeDia = "";
         if (dayOfWeek === 0) {
@@ -2320,6 +2499,8 @@
         let tiempoPersonal = 0;
         let tiempoMedico = 0;
         let tiempoPorJustificar = 0;
+        let minsEmpresa = 0;
+        let minsCampo = 0;
         ultimoSalidaMins = null;
         ultimoSalidaReg = null;
 
@@ -2331,6 +2512,13 @@
 
           let duracion = mS - mE;
           minutosTrabajadosHoy += duracion;
+
+          let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
+          if (enCampo) {
+            minsCampo += duracion;
+          } else {
+            minsEmpresa += duracion;
+          }
 
           if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
             let gap = mE - ultimoSalidaMins;
@@ -2349,7 +2537,24 @@
 
         // Descontar almuerzo si superó 4 horas (solo en días normales)
         let netWorked = minutosTrabajadosHoy;
-        if (!esFestivo && netWorked > 240) netWorked -= 45;
+        if (!esFestivo && netWorked > 240) {
+          netWorked -= 45;
+          if (minsEmpresa > 240) minsEmpresa -= 45;
+          else if (minsCampo > 240) minsCampo -= 45;
+        }
+        minsEmpresa = Math.max(0, minsEmpresa);
+        minsCampo = Math.max(0, minsCampo);
+        
+        let minsSalidaTemprana = 0;
+        if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < 975) {
+          const hasSalidaTemprana = regsDia.some(r => {
+            const val = r.tipo_salida || r.tipo || '';
+            return val.includes('SALIDA_TEMPRANA');
+          });
+          if (hasSalidaTemprana || ultimoSalidaMins < 975) {
+            minsSalidaTemprana = 975 - ultimoSalidaMins;
+          }
+        }
 
         // Auto-autorización de horas extras
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
@@ -2418,31 +2623,87 @@
         if (isJustificado) {
           tiempoPorJustificar = 0;
         } else {
+          // Sumar minutos de permiso asignados manualmente por supervisor
+          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
+          const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+          const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+          tiempoPersonal += persMins;
+          tiempoMedico   += medMins;
           let missingMinutes = Math.max(0, 480 - netWorked);
           let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
           tiempoPorJustificar += unaccountedMissing;
         }
 
+        // MODALIDAD — editable inline para supervisores autorizados
+        const todosRegsConModo = regsDia.filter(r => r.modo);
+        const tieneCampo   = todosRegsConModo.some(r => r.modo === 'CAMPO');
+        const tieneEmpresa = todosRegsConModo.some(r => r.modo === 'EMPRESA' || r.modo === 'OFICINA');
+        const modActual = tieneCampo && tieneEmpresa ? 'MIXTO' : tieneCampo ? 'CAMPO' : 'EMPRESA';
+
+        let modalidadCell;
+        if (esSuperPermiso) {
+          modalidadCell = `<select data-emp="${e.id}" data-fecha="${f}" onchange="guardarPermiso('${e.id}','${f}','modalidad',this.value)" style="font-size:10px;border:1px solid #d1d5db;border-radius:6px;padding:2px 4px;background:#f8fafc;cursor:pointer;">
+            <option value="EMPRESA" ${modActual==='EMPRESA'?'selected':''}>🏢 Empresa</option>
+            <option value="CAMPO"   ${modActual==='CAMPO'?'selected':''}>🏗️ Campo</option>
+            <option value="MIXTO"   ${modActual==='MIXTO'?'selected':''}>🔀 Mixto</option>
+          </select>`;
+        } else {
+          const mIcon = modActual==='CAMPO' ? '🏗️' : modActual==='MIXTO' ? '🔀' : '🏢';
+          modalidadCell = `<span style="font-size:10px;">${mIcon} ${modActual}</span>`;
+        }
+
+        // T.PERSONAL / T.MEDICO — celda inline editable
+        // ponytail: click convierte el texto en <input>, Enter/blur llama guardarPermiso
+        function celdaTiempo(tipo, mins, empId, fecha) {
+          const display = mins > 0 ? minutosAHHMMSS(mins) : '—';
+          const color = tipo === 'personal' ? 'var(--indigo)' : 'var(--teal)';
+          if (!esSuperPermiso) return `<span style="color:${color};">${display}</span>`;
+          const uid = `cel_${tipo}_${empId}_${fecha.replace(/-/g,'')}`;
+          return `<span id="${uid}" style="color:${color};cursor:pointer;border-bottom:1px dashed ${color};" title="Clic para editar" onclick="editarCeldaTiempo('${uid}','${empId}','${fecha}','${tipo}',${mins})">${display}</span>`;
+        }
+
+        const celTP = celdaTiempo('personal', tiempoPersonal, e.id, f);
+        const celTM = celdaTiempo('medico',   tiempoMedico,   e.id, f);
+
+        let btnPermisoHtml = '';
+
+
+        // Acumular totales
+        totTP     += tiempoPersonal;
+        totTM     += tiempoMedico;
+        totTJ     += tiempoPorJustificar;
+        totHoras  += netWorked;
+        totAtrasos+= atrasoMins;
+        totEmpresa+= minsEmpresa;
+        totCampo  += minsCampo;
+        totSalidaTemprana += minsSalidaTemprana;
+        totH50    += h50;   totH100   += h100;
+        totHCN    += hCN;   totHC50   += hC50;   totHC100  += hC100;
+        totExtra50  += (h50 + hC50);
+        totExtra100 += (h100 + hC100);
+
         return `<tr style="${rowStyle}">
-      <td style="white-space:nowrap; font-weight:600;">${fechaFormateada}</td>
-      <td class="hora-cell">${horaE}</td>
-      <td class="hora-cell">${horaS}</td>
-      <td style="text-align:center; color:var(--indigo)">${tiempoPersonal > 0 ? minutosAHHMMSS(tiempoPersonal) : '—'}</td>
-      <td style="text-align:center; color:var(--teal)">${tiempoMedico > 0 ? minutosAHHMMSS(tiempoMedico) : '—'}</td>
-      <td style="text-align:center; color:var(--red)">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
-      <td style="text-align:center; color:var(--green); font-weight:600;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
-      <td>${aBadge}</td>
-      <td>${extBadgeHtml}</td>
-      <td>${razonesCompletas}</td>
-      <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
-      <td style="text-align:center">${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
-      <td style="text-align:center">${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
-      <td style="text-align:center">${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
-      <td style="text-align:center">${hC50 > 0 ? minutosAHHMMSS(hC50) : '—'}</td>
-      <td style="text-align:center">${hC100 > 0 ? minutosAHHMMSS(hC100) : '—'}</td>
-      <td style="text-align:center"><strong>${(h50 + hC50) > 0 ? minutosAHHMMSS(h50 + hC50) : '—'}</strong></td>
-      <td style="text-align:center"><strong>${(h100 + hC100) > 0 ? minutosAHHMMSS(h100 + hC100) : '—'}</strong></td>
+      <td style="white-space:nowrap; font-weight:600; font-size:11px; padding:3px 5px;">${fechaFormateada}</td>
+      <td style="font-size:11px; padding:3px 4px; text-align:center;">${modalidadCell}</td>
+      <td class="hora-cell" style="font-size:11px;padding:3px 4px;">${horaE}</td>
+      <td class="hora-cell" style="font-size:11px;padding:3px 4px;">${horaS}</td>
+      <td style="font-size:11px; padding:3px 4px;">${selectRazonHtml}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTP}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTM}</td>
+      <td style="text-align:center; color:var(--red); font-size:11px; padding:3px 4px;">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
+      <td style="text-align:center; color:var(--green); font-weight:600; font-size:11px; padding:3px 4px;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
+      <td style="font-size:11px;padding:3px 4px;">${aBadge}</td>
+      <td style="font-size:11px;padding:3px 4px;">${extBadgeHtml}</td>
+      <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}; font-size:11px; padding:3px 4px;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
+      <td style="text-align:center; color:var(--red); font-size:11px; padding:3px 4px;">${minsSalidaTemprana > 0 ? minutosAHHMMSS(minsSalidaTemprana) : '—'}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${hC50 > 0 ? minutosAHHMMSS(hC50) : '—'}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${hC100 > 0 ? minutosAHHMMSS(hC100) : '—'}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;"><strong>${(h50+hC50) > 0 ? minutosAHHMMSS(h50+hC50) : '—'}</strong></td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;"><strong>${(h100+hC100) > 0 ? minutosAHHMMSS(h100+hC100) : '—'}</strong></td>
     </tr>`;
       }).join('');
 
@@ -2453,6 +2714,30 @@
       let tpH = Math.floor(tPermisoSegs / 3600) || 0,
         tpM = Math.floor((tPermisoSegs % 3600) / 60) || 0;
 
+      // Fila de totales para el tfoot
+      const mA = v => v > 0 ? `<strong>${minutosAHHMMSS(v)}</strong>` : '—';
+      const tfootRow = `<tr style="background:var(--g50);border-top:2px solid var(--g300);font-weight:700;font-size:11px;">
+        <td style="padding:4px 5px;">TOTALES</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td style="text-align:center;color:var(--indigo);">${mA(totTP)}</td>
+        <td style="text-align:center;color:var(--teal);">${mA(totTM)}</td>
+        <td style="text-align:center;color:var(--red);">${mA(totTJ)}</td>
+        <td style="text-align:center;color:var(--green);">${mA(totHoras)}</td>
+        <td></td>
+        <td></td>
+        <td style="text-align:center;color:var(--red);">${mA(totAtrasos)}</td>
+        <td style="text-align:center;color:var(--red);">${mA(totSalidaTemprana)}</td>
+        <td style="text-align:center;">${mA(totH50)}</td>
+        <td style="text-align:center;">${mA(totH100)}</td>
+        <td style="text-align:center;">${mA(totHCN)}</td>
+        <td style="text-align:center;">${mA(totHC50)}</td>
+        <td style="text-align:center;">${mA(totHC100)}</td>
+        <td style="text-align:center;">${mA(totExtra50)}</td>
+        <td style="text-align:center;">${mA(totExtra100)}</td>
+      </tr>`;
       let optionsPeriodos = periodos.map((p, i) => `<option value="${i}" ${i === indexPeriodo ? 'selected' : ''}>${p.label}</option>`).join('');
 
       $('detalleContent').innerHTML = `
@@ -2527,27 +2812,30 @@
             <table class="employee-table table-compact">
               <thead>
                 <tr>
-                  <th>Fecha</th>
-                  <th>Entrada</th>
-                  <th>Salida</th>
-                  <th>TIEMPO PERSONAL</th>
-                  <th>TIEMPO MEDICO</th>
-                  <th>TIEMPO POR JUSTIFICAR</th>
-                  <th>TOTAL HORAS</th>
-                  <th>Almuerzo</th>
-                  <th>Autoriz. H.E.</th>
-                  <th>Razón</th>
-                  <th>ATRASOS</th>
-                  <th>HORAS EXTRA (A)</th>
-                  <th>HORAS EXTRA 100% (B)</th>
-                  <th>HORAS CAMPO NORMALES</th>
-                  <th>HORAS CAMPO 50% (C)</th>
-                  <th>HORAS CAMPO 100% (D)</th>
-                  <th>TOTAL EXTRAS 50% (A+C)</th>
-                  <th>TOTAL EXTRAS 100% (B+D)</th>
+                  <th style="font-size:10px;padding:4px 5px;">Fecha</th>
+                  <th style="font-size:10px;padding:4px 5px;">Modalidad</th>
+                  <th style="font-size:10px;padding:4px 5px;">Entrada</th>
+                  <th style="font-size:10px;padding:4px 5px;">Salida</th>
+                  <th style="font-size:10px;padding:4px 5px;">Razón</th>
+                  <th style="font-size:10px;padding:4px 5px;">T.PERSONAL</th>
+                  <th style="font-size:10px;padding:4px 5px;">T.MEDICO</th>
+                  <th style="font-size:10px;padding:4px 5px;">T.JUSTIF.</th>
+                  <th style="font-size:10px;padding:4px 5px;">TOTAL HRS</th>
+                  <th style="font-size:10px;padding:4px 5px;">Alm.</th>
+                  <th style="font-size:10px;padding:4px 5px;">H.E.Aut.</th>
+                  <th style="font-size:10px;padding:4px 5px;">ATRASOS</th>
+                  <th style="font-size:10px;padding:4px 5px;">S. TEMPRANA</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Horas Extra 50%">HE 50% (A)</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Horas Extra 100%">HE 100% (B)</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Horas Campo Normales">HC Norm.</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Horas Campo 50%">HC 50% (C)</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Horas Campo 100%">HC 100% (D)</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Total Extras 50% (A+C)">∑ 50%</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Total Extras 100% (B+D)">∑ 100%</th>
                 </tr>
               </thead>
-              <tbody>${filas || '<tr><td colspan="18" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tbody>${filas || '<tr><td colspan="19" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tfoot>${tfootRow}</tfoot>
             </table>
           </div>
         </div>
@@ -2559,6 +2847,191 @@
     function volverADirectorio() { cambiarPanel('directorio'); cargarDirectorio(); }
 
     // ============================================================
+    // MODAL PERMISO SUPERVISOR
+    // ============================================================
+    window.abrirModalPermiso = function(empleadoId, fecha, ppActual, pmActual) {
+      // Eliminar modal anterior si existe
+      const prev = document.getElementById('modalPermisoSupervisor');
+      if (prev) prev.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'modalPermisoSupervisor';
+      modal.style.cssText = `
+        position:fixed;top:0;left:0;right:0;bottom:0;
+        background:rgba(0,0,0,0.45);z-index:9999;
+        display:flex;align-items:center;justify-content:center;
+      `;
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;padding:24px 28px;min-width:320px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+          <div style="font-weight:700;font-size:15px;margin-bottom:4px;color:#1e293b;">
+            <i class="fas fa-clock" style="color:#6366f1;margin-right:6px;"></i>Asignar Permiso
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:16px;">${empleadoId} — ${fecha}</div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#4b5563;display:block;margin-bottom:3px;">
+                <i class="fas fa-user" style="color:#6366f1;"></i> Tiempo Personal (minutos)
+              </label>
+              <input id="mpPersMins" type="number" min="0" max="480" value="${ppActual || 0}"
+                style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#4b5563;display:block;margin-bottom:3px;">
+                <i class="fas fa-stethoscope" style="color:#0d9488;"></i> Tiempo Médico (minutos)
+              </label>
+              <input id="mpMedMins" type="number" min="0" max="480" value="${pmActual || 0}"
+                style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;box-sizing:border-box;">
+            </div>
+          </div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:8px;">
+            ⓘ Ej: 60 = 1 hora. Los minutos se suman a T.Personal / T.Médico y reducen el Tiempo por Justificar.
+          </div>
+          <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
+            <button onclick="document.getElementById('modalPermisoSupervisor').remove()"
+              style="padding:7px 16px;border-radius:8px;border:1px solid #d1d5db;background:#f8fafc;cursor:pointer;font-size:13px;">
+              Cancelar
+            </button>
+            <button onclick="guardarPermiso('${empleadoId}','${fecha}','personal', document.getElementById('mpPersMins').value); guardarPermiso('${empleadoId}','${fecha}','medico', document.getElementById('mpMedMins').value);"
+              style="padding:7px 18px;border-radius:8px;border:none;background:#6366f1;color:#fff;font-weight:600;cursor:pointer;font-size:13px;">
+              <i class="fas fa-save"></i> Guardar
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    };
+
+    // parsearInputTiempo: acepta "60", "1h", "1:30", "1h30m" → minutos enteros
+    function parsearInputTiempo(str) {
+      str = String(str || '').trim().toLowerCase();
+      // formato 1h30m o 1h
+      const mh = str.match(/^(\d+)h(?:(\d+)m?)?$/);
+      if (mh) return parseInt(mh[1]) * 60 + parseInt(mh[2] || 0);
+      // formato 1:30
+      const mc = str.match(/^(\d+):(\d{1,2})$/);
+      if (mc) return parseInt(mc[1]) * 60 + parseInt(mc[2]);
+      // formato puro minutos
+      const n = parseInt(str);
+      return isNaN(n) ? null : n;
+    }
+
+    function mapRazonAusenciaATipo(razon) {
+      if (!razon) return 'FALTA';
+      const r = razon.toString().trim().toLowerCase();
+      if (r.includes('vacación') || r.includes('vacacion') || r.includes('vacaciones')) return 'VACACIONES';
+      if (r.includes('médico') || r.includes('medico')) return 'PERMISO_MEDICO';
+      if (r.includes('personal')) return 'PERMISO_PERSONAL';
+      if (r.includes('doméstica') || r.includes('domestica') || r.includes('calamidad')) return 'CALAMIDAD_DOMESTICA';
+      if (r.includes('campo')) return 'TRABAJO_DE_CAMPO';
+      return r.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, '_');
+    }
+
+    window.guardarPermiso = async function(empleadoId, fecha, tipo, valor) {
+      let sessionData = {};
+      try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      const supervisorId = String(sessionData.id || '');
+
+      // Modalidad: valor es 'EMPRESA' | 'CAMPO' | 'MIXTO'
+      if (tipo === 'modalidad') {
+        try {
+          let res;
+          if (window.FirebaseBackend && window.FirebaseBackend.guardarModalidadSupervisor) {
+            res = await window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad: valor, supervisorId });
+          } else {
+            // ponytail: Sheets no implementado aún
+            res = { ok: false, error: 'Solo disponible en modo Firebase' };
+          }
+          if (res && res.ok) {
+            // Actualizar cache local
+            const emp = empCache.find(x => x.id === empleadoId);
+            if (emp) (emp.registros || []).filter(r => r.fecha === fecha).forEach(r => r.modo = valor);
+            mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+            if (typeof mostrarToast === 'function') mostrarToast(`✅ Modalidad guardada: ${valor}`, 'ok');
+          } else {
+            if (typeof mostrarToast === 'function') mostrarToast('Error: ' + (res?.error || 'desconocido'), 'error');
+          }
+        } catch(err) { alert('Error: ' + err.message); }
+        return;
+      }
+
+      // Tiempo personal / médico
+      const mins = parsearInputTiempo(valor);
+      if (mins === null || mins < 0) {
+        if (typeof mostrarToast === 'function') mostrarToast('⚠️ Valor inválido. Usa: 60, 1h, 1:30', 'warn');
+        return;
+      }
+
+      const params = { empleadoId, fecha, tipo, mins, supervisorId };
+      try {
+        let resultado;
+        if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
+          resultado = await window.FirebaseBackend.guardarPermisoSupervisor(params);
+        } else {
+          resultado = await new Promise((resolve, reject) => {
+            const cb = 'cb_guardarPermiso_' + Date.now();
+            const script = document.createElement('script');
+            const qs = Object.entries({...params, accion:'guardarPermisoSupervisor', callback:cb})
+              .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+            script.src = window.API_URL + '?' + qs;
+            script.onerror = () => reject(new Error('Error de red'));
+            window[cb] = r => { window[cb] = function(){}; setTimeout(()=>{delete window[cb];},60000); script.remove(); resolve(r); };
+            document.body.appendChild(script);
+          });
+        }
+        if (resultado && resultado.ok) {
+          const emp = empCache.find(x => x.id === empleadoId);
+          if (emp) {
+            const reg = (emp.registros || []).find(r => r.fecha === fecha && r.tipo === 'ENTRADA');
+            if (reg) {
+              if (tipo === 'personal') reg.permiso_personal_mins = mins;
+              else                    reg.permiso_medico_mins   = mins;
+            }
+          }
+          mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+          if (typeof mostrarToast === 'function') mostrarToast(`✅ ${tipo === 'personal' ? 'T.Personal' : 'T.Médico'}: ${mins} min`, 'ok');
+        } else {
+          if (typeof mostrarToast === 'function') mostrarToast('Error: ' + (resultado?.error || 'desconocido'), 'error');
+        }
+      } catch(err) { alert('Error de comunicación: ' + err.message); }
+    };
+
+    // editarCeldaTiempo: inline edit para T.PERSONAL y T.MEDICO
+    window.editarCeldaTiempo = function(uid, empId, fecha, tipo, minsActual) {
+      const span = document.getElementById(uid);
+      if (!span) return;
+      const display = span.textContent;
+      const color = tipo === 'personal' ? 'var(--indigo)' : 'var(--teal)';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = minsActual > 0 ? String(minsActual) : '';
+      input.placeholder = 'ej: 60, 1h, 1:30';
+      input.style.cssText = `width:70px;font-size:11px;border:1px solid ${color};border-radius:4px;padding:1px 4px;color:${color};text-align:center;`;
+
+      const commit = () => {
+        const val = input.value.trim();
+        if (val === '' || val === String(minsActual)) {
+          // sin cambio — restaurar
+          span.style.display = '';
+          input.remove();
+          return;
+        }
+        guardarPermiso(empId, fecha, tipo, val);
+      };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { span.style.display = ''; input.remove(); }
+      });
+
+      span.style.display = 'none';
+      span.parentNode.insertBefore(input, span.nextSibling);
+      input.focus();
+      input.select();
+    };
+
+
+
     // NAVEGACIÓN
     // ============================================================
     function cambiarPanel(panel) {
@@ -2570,7 +3043,8 @@
         reportes: 'Reporte Interactivo',
         asistencia: 'Control de Asistencia', 
         detalle: 'Detalle de Empleado',
-        opciones: 'Opciones adicionales'
+        opciones: 'Opciones adicionales',
+        emergencias: 'Simulacros y Emergencias'
       };
       $('pageTitle').textContent = titles[panel] || 'Supervisor';
       if (panel !== 'detalle') {
@@ -2579,6 +3053,9 @@
         }
         else if (panel === 'reportes') {
           inicializarReporteInteractivo();
+        }
+        else if (panel === 'emergencias') {
+          cargarEmergenciasSupervisor();
         }
         else if (panel === 'asistencia') cargarAsistencia();
       }
@@ -3576,6 +4053,7 @@
         }
         empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
         window.almuerzosExtra = res.almuerzosExtra || [];
+        window.emergencia = res.emergencia || { activa: false, nombre: '' };
         periodos = generarPeriodos();
 
         const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
@@ -3639,6 +4117,9 @@
       }
       else if (panelActual === 'reportes') {
         inicializarReporteInteractivo();
+      }
+      else if (panelActual === 'emergencias') {
+        cargarEmergenciasSupervisor(true);
       }
       else if (panelActual === 'asistencia') cargarAsistencia();
     }
@@ -4020,7 +4501,10 @@
         todasLasFechas.forEach(fecha => {
           const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
-          const isJustificado = regsDia.some(r => r.justificado === 'SI');
+          const isJustificado = regsDia.some(r =>
+            r.justificado === 'SI' ||
+            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+          );
 
           if (regsDia.length === 0) {
             if (!esFestivo && diasLaborables.includes(fecha)) {
@@ -4155,9 +4639,13 @@
           }
 
           if (!isJustificado) {
-            let missingMinutes = 0;
-            missingMinutes = Math.max(0, 480 - netWorked);
-            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
+            let missingMinutes = Math.max(0, 480 - netWorked);
+            const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
+            const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+            const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+            totalTiempoPersonal += persMins;
+            totalTiempoMedico   += medMins;
+            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             totalTiempoPorJustificar += unaccountedMissing;
           }
@@ -5652,4 +6140,184 @@
       
       fileInput.dataset.empleadoId = empleadoId;
       fileInput.click();
+    };
+
+    // ============================================================
+    // ponytail: CONTROL DE EMERGENCIAS Y SIMULACROS EN SUPERVISOR
+    // ============================================================
+    window.cargarEmergenciasSupervisor = async function(silencioso = false) {
+      if (!silencioso) {
+        await cargarDatosCompletos(true, false);
+      }
+
+      const em = window.emergencia || { activa: false, nombre: '' };
+      const statusDiv = $('statusEmergenciaDetalle');
+      if (statusDiv) {
+        statusDiv.innerHTML = `
+          <div style="padding: 12px; border-radius: 8px; background: ${em.activa ? '#fef2f2' : '#f0fdf4'}; border: 1px solid ${em.activa ? '#fca5a5' : '#bbf7d0'}; color: ${em.activa ? '#991b1b' : '#166534'}; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <span style="font-size: 15px;">📢 Estado del Evento: <strong>${em.activa ? 'ACTIVO' : 'INACTIVO'}</strong></span>
+              ${em.activa ? `<br><span style="font-size: 12.5px; font-weight: normal; color: #7f1d1d; margin-top: 4px; display: inline-block;">Nombre del Evento: <strong>${em.nombre}</strong> (Iniciado el ${em.fecha || 'hoy'})</span>` : ''}
+            </div>
+            <div>
+              <i class="fas ${em.activa ? 'fa-bell fa-beat' : 'fa-shield-alt'}" style="font-size: 20px;"></i>
+            </div>
+          </div>
+        `;
+      }
+
+      // Update control panel inputs and buttons
+      const supInput = $('supEmEventName');
+      if (supInput) {
+        supInput.value = em.nombre || '';
+      }
+      const btnStart = $('btnSupEmStart');
+      const btnStop = $('btnSupEmStop');
+      if (btnStart) btnStart.style.display = em.activa ? 'none' : 'flex';
+      if (btnStop) btnStop.style.display = em.activa ? 'flex' : 'none';
+
+      // Group employees by emergency status
+      let aSalvoCount = 0;
+      let requiereAyudaCount = 0;
+      let pendientesCount = 0;
+
+      const hoyStr = getLocalHoyStr(new Date());
+      const reportesHTML = [];
+
+      empCache.forEach(emp => {
+        // Find if this employee registered their status today within their ENTRADA record
+        const regEntrada = (emp.registros || []).find(r => r.tipo === 'ENTRADA' && r.fecha === hoyStr);
+        const hasEstado = regEntrada && regEntrada.estado;
+
+        let statusText = "⚪ PENDIENTE";
+        let statusBadgeColor = "#64748b";
+        let statusBgColor = "#f1f5f9";
+        let detalle = "-";
+        let horaReporte = "-";
+
+        if (hasEstado) {
+          const val = regEntrada.estado || "";
+          if (val.startsWith("A salvo")) {
+            aSalvoCount++;
+            statusText = "🟢 A SALVO / OK";
+            statusBadgeColor = "#0f766e";
+            statusBgColor = "#ccfbf1";
+          } else if (val.startsWith("Requiere ayuda")) {
+            requiereAyudaCount++;
+            statusText = "🔴 REQUIERE AYUDA";
+            statusBadgeColor = "#b91c1c";
+            statusBgColor = "#fee2e2";
+          } else {
+            // General or other status
+            aSalvoCount++;
+            statusText = "🟢 REGISTRADO";
+            statusBadgeColor = "#0f766e";
+            statusBgColor = "#ccfbf1";
+          }
+          
+          // Split comments if any
+          const dashIdx = val.indexOf(" - ");
+          detalle = dashIdx !== -1 ? val.substring(dashIdx + 3) : "Sin comentarios";
+          // Hora de reporte independiente de la hora de entrada
+          // Prioridad: estado_timestamp (Firebase ms) > estado_hora (Sheets "HH:MM") > "-"
+          if (regEntrada.estado_timestamp) {
+            // Soporta: número ms (Date.now() int64), o Firestore Timestamp {seconds, toMillis}
+            let ms = regEntrada.estado_timestamp;
+            if (typeof ms === 'object') {
+              ms = typeof ms.toMillis === 'function' ? ms.toMillis() : (ms.seconds || 0) * 1000;
+            }
+            const d = new Date(ms);
+            if (!isNaN(d)) {
+              const hh = String(d.getHours()).padStart(2, '0');
+              const mm = String(d.getMinutes()).padStart(2, '0');
+              horaReporte = `${hh}:${mm}`;
+            }
+          } else if (regEntrada.estado_hora) {
+            horaReporte = regEntrada.estado_hora; // viene del GAS como "HH:MM"
+          } else {
+            horaReporte = "-";
+          }
+        } else {
+          pendientesCount++;
+        }
+
+        reportesHTML.push(`
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 12px; font-size: 13px; font-weight: 600; color: #1e293b;">${emp.nombre || 'Sin nombre'}</td>
+            <td style="padding: 12px; font-size: 13px; color: #475569;">${emp.departamento || emp.cargo || 'Área general'}</td>
+            <td style="padding: 12px;">
+              <span style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 800; color: ${statusBadgeColor}; background: ${statusBgColor}; text-align: center;">
+                ${statusText}
+              </span>
+            </td>
+            <td style="padding: 12px; font-size: 13px; color: #334155; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${detalle}">
+              ${detalle}
+            </td>
+            <td style="padding: 12px; font-size: 13px; color: #64748b;">${horaReporte}</td>
+          </tr>
+        `);
+      });
+
+      // Update counters
+      const elSalvo = $('numASalvo');
+      const elAyuda = $('numRequiereAyuda');
+      const elPend = $('numPendientes');
+      if (elSalvo) elSalvo.textContent = aSalvoCount;
+      if (elAyuda) elAyuda.textContent = requiereAyudaCount;
+      if (elPend) elPend.textContent = pendientesCount;
+
+      // Update table body
+      const tbody = $('listaReportesEmergenciaBody');
+      if (tbody) {
+        tbody.innerHTML = reportesHTML.length > 0 ? reportesHTML.join('') : `
+          <tr>
+            <td colspan="5" style="text-align: center; padding: 20px; color: #64748b;">No hay personal activo registrado para mostrar.</td>
+          </tr>
+        `;
+      }
+    };
+
+    window.toggleEmergenciaSupervisor = async function(activa) {
+      const inputEl = $('supEmEventName');
+      const nombre = inputEl ? inputEl.value.trim() : '';
+      if (activa && !nombre) {
+        mostrarToast('Por favor ingrese el nombre del evento/simulacro.', 'warning');
+        return;
+      }
+
+      // Pre-verificación: ¿está el backend disponible?
+      if (window.USE_FIREBASE && !window.FirebaseBackend) {
+        mostrarToast('Error: El motor Firebase no está cargado. Recarga la página.', 'error');
+        return;
+      }
+
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({
+          accion: 'toggleEmergencia',
+          activa: activa,
+          nombre: nombre,
+          empleadoId: (() => {
+            try { return JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').id || ''; }
+            catch(e) { return ''; }
+          })()
+        });
+
+        mostrarLoader(false);
+        if (res.ok) {
+          mostrarToast(activa ? '🚨 Alerta de emergencia iniciada' : '🟢 Alerta de emergencia finalizada', 'success');
+          
+          if (!window.emergencia) window.emergencia = {};
+          window.emergencia.activa = activa;
+          window.emergencia.nombre = activa ? nombre : '';
+          
+          await cargarEmergenciasSupervisor();
+        } else {
+          mostrarToast(res.error || 'Error al actualizar la alerta', 'error');
+        }
+      } catch(e) {
+        mostrarLoader(false);
+        console.error('toggleEmergenciaSupervisor error:', e);
+        mostrarToast('Error: ' + (e.message || 'No se pudo conectar con el servidor'), 'error');
+      }
     };

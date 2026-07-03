@@ -95,26 +95,28 @@ function jsonpRequest(params) {
     return new Promise((resolve, reject) => {
         // Generar callback único
         const callbackName = `jsonp_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
-        const timeoutId = setTimeout(() => {
-            cleanup();
-            reject(new Error('Timeout de conexión'));
-        }, 20000);
-        
-        // Función de limpieza
+        let settled = false;
+
         const cleanup = () => {
-            if (timeoutId) clearTimeout(timeoutId);
-            if (window[callbackName]) {
-                delete window[callbackName];
-            }
-            // Remover script del DOM
+            window[callbackName] = function() {};
+            setTimeout(() => { delete window[callbackName]; }, 60000);
             const scripts = document.querySelectorAll(`script[src*="${callbackName}"]`);
             scripts.forEach(script => {
                 if (script.parentNode) script.parentNode.removeChild(script);
             });
         };
+
+        const timeoutId = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(new Error('Timeout de conexión'));
+        }, 20000);
         
-        // Definir callback global
         window[callbackName] = function(response) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
             cleanup();
             resolve(response);
         };
@@ -143,6 +145,9 @@ function jsonpRequest(params) {
         const script = document.createElement('script');
         script.src = url.toString();
         script.onerror = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
             cleanup();
             reject(new Error('Error de red'));
         };

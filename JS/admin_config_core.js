@@ -68,9 +68,19 @@
             }
             return new Promise((resolve, reject) => {
                 const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
-                window[callback] = function (data) {
-                    delete window[callback];
+                let settled = false;
+                const script = document.createElement('script');
+
+                const cleanup = () => {
+                    window[callback] = function() {};
+                    setTimeout(() => { delete window[callback]; }, 60000);
                     if (script.parentNode) script.parentNode.removeChild(script);
+                };
+
+                window[callback] = function (data) {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
                     resolve(data);
                 };
 
@@ -93,11 +103,11 @@
                     }
                 });
 
-                const script = document.createElement('script');
                 script.src = url.toString();
                 script.onerror = () => {
-                    delete window[callback];
-                    if (script.parentNode) script.parentNode.removeChild(script);
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
                     reject(new Error('Error de conexión con el servidor'));
                 };
                 document.body.appendChild(script);

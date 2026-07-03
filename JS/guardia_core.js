@@ -98,20 +98,33 @@ function jsonpRequest(params) {
     }
     return new Promise((resolve, reject) => {
         const callback = `cb_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        let settled = false;
+        const script = document.createElement('script');
+
+        const cleanup = () => {
+            window[callback] = function() {};
+            setTimeout(() => { delete window[callback]; }, 60000);
+            if (script.parentNode) script.parentNode.removeChild(script);
+        };
+
         const timeout = setTimeout(() => {
-            delete window[callback];
+            if (settled) return;
+            settled = true;
+            cleanup();
             reject(new Error('Timeout'));
         }, 15000);
 
         window[callback] = (data) => {
+            if (settled) return;
+            settled = true;
             clearTimeout(timeout);
-            delete window[callback];
+            cleanup();
             resolve(data);
         };
 
         const url = new URL(API_URL);
         url.searchParams.append('callback', callback);
-    url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
+        url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
         
         // Inyectar credenciales de sesión si existen
         const session = localStorage.getItem('SUPERVISOR_SESSION');
@@ -128,9 +141,14 @@ function jsonpRequest(params) {
             }
         });
 
-        const script = document.createElement('script');
         script.src = url.toString();
-        script.onerror = () => { clearTimeout(timeout); reject(new Error('Error de red')); };
+        script.onerror = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            cleanup();
+            reject(new Error('Error de red'));
+        };
         document.body.appendChild(script);
     });
 }

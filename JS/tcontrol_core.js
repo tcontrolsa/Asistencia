@@ -27,15 +27,40 @@ async function jsonpRequest(params) {
 
     return new Promise((resolve) => {
         const callback = `cb_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        let settled = false;
+        const script = document.createElement('script');
+
+        const cleanup = () => {
+            window[callback] = function() {};
+            setTimeout(() => { delete window[callback]; }, 60000);
+            if (script.parentNode) script.remove();
+        };
+
+        const timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({ error: 'Timeout de conexión' });
+        }, 15000);
+
         window[callback] = (data) => {
-            delete window[callback];
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            cleanup();
             resolve(data);
         };
-        const script = document.createElement('script');
+
         const query = Object.keys(params).map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
         script.src = `${window.TCONTROL_CONFIG.API_URL}?${query}&callback=${callback}`;
+        script.onerror = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ error: 'Error de red' });
+        };
         document.head.appendChild(script);
-        setTimeout(() => { if (script.parentNode) script.remove(); }, 10000);
     });
 }
 

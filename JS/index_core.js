@@ -39,6 +39,7 @@
         let currentPage = 'home';
         let isAuthenticated = false;
         let configuracionesSistema = null;
+        let _lastEmActiva = null;
 
         let estado = {
             tieneEntrada: false,
@@ -80,6 +81,13 @@
 
         let esPermisoIntermedio = false;
         let razonPermiso = null;
+
+        function getLocalHoyStr(date = new Date()) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
 
         // ========== FUNCIONES GLOBALES PARA EL MENÚ ==========
         window.seleccionarLugar = function (lugar) {
@@ -411,7 +419,8 @@
 
                 const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
                 window[callback] = function (data) {
-                    delete window[callback];
+                    window[callback] = function() {};
+                    setTimeout(function() { delete window[callback]; }, 60000);
                     if (script.parentNode) script.parentNode.removeChild(script);
 
                     // Detectar errores de lock del servidor y reintentar
@@ -453,7 +462,8 @@
                 const script = document.createElement('script');
                 script.src = url.toString();
                 script.onerror = () => {
-                    delete window[callback];
+                    window[callback] = function() {};
+                    setTimeout(function() { delete window[callback]; }, 60000);
                     if (script.parentNode) script.parentNode.removeChild(script);
 
                     if (_retryCount < MAX_RETRIES) {
@@ -470,7 +480,8 @@
                 // Timeout de 25s por intento para evitar requests colgados
                 const timeoutId = setTimeout(() => {
                     if (window[callback]) {
-                        delete window[callback];
+                        window[callback] = function() {};
+                        setTimeout(function() { delete window[callback]; }, 60000);
                         if (script.parentNode) script.parentNode.removeChild(script);
                         if (_retryCount < MAX_RETRIES) {
                             const delay = RETRY_DELAY_MS[_retryCount] || 4000;
@@ -532,7 +543,14 @@
         }
 
         async function obtenerRegistrosEmpleadoAPI(empleadoId, force = false) {
-            return jsonpRequest({ accion: 'obtenerRegistros', empleadoId: empleadoId, force: force });
+            // Siempre incluimos los archivados para poder calcular el periodo fiscal completo (26 al 25)
+            // de forma predeterminada
+            return jsonpRequest({ 
+                accion: 'obtenerRegistros', 
+                empleadoId: empleadoId, 
+                force: force,
+                incluirArchivados: true 
+            });
         }
 
         async function desvincularDispositivoAPI(empleadoId, deviceToken) {
@@ -582,16 +600,6 @@
 
         async function registrar() {
             if (!verificarDistanciaEmpresa()) return;
-
-            // Si es SALIDA, verificar si es antes de la hora configurada
-            if (empleado.tipoRegistro === 'SALIDA') {
-                const horaSalidaConfigrada = obtenerHoraSalidaConfigrada();
-                if (horaSalidaConfigrada && esAntesDeSalida(horaSalidaConfigrada)) {
-                    // Mostrar modal para seleccionar razón de salida temprana
-                    mostrarModalRazonSalida();
-                    return;
-                }
-            }
 
             // Proceder con el registro normal
             procederConRegistro();
@@ -967,12 +975,6 @@
                     return;
                 }
 
-                // Verificar si la entrada es tardía (después de 8:15)
-                if (esEntradaTardia()) {
-                    mostrarModalRazonEntrada();
-                    return;
-                }
-
                 if (horaLimiteAlmuerzoPasada()) {
                     mostrarToast(`⚠️ Fuera del horario (límite ${HORA_LIMITE_ALMUERZO}). Se registra almuerzo fuera de planta.`, 'error');
                     empleado.almuerzo = 'NO';
@@ -981,16 +983,6 @@
                     mostrarLunchSelector();
                 }
             } else if (tipo === 'SALIDA') {
-                // Primero verificar si es salida temprana
-                const horaSalidaConfigrada = obtenerHoraSalidaConfigrada();
-                if (horaSalidaConfigrada && esAntesDeSalida(horaSalidaConfigrada)) {
-                    // Es salida temprana - mostrar modal de razón
-                    mostrarModalRazonSalida();
-                    return;
-                }
-
-
-
                 empleado.almuerzo = estado.almuerzo || '';
                 registrar();
             } else if (tipo === 'RETORNO_CAMPO') {
@@ -1684,7 +1676,6 @@
                 '4/30',  // Feriado decretado
                 '5/1',   // Día del Trabajo
                 '5/25',  // Batalla del Pichincha
-                '6/26',  // Feriado decretado
                 '8/10',  // Primer Grito de Independencia
                 '10/9',  // Independencia de Guayaquil
                 '11/2',  // Día de los Difuntos
@@ -1707,9 +1698,14 @@
                     let d = null;
                     if (typeof rFecha === 'string') {
                         const parsed = /^\d{4}-\d{2}-\d{2}T/.test(rFecha) ? rFecha.split('T')[0] : rFecha;
-                        d = new Date(parsed);
+                        const parts = parsed.split('-');
+                        if (parts.length === 3) {
+                            d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                        } else {
+                            d = new Date(parsed);
+                        }
                     } else if (rFecha instanceof Date) {
-                        d = rFecha;
+                        d = new Date(rFecha.getFullYear(), rFecha.getMonth(), rFecha.getDate());
                     }
                     if (d && !isNaN(d.getTime())) {
                         if (!earliestDate || d < earliestDate) earliestDate = d;
@@ -1728,12 +1724,8 @@
 
             let startDate = earliestDate > limite15Dias ? earliestDate : limite15Dias;
 
-            // Limpiar timezone behavior asegurando horas locales en 0
             for (let d = new Date(startDate); d < hoy; d.setDate(d.getDate() + 1)) {
-                // Format YYYY-MM-DD reliably using offset
-                const tzDate = new Date(d);
-                tzDate.setMinutes(tzDate.getMinutes() - tzDate.getTimezoneOffset());
-                const dateStr = tzDate.toISOString().split('T')[0];
+                const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
                 if (d.getDay() === 0 || d.getDay() === 6 || esFeriado(dateStr)) continue; // Skip Sat/Sun/Holidays
 
@@ -1745,9 +1737,7 @@
                         if (/^\d{4}-\d{2}-\d{2}T/.test(rFecha)) checkStr = rFecha.split('T')[0];
                         else checkStr = rFecha.substring(0, 10);
                     } else if (rFecha instanceof Date) {
-                        const tzDate2 = new Date(rFecha);
-                        tzDate2.setMinutes(tzDate2.getMinutes() - tzDate2.getTimezoneOffset());
-                        checkStr = tzDate2.toISOString().split('T')[0];
+                        checkStr = `${rFecha.getFullYear()}-${String(rFecha.getMonth() + 1).padStart(2, '0')}-${String(rFecha.getDate()).padStart(2, '0')}`;
                     }
                     return checkStr === dateStr || checkStr.startsWith(dateStr);
                 });
@@ -1776,8 +1766,8 @@
             }
 
             const listHtml = faltasPendientes.map((fecha, idx) => {
-                const d = new Date(fecha);
-                d.setMinutes(d.getMinutes() + d.getTimezoneOffset());
+                const parts = fecha.split('-');
+                const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
                 const diaStr = d.toLocaleDateString('es-EC', { weekday: 'short', day: 'numeric', month: 'short' });
                 return `
                 <div class="falta-row" style="display: flex; align-items: center; gap: 12px; padding: 10px; border-bottom: 1px solid #f1f5f9;">
@@ -1965,8 +1955,53 @@
             const tieneSalida = estado.tieneSalida;
             const almuerzo = estado.almuerzo;
 
-            const horaEntradaMostrar = estado.horaEntrada || (tieneEntrada ? 'Registrada' : 'Pendiente');
-            const horaSalidaMostrar = estado.horaSalida || (tieneSalida ? 'Registrada' : 'Pendiente');
+            // Helper para obtener hora limpia de registro (HH:MM)
+            function obtenerHoraFormateadaDeRegistro(reg) {
+                if (!reg) return null;
+                if (reg.hora) {
+                    const match = reg.hora.match(/^(\d{1,2}):(\d{2})/);
+                    if (match) {
+                        return `${match[1].padStart(2, '0')}:${match[2]}`;
+                    }
+                }
+                if (reg.timestamp) {
+                    try {
+                        const d = reg.timestamp.toDate ? reg.timestamp.toDate() : new Date(reg.timestamp);
+                        if (!isNaN(d.getTime())) {
+                            const hh = String(d.getHours()).padStart(2, '0');
+                            const mm = String(d.getMinutes()).padStart(2, '0');
+                            return `${hh}:${mm}`;
+                        }
+                    } catch (e) {}
+                }
+                return null;
+            }
+
+            const hoyStrLocal = getLocalHoyStr(new Date());
+            const entradaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'ENTRADA') : null;
+            const salidaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'SALIDA') : null;
+
+            let horaEntradaMostrar = 'Pendiente';
+            const horaRegEntrada = obtenerHoraFormateadaDeRegistro(entradaHoyReg);
+            if (horaRegEntrada) {
+                horaEntradaMostrar = horaRegEntrada;
+            } else if (estado.horaEntrada) {
+                const match = estado.horaEntrada.match(/^(\d{1,2}):(\d{2})/);
+                horaEntradaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaEntrada;
+            } else if (tieneEntrada) {
+                horaEntradaMostrar = 'Registrada';
+            }
+
+            let horaSalidaMostrar = 'Pendiente';
+            const horaRegSalida = obtenerHoraFormateadaDeRegistro(salidaHoyReg);
+            if (horaRegSalida) {
+                horaSalidaMostrar = horaRegSalida;
+            } else if (estado.horaSalida) {
+                const match = estado.horaSalida.match(/^(\d{1,2}):(\d{2})/);
+                horaSalidaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaSalida;
+            } else if (tieneSalida) {
+                horaSalidaMostrar = 'Registrada';
+            }
 
             const esAdmin = empleado.id === ADMIN_ID;
             const statusActual = calcularStatusActual();
@@ -2160,8 +2195,7 @@
                             
                             <!-- Tarjeta de Almuerzo: Ahora proporcional e integrada en el grid -->
                             <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') || esCumpleanosHoy ? 'lunch-animated-no' : ''}" 
-                                 onclick="${esCumpleanosHoy ? "mostrarToast('Hoy es su cumpleaños, no aplica registro de almuerzo', 'info')" : 'mostrarPopupAlmuerzo(true)'}"
-                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; cursor: ${esCumpleanosHoy ? 'default' : 'pointer'}; ${esCumpleanosHoy ? 'opacity: 0.85;' : ''}">
+                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; cursor: default; ${esCumpleanosHoy ? 'opacity: 0.85;' : ''}">
                                  
                                 <div class="status-icon" style="height: 70px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; position: relative;">
                                     ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy
@@ -3292,7 +3326,10 @@
                     });
                     if (hasPermiso) data.stats.permisos++;
 
-                    const hasFalta = diaRegs.some(r => (getVal(r, 'tipo', 3) || r[3]) === 'FALTA');
+                    const hasFalta = diaRegs.some(r => {
+                        const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
+                        return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO';
+                    });
                     if (hasFalta) data.stats.justificaciones++;
 
                     if (entrada && salida) {
@@ -3314,11 +3351,38 @@
                 });
             });
 
+            // Calcular periodo fiscal (26 al 25) para filtrar
+            const hoy = new Date();
+            const dia = hoy.getDate();
+            let inicioPeriodo;
+            if (dia >= 26) {
+                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
+            } else {
+                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
+            }
+            function formatearFechaLocal(d) {
+                let y = d.getFullYear();
+                let m = String(d.getMonth() + 1).padStart(2, '0');
+                let day = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${day}`;
+            }
+            const iniStr = formatearFechaLocal(inicioPeriodo);
+
             const semanasOrdenadas = Object.keys(registrosPorSemana).sort((a, b) => new Date(b) - new Date(a));
+
+            // Filtrar semanas anteriores si no se ha accionado la descarga manual
+            let semanasAMostrar = semanasOrdenadas;
+            if (!window.descargarPeriodosAnterioresAccionado) {
+                semanasAMostrar = semanasOrdenadas.filter(semanaKey => {
+                    const semanaData = registrosPorSemana[semanaKey];
+                    const fechasEnSemana = Object.keys(semanaData.registros);
+                    return fechasEnSemana.some(f => f >= iniStr);
+                });
+            }
 
             let html = `<div style="display: flex; flex-direction: column; gap: 12px;">`;
 
-            semanasOrdenadas.forEach(semanaKey => {
+            semanasAMostrar.forEach(semanaKey => {
                 const semanaData = registrosPorSemana[semanaKey];
                 const fechasEnSemana = Object.keys(semanaData.registros).sort((a, b) => new Date(b) - new Date(a));
 
@@ -3382,7 +3446,10 @@
                         } catch (e) { }
                     }
 
-                    const esFaltaJustificada = diaRegs.some(r => (getVal(r, 'tipo', 3) || r[3]) === 'FALTA');
+                    const esFaltaJustificada = diaRegs.some(r => {
+                        const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
+                        return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO';
+                    });
                     const statusIcon = esFaltaJustificada ? '📁' : (entrada && salida ? '✅' : entrada ? '⚠️' : '❌');
                     let fechaFormato = 'Fecha inválida';
                     try {
@@ -3407,7 +3474,7 @@
                         const razonAusencia = getVal(reg, 'razon_ausencia', 23) || reg[23];
                         const tipoReg = getVal(reg, 'tipo', 3) || reg[3];
 
-                        if (tipoReg === 'FALTA') {
+                        if (tipoReg !== 'ENTRADA' && tipoReg !== 'SALIDA' && tipoReg !== 'ESTADO' && tipoReg !== 'SOLO_ALMUERZO') {
                             return '<div style="padding: 6px 10px; background: rgba(255,152,0,0.1); border-left: 3px solid #ff9800; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #e65100;"><strong>📌 Justificación:</strong> ' + (razonAusencia || razonPermiso || 'Falta revisada') + '</div>';
                         }
 
@@ -3460,8 +3527,39 @@
             });
 
             html += `</div>`;
+
+            // Si no se han descargado periodos anteriores, mostrar el botón
+            if (!window.descargarPeriodosAnterioresAccionado) {
+                html += `
+                <div class="text-center mt-3" id="btnDescargarAnterioresContainer">
+                    <button id="btnDescargarAnteriores" class="btn btn-outline-primary btn-sm w-100" onclick="descargarPeriodosAnteriores()" style="font-weight: 700; border-radius: 12px; padding: 12px; border: 2px solid var(--primary); background: transparent; color: var(--primary); cursor: pointer; transition: all 0.2s;">
+                        <i class="fas fa-download"></i> Descargar periodos anteriores
+                    </button>
+                </div>
+                `;
+            }
+
             container.innerHTML = html;
         }
+
+        window.descargarPeriodosAnteriores = async function() {
+            window.descargarPeriodosAnterioresAccionado = true;
+            const btn = document.getElementById('btnDescargarAnteriores');
+            if (btn) {
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Descargando...`;
+                btn.disabled = true;
+            }
+            try {
+                await obtenerRegistrosEmpleado(true);
+                mostrarToast('✅ Historial completo descargado', 'success');
+            } catch (error) {
+                mostrarToast('Error al descargar historial: ' + error.message, 'error');
+                if (btn) {
+                    btn.innerHTML = `<i class="fas fa-download"></i> Descargar periodos anteriores`;
+                    btn.disabled = false;
+                }
+            }
+        };
 
         function toggleSemana(element) {
             const content = element.nextElementSibling;
@@ -3566,6 +3664,11 @@
                     <h5 class="fw-bold mb-3" style="font-size: 14.5px; color: #1e293b; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-sliders" style="color: #64748b;"></i> Acciones y Soporte</h5>
                     
                     <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${estado.esSupervisor ? `
+                        <button class="btn btn-danger w-100" onclick="navigateTo('estado')" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 750; transition: all 0.2s; background: #dc2626; color: white; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(220,38,38,0.25);">
+                            <i class="fas fa-exclamation-triangle"></i> Control de Emergencias (Simulacros)
+                        </button>
+                        ` : ''}
                         <button class="btn btn-outline-secondary w-100" onclick="location.reload()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; transition: all 0.2s; border-color: #cbd5e1; color: #334155; background: white;">
                             <i class="fas fa-arrows-rotate" style="color: #64748b;"></i> Sincronizar Datos
                         </button>
@@ -3695,6 +3798,12 @@
                 fabWhatsApp.style.display = (page === 'home' && isAuthenticated) ? 'flex' : 'none';
             }
 
+            const fabEmergencia = document.getElementById('fabEmergencia');
+            if (fabEmergencia) {
+                const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
+                fabEmergencia.style.display = (page === 'home' && isAuthenticated && em.activa) ? 'flex' : 'none';
+            }
+
             if (page === 'home') {
                 renderHomePage();
             } else if (page === 'history') {
@@ -3705,12 +3814,15 @@
                 renderProfilePage();
             } else if (page === 'pagos') {
                 renderPagosPage();
+            } else if (page === 'estado') {
+                renderEstadoPage();
             } else if (page === 'admin') {
                 renderAdminPage();
             }
 
             ajustarLayout();
         }
+        window.navigateTo = navigateTo;
 
         function renderAdminPage() {
             const mainContent = document.getElementById('mainContent');
@@ -3902,6 +4014,23 @@
             if (navItemAdmin) {
                 const esAdmin = empleado.id === ADMIN_ID;
                 navItemAdmin.style.display = esAdmin ? 'flex' : 'none';
+            }
+
+            // Lógica para la pestaña de Estado de Emergencias / Simulacros (OCULTADO SIEMPRE)
+            const navItemEstado = document.getElementById('navItemEstado');
+            if (navItemEstado) {
+                navItemEstado.style.display = 'none';
+            }
+
+            // Lógica para el botón flotante de Emergencia (solo visible en Home si está activa)
+            const fabEmergencia = document.getElementById('fabEmergencia');
+            if (fabEmergencia) {
+                const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
+                if (em.activa && currentPage === 'home' && isAuthenticated) {
+                    fabEmergencia.style.display = 'flex';
+                } else {
+                    fabEmergencia.style.display = 'none';
+                }
             }
 
             // Forzar ajuste de layout si cambió la visibilidad
@@ -4300,8 +4429,39 @@
                 setInterval(() => {
                     if (isAuthenticated && empleado.id) {
                         obtenerRegistrosEmpleado();
+                        cargarConfiguracionesSistema().then(() => {
+                            actualizarInterfazSegunCargo();
+                            if (currentPage === 'home') {
+                                renderHomePage();
+                            }
+                        }).catch(() => null);
                     }
                 }, 60000);
+            }, 10000);
+
+            // Polling rápido de emergencia cada 10 segundos
+            setInterval(() => {
+                if (isAuthenticated && empleado.id) {
+                    cargarConfiguracionesSistema().then(() => {
+                        const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
+                        if (em.activa !== _lastEmActiva) {
+                            _lastEmActiva = em.activa;
+                            actualizarInterfazSegunCargo();
+                            
+                            // Actualizar tooltip del FAB de emergencias
+                            const tooltip = document.querySelector('.emergencia-tooltip');
+                            if (tooltip) {
+                                tooltip.textContent = em.activa ? `🚨 ${em.nombre || 'Emergencia'}` : '🚨 Reportar mi Estado';
+                            }
+                            
+                            if (currentPage === 'home') {
+                                renderHomePage();
+                            } else if (currentPage === 'estado') {
+                                renderEstadoPage();
+                            }
+                        }
+                    }).catch(() => null);
+                }
             }, 10000);
         });
 
@@ -4504,4 +4664,195 @@
             
             fileInput.click();
         };
+
+        // ========================================================
+        // ponytail: emergencias y simulacros
+        // ========================================================
+        let selectedStatusVal = "";
+        window.selectEmStatus = function(status) {
+            selectedStatusVal = status;
+            const btnSalvo = document.getElementById('btnEstSalvo');
+            const btnAyuda = document.getElementById('btnEstAyuda');
+            if (!btnSalvo || !btnAyuda) return;
+            
+            if (status === 'A salvo') {
+                btnSalvo.style.borderColor = '#10b981';
+                btnSalvo.style.background = '#ecfdf5';
+                btnAyuda.style.borderColor = '#e2e8f0';
+                btnAyuda.style.background = '#f8fafc';
+            } else {
+                btnAyuda.style.borderColor = '#ef4444';
+                btnAyuda.style.background = '#fef2f2';
+                btnSalvo.style.borderColor = '#e2e8f0';
+                btnSalvo.style.background = '#f8fafc';
+            }
+        };
+
+        window.enviarReporteEmergencia = async function() {
+            if (!selectedStatusVal) {
+                mostrarToast('Por favor, selecciona tu estado actual', 'warning');
+                return;
+            }
+            const comentarios = document.getElementById('emComments')?.value || '';
+            const statusMsg = comentarios ? `${selectedStatusVal} - ${comentarios}` : selectedStatusVal;
+            
+            showLoading(true);
+            try {
+                const res = await jsonpRequest({
+                    accion: 'guardarRegistro',
+                    id: empleado.id,
+                    nombre: empleado.nombre,
+                    tipo: 'ESTADO',
+                    razon_ausencia: statusMsg, // se guarda en columna U (RAZON_AUSENCIA)
+                    lat: posicion.lat || '',
+                    lng: posicion.lng || '',
+                    dispositivo: deviceToken
+                });
+                
+                if (res.ok) {
+                    mostrarToast('Reporte de estado enviado correctamente', 'success');
+                    await obtenerRegistrosEmpleado(true);
+                    renderEstadoPage();
+                } else {
+                    mostrarToast(res.error || 'Error al enviar reporte', 'error');
+                }
+            } catch(e) {
+                mostrarToast('Error al procesar el reporte', 'error');
+            } finally {
+                showLoading(false);
+            }
+        };
+
+        window.toggleAlertaEmergencia = async function(activa) {
+            const nombre = document.getElementById('emEventName')?.value || '';
+            if (activa && !nombre.trim()) {
+                mostrarToast('Por favor, ingresa el nombre de la emergencia o simulacro', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            try {
+                const res = await jsonpRequest({
+                    accion: 'toggleEmergencia',
+                    activa: activa,
+                    nombre: nombre,
+                    empleadoId: empleado.id
+                });
+                if (res.ok) {
+                    mostrarToast(activa ? 'Alerta de emergencia INICIADA' : 'Alerta de emergencia FINALIZADA', 'success');
+                    await cargarConfiguracionesSistema();
+                    actualizarInterfazSegunCargo();
+                    renderEstadoPage();
+                } else {
+                    mostrarToast(res.error || 'Error al actualizar alerta', 'error');
+                }
+            } catch(e) {
+                mostrarToast('Error de conexión', 'error');
+            } finally {
+                showLoading(false);
+            }
+        };
+
+        async function renderEstadoPage() {
+            const mainContent = document.getElementById('mainContent');
+            if (!mainContent) return;
+
+            try {
+                await cargarConfiguracionesSistema();
+            } catch(e){}
+
+            const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
+
+            let html = `
+            <div class="page">
+                <div class="glass-card mb-4 text-center">
+                    <div style="font-size: 40px; color: ${em.activa ? '#ef4444' : '#10b981'}; margin-bottom: 12px; animation: ${em.activa ? 'pulseGlowRed 2.5s infinite' : 'none'};">
+                        <i class="fas ${em.activa ? 'fa-exclamation-triangle' : 'fa-check-circle'}"></i>
+                    </div>
+                    <h3 class="fw-bold mb-1" style="color: #0f172a; margin:0;">${em.activa ? 'Reporte de Emergencia / Simulacro' : 'Estado del Sistema'}</h3>
+                    <p class="text-muted small" style="margin: 6px 0 0 0;">${em.activa ? `Evento activo: <strong>${em.nombre}</strong>` : 'No hay simulacros ni emergencias activas.'}</p>
+                </div>
+            `;
+
+            if (estado.esSupervisor) {
+                html += `
+                <div class="glass-card mb-4">
+                    <h4 class="fw-bold mb-3" style="color: #0f172a; margin:0 0 12px 0;"><i class="fas fa-tools me-2 text-primary"></i>Panel de Control de Emergencias</h4>
+                    <div class="form-group mb-3">
+                        <label class="form-label text-muted small fw-bold" style="display:block; margin-bottom:6px;">Nombre del Evento (Simulacro o Emergencia)</label>
+                        <input type="text" id="emEventName" class="form-control" placeholder="Ej: Simulacro Sismo 2026" value="${em.nombre || ''}" style="border-radius:12px; padding:12px; width:100%; border:1px solid #cbd5e1; box-sizing:border-box;">
+                    </div>
+                    <div style="display:flex; gap:12px;">
+                        <button onclick="toggleAlertaEmergencia(true)" class="btn btn-danger flex-grow-1" style="border-radius:12px; font-weight:700; padding:12px; display: ${em.activa ? 'none' : 'block'}; background:#dc2626; color:white; border:none; cursor:pointer; width:100%;">
+                            🚨 Iniciar Alerta
+                        </button>
+                        <button onclick="toggleAlertaEmergencia(false)" class="btn btn-success flex-grow-1" style="border-radius:12px; font-weight:700; padding:12px; display: ${em.activa ? 'block' : 'none'}; background:#16a34a; color:white; border:none; cursor:pointer; width:100%;">
+                            🟢 Finalizar Alerta
+                        </button>
+                    </div>
+                </div>
+                `;
+            }
+
+            if (em.activa) {
+                const hoyStrLocal = getLocalHoyStr(new Date());
+                const yaReportado = registrosCompletos.some(r => {
+                    const rFecha = getVal(r, 'fecha', 0);
+                    const rTipo = getVal(r, 'tipo', 3);
+                    const rEstado = r.estado; // propiedad estado en ENTRADA
+                    return rTipo === 'ENTRADA' && rFecha === hoyStrLocal && rEstado;
+                });
+
+                if (yaReportado) {
+                    html += `
+                    <div class="glass-card text-center p-4">
+                        <div class="text-success mb-2" style="font-size:32px;"><i class="fas fa-check-double" style="color:#10b981;"></i></div>
+                        <h4 class="fw-bold text-success" style="color:#16a34a; margin:0 0 8px 0;">Reporte Enviado</h4>
+                        <p class="text-muted small" style="margin:0 0 15px 0;">Tu estado para este evento ha sido registrado correctamente.</p>
+                        <button onclick="renderHomePage()" class="btn btn-secondary w-100 mt-2" style="border-radius:12px; width:100%; padding:12px; background:#e2e8f0; border:none; font-weight:700; cursor:pointer; color:#475569;">Ir al Inicio</button>
+                    </div>
+                    `;
+                } else {
+                    html += `
+                    <div class="glass-card">
+                        <h4 class="fw-bold mb-3 text-center" style="color: #0f172a; margin:0 0 15px 0;">¿Cuál es tu estado actual?</h4>
+                        <div style="display:flex; gap:12px; margin-bottom:15px;">
+                            <div style="flex:1;">
+                                <button type="button" id="btnEstSalvo" onclick="selectEmStatus('A salvo')" style="width:100%; padding: 20px 12px; text-align:center; border-radius:16px; border:2px solid #e2e8f0; background:#f8fafc; cursor:pointer; transition:all 0.2s;">
+                                    <div style="font-size:28px; margin-bottom:4px;">🟢</div>
+                                    <span class="fw-bold small" style="color:#1e293b; font-weight:700;">A salvo / OK</span>
+                                </button>
+                            </div>
+                            <div style="flex:1;">
+                                <button type="button" id="btnEstAyuda" onclick="selectEmStatus('Requiere ayuda')" style="width:100%; padding: 20px 12px; text-align:center; border-radius:16px; border:2px solid #e2e8f0; background:#f8fafc; cursor:pointer; transition:all 0.2s;">
+                                    <div style="font-size:28px; margin-bottom:4px;">🔴</div>
+                                    <span class="fw-bold small" style="color:#1e293b; font-weight:700;">Requiere Ayuda</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group mb-3">
+                            <label class="form-label text-muted small fw-bold" style="display:block; margin-bottom:6px;">Detalles / Comentarios (Opcional)</label>
+                            <textarea id="emComments" class="form-control" rows="2" placeholder="Ej: Sin novedades en el área de taller" style="border-radius:12px; padding:12px; width:100%; border:1px solid #cbd5e1; box-sizing:border-box; font-family:inherit;"></textarea>
+                        </div>
+                        
+                        <button onclick="enviarReporteEmergencia()" class="btn btn-primary" style="width:100%; padding:14px; border-radius:12px; font-weight:700; background:var(--primary); color:white; border:none; cursor:pointer; font-size:15px; box-shadow: 0 4px 12px var(--primary-glow);">
+                            Enviar Reporte de Estado
+                        </button>
+                    </div>
+                    `;
+                }
+            } else if (!estado.esSupervisor) {
+                html += `
+                <div class="glass-card text-center p-4">
+                    <div class="text-muted mb-2" style="font-size:32px;"><i class="fas fa-shield-alt" style="color:#64748b;"></i></div>
+                    <h4 class="fw-bold text-muted" style="color:#475569; margin:0 0 6px 0;">Todo en Orden</h4>
+                    <p class="text-muted small" style="margin:0;">No hay alertas de simulacro ni emergencias vigentes en este momento.</p>
+                </div>
+                `;
+            }
+
+            html += `</div>`;
+            mainContent.innerHTML = html;
+        }
         // ========================================================

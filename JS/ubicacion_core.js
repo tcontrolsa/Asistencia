@@ -127,12 +127,27 @@ function jsonp(params) {
   }
   return new Promise((res, rej) => {
     const cb = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-    const t  = setTimeout(() => { delete window[cb]; rej(new Error('Timeout de API')); }, 25000);
+    let settled = false;
     const sc = document.createElement('script');
+
+    const cleanup = () => {
+      window[cb] = function() {};
+      setTimeout(() => { delete window[cb]; }, 60000);
+      if (sc.parentNode) sc.parentNode.removeChild(sc);
+    };
+
+    const t = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      rej(new Error('Timeout de API'));
+    }, 25000);
     
     window[cb] = data => {
-      clearTimeout(t); delete window[cb];
-      if (sc.parentNode) sc.parentNode.removeChild(sc);
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      cleanup();
       res(data);
     };
 
@@ -143,7 +158,13 @@ function jsonp(params) {
     Object.entries(params).forEach(([k, v]) => { if (v != null) url.searchParams.set(k, String(v)); });
 
     sc.src = url.toString();
-    sc.onerror = () => { clearTimeout(t); delete window[cb]; rej(new Error('Error de conexión a servidor. Revise permisos de Google Apps Script.')); };
+    sc.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      cleanup();
+      rej(new Error('Error de conexión a servidor. Revise permisos de Google Apps Script.'));
+    };
     document.body.appendChild(sc);
   });
 }

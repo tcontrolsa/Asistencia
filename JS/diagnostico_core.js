@@ -94,14 +94,25 @@ function jsonpRequest(params) {
         }
         
         const callback = `cb_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        let settled = false;
+
+        const cleanup = () => {
+            window[callback] = function() {};
+            setTimeout(() => { delete window[callback]; }, 60000);
+        };
+
         const timeout = setTimeout(() => {
-            delete window[callback];
+            if (settled) return;
+            settled = true;
+            cleanup();
             reject(new Error('TIMEOUT (15s) - El servidor no respondió'));
         }, 15000);
 
         window[callback] = (data) => {
+            if (settled) return;
+            settled = true;
             clearTimeout(timeout);
-            delete window[callback];
+            cleanup();
             resolve(data);
         };
 
@@ -120,8 +131,10 @@ function jsonpRequest(params) {
         const script = document.createElement('script');
         script.src = fullUrl.toString();
         script.onerror = () => {
+            if (settled) return;
+            settled = true;
             clearTimeout(timeout);
-            delete window[callback];
+            cleanup();
             reject(new Error('Error al cargar el script (CORS o error de red)'));
         };
         document.body.appendChild(script);

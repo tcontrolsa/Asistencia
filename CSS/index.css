@@ -1247,6 +1247,118 @@
             }
         }
 
+        .fab-emergencia {
+            position: fixed;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+            left: 20px;
+            z-index: 90;
+            display: flex;
+            align-items: center;
+            flex-direction: row-reverse;
+            gap: 8px;
+            pointer-events: none;
+            /* Floating movement animation */
+            animation: whatsapp-float 4s ease-in-out infinite;
+        }
+
+        @media (min-width: 768px) {
+            .fab-emergencia {
+                left: calc(50% - 300px + 20px);
+            }
+        }
+
+        .fab-emergencia-btn {
+            width: clamp(48px, 14vw, 56px);
+            height: clamp(48px, 14vw, 56px);
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+            cursor: pointer;
+            border: none;
+            pointer-events: auto;
+            position: relative;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
+        }
+
+        .fab-emergencia-btn i {
+            font-size: clamp(22px, 6.5vw, 25px);
+        }
+
+        .fab-emergencia-btn:hover {
+            transform: scale(1.15);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+        }
+
+        .fab-emergencia-btn:active {
+            transform: scale(0.95);
+        }
+
+        .emergencia-tooltip {
+            background-color: #ffffff;
+            color: #1e293b;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
+            white-space: nowrap;
+            pointer-events: auto;
+            position: relative;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(-10px);
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), visibility 0.3s;
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            animation: tooltip-auto-reveal 6s ease-in-out 2s 1;
+        }
+
+        /* Tooltip arrow pointing to the button on the left */
+        .emergencia-tooltip::after {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-width: 6px 6px 6px 0;
+            border-style: solid;
+            border-color: transparent #ffffff transparent transparent;
+        }
+
+        /* When hovering either the button or the tooltip, display the tooltip */
+        .fab-emergencia:hover .emergencia-tooltip {
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: translateX(0) !important;
+        }
+
+        .emergencia-pulse {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+            animation: emergencia-pulse-anim 2s infinite;
+            pointer-events: none;
+        }
+
+        @keyframes emergencia-pulse-anim {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+            }
+            70% {
+                box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+
         .photo-modal {
             position: fixed;
             top: 0;

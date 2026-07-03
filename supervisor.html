@@ -13,7 +13,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260629_3"></script>
+  <script src="./JS/firebase_backend.js?v=20260703_11"></script>
   <script>window.USE_FIREBASE = true;</script>
   <style>
     /* Estilos para el Creador Interactivo de Reportes */
@@ -137,6 +137,7 @@
         <div class="nav-item active" data-panel="asistencia"><i class="fas fa-calendar-day"></i><span>Asistencia</span></div>
         <div class="nav-item" data-panel="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></div>
         <div class="nav-item" data-panel="reportes"><i class="fas fa-file-invoice"></i><span>Reportes</span></div>
+        <div class="nav-item" data-panel="emergencias"><i class="fas fa-exclamation-triangle"></i><span>Emergencias</span></div>
         <div class="nav-item" data-panel="opciones" id="navItemOpciones" style="display:none"><i
             class="fas fa-sliders-h"></i><span>Opciones adicionales</span></div>
         <a class="nav-item" href="visor_empleado.html" target="_blank" style="text-decoration: none;"><i class="fas fa-mobile-alt"></i><span>Simulador de Vista</span></a>
@@ -456,6 +457,87 @@
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL EMERGENCIAS -->
+      <div id="panel-emergencias" class="panel">
+        <div style="background:#ffffff; border:1px solid var(--g200); border-radius:12px; padding:20px; margin-bottom:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+            <div>
+              <h2 style="font-size:20px; font-weight:800; color:#0f172a; margin:0; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i> Control de Simulacros y Emergencias
+              </h2>
+              <p style="font-size:13px; color:#64748b; margin:5px 0 0 0;">Monitoreo en tiempo real de reportes de estado del personal.</p>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn" id="btnRecargarEmergencia" onclick="cargarEmergenciasSupervisor()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:8px; padding:8px 16px; font-weight:600; font-size:13px; color:#334155; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                <i class="fas fa-sync-alt"></i> Actualizar
+              </button>
+            </div>
+          </div>
+
+          <!-- Panel de Activación/Desactivación de Alerta -->
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px; margin-bottom:20px;">
+            <h3 style="font-size:14px; font-weight:700; color:#1e293b; margin:0 0 10px 0;"><i class="fas fa-bullhorn me-2 text-primary"></i>Panel de Activación de Alerta</h3>
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+              <div style="flex:1; min-width:250px;">
+                <label style="display:block; font-size:11px; font-weight:600; color:#64748b; margin-bottom:6px;">Nombre del Evento (Ej. Simulacro de Sismo 2026)</label>
+                <input type="text" id="supEmEventName" placeholder="Ingrese nombre del evento..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
+              </div>
+              <div style="display:flex; gap:10px;">
+                <button id="btnSupEmStart" onclick="toggleEmergenciaSupervisor(true)" style="background:#dc2626; color:white; border:none; border-radius:8px; padding:9px 16px; font-weight:700; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  🚨 Iniciar Alerta
+                </button>
+                <button id="btnSupEmStop" onclick="toggleEmergenciaSupervisor(false)" style="background:#16a34a; color:white; border:none; border-radius:8px; padding:9px 16px; font-weight:700; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  🟢 Finalizar Alerta
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Event status summary -->
+          <div id="statusEmergenciaDetalle" style="margin-bottom:20px;"></div>
+
+          <!-- Split stats: A salvo vs Requiere Ayuda vs Sin Reportar -->
+          <div class="row" style="display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:12px; padding:15px; text-align:center;">
+              <div style="font-size:24px; margin-bottom:4px;">🟢</div>
+              <div style="font-size:12px; font-weight:700; color:#065f46;">A SALVO / SIN NOVEDADES</div>
+              <div style="font-size:28px; font-weight:800; color:#047857; margin-top:5px;" id="numASalvo">0</div>
+            </div>
+            <div style="flex:1; min-width:200px; background:#fef2f2; border:1px solid #fca5a5; border-radius:12px; padding:15px; text-align:center;">
+              <div style="font-size:24px; margin-bottom:4px;">🔴</div>
+              <div style="font-size:12px; font-weight:700; color:#991b1b;">REQUIEREN ASISTENCIA</div>
+              <div style="font-size:28px; font-weight:800; color:#b91c1c; margin-top:5px;" id="numRequiereAyuda">0</div>
+            </div>
+            <div style="flex:1; min-width:200px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px; text-align:center;">
+              <div style="font-size:24px; margin-bottom:4px;">⚪</div>
+              <div style="font-size:12px; font-weight:700; color:#475569;">PENDIENTES (SIN REPORTAR)</div>
+              <div style="font-size:28px; font-weight:800; color:#334155; margin-top:5px;" id="numPendientes">0</div>
+            </div>
+          </div>
+
+          <!-- Tables/Lists of users -->
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px;">
+            <h3 style="font-size:15px; font-weight:700; color:#1e293b; margin:0 0 12px 0;">Detalle de Reportes por Empleado</h3>
+            <div class="table-wrapper" style="overflow-x:auto;">
+              <table class="employee-table" style="width:100%; border-collapse:collapse;">
+                <thead>
+                  <tr style="background:#f1f5f9; border-bottom:2px solid #e2e8f0;">
+                    <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Empleado</th>
+                    <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Área</th>
+                    <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Estado</th>
+                    <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Detalle / Observación</th>
+                    <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Hora de Reporte</th>
+                  </tr>
+                </thead>
+                <tbody id="listaReportesEmergenciaBody">
+                  <!-- Row items rendered dynamically -->
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -863,8 +945,9 @@
     </div>
   </div>
 
-  <script src="./JS/tcontrol_core.js?v=20260629_3"></script>
-  <script src="./JS/supervisor_core.js?v=20260629_3"></script>
+  <script src="./JS/tcontrol_core.js?v=20260703_9"></script>
+  <script src="./JS/supervisor_core.js?v=20260703_9"></script>
+
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil
     document.addEventListener("DOMContentLoaded", () => {
