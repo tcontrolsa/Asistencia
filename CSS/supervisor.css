@@ -2628,4 +2628,8 @@
       color: var(--g700) !important;
       border-color: var(--g300) !important;
       transform: translateY(-1px);
-    }
+    }
+
+    /* PONYTAIL: Helper classes para consolidar estilos inline repetidos */
+    .sticky-header { position: sticky; top: 0; z-index: 100; background: #f8fafc; padding: 10px 0; border-bottom: 1px solid var(--g200); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .form-label-sm { font-size: 11px; font-weight: 700; color: var(--g600); }
