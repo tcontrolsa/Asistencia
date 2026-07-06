@@ -1689,9 +1689,10 @@
       if (!periodo || !empCache.length) return;
 
       const hoyRep = getLocalHoyStr();
-      const fechaFiltro = $('filtroFechaReportes')?.value;
-      const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
-      const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
+      const fechaInicio = $('filtroFechaReportesInicio')?.value;
+      const fechaFin = $('filtroFechaReportesFinalizacion')?.value;
+      const R_INI = fechaInicio ? fechaInicio : periodo.inicio;
+      const R_FIN = fechaFin ? fechaFin : periodo.fin;
 
       let stats = empCache.map(e => {
         let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
@@ -1994,17 +1995,36 @@
       }
     };
 
-    window.limpiarFiltroFechaReportes = function() {
-      const inputFecha = $('filtroFechaReportes');
+    window.limpiarFiltroRangoFechasReportes = function() {
+      const inputFechaInicio = $('filtroFechaReportesInicio');
+      const inputFechaFin = $('filtroFechaReportesFinalizacion');
       const inputFechaDash = $('filtroFechaDashboard');
       const btnLimpiar = $('btnLimpiarFechaRep');
       const btnLimpiarDash = $('btnLimpiarFechaDash');
-      
-      if (inputFecha) inputFecha.value = '';
+
+      if (inputFechaInicio) inputFechaInicio.value = '';
+      if (inputFechaFin) inputFechaFin.value = '';
       if (inputFechaDash) inputFechaDash.value = '';
       if (btnLimpiar) btnLimpiar.style.display = 'none';
       if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
-      
+
+      cargarReportes();
+      if (typeof actualizarReporteInteractivo === 'function') {
+        actualizarReporteInteractivo();
+      }
+    };
+
+    window.filtrarReportePorRangoFechas = function() {
+      const fechaInicio = $('filtroFechaReportesInicio')?.value;
+      const fechaFin = $('filtroFechaReportesFinalizacion')?.value;
+      const btnLimpiar = $('btnLimpiarFechaRep');
+
+      if (fechaInicio || fechaFin) {
+        if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+      } else {
+        if (btnLimpiar) btnLimpiar.style.display = 'none';
+      }
+
       cargarReportes();
       if (typeof actualizarReporteInteractivo === 'function') {
         actualizarReporteInteractivo();
