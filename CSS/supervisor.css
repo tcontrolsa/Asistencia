@@ -1027,7 +1027,7 @@
     /* Reportes */
     .reportes-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(100px, 150px));
+      grid-template-columns: repeat(auto-fill, minmax(100px, 150px));
       gap: 8px;
       margin-bottom: 8px;
       justify-content: start;
@@ -2632,4 +2632,9 @@
 
     /* PONYTAIL: Helper classes para consolidar estilos inline repetidos */
     .sticky-header { position: sticky; top: 0; z-index: 100; background: #f8fafc; padding: 10px 0; border-bottom: 1px solid var(--g200); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-    .form-label-sm { font-size: 11px; font-weight: 700; color: var(--g600); }
+    .form-label-sm { font-size: 11px; font-weight: 700; color: var(--g600); }
+
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }

@@ -317,6 +317,7 @@
 
     function esFeriadoODomingo(fechaStr) {
       if (!fechaStr) return false;
+      if (fechaStr === '2026-06-26') return true; // Feriado imprevisto 26/06/2026
       // Usar mediodía para evitar problemas de zona horaria
       let fecha = new Date(fechaStr + 'T12:00:00');
       let dia = fecha.getDay();
@@ -1705,26 +1706,15 @@
         // FALTAS: días hábiles transcurridos menos días asistidos
         let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
 
-        // ATRASOS + ALMUERZO + PUNTUALIDAD
+        // ATRASOS + ALMUERZO + PUNTUALIDAD (atrasos se calculan y descuentan dentro del loop diario abajo)
         let atrasos = 0;
         let minutosAtrasos = 0;
         let almPlanta = 0, almFuera = 0;
-        entradas.forEach(r => {
-          let m = obtenerMinutos(r.hora);
-          if (m !== null) {
-            const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-            const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
-            if (m > refEntradaR + 5) {
-              atrasos++;
-              minutosAtrasos += m - refEntradaR;
-            }
-          }
-        });
         
         const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
         almPlanta = resAlm.almPlanta;
         almFuera = resAlm.almFuera;
-        let puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
+        let puntualidad = 0;
 
         // HORAS EXTRAS Y CAMPO LOGIC
         let horasExtra50 = 0;
@@ -1759,6 +1749,16 @@
               totalTiempoPorJustificar += 480;
             }
             return;
+          }
+
+          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
+          let atrasoMinsHoy = 0;
+          if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
+            let mE = obtenerMinutos(primerReg.hora);
+            let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+            if (mE !== null && mE > refEntrada + 5) {
+              atrasoMinsHoy = mE - refEntrada;
+            }
           }
 
           let periodosDia = [];
@@ -1885,20 +1885,34 @@
           } else {
             horasExtra50 += extraMins50Acum;
           }
+          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
+          const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+          const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
 
           if (!isJustificado) {
             let missingMinutes = Math.max(0, 480 - netWorked);
-            // Sumar minutos de permiso asignados manualmente por supervisor
-            const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-            const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-            const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
             totalTiempoPersonal += persMins;
             totalTiempoMedico   += medMins;
             let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             totalTiempoPorJustificar += unaccountedMissing;
+          } else {
+            totalTiempoPersonal += persMins;
+            totalTiempoMedico   += medMins;
+          }
+
+          // Ajustar atrasos del día descontando permisos del día
+          if (atrasoMinsHoy > 0) {
+            const permisoTotalHoy = (dayPersonal + persMins) + (dayMedico + medMins);
+            const adjustedAtrasoHoy = Math.max(0, atrasoMinsHoy - permisoTotalHoy);
+            if (adjustedAtrasoHoy > 0) {
+              atrasos++;
+              minutosAtrasos += adjustedAtrasoHoy;
+            }
           }
         });
+
+        puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
 
         return {
           id: e.id,
@@ -1930,6 +1944,7 @@
       let totalPermisoMedico = stats.reduce((s, r) => s + r.permisoMedico, 0);
       let totalPermisoPersonal = stats.reduce((s, r) => s + r.permisoPersonal, 0);
       let totalAtrasos = stats.reduce((s, r) => s + r.atrasos, 0);
+      let totalTiempoPorJustificar = stats.reduce((s, r) => s + r.tiempoPorJustificar, 0);
       let totalHorasExtra50 = stats.reduce((s, r) => s + r.horasExtra50, 0);
       let totalHorasExtra100 = stats.reduce((s, r) => s + r.horasExtra100, 0);
       let totalHorasCampoNormales = stats.reduce((s, r) => s + r.horasCampoNormales, 0);
@@ -1943,6 +1958,9 @@
       $('repPermisoMedico').textContent = formatearMinutos(totalPermisoMedico);
       $('repPermisoPersonal').textContent = formatearMinutos(totalPermisoPersonal);
       $('repAtrasos').textContent = totalAtrasos;
+      if ($('repTiempoPorJustificar')) {
+        $('repTiempoPorJustificar').textContent = formatearMinutos(totalTiempoPorJustificar);
+      }
       $('repHorasExtra50').textContent = formatearHorasDecimal(totalHorasExtra50);
       $('repHorasExtra100').textContent = formatearHorasDecimal(totalHorasExtra100);
       $('repHorasCampoNormales').textContent = formatearHorasDecimal(totalHorasCampoNormales);
@@ -2332,6 +2350,9 @@
           ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
         );
 
+        const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
+        const esFalta = regsDia.some(r => esAusenciaTipo(r.tipo)) || !tieneAsistencia;
+
         let periodosDia = [];
         let entradaPendiente = null;
         let minutosPermisoHoy = 0;
@@ -2356,6 +2377,7 @@
           }
         });
         if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
+        if (periodosDia.length === 0) periodosDia.push({ entrada: null, salida: null });
 
         // Mostrar todos los tramos de horas con capacidad de edición y borrado para Admin
         let horaE = periodosDia.map(p => {
@@ -2387,7 +2409,7 @@
         }).join('<br>');
 
         let aBadge = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? '<span class="pill ok">🏢 Sí</span>' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? '<span class="pill" style="background:#dbeafe; color:#1e40af;">🏠 No</span>' : '<span class="pill dim">❓ —</span>';
-        if (esAdminMaster) {
+        if (esAdminMaster && !esFalta) {
           aBadge = `<span class="editable-pill" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}', '${(d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'NO' : 'SI'}', '${f}')">${aBadge}</span>`;
         }
 
@@ -2480,7 +2502,7 @@
         });
 
         let selectRazonHtml = `
-          <select onchange="window.guardarRazonAusenciaFecha('${e.id}', '${f}', this.value)" ${!esSuperPermiso ? 'disabled' : ''} style="font-size:10px; border:1px solid #d1d5db; border-radius:6px; padding:2px 4px; background:#f8fafc; cursor:pointer; width:110px;">
+          <select onchange="window.guardarRazonAusenciaFecha('${e.id}', '${f}', this.value)" ${(!esSuperPermiso || !esFalta) ? 'disabled' : ''} style="font-size:10px; border:1px solid #d1d5db; border-radius:6px; padding:2px 4px; background:#f8fafc; cursor:pointer; width:110px;">
             <option value="">-- Sin Razón --</option>
             <option value="Vacación" ${razonAusenciaVal === 'Vacación' || razonAusenciaVal === 'Vacacion' ? 'selected' : ''}>🏖️ Vacación</option>
             <option value="Permiso Médico" ${razonAusenciaVal === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
@@ -2592,7 +2614,7 @@
           extBadge = '<span class="pill ok" title="Auto-autorizado por Campo">CAMPO</span>';
         }
         let extBadgeHtml = extBadge;
-        if (esAdminMaster && regsDia.length > 0) {
+        if (esAdminMaster && regsDia.length > 0 && !esFalta) {
           extBadgeHtml = `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', '${extBadgeVal}', '${f}')">${extBadge}</span>`;
         }
 
@@ -2655,6 +2677,13 @@
           tiempoPorJustificar += unaccountedMissing;
         }
 
+        // Ajustar atrasos descontando los permisos del día (tiempo personal y médico)
+        const originalAtrasoMins = atrasoMins;
+        atrasoMins = Math.max(0, originalAtrasoMins - tiempoPersonal - tiempoMedico);
+
+        // Sumar tiempo personal y médico a TOTAL HRS (netWorked)
+        netWorked += (tiempoPersonal + tiempoMedico);
+
         // MODALIDAD — editable inline para supervisores autorizados
         const todosRegsConModo = regsDia.filter(r => r.modo);
         const tieneCampo   = todosRegsConModo.some(r => r.modo === 'CAMPO');
@@ -2662,7 +2691,7 @@
         const modActual = tieneCampo && tieneEmpresa ? 'MIXTO' : tieneCampo ? 'CAMPO' : 'EMPRESA';
 
         let modalidadCell;
-        if (esSuperPermiso) {
+        if (esSuperPermiso && !esFalta) {
           modalidadCell = `<select data-emp="${e.id}" data-fecha="${f}" onchange="guardarPermiso('${e.id}','${f}','modalidad',this.value)" style="font-size:10px;border:1px solid #d1d5db;border-radius:6px;padding:2px 4px;background:#f8fafc;cursor:pointer;">
             <option value="EMPRESA" ${modActual==='EMPRESA'?'selected':''}>🏢 Empresa</option>
             <option value="CAMPO"   ${modActual==='CAMPO'?'selected':''}>🏗️ Campo</option>
@@ -2678,7 +2707,7 @@
         function celdaTiempo(tipo, mins, empId, fecha) {
           const display = mins > 0 ? minutosAHHMMSS(mins) : '—';
           const color = tipo === 'personal' ? 'var(--indigo)' : 'var(--teal)';
-          if (!esSuperPermiso) return `<span style="color:${color};">${display}</span>`;
+          if (!esSuperPermiso || esFalta) return `<span style="color:${color};">${display}</span>`;
           const uid = `cel_${tipo}_${empId}_${fecha.replace(/-/g,'')}`;
           return `<span id="${uid}" style="color:${color};cursor:pointer;border-bottom:1px dashed ${color};" title="Clic para editar" onclick="editarCeldaTiempo('${uid}','${empId}','${fecha}','${tipo}',${mins})">${display}</span>`;
         }
@@ -3016,38 +3045,146 @@
       } catch(err) { alert('Error de comunicación: ' + err.message); }
     };
 
-    // editarCeldaTiempo: inline edit para T.PERSONAL y T.MEDICO
+    // editarCeldaTiempo: popup modal interactivo para ingresar T.PERSONAL y T.MEDICO con conversor de horas y minutos
     window.editarCeldaTiempo = function(uid, empId, fecha, tipo, minsActual) {
-      const span = document.getElementById(uid);
-      if (!span) return;
-      const display = span.textContent;
-      const color = tipo === 'personal' ? 'var(--indigo)' : 'var(--teal)';
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = minsActual > 0 ? String(minsActual) : '';
-      input.placeholder = 'ej: 60, 1h, 1:30';
-      input.style.cssText = `width:70px;font-size:11px;border:1px solid ${color};border-radius:4px;padding:1px 4px;color:${color};text-align:center;`;
+      // Eliminar modal anterior si existe
+      const prev = document.getElementById('modalConversorTiempo');
+      if (prev) prev.remove();
 
-      const commit = () => {
-        const val = input.value.trim();
-        if (val === '' || val === String(minsActual)) {
-          // sin cambio — restaurar
-          span.style.display = '';
-          input.remove();
-          return;
-        }
-        guardarPermiso(empId, fecha, tipo, val);
+      const labelTipo = tipo === 'personal' ? 'Tiempo Personal' : 'Tiempo Médico';
+      const colorTheme = tipo === 'personal' ? '#6366f1' : '#0d9488';
+      const iconTheme = tipo === 'personal' ? 'fa-user' : 'fa-stethoscope';
+
+      const initialHrs = Math.floor(minsActual / 60);
+      const initialMins = minsActual % 60;
+
+      const modal = document.createElement('div');
+      modal.id = 'modalConversorTiempo';
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px);
+        z-index: 10000; display: flex; align-items: center; justify-content: center;
+        font-family: system-ui, -apple-system, sans-serif;
+      `;
+
+      modal.innerHTML = `
+        <div style="background: #ffffff; border-radius: 16px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; animation: modalFadeIn 0.2s ease-out;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="background: ${colorTheme}15; color: ${colorTheme}; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                <i class="fas ${iconTheme}"></i>
+              </div>
+              <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #0f172a;">${labelTipo}</h3>
+                <span style="font-size: 11px; color: #64748b;">${fecha}</span>
+              </div>
+            </div>
+            <button onclick="document.getElementById('modalConversorTiempo').remove()" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 18px; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s;" onmouseover="this.style.background='#f1f5f9'; this.style.color='#475569'" onmouseout="this.style.background='none'; this.style.color='#94a3b8'">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+
+          <div style="margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+              <div>
+                <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Horas</label>
+                <input id="convHrs" type="number" min="0" step="any" value="${initialHrs}" placeholder="0" 
+                  style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #0f172a; outline: none; box-sizing: border-box;" 
+                  onfocus="this.style.borderColor='${colorTheme}'; this.style.boxShadow='0 0 0 3px ${colorTheme}15'" 
+                  onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">
+              </div>
+              <div>
+                <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Minutos</label>
+                <input id="convMins" type="number" min="0" value="${initialMins}" placeholder="0" 
+                  style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #0f172a; outline: none; box-sizing: border-box;" 
+                  onfocus="this.style.borderColor='${colorTheme}'; this.style.boxShadow='0 0 0 3px ${colorTheme}15'" 
+                  onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">
+              </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <span style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 8px;">Accesos Rápidos</span>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <button onclick="setConvVals(0, 15)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">15m</button>
+                <button onclick="setConvVals(0, 30)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">30m</button>
+                <button onclick="setConvVals(1, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">1h</button>
+                <button onclick="setConvVals(2, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">2h</button>
+                <button onclick="setConvVals(4, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">4h</button>
+                <button onclick="setConvVals(8, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">8h</button>
+                <button onclick="setConvVals(0, 0)" style="background: #fef2f2; border: 1px solid #fee2e2; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #ef4444; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ef4444'; this.style.color='#fff'; this.style.borderColor='#ef4444'" onmouseout="this.style.background='#fef2f2'; this.style.color='#ef4444'; this.style.borderColor='#fee2e2'">Limpiar</button>
+              </div>
+            </div>
+
+            <div style="background: #f8fafc; border: 1px dashed #e2e8f0; border-radius: 12px; padding: 12px 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 12px; font-weight: 500; color: #64748b;">Total en minutos:</span>
+                <span id="previewTotalMins" style="font-size: 15px; font-weight: 700; color: ${colorTheme};">0 min</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #94a3b8;">Formato a registrar:</span>
+                <span id="previewFormatted" style="font-size: 12px; font-weight: 600; color: #475569; font-family: monospace;">00:00:00</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button onclick="document.getElementById('modalConversorTiempo').remove()" 
+              style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#ffffff'">
+              Cancelar
+            </button>
+            <button id="btnSaveConv"
+              style="padding: 8px 20px; border-radius: 8px; border: none; background: ${colorTheme}; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+              <i class="fas fa-save"></i> Guardar
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      // Global helper for settings values
+      window.setConvVals = function(h, m) {
+        document.getElementById('convHrs').value = h;
+        document.getElementById('convMins').value = m;
+        updatePreview();
       };
-      input.addEventListener('blur', commit);
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-        if (e.key === 'Escape') { span.style.display = ''; input.remove(); }
+
+      const updatePreview = () => {
+        let hrs = parseFloat(document.getElementById('convHrs').value) || 0;
+        let mins = parseInt(document.getElementById('convMins').value) || 0;
+        
+        if (hrs < 0) hrs = 0;
+        if (mins < 0) mins = 0;
+        
+        const total = Math.round(hrs * 60) + mins;
+        
+        const computedHrs = Math.floor(total / 60);
+        const computedMins = total % 60;
+        const formatted = `${String(computedHrs).padStart(2, '0')}:${String(computedMins).padStart(2, '0')}:00`;
+
+        document.getElementById('previewTotalMins').textContent = `${total} min`;
+        document.getElementById('previewFormatted').textContent = formatted;
+      };
+
+      document.getElementById('convHrs').addEventListener('input', updatePreview);
+      document.getElementById('convMins').addEventListener('input', updatePreview);
+
+      updatePreview();
+
+      modal.addEventListener('click', e => {
+        if (e.target === modal) modal.remove();
       });
 
-      span.style.display = 'none';
-      span.parentNode.insertBefore(input, span.nextSibling);
-      input.focus();
-      input.select();
+      document.getElementById('btnSaveConv').onclick = () => {
+        let hrs = parseFloat(document.getElementById('convHrs').value) || 0;
+        let mins = parseInt(document.getElementById('convMins').value) || 0;
+        if (hrs < 0) hrs = 0;
+        if (mins < 0) mins = 0;
+        const total = Math.round(hrs * 60) + mins;
+
+        guardarPermiso(empId, fecha, tipo, total);
+        modal.remove();
+      };
     };
 
 
@@ -3317,38 +3454,54 @@
         snap.forEach(doc => {
           let data = doc.data();
           let docFecha = data.fecha;
+          let parsedDate = null;
+
+          if (!docFecha && data.timestamp) {
+            let ts = data.timestamp;
+            if (ts && typeof ts.toDate === 'function') parsedDate = ts.toDate();
+            else if (ts && ts.seconds) parsedDate = new Date(ts.seconds * 1000);
+            else parsedDate = new Date(ts);
+
+            if (parsedDate && !isNaN(parsedDate.getTime())) {
+              const y = parsedDate.getFullYear();
+              const m = String(parsedDate.getMonth() + 1).padStart(2, '0');
+              const d = String(parsedDate.getDate()).padStart(2, '0');
+              docFecha = `${y}-${m}-${d}`;
+            }
+          }
+
           if (!docFecha) {
             countSinFecha++;
             return;
           }
 
           // Parsear y normalizar la fecha de forma robusta
-          let parsedDate = null;
-
-          if (typeof docFecha.toDate === 'function') {
-            // Es un Timestamp de Firebase
-            parsedDate = docFecha.toDate();
-          } else if (docFecha instanceof Date) {
-            // Es un objeto Date
-            parsedDate = docFecha;
-          } else {
-            // Es un string
-            let docFechaStr = String(docFecha).trim();
-            const matchDMY = docFechaStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-            if (matchDMY) {
-              const d = parseInt(matchDMY[1], 10);
-              const m = parseInt(matchDMY[2], 10);
-              const y = parseInt(matchDMY[3], 10);
-              parsedDate = new Date(y, m - 1, d);
+          if (!parsedDate) {
+            if (typeof docFecha.toDate === 'function') {
+              // Es un Timestamp de Firebase
+              parsedDate = docFecha.toDate();
+            } else if (docFecha instanceof Date) {
+              // Es un objeto Date
+              parsedDate = docFecha;
             } else {
-              const matchYMD = docFechaStr.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
-              if (matchYMD) {
-                const y = parseInt(matchYMD[1], 10);
-                const m = parseInt(matchYMD[2], 10);
-                const d = parseInt(matchYMD[3], 10);
+              // Es un string
+              let docFechaStr = String(docFecha).trim();
+              const matchDMY = docFechaStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+              if (matchDMY) {
+                const d = parseInt(matchDMY[1], 10);
+                const m = parseInt(matchDMY[2], 10);
+                const y = parseInt(matchDMY[3], 10);
                 parsedDate = new Date(y, m - 1, d);
               } else {
-                parsedDate = new Date(docFechaStr);
+                const matchYMD = docFechaStr.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+                if (matchYMD) {
+                  const y = parseInt(matchYMD[1], 10);
+                  const m = parseInt(matchYMD[2], 10);
+                  const d = parseInt(matchYMD[3], 10);
+                  parsedDate = new Date(y, m - 1, d);
+                } else {
+                  parsedDate = new Date(docFechaStr);
+                }
               }
             }
           }
@@ -4479,25 +4632,15 @@
 
         let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
 
+        // ATRASOS + ALMUERZO + PUNTUALIDAD (atrasos se calculan y descuentan dentro del loop diario abajo)
         let atrasos = 0;
         let minutosAtrasos = 0;
         let almPlanta = 0, almFuera = 0;
-        entradas.forEach(r => {
-          let m = obtenerMinutos(r.hora);
-          if (m !== null) {
-            const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-            const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
-            if (m > refEntradaR + 5) {
-              atrasos++;
-              minutosAtrasos += m - refEntradaR;
-            }
-          }
-        });
-
+        
         const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
         almPlanta = resAlm.almPlanta;
         almFuera = resAlm.almFuera;
-        let puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
+        let puntualidad = 0;
 
         let horasExtra50 = 0;
         let horasExtra100 = 0;
@@ -4531,6 +4674,16 @@
               totalTiempoPorJustificar += 480;
             }
             return;
+          }
+
+          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
+          let atrasoMinsHoy = 0;
+          if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
+            let mE = obtenerMinutos(primerReg.hora);
+            let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+            if (mE !== null && mE > refEntrada + 5) {
+              atrasoMinsHoy = mE - refEntrada;
+            }
           }
 
           let periodosDia = [];
@@ -4658,18 +4811,34 @@
             horasExtra50 += extraMins50Acum;
           }
 
+          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
+          const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+          const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+
           if (!isJustificado) {
             let missingMinutes = Math.max(0, 480 - netWorked);
-            const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-            const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-            const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
             totalTiempoPersonal += persMins;
             totalTiempoMedico   += medMins;
             let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             totalTiempoPorJustificar += unaccountedMissing;
+          } else {
+            totalTiempoPersonal += persMins;
+            totalTiempoMedico   += medMins;
+          }
+
+          // Ajustar atrasos del día descontando permisos del día
+          if (atrasoMinsHoy > 0) {
+            const permisoTotalHoy = (dayPersonal + persMins) + (dayMedico + medMins);
+            const adjustedAtrasoHoy = Math.max(0, atrasoMinsHoy - permisoTotalHoy);
+            if (adjustedAtrasoHoy > 0) {
+              atrasos++;
+              minutosAtrasos += adjustedAtrasoHoy;
+            }
           }
         });
+
+        puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
 
         return {
           id: e.id,

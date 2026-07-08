@@ -1403,6 +1403,8 @@ window.FirebaseBackend = {
             } else {
                 console.log("📥 Obteniendo registros desde Firestore (últimos 60 días):", limiteStr);
                 query = query.where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(limiteStr + 'T00:00:00')));
+                // Limpiar registros antiguos del caché para no mantener registros eliminados/archivados
+                cacheData.registros = {};
             }
 
             const regSnap = await query.get();

@@ -240,15 +240,7 @@
               <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
             </div>
           </div>
-          <div class="metric-card">
-            <div class="metric-title" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-              <span><i class="fas fa-gavel text-amber"></i> Justificaciones Pendientes</span>
-              <span class="pill" id="justificacionesTotalTime" style="font-size:10px; background:#fef3c7; color:#d97706; font-weight:700;">00:00</span>
-            </div>
-            <div id="justificacionesRanking" class="ranking-list" style="max-height: 250px; overflow-y: auto;">
-              <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
-            </div>
-          </div>
+          <!-- Removido: Justificaciones Pendientes (trasladado a Resumen como estadística) -->
         </div>
 
         <div class="metric-card" style="margin-bottom:var(--gap)">
@@ -279,6 +271,12 @@
               <div class="reporte-value" id="repAtrasos">--</div>
               <div class="reporte-label">Atrasos</div>
               <div class="reporte-period">número de atrasos</div>
+            </div>
+            <div class="reporte-card">
+              <div class="reporte-icon red"><i class="fas fa-exclamation-circle"></i></div>
+              <div class="reporte-value" id="repTiempoPorJustificar">--</div>
+              <div class="reporte-label">Por Justificar</div>
+              <div class="reporte-period">tiempo por justificar</div>
             </div>
           </div>
 

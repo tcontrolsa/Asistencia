@@ -110,7 +110,7 @@ function esFeriadoEcuador(fecha) {
   }
   // Feriados mÃ³viles 2026
   if (y === 2026) {
-    const moviles2026 = ['16/02', '17/02', '03/04'];
+    const moviles2026 = ['16/02', '17/02', '03/04', '26/06'];
     if (moviles2026.includes(fechaStr)) return true;
   }
   
