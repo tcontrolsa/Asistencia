@@ -2234,7 +2234,7 @@
     // ============================================================
     // DETALLE
     // ============================================================
-    function mostrarDetalle(id, indexPeriodo = 0) {
+    function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customFin = null) {
       const ADMIN_ID = "1058";
       let sessionData = {};
       try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
@@ -2250,14 +2250,17 @@
       // Obtener el período seleccionado o el actual por defecto
       let periodoSeleccionado = periodos[indexPeriodo] || periodos[0];
       
-      // Filtrar registros al período seleccionado
+      let R_INI = customInicio || (periodoSeleccionado ? periodoSeleccionado.inicio : '');
+      let R_FIN = customFin || (periodoSeleccionado ? periodoSeleccionado.fin : '');
+
+      // Filtrar registros al rango seleccionado
       let todosRegs = e.registros || [];
-      let regs = todosRegs.filter(r => r.fecha >= periodoSeleccionado.inicio && r.fecha <= periodoSeleccionado.fin)
+      let regs = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN)
                           .sort((a, b) => b.fecha.localeCompare(a.fecha));
 
       let entT = regs.filter(r => r.tipo === 'ENTRADA').length;
       let salT = regs.filter(r => r.tipo === 'SALIDA').length;
-      const resAlm = calcularAlmuerzosPeriodo(e, periodoSeleccionado.inicio, periodoSeleccionado.fin);
+      const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
       let almP = resAlm.almPlanta;
       let dias = new Set(regs.filter(r => r.tipo === 'ENTRADA').map(r => r.fecha)).size;
 
@@ -2807,11 +2810,19 @@
             </div>
           </div>
         </div>
-        <div class="periodo-selector" style="background:var(--white); padding:8px 16px; border-radius:8px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-          <label style="font-size:12px; font-weight:600; color:var(--g600); margin-right:8px;"><i class="fas fa-calendar-alt"></i> Período:</label>
-          <select id="filtroPeriodoDetalle" class="filter-select" onchange="mostrarDetalle('${e.id}', parseInt(this.value))" style="font-size:13px; font-weight:500;">
-            ${optionsPeriodos}
-          </select>
+        <div class="periodo-selector" style="background:var(--white); padding:8px 16px; border-radius:8px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center;">
+            <label style="font-size:12px; font-weight:600; color:var(--g600); margin-right:8px;"><i class="fas fa-calendar-alt"></i> Período:</label>
+            <select id="filtroPeriodoDetalle" class="filter-select" onchange="mostrarDetalle('${e.id}', parseInt(this.value))" style="font-size:13px; font-weight:500;">
+              ${optionsPeriodos}
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <label style="font-size:12px; font-weight:600; color:var(--g600);">Desde:</label>
+            <input type="date" id="detFechaInicio" value="${R_INI}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), this.value, $('detFechaFin').value)" style="border:1px solid var(--g200); border-radius:6px; padding:2px 6px; font-size:12px; font-family:inherit;">
+            <label style="font-size:12px; font-weight:600; color:var(--g600);">Hasta:</label>
+            <input type="date" id="detFechaFin" value="${R_FIN}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), $('detFechaInicio').value, this.value)" style="border:1px solid var(--g200); border-radius:6px; padding:2px 6px; font-size:12px; font-family:inherit;">
+          </div>
         </div>
       </div>
       
@@ -2853,7 +2864,12 @@
       </div>
       <div style="padding:var(--pad)">
         <div class="metric-title" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-          <span><i class="fas fa-history"></i> Historial del período</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span><i class="fas fa-history"></i> Historial del período</span>
+            <button class="btn btn-success" onclick="exportarExcelDetalleEmpleado('${e.id}', ${indexPeriodo}, '${R_INI}', '${R_FIN}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px;">
+              <i class="fas fa-file-excel"></i> Exportar Excel
+            </button>
+          </div>
           <span style="color:var(--indigo);font-weight:600;font-size:13px;background:#e0e7ff;padding:4px 10px;border-radius:12px;">${periodoSeleccionado ? periodoSeleccionado.label : ''}</span>
         </div>
         <div class="table-wrapper">
@@ -5250,6 +5266,360 @@
       guardarColumnasCustomActivas(columnasCustomActivas);
       renderizarColumnasInteractivas();
       filtrarReporteInteractivo();
+    };
+
+    window.exportarExcelDetalleEmpleado = function(empleadoId, indexPeriodo, customInicio = null, customFin = null) {
+      let e = empCache.find(x => x.id === empleadoId);
+      if (!e) {
+        mostrarToast('Empleado no encontrado', 'error');
+        return;
+      }
+      let periodo = periodos[indexPeriodo] || periodos[0];
+      if (!periodo) {
+        mostrarToast('Periodo no encontrado', 'error');
+        return;
+      }
+
+      const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
+      const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
+
+      let R_INI = customInicio || (periodo ? periodo.inicio : '');
+      let R_FIN = customFin || (periodo ? periodo.fin : '');
+
+      let todosRegs = e.registros || [];
+      let regs = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN);
+
+      let porDia = {};
+      [...regs].sort((a, b) => {
+        const timeA = a.hora;
+        const timeB = b.hora;
+        return String(timeA).localeCompare(String(timeB));
+      }).forEach(r => {
+        const fechaNorm = normalizarFechaStr(r.fecha);
+        if (!fechaNorm) return;
+        if (!porDia[fechaNorm]) porDia[fechaNorm] = { registros: [], almuerzo: null };
+        porDia[fechaNorm].registros.push(r);
+        if (r.tipo === 'ENTRADA' && r.almuerzo) porDia[fechaNorm].almuerzo = r.almuerzo;
+      });
+
+      // Ordenar cronológicamente (de más antiguo a más reciente) para la exportación a Excel
+      let fechasOrdenadas = Object.keys(porDia).filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f)).sort((a, b) => a.localeCompare(b));
+
+      if (fechasOrdenadas.length === 0) {
+        mostrarToast('No hay registros en este período', 'warning');
+        return;
+      }
+
+      let bodyHtml = '';
+      
+      // Inicializar acumuladores totales
+      let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0, totSalidaTemprana = 0;
+      let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
+      let totExtra50 = 0, totExtra100 = 0;
+
+      fechasOrdenadas.forEach(f => {
+        const regsDia = porDia[f].registros;
+        const d = porDia[f];
+        const dayOfWeek = new Date(f + 'T12:00:00').getDay();
+        const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
+        const isJustificado = regsDia.some(r =>
+          r.justificado === 'SI' ||
+          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+        );
+
+        let periodosDia = [];
+        let entradaPendiente = null;
+        let ultimoSalidaMins = null;
+        let ultimoSalidaReg = null;
+
+        let sortedRegs = [...regsDia].sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+
+        sortedRegs.forEach(r => {
+          const tipo = String(r.tipo || '').toUpperCase();
+          if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+            entradaPendiente = r;
+          } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+            if (entradaPendiente) {
+              periodosDia.push({ entrada: entradaPendiente, salida: r });
+              entradaPendiente = null;
+            } else {
+              periodosDia.push({ entrada: null, salida: r });
+            }
+          }
+        });
+        if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
+        if (periodosDia.length === 0) periodosDia.push({ entrada: null, salida: null });
+
+        let horaE = periodosDia.map(p => p.entrada ? p.entrada.hora.substring(0, 5) : '--:--').join(', ');
+        let horaS = periodosDia.map(p => p.salida ? p.salida.hora.substring(0, 5) : '--:--').join(', ');
+
+        let aBadgeVal = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'SI' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? 'NO' : '—';
+
+        let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
+        let atrasoMins = 0;
+        if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
+          let mE = obtenerMinutos(primerReg.hora);
+          let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+          if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
+        }
+
+        let razonAusenciaVal = '';
+        let razonJustificadaVal = '';
+        regsDia.forEach(r => {
+          if (r.razon_ausencia) {
+            razonAusenciaVal = r.razon_ausencia;
+          } else if (r.tipo && esAusenciaTipo(r.tipo)) {
+            const t = r.tipo.toUpperCase();
+            if (t === 'VACACIONES' || t === 'VACACION') razonAusenciaVal = 'Vacación';
+            else if (t === 'PERMISO_MEDICO') razonAusenciaVal = 'Permiso Médico';
+            else if (t === 'PERMISO_PERSONAL') razonAusenciaVal = 'Permiso Personal';
+            else if (t === 'CALAMIDAD_DOMESTICA') razonAusenciaVal = 'Calamidad Doméstica';
+          }
+          if (r.razon_justificac) razonJustificadaVal = r.razon_justificac;
+        });
+
+        let razonText = razonAusenciaVal || razonJustificadaVal || '—';
+
+        let h50 = 0, h100 = 0, hCN = 0, hC50 = 0, hC100 = 0;
+        let minutosTrabajadosHoy = 0;
+        let tiempoPersonal = 0;
+        let tiempoMedico = 0;
+        let tiempoPorJustificar = 0;
+
+        ultimoSalidaMins = null;
+        ultimoSalidaReg = null;
+
+        periodosDia.forEach(p => {
+          if (!p.entrada || !p.salida) return;
+          let mE = obtenerMinutos(p.entrada.hora);
+          let mS = obtenerMinutos(p.salida.hora);
+          if (mE === null || mS === null || mS <= mE) return;
+
+          let duracion = mS - mE;
+          minutosTrabajadosHoy += duracion;
+
+          if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+            let gap = mE - ultimoSalidaMins;
+            let clasif = clasificarGap(ultimoSalidaReg, gap);
+            if (clasif.tipo === 'medico') {
+              tiempoMedico += gap;
+            } else if (clasif.tipo === 'personal') {
+              tiempoPersonal += gap;
+            } else {
+              tiempoPorJustificar += gap;
+            }
+          }
+          ultimoSalidaMins = mS;
+          ultimoSalidaReg = p.salida;
+        });
+
+        // Descontar almuerzo
+        let netWorked = minutosTrabajadosHoy;
+        if (!esFestivo && netWorked > 240) {
+          netWorked -= 45;
+        }
+
+        let minsSalidaTemprana = 0;
+        if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < 975) {
+          minsSalidaTemprana = 975 - ultimoSalidaMins;
+        }
+
+        let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
+        if (esFestivo) {
+          if (netWorked > 60) autorizadoGlobal = true;
+        } else {
+          if (netWorked >= 600) autorizadoGlobal = true;
+          if (netWorked - 480 <= 60) autorizadoGlobal = false;
+        }
+
+        periodosDia.forEach(p => {
+          if (!p.entrada || !p.salida) return;
+          let mE = obtenerMinutos(p.entrada.hora);
+          let mS = obtenerMinutos(p.salida.hora);
+          if (mE === null || mS === null || mS <= mE) return;
+          let duracion = mS - mE;
+          let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
+
+          if (esFestivo) {
+            if (enCampo) {
+              if (autorizadoGlobal) hC100 += duracion;
+            } else {
+              if (autorizadoGlobal) h100 += duracion;
+            }
+          } else {
+            let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+            if (enCampo) {
+              if (mS <= H_INI || mE >= H_FIN) {
+                hC50 += duracion;
+              } else {
+                let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
+                let mExtra = duracion - mNormal;
+                hCN += mNormal;
+                hC50 += mExtra;
+              }
+            } else {
+              if (autorizadoGlobal && mS > H_FIN) {
+                h50 += (mS - Math.max(mE, H_FIN));
+              }
+            }
+          }
+        });
+
+        if (isJustificado) {
+          tiempoPorJustificar = 0;
+        } else {
+          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
+          const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+          const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+          tiempoPersonal += persMins;
+          tiempoMedico   += medMins;
+          let missingMinutes = Math.max(0, 480 - netWorked);
+          let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
+          let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+          tiempoPorJustificar += unaccountedMissing;
+        }
+
+        // Ajustar atrasos descontando permisos
+        atrasoMins = Math.max(0, atrasoMins - tiempoPersonal - tiempoMedico);
+        // Sumar permisos a TOTAL HRS
+        netWorked += (tiempoPersonal + tiempoMedico);
+
+        // Acumuladores
+        totTP += tiempoPersonal;
+        totTM += tiempoMedico;
+        totTJ += tiempoPorJustificar;
+        totHoras += netWorked;
+        totAtrasos += atrasoMins;
+        totSalidaTemprana += minsSalidaTemprana;
+        totH50 += h50;
+        totH100 += h100;
+        totHCN += hCN;
+        totHC50 += hC50;
+        totHC100 += hC100;
+        totExtra50 += (h50 + hC50);
+        totExtra100 += (h100 + hC100);
+
+        // Formatear fecha para mostrar
+        let dObj = new Date(f + 'T12:00:00');
+        const diasSemana = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+        let fechaEx = `${diasSemana[dObj.getDay()]} ${f.slice(8, 10)}/${f.slice(5, 7)}`;
+
+        bodyHtml += `<tr>
+          <td>${fechaEx}</td>
+          <td>${horaE}</td>
+          <td>${horaS}</td>
+          <td style="text-align:center;">${tiempoPersonal > 0 ? minutosAHHMMSS(tiempoPersonal) : '—'}</td>
+          <td style="text-align:center;">${tiempoMedico > 0 ? minutosAHHMMSS(tiempoMedico) : '—'}</td>
+          <td style="text-align:center;">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
+          <td style="text-align:center;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
+          <td style="text-align:center;">${aBadgeVal}</td>
+          <td style="text-align:center;">${autorizadoGlobal ? 'SI' : 'NO'}</td>
+          <td>${escapeHtml(razonText)}</td>
+          <td style="text-align:center;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
+          <td style="text-align:center;">${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
+          <td style="text-align:center;">${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
+          <td style="text-align:center;">${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
+          <td style="text-align:center;">${hC50 > 0 ? minutosAHHMMSS(hC50) : '—'}</td>
+          <td style="text-align:center;">${hC100 > 0 ? minutosAHHMMSS(hC100) : '—'}</td>
+          <td style="text-align:center; font-weight:bold;">${(h50 + hC50) > 0 ? minutosAHHMMSS(h50 + hC50) : '—'}</td>
+          <td style="text-align:center; font-weight:bold;">${(h100 + hC100) > 0 ? minutosAHHMMSS(h100 + hC100) : '—'}</td>
+        </tr>`;
+      });
+
+      // Fila de totales
+      let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold;">
+        <td>TOTALES</td>
+        <td>—</td>
+        <td>—</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totTP)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totTM)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totTJ)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totHoras)}</td>
+        <td style="text-align:center;">—</td>
+        <td style="text-align:center;">—</td>
+        <td>—</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totAtrasos)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totH50)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totH100)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totHCN)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totHC50)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totHC100)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totExtra50)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totExtra100)}</td>
+      </tr>`;
+
+      let excelHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <!--[if gte mso 9]>
+          <xml>
+            <x:ExcelWorkbook>
+              <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                  <x:Name>Reporte Individual</x:Name>
+                  <x:WorksheetOptions>
+                    <x:DisplayGridlines/>
+                  </x:WorksheetOptions>
+                </x:ExcelWorksheet>
+              </x:ExcelWorksheets>
+            </x:ExcelWorkbook>
+          </xml>
+          <![endif]-->
+          <style>
+            table { border-collapse:collapse; font-family:Arial, sans-serif; }
+            th { background-color:#1e40af; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #cbd5e1; font-size:11px; text-transform:uppercase; }
+            td { border:0.5pt solid #cbd5e1; height:26px; font-size:11px; }
+            .title-cell { font-size:16px; font-weight:bold; color:#1e40af; height:45px; text-align:left; }
+            .meta-cell { font-size:10px; color:#64748b; height:20px; text-align:left; }
+          </style>
+        </head>
+        <body>
+          <table>
+            <tr><td colspan="18" class="title-cell">TCONTROL S.A. - REPORTE INDIVIDUAL DE ASISTENCIA</td></tr>
+            <tr><td colspan="18" class="meta-cell">Empleado: ${escapeHtml(e.nombre)} (ID: ${escapeHtml(e.id)}) | Periodo: ${periodo.label} (Rango: ${R_INI} a ${R_FIN}) | Generado: ${formatearTimestampCompleto(new Date())}</td></tr>
+            <tr><td colspan="18" style="height:15px;"></td></tr>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>TIEMPO PERSONAL</th>
+                <th>TIEMPO MEDICO</th>
+                <th>TIEMPO POR JUSTIFICAR</th>
+                <th>TOTAL HORAS</th>
+                <th>Almuerzo</th>
+                <th>Autoriz. H.E.</th>
+                <th>Razón</th>
+                <th>ATRASOS</th>
+                <th>HORAS EXTRA (A)</th>
+                <th>HORAS EXTRA 100% (B)</th>
+                <th>HORAS CAMPO NORMALES</th>
+                <th>HORAS CAMPO 50% (C)</th>
+                <th>HORAS CAMPO 100% (D)</th>
+                <th>TOTAL EXTRAS 50% (A+C)</th>
+                <th>TOTAL EXTRAS 100% (B+D)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bodyHtml}
+              ${footerHtml}
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Reporte_Individual_${e.nombre.replace(/ /g, '_')}_${R_INI}_a_${R_FIN}.xls`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      mostrarToast('Reporte individual exportado con éxito', 'success');
     };
 
     window.exportarExcelReporteCustom = function() {
