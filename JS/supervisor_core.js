@@ -879,16 +879,24 @@
               let dayPersonal = 0;
               let dayJustificar = 0;
 
+              let processedLunchGap = false;
               sortedRegs.forEach(r => {
                 const tipo = String(r.tipo || '').toUpperCase();
                 if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
                   let mE = obtenerMinutos(r.hora);
                   if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
                     let gap = mE - ultimoSalidaMins;
-                    let clasif = clasificarGap(ultimoSalidaReg, gap);
-                    if (clasif.tipo === 'medico') dayMedico += gap;
-                    else if (clasif.tipo === 'personal') dayPersonal += gap;
-                    else dayJustificar += gap;
+                    if (!processedLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+                      let lunchMins = Math.min(45, gap);
+                      gap -= lunchMins;
+                      processedLunchGap = true;
+                    }
+                    if (gap > 0) {
+                      let clasif = clasificarGap(ultimoSalidaReg, gap);
+                      if (clasif.tipo === 'medico') dayMedico += gap;
+                      else if (clasif.tipo === 'personal') dayPersonal += gap;
+                      else dayJustificar += gap;
+                    }
                   }
                   entradaPendiente = r;
                 } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
@@ -910,8 +918,8 @@
 
               periodosDia.forEach(p => {
                 if (!p.entrada || !p.salida) return;
-                let mE = obtenerMinutos(p.entrada.hora);
-                let mS = obtenerMinutos(p.salida.hora);
+                let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+                let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
                 if (mE === null || mS === null || mS <= mE) return;
                 minutosTrabajadosHoy += (mS - mE);
               });
@@ -919,7 +927,7 @@
               let netWorked = minutosTrabajadosHoy;
               if (!esFestivo && netWorked > 240) netWorked -= 45;
 
-              let expectedNet = 480;
+              let expectedNet = esFestivo ? 0 : 480;
               let missingMinutes = Math.max(0, expectedNet - netWorked);
               let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
               let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
@@ -1210,11 +1218,13 @@
                             <option value="Permiso Personal" ${razonAusenciaHoy === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
                             <option value="Calamidad Doméstica" ${razonAusenciaHoy === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
                             <option value="Salida a Campo" ${razonAusenciaHoy === 'Salida a Campo' || razonAusenciaHoy === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Salida a Campo</option>
-                            <option value="Otro" ${razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
+                            <option value="Cumpleaños" ${razonAusenciaHoy === 'Cumpleaños' ? 'selected' : ''}>🎂 Cumpleaños</option>
+                            <option value="Salida Justificada" ${razonAusenciaHoy === 'Salida Justificada' ? 'selected' : ''}>✅ Salida Justificada</option>
+                            <option value="Otro" ${razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo','Cumpleaños','Salida Justificada'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
                         </select>
                     </div>
                   `;
-                  if (razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaHoy)) {
+                  if (razonAusenciaHoy && !['Vacación','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo','Cumpleaños','Salida Justificada'].includes(razonAusenciaHoy)) {
                        selectHtml += `<div style="font-size:10px; color:var(--indigo); margin-top:4px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
                   }
                   ausenciaHtml = selectHtml;
@@ -1741,7 +1751,7 @@
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
           const isJustificado = regsDia.some(r =>
             r.justificado === 'SI' ||
-            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
           );
 
           if (regsDia.length === 0) {
@@ -1772,20 +1782,28 @@
             return String(timeA).localeCompare(String(timeB));
           });
 
+          let processedLunchGap1 = false;
           sortedRegs.forEach(r => {
             const tipo = String(r.tipo || '').toUpperCase();
             if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
               let mE = obtenerMinutos(r.hora);
               if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
                 let gap = mE - ultimoSalidaMins;
-                let clasif = clasificarGap(ultimoSalidaReg, gap);
-                if (clasif.tipo === 'medico') {
-                  totalTiempoMedico += gap;
-                } else if (clasif.tipo === 'personal') {
-                  totalTiempoPersonal += gap;
-                } else {
-                  if (!isJustificado) {
-                    totalTiempoPorJustificar += gap;
+                if (!processedLunchGap1 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+                  let lunchMins = Math.min(45, gap);
+                  gap -= lunchMins;
+                  processedLunchGap1 = true;
+                }
+                if (gap > 0) {
+                  let clasif = clasificarGap(ultimoSalidaReg, gap);
+                  if (clasif.tipo === 'medico') {
+                    totalTiempoMedico += gap;
+                  } else if (clasif.tipo === 'personal') {
+                    totalTiempoPersonal += gap;
+                  } else {
+                    if (!isJustificado) {
+                      totalTiempoPorJustificar += gap;
+                    }
                   }
                 }
               }
@@ -1808,23 +1826,34 @@
           let dayMedico = 0;
           let dayJustificar = 0;
 
+          const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
+          if (hasCumpleanos) dayPersonal += 240;
+
           ultimoSalidaMins = null;
           ultimoSalidaReg = null;
 
+          let processedLunchGap2 = false;
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
-            let mE = obtenerMinutos(p.entrada.hora);
-            let mS = obtenerMinutos(p.salida.hora);
+            let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+            let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
             if (mE === null || mS === null || mS <= mE) return;
             let duracion = mS - mE;
             minutosTrabajadosHoy += duracion;
 
             if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
               let gap = mE - ultimoSalidaMins;
-              let clasif = clasificarGap(ultimoSalidaReg, gap);
-              if (clasif.tipo === 'medico') dayMedico += gap;
-              else if (clasif.tipo === 'personal') dayPersonal += gap;
-              else dayJustificar += gap;
+              if (!processedLunchGap2 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+                let lunchMins = Math.min(45, gap);
+                gap -= lunchMins;
+                processedLunchGap2 = true;
+              }
+              if (gap > 0) {
+                let clasif = clasificarGap(ultimoSalidaReg, gap);
+                if (clasif.tipo === 'medico') dayMedico += gap;
+                else if (clasif.tipo === 'personal') dayPersonal += gap;
+                else dayJustificar += gap;
+              }
             }
             ultimoSalidaMins = mS;
             ultimoSalidaReg = p.salida;
@@ -1849,8 +1878,8 @@
 
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
-            let mE = obtenerMinutos(p.entrada.hora);
-            let mS = obtenerMinutos(p.salida.hora);
+            let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+            let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
             if (mE === null || mS === null || mS <= mE) return;
             let duracion = mS - mE;
             let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
@@ -1890,7 +1919,7 @@
           const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
 
           if (!isJustificado) {
-            let missingMinutes = Math.max(0, 480 - netWorked);
+            let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
             totalTiempoPersonal += persMins;
             totalTiempoMedico   += medMins;
             let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
@@ -2262,6 +2291,7 @@
       let salT = regs.filter(r => r.tipo === 'SALIDA').length;
       const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
       let almP = resAlm.almPlanta;
+      let almF = resAlm.almFuera;
       let dias = new Set(regs.filter(r => r.tipo === 'ENTRADA').map(r => r.fecha)).size;
 
       let sE = 0, cE = 0, sS = 0, cS = 0, tardT = 0;
@@ -2295,41 +2325,8 @@
         if (r.tipo === 'ENTRADA' && r.almuerzo) porDia[fechaNorm].almuerzo = r.almuerzo;
       });
 
-      let tSegs = 0, tPermisoSegs = 0;
       // Ordenar de más reciente a más antiguo (YYYY-MM-DD → comparación de string correcta)
       let fechasOrdenadas = Object.keys(porDia).filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f)).sort((a, b) => b.localeCompare(a));
-
-      // Calcular totales mensuales
-      fechasOrdenadas.forEach(f => {
-        let d = porDia[f];
-        let entradaPendiente = null;
-        let ultimoSalidaMins = null;
-        let minutosDia = 0;
-
-        d.registros.forEach(r => {
-          const tipo = String(r.tipo || '').toUpperCase();
-          if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
-            let mE = obtenerMinutos(r.hora);
-            if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
-              tPermisoSegs += (mE - ultimoSalidaMins) * 60;
-            }
-            entradaPendiente = r;
-          } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
-            if (entradaPendiente) {
-              let mE = obtenerMinutos(entradaPendiente.hora);
-              let mS = obtenerMinutos(r.hora);
-              if (mE !== null && mS !== null && mS > mE) minutosDia += (mS - mE);
-              ultimoSalidaMins = mS;
-              entradaPendiente = null;
-            }
-          }
-        });
-
-        // Descontar 45 min si trabajó más de 4 horas ese día (solo en días normales)
-        const esFestivo = esFeriadoODomingo(f) || (new Date(f + 'T12:00:00').getDay() === 6);
-        if (!esFestivo && minutosDia > 240) minutosDia -= 45;
-        tSegs += minutosDia * 60;
-      });
 
       // Mostrar todos los días del período
       // Acumuladores para la fila de totales
@@ -2350,7 +2347,7 @@
         const isJustificado = regsDia.some(r =>
           r.justificado === 'SI' ||
           esAusenciaTipo(r.tipo) ||
-          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
         );
 
         const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
@@ -2498,6 +2495,8 @@
             else if (t === 'PERMISO_PERSONAL') razonAusenciaVal = 'Permiso Personal';
             else if (t === 'CALAMIDAD_DOMESTICA') razonAusenciaVal = 'Calamidad Doméstica';
             else if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') razonAusenciaVal = 'Salida a Campo';
+            else if (t === 'CUMPLEAÑOS' || t === 'CUMPLEANOS') razonAusenciaVal = 'Cumpleaños';
+            else if (t === 'SALIDA_JUSTIFICADA') razonAusenciaVal = 'Salida Justificada';
             else razonAusenciaVal = r.tipo;
           } else if (r.justificado === 'SI' && r.razon_justificac) {
             razonJustificadaVal = r.razon_justificac;
@@ -2512,10 +2511,12 @@
             <option value="Permiso Personal" ${razonAusenciaVal === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
             <option value="Calamidad Doméstica" ${razonAusenciaVal === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
             <option value="Salida a Campo" ${razonAusenciaVal === 'Salida a Campo' || razonAusenciaVal === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Salida a Campo</option>
-            <option value="Otro" ${razonAusenciaVal && !['Vacación','Vacacion','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaVal) ? 'selected' : ''}>✏️ Otro...</option>
+            <option value="Cumpleaños" ${razonAusenciaVal === 'Cumpleaños' ? 'selected' : ''}>🎂 Cumpleaños</option>
+            <option value="Salida Justificada" ${razonAusenciaVal === 'Salida Justificada' ? 'selected' : ''}>✅ Salida Justificada</option>
+            <option value="Otro" ${razonAusenciaVal && !['Vacación','Vacacion','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo','Cumpleaños','Salida Justificada'].includes(razonAusenciaVal) ? 'selected' : ''}>✏️ Otro...</option>
           </select>
         `;
-        if (razonAusenciaVal && !['Vacación','Vacacion','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo'].includes(razonAusenciaVal)) {
+        if (razonAusenciaVal && !['Vacación','Vacacion','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo','Cumpleaños','Salida Justificada'].includes(razonAusenciaVal)) {
             selectRazonHtml += `<div style="font-size:9px; color:var(--indigo); margin-top:2px; font-weight:700;">${escapeHtml(razonAusenciaVal)}</div>`;
         } else if (razonJustificadaVal) {
             selectRazonHtml += `<div style="font-size:9px; color:var(--green); margin-top:2px; font-weight:700;">Justif: ${escapeHtml(razonJustificadaVal)}</div>`;
@@ -2546,13 +2547,17 @@
         let tiempoPorJustificar = 0;
         let minsEmpresa = 0;
         let minsCampo = 0;
+
+        const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
+        if (hasCumpleanos) tiempoPersonal += 240;
         ultimoSalidaMins = null;
         ultimoSalidaReg = null;
 
+        let processedLunchGap = false;
         periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
-          let mE = obtenerMinutos(p.entrada.hora);
-          let mS = obtenerMinutos(p.salida.hora);
+          let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+          let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
           if (mE === null || mS === null || mS <= mE) return;
 
           let duracion = mS - mE;
@@ -2567,13 +2572,20 @@
 
           if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
             let gap = mE - ultimoSalidaMins;
-            let clasif = clasificarGap(ultimoSalidaReg, gap);
-            if (clasif.tipo === 'medico') {
-              tiempoMedico += gap;
-            } else if (clasif.tipo === 'personal') {
-              tiempoPersonal += gap;
-            } else {
-              tiempoPorJustificar += gap;
+            if (!processedLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+              let lunchMins = Math.min(45, gap);
+              gap -= lunchMins;
+              processedLunchGap = true;
+            }
+            if (gap > 0) {
+              let clasif = clasificarGap(ultimoSalidaReg, gap);
+              if (clasif.tipo === 'medico') {
+                tiempoMedico += gap;
+              } else if (clasif.tipo === 'personal') {
+                tiempoPersonal += gap;
+              } else {
+                tiempoPorJustificar += gap;
+              }
             }
           }
           ultimoSalidaMins = mS;
@@ -2627,8 +2639,8 @@
 
         periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
-          let mE = obtenerMinutos(p.entrada.hora);
-          let mS = obtenerMinutos(p.salida.hora);
+          let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+          let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
           if (mE === null || mS === null || mS <= mE) return;
           let duracion = mS - mE;
           let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
@@ -2674,7 +2686,7 @@
           const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
           tiempoPersonal += persMins;
           tiempoMedico   += medMins;
-          let missingMinutes = Math.max(0, 480 - netWorked);
+          let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
           let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
           tiempoPorJustificar += unaccountedMissing;
@@ -2759,12 +2771,12 @@
     </tr>`;
       }).join('');
 
-      let thH = Math.floor(tSegs / 3600) || 0,
-        thM = Math.floor((tSegs % 3600) / 60) || 0,
-        thS = Math.floor(tSegs % 60) || 0;
+      let thH = Math.floor(totHoras / 60) || 0,
+        thM = totHoras % 60 || 0,
+        thS = 0;
 
-      let tpH = Math.floor(tPermisoSegs / 3600) || 0,
-        tpM = Math.floor((tPermisoSegs % 3600) / 60) || 0;
+      let tpH = Math.floor((totTP + totTM) / 60) || 0,
+        tpM = (totTP + totTM) % 60 || 0;
 
       // Fila de totales para el tfoot
       const mA = v => v > 0 ? `<strong>${minutosAHHMMSS(v)}</strong>` : '—';
@@ -2790,6 +2802,8 @@
         <td style="text-align:center;">${mA(totExtra50)}</td>
         <td style="text-align:center;">${mA(totExtra100)}</td>
       </tr>`;
+      let puntualidadVal = dias ? Math.max(0, Math.round((1 - tardT / dias) * 100)) : 100;
+      let puntualidadColor = puntualidadVal >= 90 ? 'var(--green)' : puntualidadVal >= 70 ? 'var(--amber)' : 'var(--red)';
       let optionsPeriodos = periodos.map((p, i) => `<option value="${i}" ${i === indexPeriodo ? 'selected' : ''}>${p.label}</option>`).join('');
 
       $('detalleContent').innerHTML = `
@@ -2822,44 +2836,91 @@
             <input type="date" id="detFechaInicio" value="${R_INI}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), this.value, $('detFechaFin').value)" style="border:1px solid var(--g200); border-radius:6px; padding:2px 6px; font-size:12px; font-family:inherit;">
             <label style="font-size:12px; font-weight:600; color:var(--g600);">Hasta:</label>
             <input type="date" id="detFechaFin" value="${R_FIN}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), $('detFechaInicio').value, this.value)" style="border:1px solid var(--g200); border-radius:6px; padding:2px 6px; font-size:12px; font-family:inherit;">
+            <button class="btn btn-secondary" onclick="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value))" title="Restablecer al rango por defecto del período" style="font-size:11px; padding:3px 8px; height:auto; display:inline-flex; align-items:center; gap:4px; border:1px solid var(--g300); background:#f8fafc; color:var(--g600); border-radius:6px; cursor:pointer;">
+              <i class="fas fa-sync-alt"></i> Restablecer
+            </button>
           </div>
         </div>
       </div>
       
       <div style="padding:var(--pad);background:var(--g50);border-bottom:1px solid var(--g200)">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:12px;">
-            <div class="kpi-card" style="--card-color:var(--blue); padding:12px; display:flex; flex-direction:column; justify-content:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-calendar-check"></i> Días Trabajados</div>
-              <div class="detail-stat-value" style="font-size:var(--fxl)">${dias}</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:16px; width:100%;">
+          
+          <!-- RESUMEN ASISTENCIA -->
+          <div style="background:var(--white); border:1px solid var(--g200); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+            <div style="font-size:11.5px; font-weight:700; color:var(--g600); border-bottom:1px solid var(--g100); padding-bottom:6px; display:flex; align-items:center; gap:6px; text-transform:uppercase;">
+              <i class="fas fa-calendar-check" style="color:var(--blue);"></i> Resumen de Asistencia
             </div>
-            <div class="kpi-card" style="--card-color:var(--green); padding:12px; display:flex; flex-direction:column; justify-content:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-sign-in-alt"></i> Total Entradas</div>
-              <div class="detail-stat-value" style="font-size:var(--fxl)">${entT}</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Días Trab.</div>
+                <div style="font-size:16px; font-weight:800; color:var(--g800);">${dias}</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Puntualidad</div>
+                <div style="font-size:16px; font-weight:800; color:${puntualidadColor};">${puntualidadVal}%</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Prom. Entrada</div>
+                <div style="font-size:13px; font-weight:700; color:var(--g700);">${minsToHHMM(pE)}</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Prom. Salida</div>
+                <div style="font-size:13px; font-weight:700; color:var(--g700);">${minsToHHMM(pS)}</div>
+              </div>
             </div>
-            <div class="kpi-card" style="--card-color:var(--amber); padding:12px; display:flex; flex-direction:column; justify-content:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-sign-out-alt"></i> Total Salidas</div>
-              <div class="detail-stat-value" style="font-size:var(--fxl)">${salT}</div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--g500); padding:2px 4px; border-top:1px solid var(--g50); pt:4px;">
+              <span>Entradas: <strong>${entT}</strong></span>
+              <span>Salidas: <strong>${salT}</strong></span>
             </div>
-            <div class="kpi-card" style="--card-color:var(--purple); padding:12px; display:flex; flex-direction:column; justify-content:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-utensils"></i> Alm. en Planta</div>
-              <div class="detail-stat-value" style="font-size:var(--fxl)">${almP}</div>
+          </div>
+
+          <!-- JORNADA Y TIEMPOS -->
+          <div style="background:var(--white); border:1px solid var(--g200); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+            <div style="font-size:11.5px; font-weight:700; color:var(--g600); border-bottom:1px solid var(--g100); padding-bottom:6px; display:flex; align-items:center; gap:6px; text-transform:uppercase;">
+              <i class="fas fa-clock" style="color:var(--green);"></i> Jornada y Tiempos
             </div>
-            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-hourglass-start"></i> Prom. entrada</div>
-              <div class="detail-stat-value" style="font-size:var(--flg); margin-top:4px;">${minsToHHMM(pE)}</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; height:100%;">
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Total Horas</div>
+                <div style="font-size:16px; font-weight:800; color:var(--green);">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Atrasos Acum.</div>
+                <div style="font-size:16px; font-weight:800; color:${totAtrasos > 0 ? 'var(--red)' : 'var(--g800)'};">${minutosAHHMMSS(totAtrasos)}</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center; display:flex; flex-direction:column; justify-content:center; grid-column:span 2;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Tiempo por Justificar</div>
+                <div style="font-size:16px; font-weight:800; color:${totTJ > 0 ? 'var(--red)' : 'var(--green)'};">${minutosAHHMMSS(totTJ)}</div>
+              </div>
             </div>
-            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-hourglass-end"></i> Prom. salida</div>
-              <div class="detail-stat-value" style="font-size:var(--flg); margin-top:4px;">${minsToHHMM(pS)}</div>
+          </div>
+
+          <!-- PERMISOS Y ALMUERZOS -->
+          <div style="background:var(--white); border:1px solid var(--g200); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+            <div style="font-size:11.5px; font-weight:700; color:var(--g600); border-bottom:1px solid var(--g100); padding-bottom:6px; display:flex; align-items:center; gap:6px; text-transform:uppercase;">
+              <i class="fas fa-hand-holding-heart" style="color:var(--indigo);"></i> Permisos y Almuerzos
             </div>
-            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-chart-line"></i> Horas totales</div>
-              <div class="detail-stat-value" style="font-size:var(--flg); color:var(--green); margin-top:4px;">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}:${String(thS).padStart(2, '0')}</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">T. Personal</div>
+                <div style="font-size:14px; font-weight:800; color:var(--indigo);">${minutosAHHMMSS(totTP)}</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">T. Médico</div>
+                <div style="font-size:14px; font-weight:800; color:var(--teal);">${minutosAHHMMSS(totTM)}</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Alm. Planta</div>
+                <div style="font-size:14px; font-weight:800; color:var(--purple);">${almP}</div>
+              </div>
+              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
+                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Alm. Fuera</div>
+                <div style="font-size:14px; font-weight:800; color:var(--g600);">${almF}</div>
+              </div>
             </div>
-            <div style="background:var(--white); padding:12px; border-radius:8px; border:1px solid var(--g200); display:flex; flex-direction:column; justify-content:center; text-align:center;">
-              <div class="kpi-label" style="font-size:11px"><i class="fas fa-user-clock"></i> Horas Permiso</div>
-              <div class="detail-stat-value" style="font-size:var(--flg); color:var(--indigo); margin-top:4px;">${String(tpH).padStart(2, '0')}:${String(tpM).padStart(2, '0')}</div>
-            </div>
+          </div>
+          
         </div>
       </div>
       <div style="padding:var(--pad)">
@@ -2868,6 +2929,9 @@
             <span><i class="fas fa-history"></i> Historial del período</span>
             <button class="btn btn-success" onclick="exportarExcelDetalleEmpleado('${e.id}', ${indexPeriodo}, '${R_INI}', '${R_FIN}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px;">
               <i class="fas fa-file-excel"></i> Exportar Excel
+            </button>
+            <button class="btn btn-primary" onclick="window.mostrarModalFuturos('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:var(--purple); border-color:var(--purple); color:white; cursor:pointer;">
+              <i class="fas fa-calendar-plus"></i> Registrar Evento Futuro
             </button>
           </div>
           <span style="color:var(--indigo);font-weight:600;font-size:13px;background:#e0e7ff;padding:4px 10px;border-radius:12px;">${periodoSeleccionado ? periodoSeleccionado.label : ''}</span>
@@ -3310,7 +3374,7 @@
       try {
         const res = await jsonpRequest({
           accion: 'actualizarRegistroGeneral',
-          docId: '', // ID vacío para que cree uno nuevo
+          docId: `${empleadoId}_${tipo}_${fecha}_${hora.replace(/:/g, '')}`,
           empleadoId: empleadoId,
           tipo: tipo,
           fecha: fecha,
@@ -3670,7 +3734,7 @@
       try {
         const res = await jsonpRequest({
           accion: 'actualizarRegistroGeneral',
-          docId: '',
+          docId: `${eid}_${tipo}_${fecha}_${hora.replace(/:/g, '')}`,
           empleadoId: eid,
           tipo: tipo,
           fecha: fecha,
@@ -3695,6 +3759,182 @@
         }
       } catch (e) {
         mostrarToast('Error de conexión', 'error');
+      } finally {
+        mostrarLoader(false);
+      }
+    }
+
+    window.mostrarModalFuturos = function(preselectedEmpId = null) {
+      const modal = $('eventoFuturoModal');
+      const sel = $('futEmpleadoId');
+      sel.innerHTML = empCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (${e.id})</option>`).join('');
+      if (preselectedEmpId) {
+        sel.value = preselectedEmpId;
+      }
+      // Reset tipo cards to VACACIONES
+      $('futTipo').value = 'VACACIONES';
+      document.querySelectorAll('.fut-tipo-card').forEach(c => {
+        if (c.dataset.tipo === 'VACACIONES') {
+          c.style.border = '2px solid #6366f1';
+          c.style.background = '#ede9fe';
+          c.classList.add('selected');
+          c.querySelector('div:nth-child(2)').style.color = '#4f46e5';
+        } else {
+          c.style.border = '2px solid #e5e7eb';
+          c.style.background = 'white';
+          c.classList.remove('selected');
+          c.querySelector('div:nth-child(2)').style.color = '#374151';
+        }
+      });
+      $('futFechaInicio').value = hoy;
+      $('futFechaFin').value = hoy;
+      $('futObservacion').value = '';
+      actualizarResumenFuturo();
+      modal.classList.remove('hidden');
+    }
+
+    window.seleccionarTipoEvento = function(card) {
+      document.querySelectorAll('.fut-tipo-card').forEach(c => {
+        c.style.border = '2px solid #e5e7eb';
+        c.style.background = 'white';
+        c.classList.remove('selected');
+        const label = c.querySelector('div:nth-child(2)');
+        if (label) label.style.color = '#374151';
+        const sub = c.querySelector('div:nth-child(3)');
+        if (sub) sub.style.color = '#9ca3af';
+      });
+      card.style.border = '2px solid #6366f1';
+      card.style.background = '#ede9fe';
+      card.classList.add('selected');
+      const label = card.querySelector('div:nth-child(2)');
+      if (label) label.style.color = '#4f46e5';
+      const sub = card.querySelector('div:nth-child(3)');
+      if (sub) sub.style.color = '#7c6fe5';
+      $('futTipo').value = card.dataset.tipo;
+      actualizarResumenFuturo();
+    }
+
+    window.actualizarResumenFuturo = function() {
+      const fInicio = $('futFechaInicio').value;
+      const fFin = $('futFechaFin').value;
+      const resumen = $('futResumen');
+      const resumenText = $('futResumenText');
+      if (!fInicio || !fFin || fFin < fInicio) {
+        resumen.style.display = 'none';
+        return;
+      }
+      // Contar solo días laborales
+      let labCount = 0, festCount = 0;
+      let cur = new Date(fInicio + 'T12:00:00');
+      const fin = new Date(fFin + 'T12:00:00');
+      while (cur <= fin) {
+        const yyyy = cur.getFullYear();
+        const mm = String(cur.getMonth() + 1).padStart(2, '0');
+        const dd = String(cur.getDate()).padStart(2, '0');
+        const fStr = `${yyyy}-${mm}-${dd}`;
+        const dow = cur.getDay();
+        if (dow === 0 || dow === 6 || esFeriadoODomingo(fStr)) {
+          festCount++;
+        } else {
+          labCount++;
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+      let msg = `<strong>${labCount}</strong> día(s) laborable(s) se registrarán`;
+      if (festCount > 0) msg += ` · <span style="color:#7c3aed;">${festCount} fin(es) de semana/feriado(s) omitido(s)</span>`;
+      if (labCount === 0) msg = `<span style="color:#dc2626;">⚠️ No hay días laborales en el rango seleccionado</span>`;
+      resumenText.innerHTML = msg;
+      resumen.style.display = 'flex';
+    }
+
+    window.cerrarModalFuturos = function() {
+      $('eventoFuturoModal').classList.add('hidden');
+    }
+
+    window.guardarEventoFuturo = async function() {
+      if (!window.esAdminMaster && !window.isMaster) {
+        mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error');
+        return;
+      }
+      const eid = $('futEmpleadoId').value;
+      const fInicio = $('futFechaInicio').value;
+      const fFin = $('futFechaFin').value;
+      const tipo = $('futTipo').value;
+      const observacion = $('futObservacion').value.trim() || 'Registrado por supervisor';
+
+      if (!fInicio || !fFin) {
+        mostrarToast('Seleccione fecha de inicio y fin', 'error');
+        return;
+      }
+      if (fFin < fInicio) {
+        mostrarToast('La fecha fin no puede ser menor a la fecha inicio', 'error');
+        return;
+      }
+
+      // Generar SOLO fechas laborales en el rango (excluir sábados, domingos y feriados)
+      const fechas = [];
+      let current = new Date(fInicio + 'T12:00:00');
+      const end = new Date(fFin + 'T12:00:00');
+      while (current <= end) {
+        const yyyy = current.getFullYear();
+        const mm = String(current.getMonth() + 1).padStart(2, '0');
+        const dd = String(current.getDate()).padStart(2, '0');
+        const fStr = `${yyyy}-${mm}-${dd}`;
+        const dow = current.getDay();
+        // Solo días laborales (lunes-viernes, no feriados)
+        if (dow !== 0 && dow !== 6 && !esFeriadoODomingo(fStr)) {
+          fechas.push(fStr);
+        }
+        current.setDate(current.getDate() + 1);
+      }
+
+      if (fechas.length === 0) {
+        mostrarToast('No hay días laborales en el rango seleccionado', 'error');
+        return;
+      }
+
+      mostrarLoader(true);
+      mostrarToast(`Registrando ${fechas.length} día(s) laborable(s)...`, 'info');
+
+      try {
+        let successCount = 0;
+        let errorMsg = null;
+
+        for (const f of fechas) {
+          const res = await jsonpRequest({
+            accion: 'actualizarRegistroGeneral',
+            docId: `${eid}_${tipo}_${f}_000000`,
+            empleadoId: eid,
+            tipo: tipo,
+            fecha: f,
+            campo: 'hora',
+            valor: '00:00:00',
+            modo: 'EMPRESA',
+            almuerzo: '',
+            horasExtra: 'NO',
+            observacion: observacion,
+            razon_justificac: observacion,
+            justificado: 'SI'
+          });
+          if (res.ok) {
+            successCount++;
+          } else {
+            errorMsg = res.error;
+          }
+        }
+
+        if (successCount === fechas.length) {
+          mostrarToast(`✅ ${successCount} día(s) registrado(s) correctamente`, 'success');
+          cerrarModalFuturos();
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true, true);
+          if (panelActual === 'detalle') mostrarDetalle(eid);
+          else cargarAsistencia();
+        } else {
+          mostrarToast(`Se registraron ${successCount}/${fechas.length} días. Error: ${errorMsg || 'desconocido'}`, 'error');
+        }
+      } catch (e) {
+        mostrarToast('Error de conexión al registrar eventos futuros', 'error');
       } finally {
         mostrarLoader(false);
       }
@@ -4486,7 +4726,7 @@
       if (document.hidden) return;
 
       // Pausar sincronización si el supervisor tiene algún modal de edición/justificación abierto
-      const modalesVisibles = ['extraLunchModal', 'justificarModal', 'manualRegistroModal', 'masivoModal']
+      const modalesVisibles = ['extraLunchModal', 'justificarModal', 'manualRegistroModal', 'masivoModal', 'eventoFuturoModal']
         .some(id => {
           const el = $(id);
           return el && !el.classList.contains('hidden');
@@ -4521,6 +4761,9 @@
     });
     document.getElementById('manualRegistroModal').addEventListener('click', e => {
       if (e.target === document.getElementById('manualRegistroModal')) cerrarModalManual();
+    });
+    document.getElementById('eventoFuturoModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('eventoFuturoModal')) cerrarModalFuturos();
     });
     document.getElementById('masivoModal').addEventListener('click', e => {
       if (e.target === document.getElementById('masivoModal')) cerrarModalMasivo();
@@ -4682,7 +4925,7 @@
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
           const isJustificado = regsDia.some(r =>
             r.justificado === 'SI' ||
-            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
           );
 
           if (regsDia.length === 0) {
@@ -4713,20 +4956,28 @@
             return String(timeA).localeCompare(String(timeB));
           });
 
+          let processedLunchGap1 = false;
           sortedRegs.forEach(r => {
             const tipo = String(r.tipo || '').toUpperCase();
             if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
               let mE = obtenerMinutos(r.hora);
-              if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+              if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
                 let gap = mE - ultimoSalidaMins;
-                let clasif = clasificarGap(ultimoSalidaReg, gap);
-                if (clasif.tipo === 'medico') {
-                  totalTiempoMedico += gap;
-                } else if (clasif.tipo === 'personal') {
-                  totalTiempoPersonal += gap;
-                } else {
-                  if (!isJustificado) {
-                    totalTiempoPorJustificar += gap;
+                if (!processedLunchGap1 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+                  let lunchMins = Math.min(45, gap);
+                  gap -= lunchMins;
+                  processedLunchGap1 = true;
+                }
+                if (gap > 0) {
+                  let clasif = clasificarGap(ultimoSalidaReg, gap);
+                  if (clasif.tipo === 'medico') {
+                    totalTiempoMedico += gap;
+                  } else if (clasif.tipo === 'personal') {
+                    totalTiempoPersonal += gap;
+                  } else {
+                    if (!isJustificado) {
+                      totalTiempoPorJustificar += gap;
+                    }
                   }
                 }
               }
@@ -4749,23 +5000,34 @@
           let dayMedico = 0;
           let dayJustificar = 0;
 
+          const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
+          if (hasCumpleanos) dayPersonal += 240;
+
           ultimoSalidaMins = null;
           ultimoSalidaReg = null;
 
+          let processedLunchGap2 = false;
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
-            let mE = obtenerMinutos(p.entrada.hora);
-            let mS = obtenerMinutos(p.salida.hora);
+            let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+            let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
             if (mE === null || mS === null || mS <= mE) return;
             let duracion = mS - mE;
             minutosTrabajadosHoy += duracion;
 
             if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
               let gap = mE - ultimoSalidaMins;
-              let clasif = clasificarGap(ultimoSalidaReg, gap);
-              if (clasif.tipo === 'medico') dayMedico += gap;
-              else if (clasif.tipo === 'personal') dayPersonal += gap;
-              else dayJustificar += gap;
+              if (!processedLunchGap2 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+                let lunchMins = Math.min(45, gap);
+                gap -= lunchMins;
+                processedLunchGap2 = true;
+              }
+              if (gap > 0) {
+                let clasif = clasificarGap(ultimoSalidaReg, gap);
+                if (clasif.tipo === 'medico') dayMedico += gap;
+                else if (clasif.tipo === 'personal') dayPersonal += gap;
+                else dayJustificar += gap;
+              }
             }
             ultimoSalidaMins = mS;
             ultimoSalidaReg = p.salida;
@@ -4790,8 +5052,8 @@
 
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
-            let mE = obtenerMinutos(p.entrada.hora);
-            let mS = obtenerMinutos(p.salida.hora);
+            let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+            let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
             if (mE === null || mS === null || mS <= mE) return;
             let duracion = mS - mE;
             let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
@@ -4832,7 +5094,7 @@
           const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
 
           if (!isJustificado) {
-            let missingMinutes = Math.max(0, 480 - netWorked);
+            let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
             totalTiempoPersonal += persMins;
             totalTiempoMedico   += medMins;
             let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
@@ -5324,7 +5586,7 @@
         const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
         const isJustificado = regsDia.some(r =>
           r.justificado === 'SI' ||
-          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo'].includes(r.razon_ausencia)
+          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
         );
 
         let periodosDia = [];
@@ -5350,8 +5612,8 @@
         if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
         if (periodosDia.length === 0) periodosDia.push({ entrada: null, salida: null });
 
-        let horaE = periodosDia.map(p => p.entrada ? p.entrada.hora.substring(0, 5) : '--:--').join(', ');
-        let horaS = periodosDia.map(p => p.salida ? p.salida.hora.substring(0, 5) : '--:--').join(', ');
+        let horaE = periodosDia.map(p => p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--').join(', ');
+        let horaS = periodosDia.map(p => p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--').join(', ');
 
         let aBadgeVal = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'SI' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? 'NO' : '—';
 
@@ -5374,6 +5636,8 @@
             else if (t === 'PERMISO_MEDICO') razonAusenciaVal = 'Permiso Médico';
             else if (t === 'PERMISO_PERSONAL') razonAusenciaVal = 'Permiso Personal';
             else if (t === 'CALAMIDAD_DOMESTICA') razonAusenciaVal = 'Calamidad Doméstica';
+            else if (t === 'CUMPLEAÑOS' || t === 'CUMPLEANOS') razonAusenciaVal = 'Cumpleaños';
+            else if (t === 'SALIDA_JUSTIFICADA') razonAusenciaVal = 'Salida Justificada';
           }
           if (r.razon_justificac) razonJustificadaVal = r.razon_justificac;
         });
@@ -5386,13 +5650,17 @@
         let tiempoMedico = 0;
         let tiempoPorJustificar = 0;
 
+        const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
+        if (hasCumpleanos) tiempoPersonal += 240;
+
         ultimoSalidaMins = null;
         ultimoSalidaReg = null;
 
+        let processedLunchGap = false;
         periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
-          let mE = obtenerMinutos(p.entrada.hora);
-          let mS = obtenerMinutos(p.salida.hora);
+          let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+          let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
           if (mE === null || mS === null || mS <= mE) return;
 
           let duracion = mS - mE;
@@ -5400,13 +5668,20 @@
 
           if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
             let gap = mE - ultimoSalidaMins;
-            let clasif = clasificarGap(ultimoSalidaReg, gap);
-            if (clasif.tipo === 'medico') {
-              tiempoMedico += gap;
-            } else if (clasif.tipo === 'personal') {
-              tiempoPersonal += gap;
-            } else {
-              tiempoPorJustificar += gap;
+            if (!processedLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+              let lunchMins = Math.min(45, gap);
+              gap -= lunchMins;
+              processedLunchGap = true;
+            }
+            if (gap > 0) {
+              let clasif = clasificarGap(ultimoSalidaReg, gap);
+              if (clasif.tipo === 'medico') {
+                tiempoMedico += gap;
+              } else if (clasif.tipo === 'personal') {
+                tiempoPersonal += gap;
+              } else {
+                tiempoPorJustificar += gap;
+              }
             }
           }
           ultimoSalidaMins = mS;
@@ -5434,8 +5709,8 @@
 
         periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
-          let mE = obtenerMinutos(p.entrada.hora);
-          let mS = obtenerMinutos(p.salida.hora);
+          let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+          let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
           if (mE === null || mS === null || mS <= mE) return;
           let duracion = mS - mE;
           let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
@@ -5473,7 +5748,7 @@
           const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
           tiempoPersonal += persMins;
           tiempoMedico   += medMins;
-          let missingMinutes = Math.max(0, 480 - netWorked);
+          let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
           let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
           tiempoPorJustificar += unaccountedMissing;

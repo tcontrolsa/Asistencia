@@ -908,6 +908,97 @@
     </div>
   </div>
 
+  <!-- MODAL EVENTO FUTURO -->
+  <div id="eventoFuturoModal" class="modal-overlay hidden">
+    <div class="modal-container" style="max-width: 520px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color:white; border-radius: 12px 12px 0 0;">
+        <h3 class="modal-title" style="color:white;"><i class="fas fa-calendar-plus"></i> Programar Ausencia</h3>
+        <button class="modal-close" onclick="cerrarModalFuturos()" style="color:white; opacity:0.8;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px; background: #f8fafc;">
+
+        <!-- Empleado -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#6366f1; font-weight:700;">👤 Empleado</label>
+          <select id="futEmpleadoId" class="form-select" style="border:2px solid #e0e7ff; border-radius:8px; padding:8px 12px; font-size:13px;"></select>
+        </div>
+
+        <!-- Tipo de Evento — tarjetas seleccionables -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#6366f1; font-weight:700;">📋 Tipo de Evento</label>
+          <div id="futTipoCards" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
+            <div class="fut-tipo-card selected" data-tipo="VACACIONES" onclick="seleccionarTipoEvento(this)"
+              style="border:2px solid #6366f1; border-radius:10px; padding:10px 12px; cursor:pointer; background:#ede9fe; transition: all .15s;">
+              <div style="font-size:18px; margin-bottom:2px;">🏖️</div>
+              <div style="font-weight:700; font-size:12px; color:#4f46e5;">VACACIONES</div>
+              <div style="font-size:10px; color:#7c6fe5;">Días completos</div>
+            </div>
+            <div class="fut-tipo-card" data-tipo="PERMISO_PERSONAL" onclick="seleccionarTipoEvento(this)"
+              style="border:2px solid #e5e7eb; border-radius:10px; padding:10px 12px; cursor:pointer; background:white; transition: all .15s;">
+              <div style="font-size:18px; margin-bottom:2px;">👤</div>
+              <div style="font-weight:700; font-size:12px; color:#374151;">PERMISO PERSONAL</div>
+              <div style="font-size:10px; color:#9ca3af;">Día completo</div>
+            </div>
+            <div class="fut-tipo-card" data-tipo="PERMISO_MEDICO" onclick="seleccionarTipoEvento(this)"
+              style="border:2px solid #e5e7eb; border-radius:10px; padding:10px 12px; cursor:pointer; background:white; transition: all .15s;">
+              <div style="font-size:18px; margin-bottom:2px;">🩺</div>
+              <div style="font-weight:700; font-size:12px; color:#374151;">PERMISO MÉDICO</div>
+              <div style="font-size:10px; color:#9ca3af;">Día completo</div>
+            </div>
+            <div class="fut-tipo-card" data-tipo="SALIDA_JUSTIFICADA" onclick="seleccionarTipoEvento(this)"
+              style="border:2px solid #e5e7eb; border-radius:10px; padding:10px 12px; cursor:pointer; background:white; transition: all .15s;">
+              <div style="font-size:18px; margin-bottom:2px;">✅</div>
+              <div style="font-weight:700; font-size:12px; color:#374151;">SALIDA JUSTIFICADA</div>
+              <div style="font-size:10px; color:#9ca3af;">Parcial / salida anticipada</div>
+            </div>
+            <div class="fut-tipo-card" data-tipo="FALTA_JUSTIFICADA" onclick="seleccionarTipoEvento(this)"
+              style="border:2px solid #e5e7eb; border-radius:10px; padding:10px 12px; cursor:pointer; background:white; transition: all .15s;">
+              <div style="font-size:18px; margin-bottom:2px;">📋</div>
+              <div style="font-weight:700; font-size:12px; color:#374151;">FALTA JUSTIFICADA</div>
+              <div style="font-size:10px; color:#9ca3af;">Día completo</div>
+            </div>
+          </div>
+          <!-- Campo oculto que guarda el tipo seleccionado -->
+          <input type="hidden" id="futTipo" value="VACACIONES">
+        </div>
+
+        <!-- Rango de fechas -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#6366f1; font-weight:700;">📅 Desde</label>
+            <input type="date" id="futFechaInicio" class="form-input" oninput="actualizarResumenFuturo()"
+              style="border:2px solid #e0e7ff; border-radius:8px; padding:8px 10px; font-size:13px;">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#6366f1; font-weight:700;">📅 Hasta</label>
+            <input type="date" id="futFechaFin" class="form-input" oninput="actualizarResumenFuturo()"
+              style="border:2px solid #e0e7ff; border-radius:8px; padding:8px 10px; font-size:13px;">
+          </div>
+        </div>
+
+        <!-- Resumen de días laborales -->
+        <div id="futResumen" style="display:none; background:#e0e7ff; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:#3730a3; display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-info-circle"></i>
+          <span id="futResumenText"></span>
+        </div>
+
+        <!-- Observación (opcional) -->
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#6366f1; font-weight:700;">💬 Observación <span style="font-weight:400; color:#9ca3af;">(opcional)</span></label>
+          <input type="text" id="futObservacion" class="form-input" placeholder="Ej: Viaje programado, Cita médica..."
+            style="border:2px solid #e0e7ff; border-radius:8px; padding:8px 12px; font-size:13px;">
+        </div>
+      </div>
+      <div class="modal-footer" style="background:#f8fafc; border-radius: 0 0 12px 12px; padding:16px 20px; gap:10px;">
+        <button class="btn-secondary-modal" onclick="cerrarModalFuturos()" style="border-radius:8px;">Cancelar</button>
+        <button class="btn-primary-modal" style="background: linear-gradient(135deg,#6366f1,#8b5cf6); color:white; border-radius:8px; border:none; padding:10px 24px; font-weight:700;" onclick="guardarEventoFuturo()">
+          <i class="fas fa-save"></i> Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+
+
   <!-- MODAL REGISTRO MASIVO -->
   <div id="masivoModal" class="modal-overlay hidden">
     <div class="modal-container">

@@ -977,29 +977,65 @@ window.FirebaseBackend = {
         }
 
         if (docId) {
-            const updateData = {};
-            if (campo === 'timestamp') {
-                const parsed = parsearTimestamp(valor);
-                if (!parsed) return { error: "Formato de timestamp inválido" };
-                const [dPart, tPart] = parsed.timestampFormatted.split(' ');
-                const [day, month, year] = dPart.split('/').map(Number);
-                const [hour, minute, second] = tPart.split(':').map(Number);
-                const dateObj = new Date(year, month - 1, day, hour, minute, second);
-                updateData.timestamp = firebase.firestore.Timestamp.fromDate(dateObj);
-            } else {
-                updateData[campo] = valor;
-                if (campo === 'hora') {
-                     const oldDoc = await db.collection('registros').doc(docId).get();
-                     if (oldDoc.exists && oldDoc.data().timestamp) {
-                         const oldDate = oldDoc.data().timestamp.toDate ? oldDoc.data().timestamp.toDate() : new Date(oldDoc.data().timestamp);
-                         const [h, m, s] = valor.split(':').map(Number);
-                         const newDate = new Date(oldDate.getFullYear(), oldDate.getMonth(), oldDate.getDate(), h || 0, m || 0, s || 0);
-                         updateData.timestamp = firebase.firestore.Timestamp.fromDate(newDate);
-                     }
+            const docRef = db.collection('registros').doc(docId);
+            const docSnap = await docRef.get();
+
+            if (docSnap.exists) {
+                const updateData = {};
+                if (campo === 'timestamp') {
+                    const parsed = parsearTimestamp(valor);
+                    if (!parsed) return { error: "Formato de timestamp inválido" };
+                    const [dPart, tPart] = parsed.timestampFormatted.split(' ');
+                    const [day, month, year] = dPart.split('/').map(Number);
+                    const [hour, minute, second] = tPart.split(':').map(Number);
+                    const dateObj = new Date(year, month - 1, day, hour, minute, second);
+                    updateData.timestamp = firebase.firestore.Timestamp.fromDate(dateObj);
+                } else {
+                    updateData[campo] = valor;
+                    if (campo === 'hora') {
+                         if (docSnap.data().timestamp) {
+                             const oldDate = docSnap.data().timestamp.toDate ? docSnap.data().timestamp.toDate() : new Date(docSnap.data().timestamp);
+                             const [h, m, s] = valor.split(':').map(Number);
+                             const newDate = new Date(oldDate.getFullYear(), oldDate.getMonth(), oldDate.getDate(), h || 0, m || 0, s || 0);
+                             updateData.timestamp = firebase.firestore.Timestamp.fromDate(newDate);
+                         }
+                    }
                 }
+                if (params.justificado) updateData.justificado = params.justificado;
+                if (params.razon_justificac) updateData.razon_justificac = params.razon_justificac;
+                if (params.razon_ausencia) updateData.razon_ausencia = params.razon_ausencia;
+                await docRef.update(updateData);
+                return { ok: true };
+            } else {
+                // El documento no existe: lo creamos con set
+                const empDoc = await db.collection('empleados').doc(empleadoId).get();
+                if (!empDoc.exists) return { error: "Empleado no existe" };
+                const empData = empDoc.data();
+
+                const fechaPartes = fecha.split('-').map(Number);
+                const hVal = (campo === 'hora' ? valor : '00:00:00');
+                const [h, m, s] = hVal.split(':').map(Number);
+                const dateObj = new Date(fechaPartes[0], fechaPartes[1] - 1, fechaPartes[2], h || 0, m || 0, s || 0);
+
+                const newData = {
+                    empleadoId: empleadoId,
+                    nombre: empData.nombre,
+                    tipo: tipo,
+                    almuerzo: params.almuerzo || "NO",
+                    modo: params.modo || "OFICINA",
+                    horasExtra: params.horasExtra || "NO",
+                    observacion: params.observacion || "",
+                    timestamp: firebase.firestore.Timestamp.fromDate(dateObj)
+                };
+                if (campo && campo !== 'hora') {
+                    newData[campo] = valor;
+                }
+                if (params.justificado) newData.justificado = params.justificado;
+                if (params.razon_justificac) newData.razon_justificac = params.razon_justificac;
+                if (params.razon_ausencia) newData.razon_ausencia = params.razon_ausencia;
+                await docRef.set(newData);
+                return { ok: true };
             }
-            await db.collection('registros').doc(docId).update(updateData);
-            return { ok: true };
         } else if (empleadoId && campo === 'hora') {
             // Si el registro no está en Firebase y la fecha es antigua (ej: > 2 días), enviar a Sheets
             const hoy = new Date();
@@ -1033,7 +1069,7 @@ window.FirebaseBackend = {
             const [h, m, s] = valor.split(':').map(Number);
             const dateObj = new Date(fechaPartes[0], fechaPartes[1] - 1, fechaPartes[2], h || 0, m || 0, s || 0);
 
-            await db.collection('registros').add({
+            const newData = {
                 empleadoId: empleadoId,
                 nombre: empData.nombre,
                 tipo: tipo,
@@ -1042,7 +1078,12 @@ window.FirebaseBackend = {
                 horasExtra: params.horasExtra || "NO",
                 observacion: params.observacion || "",
                 timestamp: firebase.firestore.Timestamp.fromDate(dateObj)
-            });
+            };
+            if (params.justificado) newData.justificado = params.justificado;
+            if (params.razon_justificac) newData.razon_justificac = params.razon_justificac;
+            if (params.razon_ausencia) newData.razon_ausencia = params.razon_ausencia;
+
+            await db.collection('registros').add(newData);
             return { ok: true };
         }
 
