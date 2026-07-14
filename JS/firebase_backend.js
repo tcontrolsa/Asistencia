@@ -52,6 +52,10 @@ window.FirebaseBackend = {
                     return await this.obtenerConfiguraciones(params);
                 case 'guardarConfiguraciones':
                     return await this.guardarConfiguraciones(params);
+                case 'obtenerMenuSemanal':
+                    return await this.obtenerMenuSemanal(params);
+                case 'guardarMenuSemanal':
+                    return await this.guardarMenuSemanal(params);
                 case 'toggleEmergencia':
                     return await this.toggleEmergencia(params);
                 case 'verificarClaveGuardia':
@@ -100,10 +104,12 @@ window.FirebaseBackend = {
                     return await this.registrarLog(params);
                 case 'guardarPermisoSupervisor':
                     return await this.guardarPermisoSupervisor(params);
-                // Acciones exclusivas de Google Apps Script (Sheets)
                 case 'registrarAlmuerzoExtra':
                 case 'archivarRegistros':
                 case 'crearReporteGoogleSheets':
+                case 'archivarMenuConsumido':
+                case 'obtenerHistorialMenuSugerencias':
+                case 'obtenerVacacionesEmpleado':
                     return await this._jsonp(params);
                 default:
                     console.warn("⚠️ Acción no reconocida:", accion);
@@ -1224,6 +1230,38 @@ window.FirebaseBackend = {
             });
             return { ok: true };
         } catch (e) {
+            return { error: e.message };
+        }
+    },
+
+    async obtenerMenuSemanal() {
+        try {
+            const doc = await db.collection('configuracion').doc('menu_semanal').get();
+            if (doc.exists) {
+                return doc.data();
+            }
+            return {
+                lunes: { sopa: '', plato: '', jugo: '', postre: '' },
+                martes: { sopa: '', plato: '', jugo: '', postre: '' },
+                miercoles: { sopa: '', plato: '', jugo: '', postre: '' },
+                jueves: { sopa: '', plato: '', jugo: '', postre: '' },
+                viernes: { sopa: '', plato: '', jugo: '', postre: '' },
+                sabado: { sopa: '', plato: '', jugo: '', postre: '' },
+                domingo: { sopa: '', plato: '', jugo: '', postre: '' }
+            };
+        } catch (e) {
+            console.error("Error al obtener menú semanal:", e);
+            return { error: e.message };
+        }
+    },
+
+    async guardarMenuSemanal(params) {
+        try {
+            const menu = typeof params.menu === 'string' ? JSON.parse(params.menu) : params.menu;
+            await db.collection('configuracion').doc('menu_semanal').set(menu);
+            return { ok: true };
+        } catch (e) {
+            console.error("Error al guardar menú semanal:", e);
             return { error: e.message };
         }
     },

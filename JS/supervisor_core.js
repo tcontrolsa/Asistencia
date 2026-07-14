@@ -2263,7 +2263,7 @@
     // ============================================================
     // DETALLE
     // ============================================================
-    function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customFin = null) {
+    async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customFin = null) {
       const ADMIN_ID = "1058";
       let sessionData = {};
       try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
@@ -2275,6 +2275,30 @@
 
       let e = empCache.find(x => x.id === id);
       if (!e) return;
+
+      let totalVacsTomadas = 0;
+      let listaVacacionesHTML = '';
+      try {
+        const vacRes = await jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: id });
+        if (vacRes && !vacRes.error) {
+          const list = vacRes.vacaciones || [];
+          totalVacsTomadas = list.length;
+          if (list.length > 0) {
+            list.sort((a,b) => b.fecha.localeCompare(a.fecha));
+            listaVacacionesHTML = list.map(v => {
+              return `<div style="font-size:11px; padding:4px 0; border-bottom:1px dashed #f1f5f9; display:flex; justify-content:space-between; color:#334155;">
+                <span>📅 ${v.fecha}</span>
+                <span style="font-weight:700; color:#4f46e5;">🏖️ Tomada</span>
+              </div>`;
+            }).join('');
+          } else {
+            listaVacacionesHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:5px 0;">Sin vacaciones registradas</div>`;
+          }
+        }
+      } catch(err) {
+        console.error("Error al cargar vacaciones:", err);
+        listaVacacionesHTML = `<div style="font-size:11px; color:#ef4444; text-align:center; padding:5px 0;">Error al conectar</div>`;
+      }
       
       // Obtener el período seleccionado o el actual por defecto
       let periodoSeleccionado = periodos[indexPeriodo] || periodos[0];
@@ -2338,7 +2362,7 @@
 
       let filas = fechasOrdenadas.map(f => {
         let d = porDia[f];
-        let regsDia = d.registros;
+        let regsDia = [...d.registros].sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
         const dayOfWeek = new Date(f + 'T12:00:00').getDay();
         const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
         const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
@@ -2386,7 +2410,7 @@
             const tsVal = formatearTimestampCompleto(p.entrada.timestamp);
             return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
-          if (esAdminMaster && !p.entrada) {
+          if (esAdminMaster && !p.entrada && !esFalta) {
             let defEntStr = esFestivo ? '07:00:00' : '07:30:00';
             let defEntLbl = esFestivo ? '07:00' : '07:30';
             return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'ENTRADA', '${defEntStr}', '${f}')"><i class="fas fa-plus"></i> ${defEntLbl}</button>`;
@@ -2400,7 +2424,7 @@
             const tsVal = formatearTimestampCompleto(p.salida.timestamp);
             return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
           }
-          if (esAdminMaster && !p.salida) {
+          if (esAdminMaster && !p.salida && !esFalta) {
             let defSalStr = esFestivo ? '15:00:00' : '16:15:00';
             let defSalLbl = esFestivo ? '15:00' : '16:15';
             return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'SALIDA', '${defSalStr}', '${f}')"><i class="fas fa-plus"></i> ${defSalLbl}</button>`;
@@ -2808,116 +2832,129 @@
 
       $('detalleContent').innerHTML = `
     <div class="detail-view">
-      <div class="detail-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
-        <div style="display:flex; gap:16px; align-items:center;">
-          <div class="detail-photo-container" ${esAdminMaster ? `onclick="triggerPhotoUpload('${e.id}')" title="Subir nueva foto"` : ''}>
+      <!-- CABECERA REDISEÑADA: COMPACTA Y MODERNA -->
+      <div class="detail-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 18px; background:#ffffff; border-bottom:1px solid #e2e8f0;">
+        <div style="display:flex; gap:12px; align-items:center;">
+          <div class="detail-photo-container" style="width:72px; height:72px; min-width:72px; box-shadow:0 2px 6px rgba(0,0,0,0.06); border:2px solid #ffffff;" ${esAdminMaster ? `onclick="triggerPhotoUpload('${e.id}')" title="Subir nueva foto"` : ''}>
             ${photoCell(e, 'large')}
-            ${esAdminMaster ? `<div class="photo-upload-overlay"><i class="fas fa-camera"></i></div>` : ''}
+            ${esAdminMaster ? `<div class="photo-upload-overlay" style="font-size:10px;"><i class="fas fa-camera"></i></div>` : ''}
           </div>
           <div class="detail-info">
-            <div class="detail-name" ${esAdminMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')"` : ''}>${escapeHtml(e.nombre)}</div>
-            <div class="detail-meta">
-              <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')"` : ''}><i class="fas fa-id-card"></i> ${escapeHtml(e.id)}</span>
-              <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')"` : ''}><i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}</span>
-              <span ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Editar enlace de Rol de Pagos"` : ''}><i class="fas fa-file-invoice-dollar"></i> ${e.id_dispositivo ? 'Con Rol' : 'Sin Rol'}</span>
-              ${tardT > 0 ? `<span class="pill late" style="margin-left:8px"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` : '<span class="pill ok" style="margin-left:8px"><i class="fas fa-check-circle"></i> Puntual</span>'}
+            <div class="detail-name" style="font-size:18px; font-weight:700; color:#0f172a; line-height:1.2; margin-bottom:4px;" ${esAdminMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')"` : ''}>${escapeHtml(e.nombre)}</div>
+            <div class="detail-meta" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+              <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')"` : ''}><i class="fas fa-id-card"></i> ${escapeHtml(e.id)}</span>
+              <span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')"` : ''}><i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}</span>
+              <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Editar enlace de Rol de Pagos"` : ''}><i class="fas fa-file-invoice-dollar"></i> ${e.id_dispositivo ? 'Con Rol' : 'Sin Rol'}</span>
+              ${tardT > 0 ? 
+                `<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` : 
+                `<span style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check-circle"></i> Puntual</span>`
+              }
             </div>
           </div>
         </div>
-        <div class="periodo-selector" style="background:var(--white); padding:8px 16px; border-radius:8px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        
+        <!-- SELECTOR DE PERÍODOS INLINE -->
+        <div class="periodo-selector" style="background:#ffffff; padding:6px 12px; border-radius:8px; border:1px solid #cbd5e1; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12px; box-shadow:none;">
           <div style="display:flex; align-items:center;">
-            <label style="font-size:12px; font-weight:600; color:var(--g600); margin-right:8px;"><i class="fas fa-calendar-alt"></i> Período:</label>
-            <select id="filtroPeriodoDetalle" class="filter-select" onchange="mostrarDetalle('${e.id}', parseInt(this.value))" style="font-size:13px; font-weight:500;">
+            <label style="font-weight:600; color:#475569; margin-right:6px; font-size:11.5px;"><i class="fas fa-calendar-alt"></i> Período:</label>
+            <select id="filtroPeriodoDetalle" class="filter-select" onchange="mostrarDetalle('${e.id}', parseInt(this.value))" style="font-size:12px; font-weight:500; border:1px solid #cbd5e1; border-radius:6px; padding:2px 4px; outline:none; background:#ffffff;">
               ${optionsPeriodos}
             </select>
           </div>
           <div style="display:flex; align-items:center; gap:6px;">
-            <label style="font-size:12px; font-weight:600; color:var(--g600);">Desde:</label>
-            <input type="date" id="detFechaInicio" value="${R_INI}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), this.value, $('detFechaFin').value)" style="border:1px solid var(--g200); border-radius:6px; padding:2px 6px; font-size:12px; font-family:inherit;">
-            <label style="font-size:12px; font-weight:600; color:var(--g600);">Hasta:</label>
-            <input type="date" id="detFechaFin" value="${R_FIN}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), $('detFechaInicio').value, this.value)" style="border:1px solid var(--g200); border-radius:6px; padding:2px 6px; font-size:12px; font-family:inherit;">
-            <button class="btn btn-secondary" onclick="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value))" title="Restablecer al rango por defecto del período" style="font-size:11px; padding:3px 8px; height:auto; display:inline-flex; align-items:center; gap:4px; border:1px solid var(--g300); background:#f8fafc; color:var(--g600); border-radius:6px; cursor:pointer;">
+            <label style="font-weight:600; color:#475569; font-size:11.5px;">Desde:</label>
+            <input type="date" id="detFechaInicio" value="${R_INI}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), this.value, $('detFechaFin').value)" style="border:1px solid #cbd5e1; border-radius:6px; padding:2px 4px; font-size:12px; font-family:inherit; outline:none; color:#334155; background:#ffffff;">
+            <label style="font-weight:600; color:#475569; font-size:11.5px;">Hasta:</label>
+            <input type="date" id="detFechaFin" value="${R_FIN}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), $('detFechaInicio').value, this.value)" style="border:1px solid #cbd5e1; border-radius:6px; padding:2px 4px; font-size:12px; font-family:inherit; outline:none; color:#334155; background:#ffffff;">
+            <button class="btn btn-secondary" onclick="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value))" title="Restablecer al rango por defecto del período" style="font-size:11px; padding:3px 8px; height:auto; display:inline-flex; align-items:center; gap:4px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">
               <i class="fas fa-sync-alt"></i> Restablecer
             </button>
           </div>
         </div>
       </div>
       
-      <div style="padding:var(--pad);background:var(--g50);border-bottom:1px solid var(--g200)">
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:16px; width:100%;">
+      <!-- SECCIÓN DE MÉTRICAS REDISEÑADA Y COMPACTA -->
+      <div style="padding:12px 18px; background:#ffffff; border-bottom:1px solid #e2e8f0;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; width:100%;">
           
           <!-- RESUMEN ASISTENCIA -->
-          <div style="background:var(--white); border:1px solid var(--g200); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
-            <div style="font-size:11.5px; font-weight:700; color:var(--g600); border-bottom:1px solid var(--g100); padding-bottom:6px; display:flex; align-items:center; gap:6px; text-transform:uppercase;">
-              <i class="fas fa-calendar-check" style="color:var(--blue);"></i> Resumen de Asistencia
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
+            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
+              <i class="fas fa-calendar-check" style="color:var(--blue); font-size:12px;"></i> Resumen de Asistencia
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Días Trab.</div>
-                <div style="font-size:16px; font-weight:800; color:var(--g800);">${dias}</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 12px; padding:2px 0;">
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Días Trab.</span>
+                <div style="font-size:15px; font-weight:700; color:#0f172a; margin-top:2px;">${dias} <span style="font-size:10px; color:#94a3b8; font-weight:400; margin-left:2px;">(${entT} ent / ${salT} sal)</span></div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Puntualidad</div>
-                <div style="font-size:16px; font-weight:800; color:${puntualidadColor};">${puntualidadVal}%</div>
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Puntualidad</span>
+                <div style="font-size:15px; font-weight:700; color:${puntualidadColor}; margin-top:2px;">${puntualidadVal}%</div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Prom. Entrada</div>
-                <div style="font-size:13px; font-weight:700; color:var(--g700);">${minsToHHMM(pE)}</div>
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Prom. Entrada</span>
+                <div style="font-size:13px; font-weight:600; color:#334155; margin-top:2px;">${minsToHHMM(pE)}</div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Prom. Salida</div>
-                <div style="font-size:13px; font-weight:700; color:var(--g700);">${minsToHHMM(pS)}</div>
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Prom. Salida</span>
+                <div style="font-size:13px; font-weight:600; color:#334155; margin-top:2px;">${minsToHHMM(pS)}</div>
               </div>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--g500); padding:2px 4px; border-top:1px solid var(--g50); pt:4px;">
-              <span>Entradas: <strong>${entT}</strong></span>
-              <span>Salidas: <strong>${salT}</strong></span>
             </div>
           </div>
 
           <!-- JORNADA Y TIEMPOS -->
-          <div style="background:var(--white); border:1px solid var(--g200); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
-            <div style="font-size:11.5px; font-weight:700; color:var(--g600); border-bottom:1px solid var(--g100); padding-bottom:6px; display:flex; align-items:center; gap:6px; text-transform:uppercase;">
-              <i class="fas fa-clock" style="color:var(--green);"></i> Jornada y Tiempos
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
+            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
+              <i class="fas fa-clock" style="color:var(--green); font-size:12px;"></i> Jornada y Tiempos
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; height:100%;">
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Total Horas</div>
-                <div style="font-size:16px; font-weight:800; color:var(--green);">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 12px; padding:2px 0;">
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Total Horas</span>
+                <div style="font-size:15px; font-weight:700; color:var(--green); margin-top:2px;">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Atrasos Acum.</div>
-                <div style="font-size:16px; font-weight:800; color:${totAtrasos > 0 ? 'var(--red)' : 'var(--g800)'};">${minutosAHHMMSS(totAtrasos)}</div>
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Atrasos Acum.</span>
+                <div style="font-size:15px; font-weight:700; color:${totAtrasos > 0 ? 'var(--red)' : '#0f172a'}; margin-top:2px;">${minutosAHHMMSS(totAtrasos)}</div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center; display:flex; flex-direction:column; justify-content:center; grid-column:span 2;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Tiempo por Justificar</div>
-                <div style="font-size:16px; font-weight:800; color:${totTJ > 0 ? 'var(--red)' : 'var(--green)'};">${minutosAHHMMSS(totTJ)}</div>
+              <div style="grid-column: span 2; border-top: 1px dashed #f1f5f9; padding-top: 6px; margin-top: 2px;">
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Tiempo por Justificar</span>
+                <div style="font-size:15px; font-weight:700; color:${totTJ > 0 ? 'var(--red)' : 'var(--green)'}; margin-top:2px;">${minutosAHHMMSS(totTJ)}</div>
               </div>
             </div>
           </div>
 
           <!-- PERMISOS Y ALMUERZOS -->
-          <div style="background:var(--white); border:1px solid var(--g200); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
-            <div style="font-size:11.5px; font-weight:700; color:var(--g600); border-bottom:1px solid var(--g100); padding-bottom:6px; display:flex; align-items:center; gap:6px; text-transform:uppercase;">
-              <i class="fas fa-hand-holding-heart" style="color:var(--indigo);"></i> Permisos y Almuerzos
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
+            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
+              <i class="fas fa-hand-holding-heart" style="color:var(--indigo); font-size:12px;"></i> Permisos y Almuerzos
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">T. Personal</div>
-                <div style="font-size:14px; font-weight:800; color:var(--indigo);">${minutosAHHMMSS(totTP)}</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 12px; padding:2px 0;">
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">T. Personal</span>
+                <div style="font-size:13px; font-weight:600; color:var(--indigo); margin-top:2px;">${minutosAHHMMSS(totTP)}</div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">T. Médico</div>
-                <div style="font-size:14px; font-weight:800; color:var(--teal);">${minutosAHHMMSS(totTM)}</div>
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">T. Médico</span>
+                <div style="font-size:13px; font-weight:600; color:var(--teal); margin-top:2px;">${minutosAHHMMSS(totTM)}</div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Alm. Planta</div>
-                <div style="font-size:14px; font-weight:800; color:var(--purple);">${almP}</div>
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Alm. Planta</span>
+                <div style="font-size:13.5px; font-weight:600; color:var(--purple); margin-top:2px;">${almP} <span style="font-size:9px; color:#94a3b8; font-weight:400; margin-left:1px;">días</span></div>
               </div>
-              <div style="background:var(--g50); padding:6px 8px; border-radius:8px; text-align:center;">
-                <div style="font-size:9.5px; color:var(--g500); font-weight:600; text-transform:uppercase; margin-bottom:2px;">Alm. Fuera</div>
-                <div style="font-size:14px; font-weight:800; color:var(--g600);">${almF}</div>
+              <div>
+                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Alm. Fuera</span>
+                <div style="font-size:13.5px; font-weight:600; color:#475569; margin-top:2px;">${almF} <span style="font-size:9px; color:#94a3b8; font-weight:400; margin-left:1px;">días</span></div>
               </div>
+            </div>
+          </div>
+
+          <!-- HISTORIAL DE VACACIONES -->
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
+            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
+              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas (${totalVacsTomadas})
+            </div>
+            <div style="max-height: 90px; overflow-y: auto; padding-right: 2px;">
+              ${listaVacacionesHTML}
             </div>
           </div>
           
@@ -3281,7 +3318,8 @@
         asistencia: 'Control de Asistencia', 
         detalle: 'Detalle de Empleado',
         opciones: 'Opciones adicionales',
-        emergencias: 'Simulacros y Emergencias'
+        emergencias: 'Simulacros y Emergencias',
+        menu: 'Menú del Comedor'
       };
       $('pageTitle').textContent = titles[panel] || 'Supervisor';
       if (panel !== 'detalle') {
@@ -3294,9 +3332,171 @@
         else if (panel === 'emergencias') {
           cargarEmergenciasSupervisor();
         }
-        else if (panel === 'asistencia') cargarAsistencia();
+        else if (panel === 'asistencia') {
+          cargarAsistencia();
+        }
+        else if (panel === 'menu') {
+          cargarMenuSemanal();
+        }
       }
     }
+
+    // ============================================================
+    // SECCIÓN PLANIFICADOR DE MENÚ SEMANAL
+    // ============================================================
+    async function cargarMenuSemanal() {
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({ accion: 'obtenerMenuSemanal' });
+        mostrarLoader(false);
+        if (res && !res.error) {
+          renderFormMenuSemanal(res);
+          cargarSugerenciasMenu();
+        } else {
+          mostrarToast(res.error || 'Error al cargar el menú', 'error');
+        }
+      } catch (e) {
+        mostrarLoader(false);
+        console.error(e);
+        mostrarToast('Error de conexión', 'error');
+      }
+    }
+
+    function renderFormMenuSemanal(menu) {
+      const container = $('formMenuSemanalContainer');
+      if (!container) return;
+
+      const dias = [
+        { key: 'lunes', label: 'Lunes' },
+        { key: 'martes', label: 'Martes' },
+        { key: 'miercoles', label: 'Miércoles' },
+        { key: 'jueves', label: 'Jueves' },
+        { key: 'viernes', label: 'Viernes' },
+        { key: 'sabado', label: 'Sábado' },
+        { key: 'domingo', label: 'Domingo' }
+      ];
+
+      container.innerHTML = dias.map(d => {
+        const dMenu = menu[d.key] || { sopa: '', plato: '', jugo: '' };
+        return `
+          <div class="menu-dia-card" style="background:#f8fafc; border:1px solid var(--g200); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <div style="font-size:14px; font-weight:800; color:var(--indigo); border-bottom:1.5px solid var(--indigo); padding-bottom:4px; display:flex; align-items:center; gap:6px;">
+              <i class="fas fa-calendar-day"></i> ${d.label}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div>
+                <label style="font-size:11px; font-weight:700; color:#475569; display:block; margin-bottom:3px; text-transform:uppercase;">🍜 Sopa</label>
+                <input type="text" class="form-control menu-input" list="datalist-sopas" data-dia="${d.key}" data-campo="sopa" value="${escapeHtml(dMenu.sopa || '')}" placeholder="Ej: Crema de verduras" style="font-size:12.5px; padding:6px 10px; border-radius:8px; border: 1.5px solid var(--g200); font-family: inherit;">
+              </div>
+              <div>
+                <label style="font-size:11px; font-weight:700; color:#475569; display:block; margin-bottom:3px; text-transform:uppercase;">🥩 Plato Fuerte</label>
+                <input type="text" class="form-control menu-input" list="datalist-platos" data-dia="${d.key}" data-campo="plato" value="${escapeHtml(dMenu.plato || '')}" placeholder="Ej: Lomo saltado" style="font-size:12.5px; padding:6px 10px; border-radius:8px; border: 1.5px solid var(--g200); font-family: inherit;">
+              </div>
+              <div>
+                <label style="font-size:11px; font-weight:700; color:#475569; display:block; margin-bottom:3px; text-transform:uppercase;">🥤 Bebida</label>
+                <input type="text" class="form-control menu-input" list="datalist-jugos" data-dia="${d.key}" data-campo="jugo" value="${escapeHtml(dMenu.jugo || '')}" placeholder="Ej: Jugo de naranja" style="font-size:12.5px; padding:6px 10px; border-radius:8px; border: 1.5px solid var(--g200); font-family: inherit;">
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('') + `
+        <datalist id="datalist-sopas"></datalist>
+        <datalist id="datalist-platos"></datalist>
+        <datalist id="datalist-jugos"></datalist>
+      `;
+    }
+
+    function calcularFechaDiaSemana(diaKey) {
+      const ahora = new Date();
+      const diasSemanaKeys = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+      const targetIdx = diasSemanaKeys.indexOf(diaKey);
+      const hoyIdx = ahora.getDay();
+      
+      const diff = targetIdx - hoyIdx;
+      const targetDate = new Date(ahora);
+      targetDate.setDate(ahora.getDate() + diff);
+      
+      const y = targetDate.getFullYear();
+      const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const d = String(targetDate.getDate()).padStart(2, '0');
+      return `${d}/${m}/${y}`; // DD/MM/YYYY
+    }
+
+    async function cargarSugerenciasMenu() {
+      try {
+        const sugRes = await jsonpRequest({ accion: 'obtenerHistorialMenuSugerencias' });
+        if (sugRes && !sugRes.error) {
+          const dSopas = $('datalist-sopas');
+          const dPlatos = $('datalist-platos');
+          const dJugos = $('datalist-jugos');
+          if (dSopas) dSopas.innerHTML = (sugRes.sopas || []).map(s => `<option value="${escapeHtml(s)}">`).join('');
+          if (dPlatos) dPlatos.innerHTML = (sugRes.platos || []).map(p => `<option value="${escapeHtml(p)}">`).join('');
+          if (dJugos) dJugos.innerHTML = (sugRes.jugos || []).map(j => `<option value="${escapeHtml(j)}">`).join('');
+        }
+      } catch(e) {
+        console.warn("Error cargando sugerencias de menú:", e);
+      }
+    }
+
+    window.guardarMenuSemanal = async function () {
+      const inputs = document.querySelectorAll('.menu-input');
+      const menu = {
+        lunes: {}, martes: {}, miercoles: {}, jueves: {}, viernes: {}, sabado: {}, domingo: {}
+      };
+
+      inputs.forEach(input => {
+        const dia = input.dataset.dia;
+        const campo = input.dataset.campo;
+        menu[dia][campo] = input.value.trim();
+      });
+
+      mostrarLoader(true);
+      try {
+        // 1. Descargar el menú anterior antes de guardar
+        const menuAnteriorRes = await jsonpRequest({ accion: 'obtenerMenuSemanal' });
+        if (menuAnteriorRes && !menuAnteriorRes.error) {
+          const registrosMenu = [];
+          const diasKeys = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+          diasKeys.forEach(key => {
+            const dMenu = menuAnteriorRes[key];
+            if (dMenu && (dMenu.sopa || dMenu.plato || dMenu.jugo)) {
+              registrosMenu.push({
+                fecha: calcularFechaDiaSemana(key),
+                dia: key.charAt(0).toUpperCase() + key.slice(1),
+                sopa: dMenu.sopa || '',
+                plato: dMenu.plato || '',
+                jugo: dMenu.jugo || ''
+              });
+            }
+          });
+
+          // 2. Archivar en Google Sheets
+          if (registrosMenu.length > 0) {
+            await jsonpRequest({
+              accion: 'archivarMenuConsumido',
+              registros: JSON.stringify(registrosMenu)
+            });
+          }
+        }
+
+        // 3. Guardar el nuevo menú en Firestore
+        const res = await jsonpRequest({
+          accion: 'guardarMenuSemanal',
+          menu: menu
+        });
+        mostrarLoader(false);
+        if (res && res.ok) {
+          mostrarToast('Menú guardado y archivado correctamente', 'success');
+          cargarSugerenciasMenu(); // Recargar datalists
+        } else {
+          mostrarToast(res.error || 'Error al guardar el menú', 'error');
+        }
+      } catch (e) {
+        mostrarLoader(false);
+        console.error(e);
+        mostrarToast('Error al guardar el menú', 'error');
+      }
+    };
 
     // ============================================================
     // MODAL ALMUERZO EXTRA

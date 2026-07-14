@@ -10,10 +10,9 @@
     <title>Configuración - CONTROL 2026</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="./CSS/admin_config.css?v=20260713_1">
 
-    <link rel="stylesheet" href="./CSS/admin_config.css?v=20260611_1">
     <!-- FIREBASE SDKS -->
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
@@ -25,244 +24,259 @@
 <body>
 
     <div class="config-container">
+        <!-- Encabezado del Panel -->
         <div class="config-header">
-            <h1><i class="fas fa-sliders-h"></i> Panel de Configuración</h1>
-            <p>CONTROL 2026 - Sistema de Gestión de Asistencia</p>
-        </div>
-
-        <!-- Tarjeta 1: Ubicación de la Empresa -->
-        <div class="config-card">
-            <div class="card-title">
-                <i class="fas fa-map-marker-alt"></i>
-                Ubicación de la Empresa
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Latitud</label>
-                <input type="text" class="form-control coordenadas-input" id="configLatitud"
-                    placeholder="-0.1288771313385675">
-                <div class="help-text">Coordenada de latitud de la empresa (formato: -0.129292)</div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Longitud</label>
-                <input type="text" class="form-control coordenadas-input" id="configLongitud"
-                    placeholder="-78.47896772889067">
-                <div class="help-text">Coordenada de longitud de la empresa (formato: -78.477412)</div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Radio de Validez (metros)</label>
-                <input type="number" class="form-control" id="configRadio" placeholder="250" min="10" max="1000">
-                <div class="help-text">Distancia máxima desde la empresa para registrar asistencia</div>
-            </div>
-
-            <button class="btn btn-outline-secondary w-100 mt-2" onclick="obtenerUbicacionActual()">
-                <i class="fas fa-location-dot"></i> Usar mi ubicación actual
-            </button>
-        </div>
-
-        <!-- Tarjeta 2: Horarios Laborales -->
-        <div class="config-card">
-            <div class="card-title">
-                <i class="fas fa-clock"></i>
-                Horarios Laborales
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Hora de Inicio de Jornada</label>
-                <input type="time" class="form-control" id="configHoraInicio" value="07:30">
-                <div class="help-text">Hora oficial de inicio de la jornada laboral</div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Hora de Fin de Jornada</label>
-                <input type="time" class="form-control" id="configHoraFin" value="16:15">
-                <div class="help-text">Hora oficial de fin de la jornada laboral</div>
-            </div>
-
-            <hr>
-
-            <div class="mb-3">
-                <label class="form-label">Hora Máxima de Almuerzo</label>
-                <input type="time" class="form-control" id="configHoraAlmuerzo" value="09:30">
-                <div class="help-text">Hora límite para seleccionar opción de almuerzo (formato HH:MM)</div>
-            </div>
-
-            <div class="mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="configAlmuerzoActivo" role="switch">
-                    <label class="form-check-label">Activar hora máxima de almuerzo</label>
-                </div>
-                <div class="help-text">Si está desactivado, los empleados pueden seleccionar almuerzo a cualquier hora
-                </div>
-            </div>
-
-            <hr>
-
-            <div class="mb-3">
-                <label class="form-label">Hora Límite de Entrada Tardía</label>
-                <input type="time" class="form-control" id="configHoraEntradaLimite" value="07:45">
-                <div class="help-text">Hora después de la cual se considera entrada tardía</div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Hora de Salida Final</label>
-                <input type="time" class="form-control" id="configHoraSalida" value="16:15">
-                <div class="help-text">Hora de salida configurada (salidas antes requieren razón)</div>
-            </div>
-
-            <hr>
-
-            <div class="mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="configMarcacionAutomatica" role="switch">
-                    <label class="form-check-label">Marcación automática de salida</label>
-                </div>
-                <div class="help-text">Registrar salida automáticamente después del tiempo especificado</div>
-            </div>
-
-            <div class="mb-3" id="divTiempoAutomatico" style="display: none;">
-                <label class="form-label">Tiempo para marcación automática (minutos)</label>
-                <input type="number" class="form-control" id="configTiempoAutomatico" value="10" min="1" max="120">
-                <div class="help-text">Minutos después de la hora de fin para registrar salida automática</div>
+            <div class="config-header-text">
+                <h1><i class="fas fa-sliders-h"></i> Panel de Configuración</h1>
+                <p>CONTROL 2026 - Sistema de Gestión de Asistencia</p>
             </div>
         </div>
 
-        <!-- Tarjeta 3: Configuración de Registro -->
-        <div class="config-card">
-            <div class="card-title">
-                <i class="fas fa-fingerprint"></i>
-                Configuración de Registro
-            </div>
+        <!-- Cuadrícula Principal de Configuración -->
+        <div class="config-grid">
+            
+            <!-- Columna Izquierda: Ubicación y Tiempos -->
+            <div class="config-column">
+                
+                <!-- Tarjeta 1: Ubicación de la Empresa -->
+                <div class="config-card">
+                    <div class="card-title">
+                        <i class="fas fa-map-marker-alt text-danger"></i>
+                        Ubicación de la Empresa
+                    </div>
 
-            <div class="mb-3">
-                <label class="form-label">Tolerancia de GPS (metros)</label>
-                <input type="number" class="form-control" id="configToleranciaGPS" value="50" min="0" max="200">
-                <div class="help-text">Margen de error permitido para la ubicación GPS</div>
-            </div>
+                    <!-- Coordenadas Inline -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Latitud</label>
+                            <input type="text" class="form-control coordenadas-input" id="configLatitud"
+                                placeholder="-0.128877">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Longitud</label>
+                            <input type="text" class="form-control coordenadas-input" id="configLongitud"
+                                placeholder="-78.478967">
+                        </div>
+                    </div>
+                    <div class="help-text mb-3">Punto geográfico central de la sucursal de la empresa.</div>
 
-            <div class="mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="configRequiereFoto" role="switch">
-                    <label class="form-check-label">Requerir foto en cada registro</label>
-                </div>
-                <div class="help-text">Solicitar toma de foto al registrar entrada/salida</div>
-            </div>
+                    <div class="mb-3">
+                        <label class="form-label">Radio de Validez (metros)</label>
+                        <input type="number" class="form-control" id="configRadio" placeholder="250" min="10" max="1000">
+                        <div class="help-text">Distancia máxima permitida para registrar asistencia.</div>
+                    </div>
 
-            <div class="mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="configPermiteRegistroManual" role="switch">
-                    <label class="form-check-label">Permitir registro manual (sin GPS)</label>
-                </div>
-                <div class="help-text">Permitir a supervisores registrar asistencia manualmente</div>
-            </div>
-        </div>
-
-        <!-- Tarjeta 4: Supervisores -->
-        <div class="config-card">
-            <div class="card-title">
-                <i class="fas fa-user-tie"></i>
-                Usuarios Supervisores
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Agregar Supervisor</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="nuevoSupervisorId" placeholder="ID de empleado">
-                    <button class="btn btn-primary" onclick="agregarSupervisor()">
-                        <i class="fas fa-plus"></i> Agregar
+                    <button class="btn btn-outline-primary w-100 mt-2" onclick="obtenerUbicacionActual()">
+                        <i class="fas fa-location-dot"></i> Usar mi ubicación actual
                     </button>
                 </div>
-                <div class="help-text">Ingresa el ID del empleado para asignarlo como supervisor</div>
-            </div>
 
-            <div class="info-badge">
-                <i class="fas fa-list"></i> <strong>Supervisores Actuales</strong>
-                <div id="listaSupervisores" class="mt-2">
-                    <div class="text-muted">Cargando...</div>
+                <!-- Tarjeta 2: Horarios Laborales -->
+                <div class="config-card">
+                    <div class="card-title">
+                        <i class="fas fa-clock text-primary"></i>
+                        Horarios Laborales
+                    </div>
+
+                    <!-- Jornada Laboral Inline -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Inicio de Jornada</label>
+                            <input type="time" class="form-control" id="configHoraInicio" value="07:30">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Fin de Jornada</label>
+                            <input type="time" class="form-control" id="configHoraFin" value="16:15">
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Configuración de Almuerzo -->
+                    <div class="mb-3">
+                        <label class="form-label">Hora Límite de Almuerzo</label>
+                        <input type="time" class="form-control" id="configHoraAlmuerzo" value="09:30">
+                        <div class="help-text">Hora tope para registrar la opción de almuerzo hoy.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="configAlmuerzoActivo" role="switch">
+                            <label class="form-check-label">Activar hora límite de almuerzo</label>
+                        </div>
+                        <div class="help-text">Si está desactivado, el registro se permite a cualquier hora.</div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Entrada Tardía / Salida Final Inline -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Entrada Tardía Límite</label>
+                            <input type="time" class="form-control" id="configHoraEntradaLimite" value="07:45">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Hora Salida Final</label>
+                            <input type="time" class="form-control" id="configHoraSalida" value="16:15">
+                        </div>
+                    </div>
+                    <div class="help-text mb-3">Entradas después o salidas antes de estas horas requieren justificación.</div>
+
+                    <hr>
+
+                    <!-- Marcación Automática -->
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="configMarcacionAutomatica" role="switch">
+                            <label class="form-check-label">Marcación automática de salida</label>
+                        </div>
+                        <div class="help-text">Registrar salida de forma automática después del tiempo indicado.</div>
+                    </div>
+
+                    <div class="mb-3" id="divTiempoAutomatico" style="display: none;">
+                        <label class="form-label">Tiempo para marcación (minutos)</label>
+                        <input type="number" class="form-control" id="configTiempoAutomatico" value="10" min="1" max="120">
+                        <div class="help-text">Minutos después de fin de jornada para registrar la salida.</div>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Tarjeta 5: Otras Configuraciones -->
-        <div class="config-card">
-            <div class="card-title">
-                <i class="fas fa-cog"></i>
-                Otras Configuraciones
             </div>
 
-            <div class="mb-3">
-                <label class="form-label">Número de WhatsApp para Soporte</label>
-                <input type="tel" class="form-control" id="configWhatsApp" placeholder="593963561149">
-                <div class="help-text">Número con código de país sin el signo + (ej: 593963561149)</div>
-            </div>
+            <!-- Columna Derecha: Registro, Supervisores, Soporte y Base de Datos -->
+            <div class="config-column">
+                
+                <!-- Tarjeta 3: Configuración de Registro -->
+                <div class="config-card">
+                    <div class="card-title">
+                        <i class="fas fa-fingerprint text-success"></i>
+                        Parámetros de Registro
+                    </div>
 
-            <div class="mb-3">
-                <label class="form-label">Mensaje de Soporte</label>
-                <textarea class="form-control" id="configMensajeSoporte"
-                    rows="3">Hola, necesito soporte técnico para el sistema CONTROL 2026</textarea>
-                <div class="help-text">Mensaje predefinido para contacto de soporte</div>
-            </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tolerancia de GPS (metros)</label>
+                        <input type="number" class="form-control" id="configToleranciaGPS" value="50" min="0" max="200">
+                        <div class="help-text">Margen de imprecisión permitido para la señal de GPS.</div>
+                    </div>
 
-            <div class="mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="configModoMantenimiento" role="switch">
-                    <label class="form-check-label">Modo Mantenimiento</label>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="configRequiereFoto" role="switch">
+                            <label class="form-check-label">Requerir foto en cada registro</label>
+                        </div>
+                        <div class="help-text">Obliga a tomar una fotografía al marcar entrada o salida.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="configPermiteRegistroManual" role="switch">
+                            <label class="form-check-label">Permitir registro manual (sin GPS)</label>
+                        </div>
+                        <div class="help-text">Habilita a los supervisores a forzar marcaciones manualmente.</div>
+                    </div>
                 </div>
-                <div class="help-text">Mostrar mensaje de mantenimiento a los usuarios</div>
-            </div>
 
-            <div class="mb-3" id="divMensajeMantenimiento" style="display: none;">
-                <label class="form-label">Mensaje de Mantenimiento</label>
-                <textarea class="form-control" id="configMensajeMantenimiento"
-                    rows="2">El sistema se encuentra en mantenimiento. Por favor intenta más tarde.</textarea>
-            </div>
-        </div>
+                <!-- Tarjeta 4: Supervisores -->
+                <div class="config-card">
+                    <div class="card-title">
+                        <i class="fas fa-user-tie text-info"></i>
+                        Usuarios Supervisores
+                    </div>
 
-        <!-- Tarjeta 6: Base de Datos y Migración -->
-        <div class="config-card">
-            <div class="card-title">
-                <i class="fas fa-database"></i>
-                Base de Datos y Migración
+                    <div class="mb-3">
+                        <label class="form-label">Asignar Nuevo Supervisor</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="nuevoSupervisorId" placeholder="ID de empleado">
+                            <button class="btn btn-primary px-3" onclick="agregarSupervisor()">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        <div class="help-text">Ingresa el ID único de empleado para darle acceso administrativo.</div>
+                    </div>
+
+                    <div class="info-badge">
+                        <i class="fas fa-list-ul"></i> <strong>Supervisores Activos</strong>
+                        <div id="listaSupervisores" class="mt-2">
+                            <div class="text-muted small">Cargando lista...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tarjeta 5: Soporte y Mantenimiento -->
+                <div class="config-card">
+                    <div class="card-title">
+                        <i class="fas fa-cog text-secondary"></i>
+                        Soporte y Mantenimiento
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">WhatsApp de Soporte Técnico</label>
+                        <input type="tel" class="form-control" id="configWhatsApp" placeholder="593963561149">
+                        <div class="help-text">Número de contacto (con código de país y sin el signo +).</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Mensaje Predeterminado de Soporte</label>
+                        <textarea class="form-control" id="configMensajeSoporte" rows="2">Hola, necesito soporte técnico para el sistema CONTROL 2026</textarea>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="configModoMantenimiento" role="switch">
+                            <label class="form-check-label">Modo Mantenimiento Activo</label>
+                        </div>
+                        <div class="help-text">Restringe el acceso y muestra pantalla de mantenimiento a empleados.</div>
+                    </div>
+
+                    <div class="mb-3" id="divMensajeMantenimiento" style="display: none;">
+                        <label class="form-label">Mensaje en Pantalla</label>
+                        <textarea class="form-control" id="configMensajeMantenimiento" rows="2">El sistema se encuentra en mantenimiento. Por favor intenta más tarde.</textarea>
+                    </div>
+                </div>
+
+                <!-- Tarjeta 6: Conexión y Migración -->
+                <div class="config-card">
+                    <div class="card-title">
+                        <i class="fas fa-bolt text-warning"></i>
+                        Conexión y Migración
+                    </div>
+                    <div class="mb-2">
+                        <button id="btnToggleFirebaseAdmin" class="btn btn-outline-primary w-100 fw-bold justify-content-center mb-2" onclick="toggleFirebaseAdmin()">
+                            <i class="fas fa-database"></i> <span id="toggleFirebaseText">Activar/Desactivar Firebase Local</span>
+                        </button>
+                        <button class="btn btn-warning w-100 text-dark fw-bold justify-content-center" onclick="ejecutarMigracionAFirebase()">
+                            <i class="fas fa-cloud-upload-alt"></i> Iniciar Migración a Firebase
+                        </button>
+                        <div class="help-text mt-2 text-center">
+                            Permite conmutar la conexión directa (fallback a Sheets).<br>
+                            <span class="text-danger fw-bold"><i class="fas fa-exclamation-triangle"></i> La migración se usa solo para pasar datos de Sheets a Firestore.</span>
+                        </div>
+                    </div>
+                </div>
+
             </div>
             
-            <div class="mb-3">
-                <button class="btn btn-warning w-100 text-dark fw-bold shadow-sm" onclick="ejecutarMigracionAFirebase()">
-                    <i class="fas fa-cloud-upload-alt"></i> Iniciar Migración a Firebase
-                </button>
-                <div class="help-text mt-2 text-center text-danger fw-bold"><i class="fas fa-exclamation-triangle"></i> Usar solo una vez para trasladar datos desde Sheets a Firestore.</div>
-            </div>
-
-            <hr>
-
-            <div class="mb-3">
-                <button id="btnToggleFirebaseAdmin" class="btn btn-outline-primary w-100 fw-bold shadow-sm" onclick="toggleFirebaseAdmin()">
-                    <i class="fas fa-bolt"></i> <span id="toggleFirebaseText">Activar/Desactivar Firebase Local</span>
-                </button>
-                <div class="help-text mt-2">Activa o desactiva la conexión en tiempo real con Firebase en este dispositivo (fallback a Sheets).</div>
-            </div>
-        </div>
-
-        <!-- Botones de acción -->
-        <div class="d-flex gap-3 mb-5">
-            <button class="btn btn-primary flex-grow-1" onclick="guardarConfiguraciones()">
-                <i class="fas fa-save"></i> Guardar Configuración
-            </button>
-            <button class="btn btn-success flex-grow-1" onclick="cargarConfiguraciones()">
-                <i class="fas fa-sync-alt"></i> Recargar
-            </button>
-            <button class="btn btn-outline-secondary" onclick="window.close()">
-                <i class="fas fa-times"></i> Cerrar
-            </button>
         </div>
     </div>
 
+    <!-- Barra de Acciones Sticky al Pie -->
+    <div class="sticky-action-bar">
+        <button class="btn btn-success px-4" onclick="guardarConfiguraciones()">
+            <i class="fas fa-save"></i> Guardar Cambios
+        </button>
+        <button class="btn btn-outline-secondary px-4" onclick="cargarConfiguraciones()">
+            <i class="fas fa-sync-alt"></i> Recargar
+        </button>
+    </div>
+
+    <!-- Mensaje Toast de Guardado -->
     <div id="saveAlert" class="save-alert">
         <i class="fas fa-check-circle"></i>
         Configuración guardada exitosamente
     </div>
 
+    <!-- Overlay de Carga -->
     <div id="loadingOverlay" class="loading-overlay hidden">
         <div class="loading-spinner"></div>
     </div>

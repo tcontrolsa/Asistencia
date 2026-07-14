@@ -138,6 +138,7 @@
         <div class="nav-item" data-panel="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></div>
         <div class="nav-item" data-panel="reportes"><i class="fas fa-file-invoice"></i><span>Reportes</span></div>
         <div class="nav-item" data-panel="emergencias"><i class="fas fa-exclamation-triangle"></i><span>Emergencias</span></div>
+        <div class="nav-item" data-panel="menu"><i class="fas fa-utensils"></i><span>Menú Semanal</span></div>
         <div class="nav-item" data-panel="opciones" id="navItemOpciones" style="display:none"><i
             class="fas fa-sliders-h"></i><span>Opciones adicionales</span></div>
         <a class="nav-item" href="visor_empleado.html" target="_blank" style="text-decoration: none;"><i class="fas fa-mobile-alt"></i><span>Simulador de Vista</span></a>
@@ -755,6 +756,24 @@
           <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px; padding-top:12px; border-top:1px dashed var(--g200);">
             <button class="btn" onclick="limpiarVistaPreviaMasiva()" style="padding:8px 16px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid var(--g300); background:#ffffff; color:var(--g600); display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;"><i class="fas fa-times"></i> Cancelar carga</button>
             <button class="btn btn-primary" onclick="guardarMasivoEmpleados()" style="padding:8px 20px; border-radius:8px; font-size:12px; font-weight:600; background:var(--blue); border:none; color:white; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; box-shadow:0 2px 4px rgba(37,99,235,0.15);"><i class="fas fa-cloud-upload-alt"></i> Confirmar y Guardar en Firebase</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL MENÚ SEMANAL -->
+      <div id="panel-menu" class="panel">
+        <div style="background:#ffffff; border:1px solid var(--g200); border-radius:12px; padding:20px; margin-bottom:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; border-bottom:1px solid #f1f5f9; padding-bottom:15px;">
+            <div>
+              <h4 style="font-weight:800; color:#0f172a; margin:0; font-size:18px;">Planificación de Menú Semanal</h4>
+              <p style="color:#64748b; margin:4px 0 0 0; font-size:13px;">Define las opciones del comedor de la planta para cada día de la semana.</p>
+            </div>
+            <button class="btn btn-success" onclick="guardarMenuSemanal()" style="padding:10px 20px; border-radius:8px; font-weight:700; display:inline-flex; align-items:center; gap:8px;">
+              <i class="fas fa-save"></i> Guardar Menú
+            </button>
+          </div>
+          <div id="formMenuSemanalContainer" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+            <!-- Renderizado dinámico de los 7 días -->
           </div>
         </div>
       </div>

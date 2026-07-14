@@ -34,6 +34,7 @@
         let currentMode = 'OFICINA'; // 'OFICINA' o 'CAMPO'
         let gpsActivo = false;
         let registrosCompletos = [];
+        let menuSemanal = null;
         let cargandoRegistros = false;
         let intervaloGPS = null;
         let currentPage = 'home';
@@ -153,6 +154,14 @@
                     // Guardar en localStorage para uso offline
                     localStorage.setItem('HORA_SALIDA', HORA_SALIDA);
                     localStorage.setItem('HORA_ENTRADA_LIMITE', HORA_ENTRADA_LIMITE);
+
+                    // Pre-cargar el menú semanal
+                    jsonpRequest({ accion: 'obtenerMenuSemanal' }).then(m => {
+                        if (m && !m.error) {
+                            menuSemanal = m;
+                        }
+                    }).catch(e => console.error("Error pre-cargando menú:", e));
+
                     return true;
                 }
             } catch (error) {
@@ -310,9 +319,186 @@
         }
 
         function abrirWhatsAppSoporte() {
-            const mensajeCodificado = encodeURIComponent(WHATSAPP_MESSAGE);
-            const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeCodificado}`;
-            window.open(url, '_blank');
+            // Eliminar modal anterior si existe por seguridad
+            const existingModal = document.getElementById('support-modal');
+            if (existingModal) existingModal.remove();
+
+            // Contenedor principal con fondo difuminado
+            const modal = document.createElement('div');
+            modal.id = 'support-modal';
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.width = '100vw';
+            modal.style.height = '100vh';
+            modal.style.backgroundColor = 'rgba(15, 23, 42, 0.55)';
+            modal.style.backdropFilter = 'blur(6px)';
+            modal.style.display = 'flex';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            modal.style.zIndex = '3000';
+            modal.style.padding = '15px';
+            modal.style.animation = 'fadeIn 0.25s ease';
+
+            // Tarjeta del modal
+            const card = document.createElement('div');
+            card.style.backgroundColor = 'white';
+            card.style.borderRadius = '20px';
+            card.style.width = '100%';
+            card.style.maxWidth = '390px';
+            card.style.padding = '22px';
+            card.style.boxShadow = '0 20px 40px rgba(15,23,42,0.15)';
+            card.style.border = '1px solid rgba(226, 232, 240, 0.8)';
+            card.style.display = 'flex';
+            card.style.flexDirection = 'column';
+            card.style.gap = '14px';
+            card.style.animation = 'scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+
+            // Cabecera
+            const header = document.createElement('div');
+            header.style.display = 'flex';
+            header.style.alignItems = 'center';
+            header.style.gap = '12px';
+            header.innerHTML = `
+                <div style="width: 42px; height: 42px; background: #e0f2fe; color: #0284c7; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">
+                    <i class="fas fa-headset"></i>
+                </div>
+                <div style="text-align: left;">
+                    <h6 style="margin: 0; font-weight: 800; color: #0f172a; font-size: 14.5px;">Soporte Técnico</h6>
+                    <span style="font-size: 11px; color: #64748b; font-weight: 600; display: block;">Reporte de Incidente / Ayuda</span>
+                </div>
+            `;
+            card.appendChild(header);
+
+            // Información del empleado
+            const userInfo = document.createElement('div');
+            userInfo.style.background = '#f8fafc';
+            userInfo.style.border = '1.5px solid #f1f5f9';
+            userInfo.style.borderRadius = '12px';
+            userInfo.style.padding = '10px 14px';
+            userInfo.style.fontSize = '12px';
+            userInfo.style.color = '#334155';
+            userInfo.style.textAlign = 'left';
+            userInfo.innerHTML = `
+                <div style="margin-bottom: 2px;"><strong>Usuario:</strong> ${empleado.nombre || 'No identificado'}</div>
+                <div><strong>ID Empleado:</strong> ${empleado.id || '---'}</div>
+            `;
+            card.appendChild(userInfo);
+
+            // Campo de fecha del incidente
+            const dateGroup = document.createElement('div');
+            dateGroup.style.textAlign = 'left';
+            const hoyFormateado = new Date().toISOString().split('T')[0];
+            dateGroup.innerHTML = `
+                <label style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 6px; display: block;">Fecha del Incidente o Solicitud:</label>
+                <input type="date" id="soporte-fecha" class="form-control" value="${hoyFormateado}" style="font-size: 13px; border-radius: 10px; border: 1.5px solid #cbd5e1; padding: 8px 10px; width: 100%; box-sizing: border-box;">
+            `;
+            card.appendChild(dateGroup);
+
+            // Campo de texto para la solicitud
+            const formGroup = document.createElement('div');
+            formGroup.style.textAlign = 'left';
+            formGroup.innerHTML = `
+                <label style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 6px; display: block;">¿En qué te podemos ayudar?</label>
+                <textarea id="soporte-detalle" class="form-control" placeholder="Describe brevemente el inconveniente o solicitud..." style="font-size: 13px; border-radius: 10px; border: 1.5px solid #cbd5e1; padding: 10px; min-height: 90px; width: 100%; box-sizing: border-box; resize: none;"></textarea>
+            `;
+            card.appendChild(formGroup);
+
+            // Botones de acción
+            const actions = document.createElement('div');
+            actions.style.display = 'flex';
+            actions.style.gap = '10px';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'btn btn-outline-secondary';
+            cancelBtn.style.flex = '1';
+            cancelBtn.style.fontSize = '13px';
+            cancelBtn.style.padding = '10px';
+            cancelBtn.style.fontWeight = '700';
+            cancelBtn.style.borderRadius = '10px';
+            cancelBtn.innerText = 'Cancelar';
+            cancelBtn.onclick = () => modal.remove();
+
+            const sendBtn = document.createElement('button');
+            sendBtn.className = 'btn btn-success';
+            sendBtn.style.flex = '1.3';
+            sendBtn.style.fontSize = '13px';
+            sendBtn.style.padding = '10px';
+            sendBtn.style.fontWeight = '700';
+            sendBtn.style.borderRadius = '10px';
+            sendBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            sendBtn.style.color = 'white';
+            sendBtn.style.border = 'none';
+            sendBtn.style.display = 'flex';
+            sendBtn.style.alignItems = 'center';
+            sendBtn.style.justifyContent = 'center';
+            sendBtn.style.gap = '6px';
+            sendBtn.innerHTML = '<i class="fab fa-whatsapp"></i> Enviar a WhatsApp';
+
+            sendBtn.onclick = () => {
+                const detalle = document.getElementById('soporte-detalle').value.trim();
+                const fecha = document.getElementById('soporte-fecha').value;
+                if (!detalle) {
+                    mostrarToast("Por favor describe el incidente", "warning");
+                    return;
+                }
+                if (!fecha) {
+                    mostrarToast("Por favor selecciona una fecha", "warning");
+                    return;
+                }
+
+                // Formatear fecha seleccionada
+                const [year, month, day] = fecha.split('-');
+                const fechaFormateada = `${day}/${month}/${year}`;
+
+                // Generar mensaje con formato profesional para WhatsApp
+                let messageText = `⚠️REPORTE DE INCIDENCIA ⚠️\n`;
+                messageText += `DATOS DEL COLABORADOR\n`;
+                messageText += `• Nombre: ${empleado.nombre || 'No identificado'}\n`;
+                messageText += `• ID Empleado: ${empleado.id || '---'}\n`;
+                if (empleado.area) {
+                    messageText += `• Área: ${empleado.area}\n`;
+                }
+                messageText += `\nDETALLE DEL CASO\n`;
+                messageText += `• Fecha: ${fechaFormateada}\n`;
+                messageText += `• Descripción: ${detalle}`;
+
+                const mensajeCodificado = encodeURIComponent(messageText);
+                const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeCodificado}`;
+                window.open(url, '_blank');
+                modal.remove();
+            };
+
+            actions.appendChild(cancelBtn);
+            actions.appendChild(sendBtn);
+            card.appendChild(actions);
+
+            // Agregar estilos inline de animación
+            const style = document.createElement('style');
+            style.innerHTML = `
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes scaleUp {
+                    from { transform: scale(0.95); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
+                #soporte-detalle:focus {
+                    border-color: #10b981 !important;
+                    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1) !important;
+                    outline: none;
+                }
+            `;
+            document.head.appendChild(style);
+
+            modal.appendChild(card);
+            document.body.appendChild(modal);
+
+            // Autofoco en el textarea
+            setTimeout(() => {
+                document.getElementById('soporte-detalle')?.focus();
+            }, 100);
         }
 
         function abrirPanelAdmin() {
@@ -590,7 +776,7 @@
                 }
 
                 if (currentPage === 'history') actualizarHistorialAgrupado();
-                if (currentPage === 'profile') renderProfilePage();
+                if (currentPage === 'profile') await renderProfilePage();
             } catch (error) {
                 console.error('Error:', error);
                 registrosCompletos = [];
@@ -2182,7 +2368,7 @@
                         <div class="status-title">ESTADO DE ASISTENCIA - HOY</div>
                         <div class="status-grid">
                             <!-- Tarjeta Unificada de Entrada y Salida -->
-                            <div class="status-card unified">
+                            <div class="status-card unified" style="width: 100%;">
                                 <div class="unified-item">
                                     <div class="unified-label">ENTRADA</div>
                                     <div class="unified-value ${tieneEntrada ? 'success' : 'pending'}" style="font-size: 17px;">${horaEntradaMostrar}</div>
@@ -2192,45 +2378,6 @@
                                     <div class="unified-label">SALIDA</div>
                                     <div class="unified-value ${tieneSalida ? 'success' : 'pending'}" style="font-size: 17px;">${horaSalidaMostrar}</div>
                                 </div>
-                            </div>
-                            
-                            <!-- Tarjeta de Almuerzo: Ahora proporcional e integrada en el grid -->
-                            <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') || esCumpleanosHoy ? 'lunch-animated-no' : ''}" 
-                                 style="position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; cursor: default; ${esCumpleanosHoy ? 'opacity: 0.85;' : ''}">
-                                 
-                                <div class="status-icon" style="height: 70px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; position: relative;">
-                                    ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy
-                    ? `
-                                        <div style="position: absolute; width: 60px; height: 60px; background: radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
-                                        <img src="almuerzo.gif" alt="Almuerzo" style="width: 90px; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)); animation: float-img 3s ease-in-out infinite;">
-                                        `
-                    : esCumpleanosHoy
-                    ? `
-                                        <i class="fas fa-birthday-cake" style="font-size: 26px; color: #db2777; filter: drop-shadow(0 2px 4px rgba(219,39,119,0.2));"></i>
-                                        `
-                    : `
-                                        <i class="fas fa-utensils" style="font-size: 24px; color: var(--warning);"></i>
-                                        `
-                }
-                                </div>
-
-                                <div class="status-label" style="font-size: 10px;">ALMUERZO</div>
-                                <div class="status-value" style="font-size: ${esDespuesDeAlmuerzo && (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'clamp(10px, 3.2vw, 12px)' : 'clamp(12px, 3.5vw, 14px)'}; font-weight: 800; ${esCumpleanosHoy ? 'color:#db2777;' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'color:#059669;' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'color:#2563eb;' : ''}">
-                                    ${esCumpleanosHoy ? 'No aplica' : esDespuesDeAlmuerzo && (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Almuerzo Consumido' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Sí' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'No' : '---'}
-                                </div>
-
-                                <style>
-                                    @keyframes pulse-glow {
-                                        0% { transform: scale(0.8); opacity: 0.5; }
-                                        50% { transform: scale(1.2); opacity: 0.8; }
-                                        100% { transform: scale(0.8); opacity: 0.5; }
-                                    }
-                                    @keyframes float-img {
-                                        0% { transform: translateY(0px); }
-                                        50% { transform: translateY(-5px); }
-                                        100% { transform: translateY(0px); }
-                                    }
-                                </style>
                             </div>
                         </div>
                     </div>
@@ -3588,7 +3735,7 @@
                 return '--';
             }
         }
-        function renderProfilePage() {
+        async function renderProfilePage() {
             const mainContent = document.getElementById('mainContent');
             const totalDias = cargandoRegistros ? '...' : new Set(registrosCompletos.map(r => r.fecha)).size;
             const totalEntradas = cargandoRegistros ? '...' : registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
@@ -3602,6 +3749,20 @@
                 return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
             });
             const diasTrabajadosMes = cargandoRegistros ? '...' : new Set(registrosMes.map(r => r.fecha)).size;
+
+            let totalVacacionesDisponibles = '...';
+            let vacacionesTomadas = 0;
+            try {
+                const vacRes = await jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id });
+                if (vacRes && !vacRes.error) {
+                    vacacionesTomadas = (vacRes.vacaciones || []).length;
+                    const limiteVacaciones = parseInt(empleado.vacaciones_totales || empleado.vacaciones_disponibles) || 15;
+                    totalVacacionesDisponibles = Math.max(0, limiteVacaciones - vacacionesTomadas);
+                }
+            } catch(e) {
+                console.error("Error al obtener vacaciones del empleado:", e);
+                totalVacacionesDisponibles = '--';
+            }
 
             mainContent.innerHTML = `
             <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
@@ -3641,6 +3802,17 @@
                             <div style="font-size: 20px; font-weight: 800; color: #dc2626; line-height: 1;">${totalSalidas}</div>
                             <div style="font-size: 9.5px; color: #dc2626; font-weight: 700; text-transform: uppercase; margin-top: 6px; letter-spacing: 0.3px;">Salidas</div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Tarjeta de Vacaciones Disponibles -->
+                <div class="glass-card mt-3" style="padding: 20px 18px; border-radius: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.85) 100%); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(186,230,253,0.7); display: flex; align-items: center; justify-content: space-between; position: relative; overflow: hidden;">
+                    <div style="text-align: left;">
+                        <h5 class="fw-bold mb-1" style="font-size: 14.5px; color: #0369a1; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-umbrella-beach"></i> Vacaciones Disponibles</h5>
+                        <p style="font-size: 11.5px; color: #0284c7; margin: 0;">Total tomadas: <strong>${vacacionesTomadas}</strong> día(s)</p>
+                    </div>
+                    <div style="background: #0284c7; color: white; width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; box-shadow: 0 4px 10px rgba(2,132,199,0.3);">
+                        ${totalVacacionesDisponibles}
                     </div>
                 </div>
                 
@@ -3690,6 +3862,224 @@
 
             ajustarLayout();
         }
+
+        function renderAlmuerzoPage() {
+            const mainContent = document.getElementById('mainContent');
+            const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
+            const almuerzo = empleado.almuerzo || estado.almuerzo;
+
+            const ahora = new Date();
+            const minDia = ahora.getHours() * 60 + ahora.getMinutes();
+            const esDespuesDeAlmuerzo = minDia > 840; // Después de las 14:00
+
+            const diasSemanaNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+            const diasSemanaKeys = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+            const hoyIdx = ahora.getDay();
+            const hoyNombre = diasSemanaNombres[hoyIdx];
+            const hoyKey = diasSemanaKeys[hoyIdx];
+
+            // Cargar menú semanal si no existe
+            if (!menuSemanal) {
+                mainContent.innerHTML = `
+                <div class="page" style="padding-bottom: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px;">
+                    <div class="spinner-border text-primary mb-2" role="status" style="width: 28px; height: 28px; border-width: 3px;"></div>
+                    <p class="text-muted small" style="font-weight: 500;">Cargando planificación de menú...</p>
+                </div>
+                `;
+                jsonpRequest({ accion: 'obtenerMenuSemanal' }).then(res => {
+                    if (res && !res.error) {
+                        menuSemanal = res;
+                        renderAlmuerzoPage();
+                    } else {
+                        mainContent.innerHTML = `
+                        <div class="page" style="padding-bottom: 30px;">
+                            <div class="glass-card text-center p-4">
+                                <div style="font-size: 32px; margin-bottom: 10px;">⚠️</div>
+                                <h6 class="fw-bold mb-2">Error al Cargar Menú</h6>
+                                <p class="text-muted small">${res?.error || 'No se pudo conectar con el servidor'}</p>
+                                <button class="btn btn-sm btn-primary" onclick="renderAlmuerzoPage()" style="font-size:11px;">Reintentar</button>
+                            </div>
+                        </div>
+                        `;
+                    }
+                }).catch(e => {
+                    console.error("Error al cargar menú:", e);
+                });
+                return;
+            }
+
+            const hoyMenu = menuSemanal[hoyKey] || { sopa: '', plato: '', jugo: '', postre: '' };
+
+            // Renderizar la tarjeta del estado de almuerzo del usuario con el estilo exacto anterior
+            const cardEstadoAlmuerzoHTML = `
+                <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') || esCumpleanosHoy ? 'lunch-animated-no' : ''}" 
+                     style="position: relative; overflow: hidden; display: flex; flex-direction: row; align-items: center; min-height: 170px; border-radius: 20px; margin-bottom: 15px; padding: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.04); ${esCumpleanosHoy ? 'opacity: 0.85; background: linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%); border: 2px solid #db2777;' : ''}">
+                     
+                    <!-- Left Half: Image / Icon -->
+                    <div class="status-icon" style="width: 55%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; margin-bottom: 0; overflow: visible;">
+                        ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy
+                            ? `
+                            <div style="position: absolute; width: 160px; height: 160px; background: radial-gradient(circle, rgba(16,185,129,0.25) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
+                            <img src="almuerzo.gif" alt="Almuerzo" style="width: 200px; max-width: 100%; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.15)); animation: float-img 3s ease-in-out infinite;">
+                            `
+                            : esCumpleanosHoy
+                            ? `
+                            <i class="fas fa-birthday-cake" style="font-size: 80px; color: #db2777; filter: drop-shadow(0 2px 4px rgba(219,39,119,0.2));"></i>
+                            `
+                            : `
+                            <i class="fas fa-utensils" style="font-size: 75px; color: var(--warning);"></i>
+                            `
+                        }
+                    </div>
+
+                    <!-- Right Half: Details -->
+                    <div style="width: 45%; display: flex; flex-direction: column; justify-content: center; padding-left: 10px; border-left: 1.5px dashed rgba(0,0,0,0.06); height: 140px; text-align: left;">
+                        <div class="status-label" style="font-size: 15px; font-weight: 800; letter-spacing: 0.8px; color: ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? '#065f46' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? '#1e3a8a' : '#92400e'}; text-transform: uppercase;">ALMUERZO</div>
+                        <div class="status-value" style="font-size: 25px; font-weight: 900; margin-top: 4px; line-height: 1.2; ${esCumpleanosHoy ? 'color:#db2777;' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'color:#059669;' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'color:#2563eb;' : 'color:#b45309;'}">
+                            ${esCumpleanosHoy ? 'No aplica' : esDespuesDeAlmuerzo && (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Almuerzo Consumido' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Dentro de Planta' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'Fuera de Planta' : 'Pendiente'}
+                        </div>
+                    </div>
+
+                    <style>
+                        @keyframes pulse-glow {
+                            0% { transform: scale(0.8); opacity: 0.5; }
+                            50% { transform: scale(1.2); opacity: 0.8; }
+                            100% { transform: scale(0.8); opacity: 0.5; }
+                        }
+                        @keyframes float-img {
+                            0% { transform: translateY(0px); }
+                            50% { transform: translateY(-5px); }
+                            100% { transform: translateY(0px); }
+                        }
+                    </style>
+                </div>
+            `;
+
+            // Botones de acción / edición
+            let accionesAlmuerzoHTML = '';
+            if (!esCumpleanosHoy) {
+                if (!horaLimiteAlmuerzoPasada()) {
+                    accionesAlmuerzoHTML = `
+                    <div class="glass-card text-center mb-3" style="border-radius: 16px; padding: 15px; background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+                        <p class="text-muted small mb-2" style="font-weight: 600;">¿Dónde vas a almorzar hoy?</p>
+                        <div style="display: flex; gap: 10px; justify-content: center; max-width: 320px; margin: 0 auto;">
+                            <button class="btn btn-sm ${almuerzo === 'SI' || almuerzo === 'PLANTA' ? 'btn-success' : 'btn-outline-success'} w-100" onclick="window.registrarAlmuerzoTab('SI')" style="font-size:12.5px; font-weight:700; padding:10px; border-radius:10px;">
+                                🏢 En Planta
+                            </button>
+                            <button class="btn btn-sm ${almuerzo === 'NO' || almuerzo === 'FUERA' ? 'btn-primary' : 'btn-outline-primary'} w-100" onclick="window.registrarAlmuerzoTab('NO')" style="font-size:12.5px; font-weight:700; padding:10px; border-radius:10px;">
+                                🏠 Fuera
+                            </button>
+                        </div>
+                    </div>
+                    `;
+                } else {
+                    accionesAlmuerzoHTML = `
+                    <div style="font-size: 11px; text-align: center; color: #64748b; font-weight: 600; margin-bottom: 15px; background: #f8fafc; padding: 8px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                        <i class="fas fa-lock"></i> El tiempo límite para cambios (09:30) ha expirado
+                    </div>
+                    `;
+                }
+            }
+
+            mainContent.innerHTML = `
+            <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
+                <!-- Encabezado de Página -->
+                <div class="glass-card d-flex justify-content-between align-items-center" style="padding: 12px 16px; border-radius: 16px; background: rgba(255,255,255,0.9); box-shadow: 0 2px 10px rgba(0,0,0,0.02); border: 1px solid rgba(255,255,255,0.7); flex-shrink: 0; margin-bottom: 12px;">
+                    <h5 class="fw-bold mb-0" style="font-size: 15px; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-utensils text-primary" style="font-size: 16px;"></i> Planificación de Almuerzo
+                    </h5>
+                </div>
+
+                <!-- Tarjeta de Estado del Almuerzo -->
+                ${cardEstadoAlmuerzoHTML}
+
+                <!-- Acciones de Almuerzo -->
+                ${accionesAlmuerzoHTML}
+
+                <!-- Menú del Día -->
+                <div class="glass-card mb-3" style="border-radius: 20px; padding: 18px 16px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+                    <h6 class="fw-bold mb-3" style="color:#0f172a; font-size:14px; display:flex; align-items:center; gap:6px; border-bottom:1.5px solid #f1f5f9; padding-bottom:6px; margin:0 0 12px 0;">
+                        <i class="fas fa-utensils text-warning"></i> Menú de Hoy (${hoyNombre})
+                    </h6>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <span style="font-size:22px; width:28px; text-align:center;">🍜</span>
+                            <div>
+                                <span style="font-size:9.5px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; line-height:1;">Sopa</span>
+                                <span style="font-size:13px; font-weight:600; color:#334155;">${hoyMenu.sopa || 'No planificado'}</span>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <span style="font-size:22px; width:28px; text-align:center;">🥩</span>
+                            <div>
+                                <span style="font-size:9.5px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; line-height:1;">Plato Fuerte</span>
+                                <span style="font-size:13px; font-weight:600; color:#334155;">${hoyMenu.plato || 'No planificado'}</span>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <span style="font-size:22px; width:28px; text-align:center;">🥤</span>
+                            <div>
+                                <span style="font-size:9.5px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; line-height:1;">Bebida</span>
+                                <span style="font-size:13px; font-weight:600; color:#334155;">${hoyMenu.jugo || 'No planificado'}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Menú de la Semana -->
+                <div class="glass-card mb-3" style="border-radius: 20px; padding: 18px 16px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+                    <h6 class="fw-bold mb-3" style="color:#0f172a; font-size:14px; display:flex; align-items:center; gap:6px; border-bottom:1.5px solid #f1f5f9; padding-bottom:6px; margin:0 0 12px 0;">
+                        <i class="fas fa-calendar-alt text-primary"></i> Menú de la Semana
+                    </h6>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        ${diasSemanaNombres.map((name, idx) => {
+                            if (idx === 0) return ''; // Omitir domingo
+                            const key = diasSemanaKeys[idx];
+                            const dMenu = menuSemanal[key] || {};
+                            const isToday = idx === hoyIdx;
+                            return `
+                                <div style="padding: 8px 10px; border-radius: 10px; background: ${isToday ? '#f0f9ff' : '#f8fafc'}; border: 1px solid ${isToday ? '#bae6fd' : '#e2e8f0'};">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                        <span style="font-size:12.5px; font-weight:700; color:${isToday ? '#0284c7' : '#334155'};">${name}</span>
+                                        ${isToday ? '<span style="font-size:9px; background:#0284c7; color:white; padding:1px 6px; border-radius:6px; font-weight:700;">HOY</span>' : ''}
+                                    </div>
+                                    <div style="font-size:11.5px; color:#64748b; display:flex; flex-direction:column; gap:2px; line-height:1.3; padding-left:2px;">
+                                        <span>🥩 <strong>Plato:</strong> ${dMenu.plato || 'No planificado'}</span>
+                                        <span>🍜 <strong>Sopa:</strong> ${dMenu.sopa || 'No planificado'}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+            `;
+            ajustarLayout();
+        }
+
+        window.registrarAlmuerzoTab = async function (opcion) {
+            showLoading(true);
+            try {
+                const res = await jsonpRequest({
+                    accion: 'actualizarAlmuerzoSupervisor',
+                    empleadoId: empleado.id,
+                    almuerzo: opcion
+                });
+                if (res && res.ok !== false) {
+                    mostrarToast("Opción de almuerzo guardada", "success");
+                    empleado.almuerzo = opcion;
+                    estado.almuerzo = opcion;
+                    renderAlmuerzoPage();
+                } else {
+                    mostrarToast("Error al guardar: " + (res?.error || "Desconocido"), "error");
+                }
+            } catch (error) {
+                console.error("Error registrando almuerzo:", error);
+                mostrarToast("Error de conexión", "error");
+            } finally {
+                showLoading(false);
+            }
+        };
 
         function renderPagosPage() {
             const mainContent = document.getElementById('mainContent');
@@ -3783,7 +4173,7 @@
         }
 
         // ========== NAVEGACIÓN ==========
-        function navigateTo(page) {
+        async function navigateTo(page) {
             currentPage = page;
 
             document.querySelectorAll('.nav-item').forEach(item => {
@@ -3811,8 +4201,10 @@
                 renderHistoryPage();
             } else if (page === 'extras') {
                 renderHorasExtrasPage();
+            } else if (page === 'almuerzo') {
+                renderAlmuerzoPage();
             } else if (page === 'profile') {
-                renderProfilePage();
+                await renderProfilePage();
             } else if (page === 'pagos') {
                 renderPagosPage();
             } else if (page === 'estado') {
@@ -4642,7 +5034,7 @@
                                         if (currentPage === 'home') {
                                             renderHomePage();
                                         } else if (currentPage === 'profile') {
-                                            renderProfilePage();
+                                            await renderProfilePage();
                                         }
                                     } else {
                                         mostrarToast(res.error || 'Error al guardar la foto', 'error');

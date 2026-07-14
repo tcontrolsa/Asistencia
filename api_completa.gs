@@ -176,16 +176,23 @@ function doPost(e) {
       }
       
       if (data.accion === 'archivarRegistros') {
-        var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
-        if (!sheet) {
-          sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('REGISTROS');
-          sheet.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS']);
+        var sheetRegs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
+        if (!sheetRegs) {
+          sheetRegs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('REGISTROS');
+          sheetRegs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS']);
         }
+        var sheetVacs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('VACACIONES');
+        if (!sheetVacs) {
+          sheetVacs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('VACACIONES');
+          sheetVacs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS']);
+        }
+        
         var registros = data.registros;
         if (!registros || registros.length === 0) {
           return ContentService.createTextOutput(JSON.stringify({ok: true, mensaje: "Sin registros" })).setMimeType(ContentService.MimeType.JSON);
         }
-        var filas = [];
+        var filasRegs = [];
+        var filasVacs = [];
         for (var i = 0; i < registros.length; i++) {
           var r = registros[i];
           var tsStr = r.timestamp ? String(r.timestamp) : new Date().toISOString();
@@ -214,15 +221,31 @@ function doPost(e) {
           var r_permisoPersonalMins = r.permiso_personal_mins || 0;
           var r_permisoMedicoMins = r.permiso_medico_mins || 0;
 
-          filas.push([
-            r_fecha, r_id, r_nombre, r_tipo, r_almuerzo, r_hora, r_lat, r_lng, r_dispositivo, tsStr,
-            r_dia, r_modo, r_horasExtra, r_autoriza, r_razonSalidaTemprana, r_quienJustifica,
-            r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso,
-            r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins
-          ]);
+          var esVacaciones = (String(r_tipo).toUpperCase() === 'VACACIONES' || String(r_tipo).toUpperCase() === 'VACACION');
+
+          if (esVacaciones) {
+            // Rellenar únicamente FECHA, ID, TIPO, TIMESTAMP
+            var rowVac = [
+              r_fecha, r_id, '', r_tipo, '', '', '', '', '', tsStr,
+              '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ];
+            filasVacs.push(rowVac);
+          } else {
+            filasRegs.push([
+              r_fecha, r_id, r_nombre, r_tipo, r_almuerzo, r_hora, r_lat, r_lng, r_dispositivo, tsStr,
+              r_dia, r_modo, r_horasExtra, r_autoriza, r_razonSalidaTemprana, r_quienJustifica,
+              r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso,
+              r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins
+            ]);
+          }
         }
-        sheet.getRange(sheet.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
-        return ContentService.createTextOutput(JSON.stringify({ok: true, guardados: filas.length})).setMimeType(ContentService.MimeType.JSON);
+        if (filasRegs.length > 0) {
+          sheetRegs.getRange(sheetRegs.getLastRow() + 1, 1, filasRegs.length, filasRegs[0].length).setValues(filasRegs);
+        }
+        if (filasVacs.length > 0) {
+          sheetVacs.getRange(sheetVacs.getLastRow() + 1, 1, filasVacs.length, filasVacs[0].length).setValues(filasVacs);
+        }
+        return ContentService.createTextOutput(JSON.stringify({ok: true, guardados: filasRegs.length, vacacionesGuardadas: filasVacs.length})).setMimeType(ContentService.MimeType.JSON);
       }
       
       if (data.accion === 'obtenerRegistrosArchivados') {
@@ -472,6 +495,15 @@ function procesarAccion(params) {
 
     case 'guardarPermisoSupervisor':
       return guardarPermisoSupervisor(params);
+
+    case 'archivarMenuConsumido':
+      return archivarMenuConsumido(params);
+
+    case 'obtenerHistorialMenuSugerencias':
+      return obtenerHistorialMenuSugerencias();
+
+    case 'obtenerVacacionesEmpleado':
+      return obtenerVacacionesEmpleado(params);
       
     default:
       return { error: `Acción no reconocida: ${accion}` };
@@ -3000,5 +3032,120 @@ function guardarPermisoSupervisor(params) {
     return { ok: true, msg: `Permiso ${tipo} de ${mins} min guardado en fila ${filaIndex}.` };
   } catch (e) {
     return { ok: false, error: e.toString() };
+  }
+}
+
+function archivarMenuConsumido(params) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName("HISTORIAL_MENU");
+    if (!sheet) {
+      sheet = ss.insertSheet("HISTORIAL_MENU");
+      sheet.appendRow(["FECHA", "DIA", "SOPA", "PLATO_FUERTE", "BEBIDA"]);
+      sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
+    }
+    
+    let registros = [];
+    if (params.registros) {
+      registros = typeof params.registros === 'string' ? JSON.parse(params.registros) : params.registros;
+    }
+    
+    if (registros && registros.length > 0) {
+      const filas = registros.map(function(r) {
+        return [
+          r.fecha || '',
+          r.dia || '',
+          r.sopa || '',
+          r.plato || '',
+          r.jugo || ''
+        ];
+      });
+      sheet.getRange(sheet.getLastRow() + 1, 1, filas.length, 5).setValues(filas);
+      
+      // Auto ajustar
+      for (let col = 1; col <= 5; col++) {
+        sheet.autoResizeColumn(col);
+      }
+    }
+    return { ok: true };
+  } catch(e) {
+    return { error: e.toString() };
+  }
+}
+
+function obtenerHistorialMenuSugerencias() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName("HISTORIAL_MENU");
+    if (!sheet) {
+      return { ok: true, sopas: [], platos: [], jugos: [] };
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return { ok: true, sopas: [], platos: [], jugos: [] };
+    }
+    
+    const sopas = new Set();
+    const platos = new Set();
+    const jugos = new Set();
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[2]) sopas.add(String(row[2]).trim());
+      if (row[3]) platos.add(String(row[3]).trim());
+      if (row[4]) jugos.add(String(row[4]).trim());
+    }
+    
+    return {
+      ok: true,
+      sopas: Array.from(sopas),
+      platos: Array.from(platos),
+      jugos: Array.from(jugos)
+    };
+  } catch(e) {
+    return { error: e.toString() };
+  }
+}
+
+function obtenerVacacionesEmpleado(params) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName("VACACIONES");
+    if (!sheet) {
+      return { ok: true, vacaciones: [] };
+    }
+    const dataRange = sheet.getDataRange().getValues();
+    if (dataRange.length <= 1) {
+      return { ok: true, vacaciones: [] };
+    }
+    
+    const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
+    const vacaciones = [];
+    const tz = Session.getScriptTimeZone();
+    
+    for (var i = 1; i < dataRange.length; i++) {
+      var r = dataRange[i];
+      var rEmpId = r[1] ? String(r[1]).trim() : '';
+      if (empIdReq && rEmpId !== empIdReq) continue;
+      
+      // Formatear la fecha para evitar objetos Date en el JSON de respuesta
+      var fechaVal = r[0];
+      var fechaStr = '';
+      if (fechaVal instanceof Date) {
+        fechaStr = Utilities.formatDate(fechaVal, tz, 'yyyy-MM-dd');
+      } else if (fechaVal) {
+        fechaStr = String(fechaVal).trim();
+      }
+      
+      vacaciones.push({
+        fecha: fechaStr,
+        empleadoId: rEmpId,
+        tipo: r[3] ? String(r[3]) : '',
+        timestamp: r[9] ? String(r[9]) : ''
+      });
+    }
+    return { ok: true, vacaciones: vacaciones };
+  } catch(e) {
+    return { error: e.toString() };
   }
 }
