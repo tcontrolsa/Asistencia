@@ -1462,6 +1462,8 @@
         cargarAsistencia(); // Update UI instantly
       }
 
+      const bgSync = $('bgSyncIndicator');
+      if (bgSync) bgSync.classList.remove('hidden');
       try {
         const res = await jsonpRequest({
           accion: 'guardarRegistro',
@@ -1492,6 +1494,8 @@
             emp.registros = originalRegs;
             cargarAsistencia();
         }
+      } finally {
+        if (bgSync) bgSync.classList.add('hidden');
       }
     };
 
@@ -1546,6 +1550,8 @@
         mostrarDetalle(empleadoId, idxSel);
       }
 
+      const bgSync = $('bgSyncIndicator');
+      if (bgSync) bgSync.classList.remove('hidden');
       try {
         let res;
         if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
@@ -1589,6 +1595,8 @@
             const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
             mostrarDetalle(empleadoId, idxSel);
         }
+      } finally {
+        if (bgSync) bgSync.classList.add('hidden');
       }
     };
 
@@ -2275,30 +2283,6 @@
 
       let e = empCache.find(x => x.id === id);
       if (!e) return;
-
-      let totalVacsTomadas = 0;
-      let listaVacacionesHTML = '';
-      try {
-        const vacRes = await jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: id });
-        if (vacRes && !vacRes.error) {
-          const list = vacRes.vacaciones || [];
-          totalVacsTomadas = list.length;
-          if (list.length > 0) {
-            list.sort((a,b) => b.fecha.localeCompare(a.fecha));
-            listaVacacionesHTML = list.map(v => {
-              return `<div style="font-size:11px; padding:4px 0; border-bottom:1px dashed #f1f5f9; display:flex; justify-content:space-between; color:#334155;">
-                <span>📅 ${v.fecha}</span>
-                <span style="font-weight:700; color:#4f46e5;">🏖️ Tomada</span>
-              </div>`;
-            }).join('');
-          } else {
-            listaVacacionesHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:5px 0;">Sin vacaciones registradas</div>`;
-          }
-        }
-      } catch(err) {
-        console.error("Error al cargar vacaciones:", err);
-        listaVacacionesHTML = `<div style="font-size:11px; color:#ef4444; text-align:center; padding:5px 0;">Error al conectar</div>`;
-      }
       
       // Obtener el período seleccionado o el actual por defecto
       let periodoSeleccionado = periodos[indexPeriodo] || periodos[0];
@@ -2748,7 +2732,10 @@
           const color = tipo === 'personal' ? 'var(--indigo)' : 'var(--teal)';
           if (!esSuperPermiso || esFalta) return `<span style="color:${color};">${display}</span>`;
           const uid = `cel_${tipo}_${empId}_${fecha.replace(/-/g,'')}`;
-          return `<span id="${uid}" style="color:${color};cursor:pointer;border-bottom:1px dashed ${color};" title="Clic para editar" onclick="editarCeldaTiempo('${uid}','${empId}','${fecha}','${tipo}',${mins})">${display}</span>`;
+          const eReg = regsDia.find(r => r.tipo === 'ENTRADA');
+          const comentarioActual = eReg ? (eReg.razon_permiso || '') : '';
+          const comentarioEscapado = comentarioActual.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+          return `<span id="${uid}" style="color:${color};cursor:pointer;border-bottom:1px dashed ${color};" title="Clic para editar" onclick="editarCeldaTiempo('${uid}','${empId}','${fecha}','${tipo}',${mins},'${comentarioEscapado}')">${display}</span>`;
         }
 
         const celTP = celdaTiempo('personal', tiempoPersonal, e.id, f);
@@ -2949,12 +2936,13 @@
           </div>
 
           <!-- HISTORIAL DE VACACIONES -->
-          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
+          <div id="card-vacaciones-detalle" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
             <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
-              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas (${totalVacsTomadas})
+              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas
             </div>
-            <div style="max-height: 90px; overflow-y: auto; padding-right: 2px;">
-              ${listaVacacionesHTML}
+            <div style="display:flex; align-items:center; justify-content:center; padding:10px 0; color:#64748b; font-size:11px; gap:6px;">
+              <div class="spinner-border text-primary" role="status" style="width:14px; height:14px; border-width:2px;"></div>
+              <span>Cargando...</span>
             </div>
           </div>
           
@@ -3008,6 +2996,51 @@
       </div>
     </div>`;
       cambiarPanel('detalle');
+
+      // Ponytail: Cargar vacaciones en segundo plano para no congelar la interfaz
+      jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: id }).then(function(vacRes) {
+        const container = document.getElementById('card-vacaciones-detalle');
+        if (!container) return;
+        let totalVacsTomadas = 0;
+        let listaVacacionesHTML = '';
+        if (vacRes && !vacRes.error) {
+          const list = vacRes.vacaciones || [];
+          totalVacsTomadas = list.length;
+          if (list.length > 0) {
+            list.sort((a,b) => b.fecha.localeCompare(a.fecha));
+            listaVacacionesHTML = list.map(v => {
+              return `<div style="font-size:11px; padding:4px 0; border-bottom:1px dashed #f1f5f9; display:flex; justify-content:space-between; color:#334155;">
+                <span>📅 ${v.fecha}</span>
+                <span style="font-weight:700; color:#4f46e5;">🏖️ Tomada</span>
+              </div>`;
+            }).join('');
+          } else {
+            listaVacacionesHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:5px 0;">Sin vacaciones registradas</div>`;
+          }
+        } else {
+          listaVacacionesHTML = `<div style="font-size:11px; color:#ef4444; text-align:center; padding:5px 0;">Error al cargar</div>`;
+        }
+        
+        container.innerHTML = `
+          <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
+            <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas (${totalVacsTomadas})
+          </div>
+          <div style="max-height: 90px; overflow-y: auto; padding-right: 2px;">
+            ${listaVacacionesHTML}
+          </div>
+        `;
+      }).catch(function(err) {
+        console.error("Error al cargar vacaciones:", err);
+        const container = document.getElementById('card-vacaciones-detalle');
+        if (container) {
+          container.innerHTML = `
+            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
+              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas (--)
+            </div>
+            <div style="font-size:11px; color:#ef4444; text-align:center; padding:5px 0;">Error de conexión</div>
+          `;
+        }
+      });
     }
 
     function volverADirectorio() { cambiarPanel('directorio'); cargarDirectorio(); }
@@ -3093,31 +3126,59 @@
       return r.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, '_');
     }
 
-    window.guardarPermiso = async function(empleadoId, fecha, tipo, valor) {
+    window.guardarPermiso = async function(empleadoId, fecha, tipo, valor, comentario = null) {
       let sessionData = {};
       try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
       const supervisorId = String(sessionData.id || '');
 
       // Modalidad: valor es 'EMPRESA' | 'CAMPO' | 'MIXTO'
       if (tipo === 'modalidad') {
+        const emp = empCache.find(x => x.id === empleadoId);
+        let originalModo = null;
+        if (emp) {
+          const regs = (emp.registros || []).filter(r => r.fecha === fecha);
+          if (regs.length > 0) {
+            originalModo = regs[0].modo;
+            regs.forEach(r => r.modo = valor);
+          }
+        }
+        
+        // Redibujar UI de forma inmediata
+        mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+        if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+
+        const bgSync = $('bgSyncIndicator');
+        if (bgSync) bgSync.classList.remove('hidden');
+
         try {
           let res;
           if (window.FirebaseBackend && window.FirebaseBackend.guardarModalidadSupervisor) {
             res = await window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad: valor, supervisorId });
           } else {
-            // ponytail: Sheets no implementado aún
             res = { ok: false, error: 'Solo disponible en modo Firebase' };
           }
           if (res && res.ok) {
-            // Actualizar cache local
-            const emp = empCache.find(x => x.id === empleadoId);
-            if (emp) (emp.registros || []).filter(r => r.fecha === fecha).forEach(r => r.modo = valor);
-            mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
             if (typeof mostrarToast === 'function') mostrarToast(`✅ Modalidad guardada: ${valor}`, 'ok');
+            limpiarCachesLocales();
+            await cargarDatosCompletos(true, true);
           } else {
             if (typeof mostrarToast === 'function') mostrarToast('Error: ' + (res?.error || 'desconocido'), 'error');
+            // Revertir
+            if (emp && originalModo !== null) {
+              (emp.registros || []).filter(r => r.fecha === fecha).forEach(r => r.modo = originalModo);
+              mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+            }
           }
-        } catch(err) { alert('Error: ' + err.message); }
+        } catch(err) {
+          if (typeof mostrarToast === 'function') mostrarToast('Error de conexión: ' + err.message, 'error');
+          // Revertir
+          if (emp && originalModo !== null) {
+            (emp.registros || []).filter(r => r.fecha === fecha).forEach(r => r.modo = originalModo);
+            mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+          }
+        } finally {
+          if (bgSync) bgSync.classList.add('hidden');
+        }
         return;
       }
 
@@ -3128,7 +3189,36 @@
         return;
       }
 
+      // Optimistic cache update
+      const emp = empCache.find(x => x.id === empleadoId);
+      let originalPermiso = null;
+      let reg = null;
+      if (emp) {
+        reg = (emp.registros || []).find(r => r.fecha === fecha && r.tipo === 'ENTRADA');
+        if (reg) {
+          originalPermiso = {
+            personal: reg.permiso_personal_mins || 0,
+            medico: reg.permiso_medico_mins || 0,
+            comentario: reg.razon_permiso || ''
+          };
+          if (tipo === 'personal') reg.permiso_personal_mins = mins;
+          else                    reg.permiso_medico_mins   = mins;
+          if (comentario !== null) reg.razon_permiso = comentario;
+        }
+      }
+
+      // Redraw immediately
+      mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+      if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+
+      const bgSync = $('bgSyncIndicator');
+      if (bgSync) bgSync.classList.remove('hidden');
+
       const params = { empleadoId, fecha, tipo, mins, supervisorId };
+      if (comentario !== null) {
+        params.comentario = comentario;
+      }
+
       try {
         let resultado;
         if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
@@ -3146,24 +3236,35 @@
           });
         }
         if (resultado && resultado.ok) {
-          const emp = empCache.find(x => x.id === empleadoId);
-          if (emp) {
-            const reg = (emp.registros || []).find(r => r.fecha === fecha && r.tipo === 'ENTRADA');
-            if (reg) {
-              if (tipo === 'personal') reg.permiso_personal_mins = mins;
-              else                    reg.permiso_medico_mins   = mins;
-            }
-          }
-          mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
           if (typeof mostrarToast === 'function') mostrarToast(`✅ ${tipo === 'personal' ? 'T.Personal' : 'T.Médico'}: ${mins} min`, 'ok');
+          limpiarCachesLocales();
+          await cargarDatosCompletos(true, true);
         } else {
-          if (typeof mostrarToast === 'function') mostrarToast('Error: ' + (resultado?.error || 'desconocido'), 'error');
+          if (typeof mostrarToast === 'function') mostrarToast(resultado?.error || 'Error al guardar', 'error');
+          // Revertir
+          if (reg && originalPermiso) {
+            reg.permiso_personal_mins = originalPermiso.personal;
+            reg.permiso_medico_mins = originalPermiso.medico;
+            reg.razon_permiso = originalPermiso.comentario;
+            mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+          }
         }
-      } catch(err) { alert('Error de comunicación: ' + err.message); }
+      } catch(err) {
+        if (typeof mostrarToast === 'function') mostrarToast('Error de comunicación: ' + err.message, 'error');
+        // Revertir
+        if (reg && originalPermiso) {
+          reg.permiso_personal_mins = originalPermiso.personal;
+          reg.permiso_medico_mins = originalPermiso.medico;
+          reg.razon_permiso = originalPermiso.comentario;
+          mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+        }
+      } finally {
+        if (bgSync) bgSync.classList.add('hidden');
+      }
     };
 
-    // editarCeldaTiempo: popup modal interactivo para ingresar T.PERSONAL y T.MEDICO con conversor de horas y minutos
-    window.editarCeldaTiempo = function(uid, empId, fecha, tipo, minsActual) {
+    // editarCeldaTiempo: popup modal interactivo para ingresar T.PERSONAL y T.MEDICO con conversor de horas y minutos y comentario
+    window.editarCeldaTiempo = function(uid, empId, fecha, tipo, minsActual, comentarioActual = '') {
       // Eliminar modal anterior si existe
       const prev = document.getElementById('modalConversorTiempo');
       if (prev) prev.remove();
@@ -3232,6 +3333,15 @@
               </div>
             </div>
 
+            <!-- Comentario / Razón del Permiso -->
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Comentario / Razón</label>
+              <textarea id="convComentario" placeholder="Escribe el motivo del permiso..." rows="2"
+                style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #0f172a; outline: none; box-sizing: border-box; resize: none; font-family: inherit;"
+                onfocus="this.style.borderColor='${colorTheme}'; this.style.boxShadow='0 0 0 3px ${colorTheme}15'" 
+                onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">${comentarioActual}</textarea>
+            </div>
+
             <div style="background: #f8fafc; border: 1px dashed #e2e8f0; border-radius: 12px; padding: 12px 16px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <span style="font-size: 12px; font-weight: 500; color: #64748b;">Total en minutos:</span>
@@ -3298,8 +3408,9 @@
         if (hrs < 0) hrs = 0;
         if (mins < 0) mins = 0;
         const total = Math.round(hrs * 60) + mins;
+        const comentario = document.getElementById('convComentario').value;
 
-        guardarPermiso(empId, fecha, tipo, total);
+        guardarPermiso(empId, fecha, tipo, total, comentario);
         modal.remove();
       };
     };
@@ -4259,6 +4370,8 @@
       if (typeof filtrarReporteInteractivo === 'function') filtrarReporteInteractivo();
 
       // Enviar la petición en segundo plano
+      const bgSync = $('bgSyncIndicator');
+      if (bgSync) bgSync.classList.remove('hidden');
       try {
         const res = await jsonpRequest({
           accion: 'actualizarRegistroGeneral',
@@ -4298,6 +4411,8 @@
           cargarAsistencia();
           cargarDashboard();
         }
+      } finally {
+        if (bgSync) bgSync.classList.add('hidden');
       }
     }
 

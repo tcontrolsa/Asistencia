@@ -3029,6 +3029,11 @@ function guardarPermisoSupervisor(params) {
     // Columnas en Sheets son 1-indexed
     sheet.getRange(filaIndex, colDestino + 1).setValue(mins);
 
+    if (params.comentario !== undefined) {
+      const comentario = String(params.comentario || '').trim();
+      sheet.getRange(filaIndex, COLUMNAS.RAZON_PERMISO + 1).setValue(comentario);
+    }
+
     return { ok: true, msg: `Permiso ${tipo} de ${mins} min guardado en fila ${filaIndex}.` };
   } catch (e) {
     return { ok: false, error: e.toString() };

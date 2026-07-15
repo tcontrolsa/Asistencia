@@ -117,6 +117,7 @@
             }
 
             empleado.almuerzo = opcion;
+            showLoading(true);
 
             if (opcion === 'SI') {
                 mostrarToast('✅ Entrada registrada - Almuerzas en planta', 'success');
@@ -3750,20 +3751,6 @@
             });
             const diasTrabajadosMes = cargandoRegistros ? '...' : new Set(registrosMes.map(r => r.fecha)).size;
 
-            let totalVacacionesDisponibles = '...';
-            let vacacionesTomadas = 0;
-            try {
-                const vacRes = await jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id });
-                if (vacRes && !vacRes.error) {
-                    vacacionesTomadas = (vacRes.vacaciones || []).length;
-                    const limiteVacaciones = parseInt(empleado.vacaciones_totales || empleado.vacaciones_disponibles) || 15;
-                    totalVacacionesDisponibles = Math.max(0, limiteVacaciones - vacacionesTomadas);
-                }
-            } catch(e) {
-                console.error("Error al obtener vacaciones del empleado:", e);
-                totalVacacionesDisponibles = '--';
-            }
-
             mainContent.innerHTML = `
             <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
                 <!-- Tarjeta Principal de Perfil Premium -->
@@ -3809,10 +3796,10 @@
                 <div class="glass-card mt-3" style="padding: 20px 18px; border-radius: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.85) 100%); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(186,230,253,0.7); display: flex; align-items: center; justify-content: space-between; position: relative; overflow: hidden;">
                     <div style="text-align: left;">
                         <h5 class="fw-bold mb-1" style="font-size: 14.5px; color: #0369a1; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-umbrella-beach"></i> Vacaciones Disponibles</h5>
-                        <p style="font-size: 11.5px; color: #0284c7; margin: 0;">Total tomadas: <strong>${vacacionesTomadas}</strong> día(s)</p>
+                        <p id="lbl-vacaciones-tomadas" style="font-size: 11.5px; color: #0284c7; margin: 0;">Total tomadas: <span class="spinner-border text-primary" role="status" style="width:10px; height:10px; border-width:1.5px; display:inline-block; vertical-align: middle;"></span></p>
                     </div>
-                    <div style="background: #0284c7; color: white; width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; box-shadow: 0 4px 10px rgba(2,132,199,0.3);">
-                        ${totalVacacionesDisponibles}
+                    <div id="badge-vacaciones-disponibles" style="background: #0284c7; color: white; width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; box-shadow: 0 4px 10px rgba(2,132,199,0.3);">
+                        <div class="spinner-border text-light" role="status" style="width:16px; height:16px; border-width:2px;"></div>
                     </div>
                 </div>
                 
@@ -3859,6 +3846,28 @@
                 </div>
             </div>
             `;
+
+            // Ponytail: Cargar saldo de vacaciones en segundo plano para no demorar la visualización del perfil
+            jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id }).then(function(vacRes) {
+                let vacacionesTomadas = 0;
+                let totalVacacionesDisponibles = '--';
+                if (vacRes && !vacRes.error) {
+                    vacacionesTomadas = (vacRes.vacaciones || []).length;
+                    const limiteVacaciones = parseInt(empleado.vacaciones_totales || empleado.vacaciones_disponibles) || 15;
+                    totalVacacionesDisponibles = Math.max(0, limiteVacaciones - vacacionesTomadas);
+                }
+                
+                const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
+                const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
+                if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong>${vacacionesTomadas}</strong> día(s)`;
+                if (badgeDisponibles) badgeDisponibles.innerHTML = totalVacacionesDisponibles;
+            }).catch(function(e) {
+                console.error("Error al obtener vacaciones del empleado:", e);
+                const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
+                const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
+                if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong class="text-danger">error</strong>`;
+                if (badgeDisponibles) badgeDisponibles.innerHTML = '--';
+            });
 
             ajustarLayout();
         }

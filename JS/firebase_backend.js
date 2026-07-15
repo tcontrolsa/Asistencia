@@ -1826,7 +1826,10 @@ window.FirebaseBackend = {
     // ==========================================
     // AUXILIARES
     // ==========================================
-    async _post(params) {
+    async _post(params, _retryCount = 0) {
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = [1000, 2000, 4000];
+
         try {
             const api_url = (window.TCONTROL_CONFIG && window.TCONTROL_CONFIG.API_URL) || window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
             let payload = { ...params };
@@ -1841,14 +1844,45 @@ window.FirebaseBackend = {
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify(payload)
             });
-            return await res.json();
+            const data = await res.json();
+            
+            const isLockError = data && data.error && (
+                data.error.toString().toLowerCase().includes('lock') ||
+                data.error.toString().toLowerCase().includes('candado') ||
+                data.error.toString().toLowerCase().includes('tiempo de espera') ||
+                data.error.toString().toLowerCase().includes('service invoked too many times')
+            );
+
+            if (isLockError && _retryCount < MAX_RETRIES) {
+                const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                console.warn(`⏳ Sheets POST is busy. Retrying in ${delay}ms...`);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve(this._post(params, _retryCount + 1));
+                    }, delay);
+                });
+            }
+
+            return data;
         } catch (error) {
             console.error("❌ Error en _post a Sheets:", error);
+            if (_retryCount < MAX_RETRIES) {
+                const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                console.warn(`🔌 Sheets POST network error. Retrying in ${delay}ms...`);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve(this._post(params, _retryCount + 1));
+                    }, delay);
+                });
+            }
             return { error: "Error de red al conectar con Sheets: " + error.message };
         }
     },
 
-    _jsonp(params) {
+    _jsonp(params, _retryCount = 0) {
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = [1000, 2000, 4000];
+
         return new Promise((resolve, reject) => {
             const callbackName = 'cb_' + Math.floor(Math.random() * 1000000);
             const api_url = (window.TCONTROL_CONFIG && window.TCONTROL_CONFIG.API_URL) || window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
@@ -1870,7 +1904,15 @@ window.FirebaseBackend = {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                reject(new Error("Timeout en la conexión con Sheets"));
+                if (_retryCount < MAX_RETRIES) {
+                    const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                    console.warn(`⏳ Sheets connection timeout. Retrying in ${delay}ms...`);
+                    setTimeout(() => {
+                        this._jsonp(params, _retryCount + 1).then(resolve).catch(reject);
+                    }, delay);
+                } else {
+                    reject(new Error("Timeout en la conexión con Sheets"));
+                }
             }, 25000);
 
             window[callbackName] = (data) => {
@@ -1878,6 +1920,24 @@ window.FirebaseBackend = {
                 settled = true;
                 clearTimeout(timeout);
                 cleanup();
+                
+                // If it is a lock error or service busy, retry too!
+                const isLockError = data && data.error && (
+                    data.error.toString().toLowerCase().includes('lock') ||
+                    data.error.toString().toLowerCase().includes('candado') ||
+                    data.error.toString().toLowerCase().includes('tiempo de espera') ||
+                    data.error.toString().toLowerCase().includes('service invoked too many times')
+                );
+
+                if (isLockError && _retryCount < MAX_RETRIES) {
+                    const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                    console.warn(`⏳ Sheets is busy. Retrying in ${delay}ms (attempt ${_retryCount + 1}/${MAX_RETRIES})...`);
+                    setTimeout(() => {
+                        this._jsonp(params, _retryCount + 1).then(resolve).catch(reject);
+                    }, delay);
+                    return;
+                }
+
                 resolve(data);
             };
 
@@ -1894,14 +1954,22 @@ window.FirebaseBackend = {
                 settled = true;
                 clearTimeout(timeout);
                 cleanup();
-                reject(new Error("Error de red al conectar con Sheets"));
+                if (_retryCount < MAX_RETRIES) {
+                    const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                    console.warn(`🔌 Sheets network error. Retrying in ${delay}ms...`);
+                    setTimeout(() => {
+                        this._jsonp(params, _retryCount + 1).then(resolve).catch(reject);
+                    }, delay);
+                } else {
+                    reject(new Error("Error de red al conectar con Sheets"));
+                }
             };
             script.onload = () => {
                 if (script.parentNode) script.parentNode.removeChild(script);
             };
             document.body.appendChild(script);
         });
-    },
+    }
 
     _hoyStr(dateObj = new Date()) {
         const y = dateObj.getFullYear();
@@ -2058,9 +2126,11 @@ window.FirebaseBackend = {
 
             if (entryDocId) {
                 const updateField = tipo === 'personal' ? 'permiso_personal_mins' : 'permiso_medico_mins';
-                await db.collection('registros').doc(entryDocId).update({
-                    [updateField]: minutos
-                });
+                const updateObj = { [updateField]: minutos };
+                if (params.comentario !== undefined) {
+                    updateObj.razon_permiso = String(params.comentario || '').trim();
+                }
+                await db.collection('registros').doc(entryDocId).update(updateObj);
                 
                 // Invalidate local storage cache to force refetch of all days
                 try {
