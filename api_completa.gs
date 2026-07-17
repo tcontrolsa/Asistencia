@@ -496,6 +496,9 @@ function procesarAccion(params) {
     case 'guardarPermisoSupervisor':
       return guardarPermisoSupervisor(params);
 
+    case 'guardarModalidadSupervisor':
+      return guardarModalidadSupervisor(params);
+
     case 'archivarMenuConsumido':
       return archivarMenuConsumido(params);
 
@@ -3115,16 +3118,41 @@ function obtenerHistorialMenuSugerencias() {
 function obtenerVacacionesEmpleado(params) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
+
+    let tomadoVal = null;
+    let restanteVal = null;
+
+    // Cargar de la hoja CALCULAR_vacaciones
+    try {
+      const calcSheet = ss.getSheetByName("CALCULAR_vacaciones");
+      if (calcSheet) {
+        const calcData = calcSheet.getDataRange().getValues();
+        for (var i = 1; i < calcData.length; i++) {
+          var row = calcData[i];
+          var idColA = row[0] ? String(row[0]).trim() : '';
+          var idColB = row[1] ? String(row[1]).trim() : '';
+          if (empIdReq && (idColA === empIdReq || idColB === empIdReq)) {
+            // Columna J (índice 9) es Vacaciones tomadas, Columna K (índice 10) es Vacaciones restantes
+            tomadoVal = (row[9] !== undefined && row[9] !== '') ? row[9] : 0;
+            restanteVal = (row[10] !== undefined && row[10] !== '') ? row[10] : 0;
+            break;
+          }
+        }
+      }
+    } catch(err) {
+      console.error("Error al leer CALCULAR_vacaciones:", err);
+    }
+
     const sheet = ss.getSheetByName("VACACIONES");
     if (!sheet) {
-      return { ok: true, vacaciones: [] };
+      return { ok: true, vacaciones: [], vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal };
     }
     const dataRange = sheet.getDataRange().getValues();
     if (dataRange.length <= 1) {
-      return { ok: true, vacaciones: [] };
+      return { ok: true, vacaciones: [], vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal };
     }
     
-    const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
     const vacaciones = [];
     const tz = Session.getScriptTimeZone();
     
@@ -3149,8 +3177,52 @@ function obtenerVacacionesEmpleado(params) {
         timestamp: r[9] ? String(r[9]) : ''
       });
     }
-    return { ok: true, vacaciones: vacaciones };
+    return { ok: true, vacaciones: vacaciones, vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal };
   } catch(e) {
     return { error: e.toString() };
+  }
+}
+
+function guardarModalidadSupervisor(params) {
+  try {
+    const SUPERVISORES_AUTORIZADOS = ['7', '1058'];
+    const supervisorId = String(params.supervisorId || '').trim();
+    if (!SUPERVISORES_AUTORIZADOS.includes(supervisorId)) {
+      return { ok: false, error: 'No autorizado para modificar modalidad.' };
+    }
+
+    const empleadoId = String(params.empleadoId || '').trim();
+    const fecha      = String(params.fecha || '').trim();        // YYYY-MM-DD
+    const modalidad  = String(params.modalidad || '').trim().toUpperCase(); // 'EMPRESA' | 'CAMPO' | 'MIXTO'
+
+    if (!empleadoId || !fecha || !modalidad) {
+      return { ok: false, error: 'Parámetros inválidos.' };
+    }
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
+    if (!sheet) return { ok: false, error: 'Hoja REGISTROS no encontrada.' };
+
+    const data = sheet.getDataRange().getValues();
+    const tz   = Session.getScriptTimeZone();
+    let count = 0;
+
+    for (let i = 1; i < data.length; i++) {
+      const rEmpId = String(data[i][COLUMNAS.ID] || '').trim();
+      let fStr = '';
+      if (data[i][COLUMNAS.FECHA] instanceof Date) {
+        fStr = Utilities.formatDate(data[i][COLUMNAS.FECHA], tz, 'yyyy-MM-dd');
+      } else {
+        fStr = String(data[i][COLUMNAS.FECHA] || '').trim();
+      }
+      if (rEmpId === empleadoId && fStr === fecha) {
+        // Columna L (MODO: 11) - en Sheets es 1-indexed (col L es col 12)
+        sheet.getRange(i + 1, COLUMNAS.MODO + 1).setValue(modalidad);
+        count++;
+      }
+    }
+
+    return { ok: true, msg: `Modalidad ${modalidad} guardada en ${count} registros.` };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
   }
 }

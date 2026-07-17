@@ -2283,6 +2283,18 @@
 
       let e = empCache.find(x => x.id === id);
       if (!e) return;
+
+      // Cargar vacaciones del empleado en segundo plano para no demorar la visualización
+      let vacacionesList = [];
+      jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: id }).then(function(vacRes) {
+        if (vacRes && !vacRes.error) {
+          vacacionesList = vacRes.vacaciones || [];
+          rebuildTable();
+          actualizarCardVacaciones(vacRes.vacacionesTomadasHoy, vacRes.vacacionesRestantesHoy);
+        }
+      }).catch(err => {
+        console.error("Error al precargar vacaciones en segundo plano:", err);
+      });
       
       // Obtener el período seleccionado o el actual por defecto
       let periodoSeleccionado = periodos[indexPeriodo] || periodos[0];
@@ -2318,7 +2330,11 @@
       let pE = cE ? Math.round(sE / cE) : null;
       let pS = cS ? Math.round(sS / cS) : null;
 
-      let porDia = {};
+      let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0;
+      let thH = 0, thM = 0;
+
+      function rebuildTable() {
+        let porDia = {};
       // Asegurar que los registros estén ordenados cronológicamente para el emparejamiento
       [...regs].sort((a, b) => {
         const timeA = a.hora;
@@ -2333,12 +2349,35 @@
         if (r.tipo === 'ENTRADA' && r.almuerzo) porDia[fechaNorm].almuerzo = r.almuerzo;
       });
 
+      // Agregar las vacaciones al objeto porDia como registros virtuales de tipo VACACIONES
+      vacacionesList.forEach(v => {
+        if (v.fecha >= R_INI && v.fecha <= R_FIN) {
+          const fNorm = normalizarFechaStr(v.fecha);
+          if (!fNorm) return;
+          if (!porDia[fNorm]) {
+            porDia[fNorm] = { registros: [], almuerzo: null };
+          }
+          // Evitar duplicar si por alguna razón ya existe un registro de tipo VACACIONES o VACACION en ese día
+          const yaExiste = porDia[fNorm].registros.some(r => r.tipo === 'VACACIONES' || r.tipo === 'VACACION');
+          if (!yaExiste) {
+            porDia[fNorm].registros.push({
+              id: `${id}_VACACIONES_${fNorm}_000000`,
+              empleadoId: id,
+              tipo: 'VACACIONES',
+              fecha: fNorm,
+              razon_ausencia: 'Vacación',
+              justificado: 'SI'
+            });
+          }
+        }
+      });
+
       // Ordenar de más reciente a más antiguo (YYYY-MM-DD → comparación de string correcta)
       let fechasOrdenadas = Object.keys(porDia).filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f)).sort((a, b) => b.localeCompare(a));
 
       // Mostrar todos los días del período
       // Acumuladores para la fila de totales
-      let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0;
+      totTP = 0; totTM = 0; totTJ = 0; totHoras = 0; totAtrasos = 0;
       let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
       let totExtra50 = 0, totExtra100 = 0;
       let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0; // NUEVO
@@ -2758,6 +2797,30 @@
         totExtra50  += (h50 + hC50);
         totExtra100 += (h100 + hC100);
 
+        const esAusenciaEspecial = esFalta && (
+          ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonAusenciaVal) ||
+          ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonJustificadaVal)
+        );
+
+        if (esAusenciaEspecial) {
+          const razonMostrar = razonAusenciaVal || razonJustificadaVal || 'Ausencia';
+          const icon = razonMostrar.toLowerCase().includes('vacac') ? '🏖️' : razonMostrar.toLowerCase().includes('medico') ? '🩺' : '📋';
+          return `<tr style="${rowStyle}">
+        <td style="white-space:nowrap; font-weight:600; font-size:11px; padding:3px 5px;">${fechaFormateada}</td>
+        <td colspan="19" style="font-size:11px; padding:6px 12px; font-weight:600; background:rgba(79, 70, 229, 0.03);">
+          <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+            <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:#312e81; background:#e0e7ff; padding:3px 8px; border-radius:6px; border:1px solid #c7d2fe;">
+              ${icon} ${razonMostrar.toUpperCase()}
+            </span>
+            <div style="display:flex; align-items:center; gap:6px; color:#64748b; font-size:11px;">
+              <span>Ajustar Razón:</span>
+              ${selectRazonHtml}
+            </div>
+          </div>
+        </td>
+      </tr>`;
+        }
+
         return `<tr style="${rowStyle}">
       <td style="white-space:nowrap; font-weight:600; font-size:11px; padding:3px 5px;">${fechaFormateada}</td>
       <td style="font-size:11px; padding:3px 4px; text-align:center;">${modalidadCell}</td>
@@ -2782,12 +2845,12 @@
     </tr>`;
       }).join('');
 
-      let thH = Math.floor(totHoras / 60) || 0,
-        thM = totHoras % 60 || 0,
-        thS = 0;
+        thH = Math.floor(totHoras / 60) || 0;
+        thM = totHoras % 60 || 0;
+        let thS = 0;
 
-      let tpH = Math.floor((totTP + totTM) / 60) || 0,
-        tpM = (totTP + totTM) % 60 || 0;
+        let tpH = Math.floor((totTP + totTM) / 60) || 0,
+          tpM = (totTP + totTM) % 60 || 0;
 
       // Fila de totales para el tfoot
       const mA = v => v > 0 ? `<strong>${minutosAHHMMSS(v)}</strong>` : '—';
@@ -2813,6 +2876,63 @@
         <td style="text-align:center;">${mA(totExtra50)}</td>
         <td style="text-align:center;">${mA(totExtra100)}</td>
       </tr>`;
+
+        const tbody = document.getElementById('tbody-historial-periodo');
+        if (tbody) {
+          tbody.innerHTML = filas || '<tr><td colspan="19" class="empty-state">Sin registros</td></tr>';
+        }
+        const tfoot = document.getElementById('tfoot-historial-periodo');
+        if (tfoot) {
+          tfoot.innerHTML = tfootRow;
+        }
+
+        return { filas, tfootRow };
+      }
+
+      // Renderizado inicial con la tabla vacía de vacaciones
+      const initialTable = rebuildTable();
+      let filas = initialTable.filas;
+      let tfootRow = initialTable.tfootRow;
+
+      function actualizarCardVacaciones(vacacionesTomadasHoy, vacacionesRestantesHoy) {
+        const container = document.getElementById('card-vacaciones-detalle');
+        if (container) {
+          let totalVacsTomadas = vacacionesTomadasHoy !== null && vacacionesTomadasHoy !== undefined 
+            ? vacacionesTomadasHoy 
+            : vacacionesList.length;
+          let totalVacsRestantes = vacacionesRestantesHoy !== null && vacacionesRestantesHoy !== undefined 
+            ? vacacionesRestantesHoy 
+            : '--';
+
+          let listaVacacionesHTML = '';
+          if (vacacionesList.length > 0) {
+            const sortedVacs = [...vacacionesList].sort((a,b) => b.fecha.localeCompare(a.fecha));
+            listaVacacionesHTML = sortedVacs.map(v => {
+              return `<div style="font-size:11px; padding:4px 0; border-bottom:1px dashed #f1f5f9; display:flex; justify-content:space-between; color:#334155;">
+                <span>📅 ${v.fecha}</span>
+                <span style="font-weight:700; color:#4f46e5;">🏖️ Tomada</span>
+              </div>`;
+            }).join('');
+          } else {
+            listaVacacionesHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:5px 0;">Sin vacaciones registradas</div>`;
+          }
+          
+          container.innerHTML = `
+            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; flex-direction:column; gap:2px; text-transform:uppercase; letter-spacing:0.03em;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas: <strong style="color:#0f172a;">${totalVacsTomadas}</strong>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                <i class="fas fa-calendar-check" style="color:var(--green); font-size:12px;"></i> Restantes: <strong style="color:var(--green);">${totalVacsRestantes}</strong>
+              </div>
+            </div>
+            <div style="max-height: 90px; overflow-y: auto; padding-right: 2px;">
+              ${listaVacacionesHTML}
+            </div>
+          `;
+        }
+      }
+
       let puntualidadVal = dias ? Math.max(0, Math.round((1 - tardT / dias) * 100)) : 100;
       let puntualidadColor = puntualidadVal >= 90 ? 'var(--green)' : puntualidadVal >= 70 ? 'var(--amber)' : 'var(--red)';
       let optionsPeriodos = periodos.map((p, i) => `<option value="${i}" ${i === indexPeriodo ? 'selected' : ''}>${p.label}</option>`).join('');
@@ -2988,59 +3108,14 @@
                   <th style="font-size:10px;padding:4px 5px;" title="Total Extras 100% (B+D)">∑ 100%</th>
                 </tr>
               </thead>
-              <tbody>${filas || '<tr><td colspan="19" class="empty-state">Sin registros</td></tr>'}</tbody>
-              <tfoot>${tfootRow}</tfoot>
+              <tbody id="tbody-historial-periodo">${filas || '<tr><td colspan="19" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tfoot id="tfoot-historial-periodo">${tfootRow}</tfoot>
             </table>
           </div>
         </div>
       </div>
     </div>`;
       cambiarPanel('detalle');
-
-      // Ponytail: Cargar vacaciones en segundo plano para no congelar la interfaz
-      jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: id }).then(function(vacRes) {
-        const container = document.getElementById('card-vacaciones-detalle');
-        if (!container) return;
-        let totalVacsTomadas = 0;
-        let listaVacacionesHTML = '';
-        if (vacRes && !vacRes.error) {
-          const list = vacRes.vacaciones || [];
-          totalVacsTomadas = list.length;
-          if (list.length > 0) {
-            list.sort((a,b) => b.fecha.localeCompare(a.fecha));
-            listaVacacionesHTML = list.map(v => {
-              return `<div style="font-size:11px; padding:4px 0; border-bottom:1px dashed #f1f5f9; display:flex; justify-content:space-between; color:#334155;">
-                <span>📅 ${v.fecha}</span>
-                <span style="font-weight:700; color:#4f46e5;">🏖️ Tomada</span>
-              </div>`;
-            }).join('');
-          } else {
-            listaVacacionesHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:5px 0;">Sin vacaciones registradas</div>`;
-          }
-        } else {
-          listaVacacionesHTML = `<div style="font-size:11px; color:#ef4444; text-align:center; padding:5px 0;">Error al cargar</div>`;
-        }
-        
-        container.innerHTML = `
-          <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
-            <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas (${totalVacsTomadas})
-          </div>
-          <div style="max-height: 90px; overflow-y: auto; padding-right: 2px;">
-            ${listaVacacionesHTML}
-          </div>
-        `;
-      }).catch(function(err) {
-        console.error("Error al cargar vacaciones:", err);
-        const container = document.getElementById('card-vacaciones-detalle');
-        if (container) {
-          container.innerHTML = `
-            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
-              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas (--)
-            </div>
-            <div style="font-size:11px; color:#ef4444; text-align:center; padding:5px 0;">Error de conexión</div>
-          `;
-        }
-      });
     }
 
     function volverADirectorio() { cambiarPanel('directorio'); cargarDirectorio(); }
@@ -3155,7 +3230,13 @@
           if (window.FirebaseBackend && window.FirebaseBackend.guardarModalidadSupervisor) {
             res = await window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad: valor, supervisorId });
           } else {
-            res = { ok: false, error: 'Solo disponible en modo Firebase' };
+            res = await jsonpRequest({
+              accion: 'guardarModalidadSupervisor',
+              empleadoId: empleadoId,
+              fecha: fecha,
+              modalidad: valor,
+              supervisorId: supervisorId
+            });
           }
           if (res && res.ok) {
             if (typeof mostrarToast === 'function') mostrarToast(`✅ Modalidad guardada: ${valor}`, 'ok');
