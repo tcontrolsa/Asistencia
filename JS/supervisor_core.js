@@ -867,7 +867,10 @@
                 razon = "Inasistencia";
               }
             } else {
-              let sortedRegs = [...regsDia].sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+              let sortedRegs = [...regsDia].sort((a, b) => {
+                if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+                return String(a.hora || '').localeCompare(String(b.hora || ''));
+              });
 
               let periodosDia = [];
               let entradaPendiente = null;
@@ -1759,7 +1762,7 @@
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
           const isJustificado = regsDia.some(r =>
             r.justificado === 'SI' ||
-            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
+            ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
           );
 
           if (regsDia.length === 0) {
@@ -1781,8 +1784,6 @@
 
           let periodosDia = [];
           let entradaPendiente = null;
-          let ultimoSalidaMins = null;
-          let ultimoSalidaReg = null;
 
           let sortedRegs = [...regsDia].sort((a, b) => {
             const timeA = a.hora;
@@ -1790,37 +1791,13 @@
             return String(timeA).localeCompare(String(timeB));
           });
 
-          let processedLunchGap1 = false;
           sortedRegs.forEach(r => {
             const tipo = String(r.tipo || '').toUpperCase();
             if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
-              let mE = obtenerMinutos(r.hora);
-              if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
-                let gap = mE - ultimoSalidaMins;
-                if (!processedLunchGap1 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
-                  let lunchMins = Math.min(45, gap);
-                  gap -= lunchMins;
-                  processedLunchGap1 = true;
-                }
-                if (gap > 0) {
-                  let clasif = clasificarGap(ultimoSalidaReg, gap);
-                  if (clasif.tipo === 'medico') {
-                    totalTiempoMedico += gap;
-                  } else if (clasif.tipo === 'personal') {
-                    totalTiempoPersonal += gap;
-                  } else {
-                    if (!isJustificado) {
-                      totalTiempoPorJustificar += gap;
-                    }
-                  }
-                }
-              }
               entradaPendiente = r;
             } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
               if (entradaPendiente) {
                 periodosDia.push({ entrada: entradaPendiente, salida: r });
-                ultimoSalidaMins = obtenerMinutos(r.hora);
-                ultimoSalidaReg = r;
                 entradaPendiente = null;
               } else {
                 periodosDia.push({ entrada: null, salida: r });
@@ -1830,37 +1807,42 @@
           if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
 
           let minutosTrabajadosHoy = 0;
-          let dayPersonal = 0;
-          let dayMedico = 0;
-          let dayJustificar = 0;
+          let tiempoPersonalHoy = 0;
+          let tiempoMedicoHoy = 0;
+          let tiempoJustificarHoy = 0;
 
           const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
-          if (hasCumpleanos) dayPersonal += 240;
+          if (hasCumpleanos) tiempoPersonalHoy += 240;
 
-          ultimoSalidaMins = null;
-          ultimoSalidaReg = null;
+          let ultimoSalidaMins = null;
+          let ultimoSalidaReg = null;
+          let processedLunchGap = false;
 
-          let processedLunchGap2 = false;
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
             let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
             let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
             if (mE === null || mS === null || mS <= mE) return;
+
             let duracion = mS - mE;
             minutosTrabajadosHoy += duracion;
 
             if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
               let gap = mE - ultimoSalidaMins;
-              if (!processedLunchGap2 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+              if (!processedLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
                 let lunchMins = Math.min(45, gap);
                 gap -= lunchMins;
-                processedLunchGap2 = true;
+                processedLunchGap = true;
               }
               if (gap > 0) {
                 let clasif = clasificarGap(ultimoSalidaReg, gap);
-                if (clasif.tipo === 'medico') dayMedico += gap;
-                else if (clasif.tipo === 'personal') dayPersonal += gap;
-                else dayJustificar += gap;
+                if (clasif.tipo === 'medico') {
+                  tiempoMedicoHoy += gap;
+                } else if (clasif.tipo === 'personal') {
+                  tiempoPersonalHoy += gap;
+                } else {
+                  tiempoJustificarHoy += gap;
+                }
               }
             }
             ultimoSalidaMins = mS;
@@ -1881,8 +1863,6 @@
           }
 
           let extraMins50Acum = 0;
-          let extraMins100Acum = 0;
-          let shiftMins = 0;
 
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
@@ -1918,35 +1898,37 @@
           });
 
           if (esFestivo) {
-            // Ya calculados directamente en el loop anterior
+            // Ya calculados
           } else {
             horasExtra50 += extraMins50Acum;
           }
-          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-          const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-          const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
 
-          if (!isJustificado) {
-            let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
-            totalTiempoPersonal += persMins;
-            totalTiempoMedico   += medMins;
-            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
-            let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
-            totalTiempoPorJustificar += unaccountedMissing;
+          // Sumar permisos asignados manualmente
+          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
+          const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+          const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+          tiempoPersonalHoy += persMins;
+          tiempoMedicoHoy   += medMins;
+
+          if (isJustificado) {
+            tiempoJustificarHoy = 0;
           } else {
-            totalTiempoPersonal += persMins;
-            totalTiempoMedico   += medMins;
+            let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
+            let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificarHoy;
+            let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+            tiempoJustificarHoy += unaccountedMissing;
           }
 
           // Ajustar atrasos del día descontando permisos del día
+          atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy);
           if (atrasoMinsHoy > 0) {
-            const permisoTotalHoy = (dayPersonal + persMins) + (dayMedico + medMins);
-            const adjustedAtrasoHoy = Math.max(0, atrasoMinsHoy - permisoTotalHoy);
-            if (adjustedAtrasoHoy > 0) {
-              atrasos++;
-              minutosAtrasos += adjustedAtrasoHoy;
-            }
+            atrasos++;
+            minutosAtrasos += atrasoMinsHoy;
           }
+
+          totalTiempoPersonal += tiempoPersonalHoy;
+          totalTiempoMedico   += tiempoMedicoHoy;
+          totalTiempoPorJustificar += tiempoJustificarHoy;
         });
 
         puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
@@ -2337,9 +2319,8 @@
         let porDia = {};
       // Asegurar que los registros estén ordenados cronológicamente para el emparejamiento
       [...regs].sort((a, b) => {
-        const timeA = a.hora;
-        const timeB = b.hora;
-        return String(timeA).localeCompare(String(timeB));
+        if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+        return String(a.hora || '').localeCompare(String(b.hora || ''));
       }).forEach(r => {
         // Normalizar la fecha a YYYY-MM-DD para evitar fechas mal formateadas de Sheets
         const fechaNorm = normalizarFechaStr(r.fecha);
@@ -2385,7 +2366,10 @@
 
       let filas = fechasOrdenadas.map(f => {
         let d = porDia[f];
-        let regsDia = [...d.registros].sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
+        let regsDia = [...d.registros].sort((a, b) => {
+          if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+          return String(a.hora || '').localeCompare(String(b.hora || ''));
+        });
         const dayOfWeek = new Date(f + 'T12:00:00').getDay();
         const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
         const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
@@ -5321,7 +5305,7 @@
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
           const isJustificado = regsDia.some(r =>
             r.justificado === 'SI' ||
-            ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
+            ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
           );
 
           if (regsDia.length === 0) {
@@ -5343,8 +5327,6 @@
 
           let periodosDia = [];
           let entradaPendiente = null;
-          let ultimoSalidaMins = null;
-          let ultimoSalidaReg = null;
 
           let sortedRegs = [...regsDia].sort((a, b) => {
             const timeA = a.hora;
@@ -5352,37 +5334,13 @@
             return String(timeA).localeCompare(String(timeB));
           });
 
-          let processedLunchGap1 = false;
           sortedRegs.forEach(r => {
             const tipo = String(r.tipo || '').toUpperCase();
             if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
-              let mE = obtenerMinutos(r.hora);
-              if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
-                let gap = mE - ultimoSalidaMins;
-                if (!processedLunchGap1 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
-                  let lunchMins = Math.min(45, gap);
-                  gap -= lunchMins;
-                  processedLunchGap1 = true;
-                }
-                if (gap > 0) {
-                  let clasif = clasificarGap(ultimoSalidaReg, gap);
-                  if (clasif.tipo === 'medico') {
-                    totalTiempoMedico += gap;
-                  } else if (clasif.tipo === 'personal') {
-                    totalTiempoPersonal += gap;
-                  } else {
-                    if (!isJustificado) {
-                      totalTiempoPorJustificar += gap;
-                    }
-                  }
-                }
-              }
               entradaPendiente = r;
             } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
               if (entradaPendiente) {
                 periodosDia.push({ entrada: entradaPendiente, salida: r });
-                ultimoSalidaMins = obtenerMinutos(r.hora);
-                ultimoSalidaReg = r;
                 entradaPendiente = null;
               } else {
                 periodosDia.push({ entrada: null, salida: r });
@@ -5392,37 +5350,42 @@
           if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
 
           let minutosTrabajadosHoy = 0;
-          let dayPersonal = 0;
-          let dayMedico = 0;
-          let dayJustificar = 0;
+          let tiempoPersonalHoy = 0;
+          let tiempoMedicoHoy = 0;
+          let tiempoJustificarHoy = 0;
 
           const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
-          if (hasCumpleanos) dayPersonal += 240;
+          if (hasCumpleanos) tiempoPersonalHoy += 240;
 
-          ultimoSalidaMins = null;
-          ultimoSalidaReg = null;
+          let ultimoSalidaMins = null;
+          let ultimoSalidaReg = null;
+          let processedLunchGap = false;
 
-          let processedLunchGap2 = false;
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
             let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
             let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
             if (mE === null || mS === null || mS <= mE) return;
+
             let duracion = mS - mE;
             minutosTrabajadosHoy += duracion;
 
             if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
               let gap = mE - ultimoSalidaMins;
-              if (!processedLunchGap2 && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+              if (!processedLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
                 let lunchMins = Math.min(45, gap);
                 gap -= lunchMins;
-                processedLunchGap2 = true;
+                processedLunchGap = true;
               }
               if (gap > 0) {
                 let clasif = clasificarGap(ultimoSalidaReg, gap);
-                if (clasif.tipo === 'medico') dayMedico += gap;
-                else if (clasif.tipo === 'personal') dayPersonal += gap;
-                else dayJustificar += gap;
+                if (clasif.tipo === 'medico') {
+                  tiempoMedicoHoy += gap;
+                } else if (clasif.tipo === 'personal') {
+                  tiempoPersonalHoy += gap;
+                } else {
+                  tiempoJustificarHoy += gap;
+                }
               }
             }
             ultimoSalidaMins = mS;
@@ -5443,8 +5406,6 @@
           }
 
           let extraMins50Acum = 0;
-          let extraMins100Acum = 0;
-          let shiftMins = 0;
 
           periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
@@ -5480,36 +5441,37 @@
           });
 
           if (esFestivo) {
-            // Ya calculados directamente en el loop anterior
+            // Ya calculados
           } else {
             horasExtra50 += extraMins50Acum;
           }
 
+          // Sumar permisos asignados manualmente
           const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-          const persMins  = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-          const medMins   = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+          const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
+          const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+          tiempoPersonalHoy += persMins;
+          tiempoMedicoHoy   += medMins;
 
-          if (!isJustificado) {
-            let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
-            totalTiempoPersonal += persMins;
-            totalTiempoMedico   += medMins;
-            let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar + persMins + medMins;
-            let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
-            totalTiempoPorJustificar += unaccountedMissing;
+          if (isJustificado) {
+            tiempoJustificarHoy = 0;
           } else {
-            totalTiempoPersonal += persMins;
-            totalTiempoMedico   += medMins;
+            let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
+            let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificarHoy;
+            let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+            tiempoJustificarHoy += unaccountedMissing;
           }
 
           // Ajustar atrasos del día descontando permisos del día
+          atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy);
           if (atrasoMinsHoy > 0) {
-            const permisoTotalHoy = (dayPersonal + persMins) + (dayMedico + medMins);
-            const adjustedAtrasoHoy = Math.max(0, atrasoMinsHoy - permisoTotalHoy);
-            if (adjustedAtrasoHoy > 0) {
-              atrasos++;
-              minutosAtrasos += adjustedAtrasoHoy;
-            }
+            atrasos++;
+            minutosAtrasos += atrasoMinsHoy;
           }
+
+          totalTiempoPersonal += tiempoPersonalHoy;
+          totalTiempoMedico   += tiempoMedicoHoy;
+          totalTiempoPorJustificar += tiempoJustificarHoy;
         });
 
         puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;

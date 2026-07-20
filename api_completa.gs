@@ -831,6 +831,24 @@ function formatearFecha(fecha, formato = "yyyy-MM-dd") {
   return Utilities.formatDate(fecha, Session.getScriptTimeZone(), formato);
 }
 
+function formatearHoraCell(val) {
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, Session.getScriptTimeZone(), 'HH:mm:ss');
+  }
+  if (!val) return '';
+  let rawStr = String(val).trim();
+  if (rawStr.includes(' ') && rawStr.includes(':')) {
+    try {
+      let parsed = new Date(rawStr);
+      if (!isNaN(parsed.getTime())) {
+        return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'HH:mm:ss');
+      }
+    } catch(e) {}
+  }
+  // Si tiene el formato HH:MM o HH:MM:SS, asegurar formato correcto
+  return rawStr;
+}
+
 function convertirUrlDrive(url) {
   if (!url) return null;
   if (url.includes('lh3.googleusercontent.com')) return url;
@@ -1429,7 +1447,7 @@ function obtenerRegistrosEmpleado(empleadoId) {
       if (idRegistro === idBuscar) {
         let fechaObj = fila[COLUMNAS.FECHA];
         let timestampObj = fila[COLUMNAS.TIMESTAMP];
-        let fechaStr = '', timestampStr = '', horaStr = fila[COLUMNAS.HORA]?.toString() || '';
+        let fechaStr = '', timestampStr = '', horaStr = formatearHoraCell(fila[COLUMNAS.HORA]);
         if (fechaObj instanceof Date) fechaStr = Utilities.formatDate(fechaObj, timeZone, 'yyyy-MM-dd');
         else if (typeof fechaObj === 'string') fechaStr = fechaObj;
         if (timestampObj instanceof Date) timestampStr = timestampObj.toISOString();
@@ -1480,6 +1498,30 @@ function obtenerDatosSupervisorConTimestamp() {
     const registrosData = sheetRegistros.getDataRange().getValues();
     const timeZone = Session.getScriptTimeZone();
     const hoyStr = formatearFecha(new Date());
+
+    // Cargar vacaciones
+    const sheetVacaciones = SpreadsheetApp.getActive().getSheetByName("VACACIONES");
+    const vacacionesList = [];
+    if (sheetVacaciones) {
+      const vacData = sheetVacaciones.getDataRange().getValues();
+      for (let i = 1; i < vacData.length; i++) {
+        const row = vacData[i];
+        const vEmpId = row[1] ? String(row[1]).trim() : '';
+        let fStr = '';
+        if (row[0] instanceof Date) {
+          fStr = Utilities.formatDate(row[0], timeZone, 'yyyy-MM-dd');
+        } else if (row[0]) {
+          fStr = String(row[0]).trim();
+        }
+        if (vEmpId && fStr) {
+          vacacionesList.push({
+            id: vEmpId,
+            fecha: fStr,
+            tipo: row[3] ? String(row[3]).trim() : 'VACACIONES'
+          });
+        }
+      }
+    }
     
     // Procesar registros
     const registros = [];
@@ -1489,7 +1531,7 @@ function obtenerDatosSupervisorConTimestamp() {
       
       let fechaStr = '';
       let timestampStr = '';
-      let horaStr = fila[COLUMNAS.HORA]?.toString() || '';
+      let horaStr = formatearHoraCell(fila[COLUMNAS.HORA]);
       
       if (fila[COLUMNAS.FECHA] instanceof Date) {
         fechaStr = formatearFecha(fila[COLUMNAS.FECHA]);
@@ -1559,6 +1601,23 @@ function obtenerDatosSupervisorConTimestamp() {
       if (fotoUrl) fotoUrl = convertirUrlDrive(fotoUrl);
       
       const registrosEmpleado = registros.filter(r => r.id === id);
+      const vacsEmp = vacacionesList.filter(v => v.id === id);
+      vacsEmp.forEach(v => {
+        const yaExiste = registrosEmpleado.some(r => {
+          const rFecha = r.fecha;
+          const rTipo = String(r.tipo || '').toUpperCase();
+          return rFecha === v.fecha && (rTipo === 'VACACIONES' || rTipo === 'VACACION');
+        });
+        if (!yaExiste) {
+          registrosEmpleado.push({
+            id: id,
+            fecha: v.fecha,
+            tipo: 'VACACIONES',
+            razon_ausencia: 'Vacación',
+            justificado: 'SI'
+          });
+        }
+      });
       const registroHoy = registrosEmpleado.filter(r => r.fecha === hoyStr);
       const entradaHoy = registroHoy.find(r => r.tipo === 'ENTRADA');
       const salidaHoy = registroHoy.find(r => r.tipo === 'SALIDA');
@@ -2621,7 +2680,7 @@ function obtenerDatosSupervisor(params) {
         nombre: fila[COLUMNAS.NOMBRE]?.toString() || '',
         tipo: fila[COLUMNAS.TIPO]?.toString() || '',
         almuerzo: fila[COLUMNAS.ALMUERZO]?.toString() || '',
-        hora: fila[COLUMNAS.HORA]?.toString() || '',
+        hora: formatearHoraCell(fila[COLUMNAS.HORA]),
         timestamp: timestampStr,
         dispositivo: fila[COLUMNAS.DISPOSITIVO]?.toString() || ''
       });
@@ -2873,10 +2932,7 @@ function exportarBaseDatosParaFirebase() {
         if (fechaFila instanceof Date) fechaStr = Utilities.formatDate(fechaFila, timeZone, "yyyy-MM-dd");
         else fechaStr = fechaFila ? fechaFila.toString() : "";
 
-        let horaFila = fila[COLUMNAS.HORA];
-        let horaStr = "";
-        if (horaFila instanceof Date) horaStr = Utilities.formatDate(horaFila, timeZone, "HH:mm:ss");
-        else horaStr = horaFila ? horaFila.toString() : "";
+        let horaStr = formatearHoraCell(fila[COLUMNAS.HORA]);
 
         registros.push({
           fecha: fechaStr,
@@ -3133,9 +3189,9 @@ function obtenerVacacionesEmpleado(params) {
           var idColA = row[0] ? String(row[0]).trim() : '';
           var idColB = row[1] ? String(row[1]).trim() : '';
           if (empIdReq && (idColA === empIdReq || idColB === empIdReq)) {
-            // Columna J (índice 9) es Vacaciones tomadas, Columna K (índice 10) es Vacaciones restantes
-            tomadoVal = (row[9] !== undefined && row[9] !== '') ? row[9] : 0;
-            restanteVal = (row[10] !== undefined && row[10] !== '') ? row[10] : 0;
+            // Columna I (índice 8) es Vacaciones tomadas, Columna J (índice 9) es Vacaciones restantes
+            tomadoVal = (row[8] !== undefined && row[8] !== '') ? row[8] : 0;
+            restanteVal = (row[9] !== undefined && row[9] !== '') ? row[9] : 0;
             break;
           }
         }

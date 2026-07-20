@@ -2104,6 +2104,9 @@
 
             // Ordenar por hora/timestamp (el último manda)
             const ultimo = [...regsHoy].sort((a, b) => {
+                const tsA = getVal(a, 'timestamp', 2) || a[2];
+                const tsB = getVal(b, 'timestamp', 2) || b[2];
+                if (tsA && tsB) return String(tsA).localeCompare(String(tsB));
                 const ha = getVal(a, 'hora', 5) || a[5];
                 const hb = getVal(b, 'hora', 5) || b[5];
                 return String(ha).localeCompare(String(hb));
@@ -2851,7 +2854,7 @@
                     
                     <div class="row g-3">
                         <!-- Tarjeta 1: Asistencia y Almuerzos -->
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6 col-lg-3">
                             <div class="stat-card" style="padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column;">
                                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1.5px solid rgba(226, 232, 240, 0.8); padding-bottom: 10px;">
                                     <div style="font-size: 20px; background: rgba(99, 102, 241, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">📅</div>
@@ -2863,6 +2866,10 @@
                                         <span style="font-size: clamp(15px, 4.5vw, 18px); color: #4f46e5; font-weight: 850;">${stats.diasTrabajados}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Horas Trabajadas</span>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: #10b981; font-weight: 800;">${stats.horas_trabajadas}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Almuerzos en Planta</span>
                                         <span style="font-size: clamp(15px, 4.5vw, 18px); color: #0284c7; font-weight: 850;">${stats.almuerzos}</span>
                                     </div>
@@ -2871,7 +2878,7 @@
                         </div>
 
                         <!-- Tarjeta 2: Horas Extras y Campo -->
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6 col-lg-3">
                             <div class="stat-card" style="padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column;">
                                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1.5px solid rgba(226, 232, 240, 0.8); padding-bottom: 10px;">
                                     <div style="font-size: 20px; background: rgba(245, 158, 11, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">⏳</div>
@@ -2904,7 +2911,7 @@
                         </div>
 
                         <!-- Tarjeta 3: Puntualidad y Control -->
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6 col-lg-3">
                             <div class="stat-card" style="padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column;">
                                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1.5px solid rgba(226, 232, 240, 0.8); padding-bottom: 10px;">
                                     <div style="font-size: 20px; background: rgba(239, 68, 68, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">⏱️</div>
@@ -2922,6 +2929,30 @@
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Salidas Tempranas</span>
                                         <span style="font-size: clamp(15px, 4.5vw, 18px); color: #10b981; font-weight: 850;">${stats.salidas_tempranas}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tarjeta 4: Administración del Tiempo -->
+                        <div class="col-12 col-md-6 col-lg-3">
+                            <div class="stat-card" style="padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1.5px solid rgba(226, 232, 240, 0.8); padding-bottom: 10px;">
+                                    <div style="font-size: 20px; background: rgba(16, 185, 129, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">🗓️</div>
+                                    <div style="font-weight: 750; font-size: clamp(11px, 3.2vw, 13px); color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">Administración del Tiempo</div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; justify-content: center;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Permisos Personales</span>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: var(--indigo); font-weight: 850;">${stats.minutosPermisoPersonal > 0 ? formatMins(stats.minutosPermisoPersonal) : '—'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Permisos Médicos</span>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: var(--teal); font-weight: 850;">${stats.minutosPermisoMedico > 0 ? formatMins(stats.minutosPermisoMedico) : '—'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Vacaciones Tomadas</span>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: #0284c7; font-weight: 850;">${stats.vacacionesEnPeriodo > 0 ? stats.vacacionesEnPeriodo + ' día(s)' : '—'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -3090,7 +3121,11 @@
                     minutosAtrasoTotal: 0,
                     minutosExtras50: 0,
                     minutosExtras100: 0,
-                    minutosCampo: 0
+                    minutosCampo: 0,
+                    horas_trabajadas: '0h 0m',
+                    minutosPermisoPersonal: 0,
+                    minutosPermisoMedico: 0,
+                    vacacionesEnPeriodo: 0
                 };
             }
 
@@ -3112,6 +3147,9 @@
             let totalExtras50 = 0;
             let totalExtras100 = 0;
             let totalHorasCampo = 0;
+            let totalNetWorked = 0;
+            let minutosPermisoPersonal = 0;
+            let minutosPermisoMedico = 0;
 
             let horasExtra50 = 0;
             let horasExtra100 = 0;
@@ -3194,6 +3232,9 @@
                 let entradaPendiente = null;
 
                 let sortedRegs = [...registrosDia].sort((a, b) => {
+                    const tsA = getVal(a, 'timestamp', 2) || a[2];
+                    const tsB = getVal(b, 'timestamp', 2) || b[2];
+                    if (tsA && tsB) return String(tsA).localeCompare(String(tsB));
                     const timeA = getVal(a, 'hora', 5) || a[5];
                     const timeB = getVal(b, 'hora', 5) || b[5];
                     return String(timeA).localeCompare(String(timeB));
@@ -3277,7 +3318,22 @@
                 if (!esFestivo) {
                     horasExtra50 += extraMins50Acum;
                 }
+
+                // Acumular tiempo trabajado
+                totalNetWorked += netWorked;
+
+                // Acumular permisos
+                registrosDia.forEach(r => {
+                    const pers = Number(getVal(r, 'permiso_personal_mins', 22) || r[22] || 0);
+                    const med = Number(getVal(r, 'permiso_medico_mins', 23) || r[23] || 0);
+                    minutosPermisoPersonal += pers;
+                    minutosPermisoMedico += med;
+                });
             });
+
+            const vacacionesEnPeriodo = (vacacionesCompletas || []).filter(v => {
+                return v.fecha && v.fecha >= iniStr && v.fecha <= finStr;
+            }).length;
 
             totalExtras50 = horasExtra50 + horasCampo50;
             totalExtras100 = horasExtra100 + horasCampo100;
@@ -3300,7 +3356,11 @@
                 minutosAtrasoTotal: minutosAtrasoTotal,
                 minutosExtras50: totalExtras50,
                 minutosExtras100: totalExtras100,
-                minutosCampo: totalHorasCampo
+                minutosCampo: totalHorasCampo,
+                horas_trabajadas: formatMins(totalNetWorked),
+                minutosPermisoPersonal: minutosPermisoPersonal,
+                minutosPermisoMedico: minutosPermisoMedico,
+                vacacionesEnPeriodo: vacacionesEnPeriodo
             };
         }
 

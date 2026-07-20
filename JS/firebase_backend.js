@@ -1666,6 +1666,39 @@ window.FirebaseBackend = {
                     }
                 }
             });
+            // Cargar y fusionar vacaciones desde Sheets
+            let vacacionesList = [];
+            try {
+                const vacRes = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' });
+                if (vacRes && vacRes.ok) {
+                    vacacionesList = vacRes.vacaciones || [];
+                }
+            } catch(e) {
+                console.error("Error al precargar vacaciones en FirebaseBackend:", e);
+            }
+
+            if (vacacionesList.length > 0) {
+                Object.keys(empleadosMap).forEach(eid => {
+                    const emp = empleadosMap[eid];
+                    const vacsEmp = vacacionesList.filter(v => v.empleadoId === eid);
+                    vacsEmp.forEach(v => {
+                        const yaExiste = emp.registros.some(r => {
+                            const rFecha = r.fecha;
+                            const rTipo = String(r.tipo || '').toUpperCase();
+                            return rFecha === v.fecha && (rTipo === 'VACACIONES' || rTipo === 'VACACION');
+                        });
+                        if (!yaExiste) {
+                            emp.registros.push({
+                                id: eid,
+                                fecha: v.fecha,
+                                tipo: 'VACACIONES',
+                                razon_ausencia: 'Vacación',
+                                justificado: 'SI'
+                            });
+                        }
+                    });
+                });
+            }
 
             // Leer alerta de emergencia
             let emergencia = { activa: false, nombre: '', habilitadoPor: '', fecha: '' };
