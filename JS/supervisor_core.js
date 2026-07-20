@@ -1786,9 +1786,8 @@
           let entradaPendiente = null;
 
           let sortedRegs = [...regsDia].sort((a, b) => {
-            const timeA = a.hora;
-            const timeB = b.hora;
-            return String(timeA).localeCompare(String(timeB));
+            if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+            return String(a.hora || '').localeCompare(String(b.hora || ''));
           });
 
           sortedRegs.forEach(r => {
@@ -5329,9 +5328,8 @@
           let entradaPendiente = null;
 
           let sortedRegs = [...regsDia].sort((a, b) => {
-            const timeA = a.hora;
-            const timeB = b.hora;
-            return String(timeA).localeCompare(String(timeB));
+            if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+            return String(a.hora || '').localeCompare(String(b.hora || ''));
           });
 
           sortedRegs.forEach(r => {
@@ -5911,9 +5909,8 @@
 
       let porDia = {};
       [...regs].sort((a, b) => {
-        const timeA = a.hora;
-        const timeB = b.hora;
-        return String(timeA).localeCompare(String(timeB));
+        if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+        return String(a.hora || '').localeCompare(String(b.hora || ''));
       }).forEach(r => {
         const fechaNorm = normalizarFechaStr(r.fecha);
         if (!fechaNorm) return;
@@ -5952,7 +5949,10 @@
         let ultimoSalidaMins = null;
         let ultimoSalidaReg = null;
 
-        let sortedRegs = [...regsDia].sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+        let sortedRegs = [...regsDia].sort((a, b) => {
+          if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+          return String(a.hora || '').localeCompare(String(b.hora || ''));
+        });
 
         sortedRegs.forEach(r => {
           const tipo = String(r.tipo || '').toUpperCase();
