@@ -605,6 +605,7 @@ window.FirebaseBackend = {
         const nuevoRegistro = {
             empleadoId: empleadoId,
             nombre: infoEmpleado.nombre,
+            fecha: fechaStr,
             tipo: data.tipo,
             almuerzo: almuerzo,
             lat: parseFloat(data.lat) || null,
@@ -638,6 +639,32 @@ window.FirebaseBackend = {
         // Si es fecha actual, guardar SOLO en Firestore con ID Determinístico
         const idLimpio = horaStr.replace(/:/g, '');
         const idDocumento = `${empleadoId}_${data.tipo}_${fechaStr}_${idLimpio}`;
+
+        // SI YA EXISTE UN REGISTRO DE AUSENCIA PREVIO PARA ESTA FECHA Y EMPLEADO, BORRAR EL ANTERIOR DOCUMENTO PARA EVITAR DUPLICIDAD
+        if (esAusenciaTipo(data.tipo)) {
+            try {
+                const snapAusencias = await db.collection('registros')
+                    .where('empleadoId', '==', empleadoId)
+                    .get();
+                
+                let docsABorrar = [];
+                snapAusencias.forEach(doc => {
+                    const docData = doc.data();
+                    const processedData = this._processDoc(doc.id, docData);
+                    if (processedData && processedData.fecha === fechaStr && esAusenciaTipo(processedData.tipo || '')) {
+                        if (doc.id !== idDocumento) {
+                            docsABorrar.push(doc.id);
+                        }
+                    }
+                });
+                
+                for (const dId of docsABorrar) {
+                    await db.collection('registros').doc(dId).delete();
+                }
+            } catch (err) {
+                console.warn("⚠️ Error al limpiar ausencia previa en Firestore:", err);
+            }
+        }
 
         await db.collection('registros').doc(idDocumento).set(nuevoRegistro);
 
@@ -2158,7 +2185,9 @@ window.FirebaseBackend = {
             });
 
             if (entryDocId) {
-                const updateField = tipo === 'personal' ? 'permiso_personal_mins' : 'permiso_medico_mins';
+                const updateField = tipo === 'personal'
+                    ? 'permiso_personal_mins'
+                    : (tipo === 'medico' ? 'permiso_medico_mins' : 'tiempo_justificado_mins');
                 const updateObj = { [updateField]: minutos };
                 if (params.comentario !== undefined) {
                     updateObj.razon_permiso = String(params.comentario || '').trim();

@@ -2951,6 +2951,10 @@
                                         <span style="font-size: clamp(14px, 4.2vw, 16px); color: var(--teal); font-weight: 850;">${stats.minutosPermisoMedico > 0 ? formatMins(stats.minutosPermisoMedico) : '—'}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Tiempo Justificado</span>
+                                        <span style="font-size: clamp(14px, 4.2vw, 16px); color: #eab308; font-weight: 850;">${stats.minutosTiempoJustificado > 0 ? formatMins(stats.minutosTiempoJustificado) : '—'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <span style="font-size: clamp(11px, 3vw, 12px); color: #64748b; font-weight: 600;">Vacaciones Tomadas</span>
                                         <span style="font-size: clamp(14px, 4.2vw, 16px); color: #0284c7; font-weight: 850;">${stats.vacacionesEnPeriodo > 0 ? stats.vacacionesEnPeriodo + ' día(s)' : '—'}</span>
                                     </div>
@@ -3150,6 +3154,7 @@
             let totalNetWorked = 0;
             let minutosPermisoPersonal = 0;
             let minutosPermisoMedico = 0;
+            let minutosTiempoJustificado = 0;
 
             let horasExtra50 = 0;
             let horasExtra100 = 0;
@@ -3326,8 +3331,10 @@
                 registrosDia.forEach(r => {
                     const pers = Number(getVal(r, 'permiso_personal_mins', 22) || r[22] || 0);
                     const med = Number(getVal(r, 'permiso_medico_mins', 23) || r[23] || 0);
+                    const just = Number(getVal(r, 'tiempo_justificado_mins', 24) || r[24] || 0);
                     minutosPermisoPersonal += pers;
                     minutosPermisoMedico += med;
+                    minutosTiempoJustificado += just;
                 });
             });
 
@@ -3360,6 +3367,7 @@
                 horas_trabajadas: formatMins(totalNetWorked),
                 minutosPermisoPersonal: minutosPermisoPersonal,
                 minutosPermisoMedico: minutosPermisoMedico,
+                minutosTiempoJustificado: minutosTiempoJustificado,
                 vacacionesEnPeriodo: vacacionesEnPeriodo
             };
         }
@@ -3521,10 +3529,12 @@
             function obtenerDetallesPermiso(r) {
                 const persMins = Number(getVal(r, 'permiso_personal_mins', 22) || r[22] || 0);
                 const medMins = Number(getVal(r, 'permiso_medico_mins', 23) || r[23] || 0);
+                const justMins = Number(getVal(r, 'tiempo_justificado_mins', 24) || r[24] || 0);
                 const razonPerm = getVal(r, 'razon_permiso', 19) || r[19] || '';
                 let parts = [];
                 if (persMins > 0) parts.push(`🔑 Permiso Personal: ${persMins} min`);
                 if (medMins > 0) parts.push(`🩺 Permiso Médico: ${medMins} min`);
+                if (justMins > 0) parts.push(`✅ Tiempo Justificado: ${justMins} min`);
                 if (razonPerm) {
                     if (parts.length > 0) parts.push(`(${razonPerm})`);
                     else parts.push(`🔑 Permiso: ${razonPerm}`);

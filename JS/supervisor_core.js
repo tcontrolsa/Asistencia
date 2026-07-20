@@ -1906,8 +1906,10 @@
           const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
           const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
           const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+          const justMins = (entradaDia && entradaDia.tiempo_justificado_mins) ? Number(entradaDia.tiempo_justificado_mins) : 0;
           tiempoPersonalHoy += persMins;
           tiempoMedicoHoy   += medMins;
+          let tiempoJustificadoHoy = justMins;
 
           if (isJustificado) {
             tiempoJustificarHoy = 0;
@@ -1916,10 +1918,11 @@
             let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificarHoy;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             tiempoJustificarHoy += unaccountedMissing;
+            tiempoJustificarHoy = Math.max(0, tiempoJustificarHoy - tiempoJustificadoHoy);
           }
 
           // Ajustar atrasos del día descontando permisos del día
-          atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy);
+          atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy - tiempoJustificadoHoy);
           if (atrasoMinsHoy > 0) {
             atrasos++;
             minutosAtrasos += atrasoMinsHoy;
@@ -2357,7 +2360,7 @@
 
       // Mostrar todos los días del período
       // Acumuladores para la fila de totales
-      totTP = 0; totTM = 0; totTJ = 0; totHoras = 0; totAtrasos = 0;
+      totTP = 0; totTM = 0; totTJustificado = 0; totTJ = 0; totHoras = 0; totAtrasos = 0;
       let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
       let totExtra50 = 0, totExtra100 = 0;
       let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0; // NUEVO
@@ -2707,6 +2710,7 @@
           h50 = extraMins50Acum;
         }
 
+        let tiempoJustificado = 0;
         if (isJustificado) {
           tiempoPorJustificar = 0;
         } else {
@@ -2714,20 +2718,23 @@
           const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
           const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
           const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
-          tiempoPersonal += persMins;
-          tiempoMedico   += medMins;
+          const justMins = (entradaDia && entradaDia.tiempo_justificado_mins) ? Number(entradaDia.tiempo_justificado_mins) : 0;
+          tiempoPersonal    += persMins;
+          tiempoMedico      += medMins;
+          tiempoJustificado += justMins;
           let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
           let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
           tiempoPorJustificar += unaccountedMissing;
+          tiempoPorJustificar = Math.max(0, tiempoPorJustificar - tiempoJustificado);
         }
 
-        // Ajustar atrasos descontando los permisos del día (tiempo personal y médico)
+        // Ajustar atrasos descontando los permisos del día y tiempo justificado
         const originalAtrasoMins = atrasoMins;
-        atrasoMins = Math.max(0, originalAtrasoMins - tiempoPersonal - tiempoMedico);
+        atrasoMins = Math.max(0, originalAtrasoMins - tiempoPersonal - tiempoMedico - tiempoJustificado);
 
-        // Sumar tiempo personal y médico a TOTAL HRS (netWorked)
-        netWorked += (tiempoPersonal + tiempoMedico);
+        // Sumar tiempo personal, médico y tiempo justificado a TOTAL HRS (netWorked)
+        netWorked += (tiempoPersonal + tiempoMedico + tiempoJustificado);
 
         // MODALIDAD — editable inline para supervisores autorizados
         const todosRegsConModo = regsDia.filter(r => r.modo);
@@ -2751,7 +2758,7 @@
         // ponytail: click convierte el texto en <input>, Enter/blur llama guardarPermiso
         function celdaTiempo(tipo, mins, empId, fecha) {
           const display = mins > 0 ? minutosAHHMMSS(mins) : '—';
-          const color = tipo === 'personal' ? 'var(--indigo)' : 'var(--teal)';
+          const color = tipo === 'personal' ? 'var(--indigo)' : (tipo === 'medico' ? 'var(--teal)' : '#eab308');
           if (!esSuperPermiso || esFalta) return `<span style="color:${color};">${display}</span>`;
           const uid = `cel_${tipo}_${empId}_${fecha.replace(/-/g,'')}`;
           const eReg = regsDia.find(r => r.tipo === 'ENTRADA');
@@ -2762,6 +2769,7 @@
 
         const celTP = celdaTiempo('personal', tiempoPersonal, e.id, f);
         const celTM = celdaTiempo('medico',   tiempoMedico,   e.id, f);
+        const celTJ = celdaTiempo('justificado', tiempoJustificado, e.id, f);
 
         let btnPermisoHtml = '';
 
@@ -2769,6 +2777,7 @@
         // Acumular totales
         totTP     += tiempoPersonal;
         totTM     += tiempoMedico;
+        totTJustificado += tiempoJustificado;
         totTJ     += tiempoPorJustificar;
         totHoras  += netWorked;
         totAtrasos+= atrasoMins;
@@ -2790,7 +2799,7 @@
           const icon = razonMostrar.toLowerCase().includes('vacac') ? '🏖️' : razonMostrar.toLowerCase().includes('medico') ? '🩺' : '📋';
           return `<tr style="${rowStyle}">
         <td style="white-space:nowrap; font-weight:600; font-size:11px; padding:3px 5px;">${fechaFormateada}</td>
-        <td colspan="19" style="font-size:11px; padding:6px 12px; font-weight:600; background:rgba(79, 70, 229, 0.03);">
+        <td colspan="20" style="font-size:11px; padding:6px 12px; font-weight:600; background:rgba(79, 70, 229, 0.03);">
           <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
             <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:#312e81; background:#e0e7ff; padding:3px 8px; border-radius:6px; border:1px solid #c7d2fe;">
               ${icon} ${razonMostrar.toUpperCase()}
@@ -2812,6 +2821,7 @@
       <td style="font-size:11px; padding:3px 4px;">${selectRazonHtml}</td>
       <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTP}</td>
       <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTM}</td>
+      <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTJ}</td>
       <td style="text-align:center; color:var(--red); font-size:11px; padding:3px 4px;">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
       <td style="text-align:center; color:var(--green); font-weight:600; font-size:11px; padding:3px 4px;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
       <td style="font-size:11px;padding:3px 4px;">${aBadge}</td>
@@ -2845,6 +2855,7 @@
         <td></td>
         <td style="text-align:center;color:var(--indigo);">${mA(totTP)}</td>
         <td style="text-align:center;color:var(--teal);">${mA(totTM)}</td>
+        <td style="text-align:center;color:#eab308;">${mA(totTJustificado)}</td>
         <td style="text-align:center;color:var(--red);">${mA(totTJ)}</td>
         <td style="text-align:center;color:var(--green);">${mA(totHoras)}</td>
         <td></td>
@@ -3076,7 +3087,8 @@
                   <th style="font-size:10px;padding:4px 5px;">Razón</th>
                   <th style="font-size:10px;padding:4px 5px;">T.PERSONAL</th>
                   <th style="font-size:10px;padding:4px 5px;">T.MEDICO</th>
-                  <th style="font-size:10px;padding:4px 5px;">T.JUSTIF.</th>
+                  <th style="font-size:10px;padding:4px 5px;">T.JUSTIFICADO</th>
+                  <th style="font-size:10px;padding:4px 5px;" title="Tiempo Por Justificar">T.POR JUSTIF.</th>
                   <th style="font-size:10px;padding:4px 5px;">TOTAL HRS</th>
                   <th style="font-size:10px;padding:4px 5px;">Alm.</th>
                   <th style="font-size:10px;padding:4px 5px;">H.E.Aut.</th>
@@ -3263,10 +3275,12 @@
           originalPermiso = {
             personal: reg.permiso_personal_mins || 0,
             medico: reg.permiso_medico_mins || 0,
+            justificado: reg.tiempo_justificado_mins || 0,
             comentario: reg.razon_permiso || ''
           };
           if (tipo === 'personal') reg.permiso_personal_mins = mins;
-          else                    reg.permiso_medico_mins   = mins;
+          else if (tipo === 'medico') reg.permiso_medico_mins = mins;
+          else if (tipo === 'justificado') reg.tiempo_justificado_mins = mins;
           if (comentario !== null) reg.razon_permiso = comentario;
         }
       }
@@ -3309,6 +3323,7 @@
           if (reg && originalPermiso) {
             reg.permiso_personal_mins = originalPermiso.personal;
             reg.permiso_medico_mins = originalPermiso.medico;
+            reg.tiempo_justificado_mins = originalPermiso.justificado;
             reg.razon_permiso = originalPermiso.comentario;
             mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
           }
@@ -3319,6 +3334,7 @@
         if (reg && originalPermiso) {
           reg.permiso_personal_mins = originalPermiso.personal;
           reg.permiso_medico_mins = originalPermiso.medico;
+          reg.tiempo_justificado_mins = originalPermiso.justificado;
           reg.razon_permiso = originalPermiso.comentario;
           mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
         }
@@ -3333,9 +3349,9 @@
       const prev = document.getElementById('modalConversorTiempo');
       if (prev) prev.remove();
 
-      const labelTipo = tipo === 'personal' ? 'Tiempo Personal' : 'Tiempo Médico';
-      const colorTheme = tipo === 'personal' ? '#6366f1' : '#0d9488';
-      const iconTheme = tipo === 'personal' ? 'fa-user' : 'fa-stethoscope';
+      const labelTipo = tipo === 'personal' ? 'Tiempo Personal' : (tipo === 'medico' ? 'Tiempo Médico' : 'Tiempo Justificado');
+      const colorTheme = tipo === 'personal' ? '#6366f1' : (tipo === 'medico' ? '#0d9488' : '#eab308');
+      const iconTheme = tipo === 'personal' ? 'fa-user' : (tipo === 'medico' ? 'fa-stethoscope' : 'fa-balance-scale');
 
       const initialHrs = Math.floor(minsActual / 60);
       const initialMins = minsActual % 60;
@@ -5448,8 +5464,10 @@
           const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
           const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
           const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
+          const justMins = (entradaDia && entradaDia.tiempo_justificado_mins) ? Number(entradaDia.tiempo_justificado_mins) : 0;
           tiempoPersonalHoy += persMins;
           tiempoMedicoHoy   += medMins;
+          let tiempoJustificadoHoy = justMins;
 
           if (isJustificado) {
             tiempoJustificarHoy = 0;
@@ -5458,10 +5476,11 @@
             let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificarHoy;
             let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
             tiempoJustificarHoy += unaccountedMissing;
+            tiempoJustificarHoy = Math.max(0, tiempoJustificarHoy - tiempoJustificadoHoy);
           }
 
           // Ajustar atrasos del día descontando permisos del día
-          atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy);
+          atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy - tiempoJustificadoHoy);
           if (atrasoMinsHoy > 0) {
             atrasos++;
             minutosAtrasos += atrasoMinsHoy;

@@ -122,10 +122,17 @@ function calcularJornada({ fecha, registros, diasLaborables, HORA_ENTRADA_REF = 
 
   if (!isJustificado) {
     // La jornada esperada neta es siempre 480 minutos (8 horas)
+    let justMins = 0;
+    let entradaDia = registros.find(r => r.tipo === 'ENTRADA');
+    if (entradaDia && entradaDia.tiempo_justificado_mins) {
+      justMins = Number(entradaDia.tiempo_justificado_mins);
+    }
+
     let missingMinutes = Math.max(0, 480 - netWorked);
     let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
     let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
     totalTiempoPorJustificar += unaccountedMissing;
+    totalTiempoPorJustificar = Math.max(0, totalTiempoPorJustificar - justMins);
   }
 
   return { totalTiempoPorJustificar, horasExtra100, horasExtra50 };
@@ -219,6 +226,22 @@ const res6 = calcularJornada({
 console.log("Caso 6 (Caso del usuario: entrada 07:17, salida 15:15):", res6);
 assert.strictEqual(res6.horasExtra100, 478, "Caso 6: Horas Extra 100% debería ser 478 mins (07:58:00)");
 assert.strictEqual(res6.totalTiempoPorJustificar, 2, "Caso 6: Tiempo por justificar debería ser 2 mins (00:02:00)");
+
+// Caso 7: Sábado incompleto con 45 minutos justificados
+// Esperado:
+//   - Horas trabajadas netas: 15:00 - 08:00 = 7h = 420 mins.
+//   - Tiempo por justificar: 480 - 420 - 45 (justificados) = 15 mins (00:15:00)
+const res7 = calcularJornada({
+  fecha: '2026-06-06',
+  registros: [
+    { tipo: 'ENTRADA', hora: '08:00:00', tiempo_justificado_mins: 45 },
+    { tipo: 'SALIDA', hora: '15:00:00' }
+  ],
+  diasLaborables: ['2026-06-06']
+});
+console.log("Caso 7 (Sábado incompleto con tiempo justificado):", res7);
+assert.strictEqual(res7.horasExtra100, 420, "Caso 7: Horas Extra 100% debería ser 420 mins");
+assert.strictEqual(res7.totalTiempoPorJustificar, 15, "Caso 7: Tiempo por justificar debería ser 15 mins");
 
 console.log("?? TODAS LAS PRUEBAS PASARON CORRECTAMENTE!");
 

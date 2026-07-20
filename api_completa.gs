@@ -36,7 +36,8 @@ const COLUMNAS = {
   RAZON_AUSENCIA: 21,         // V (Alias)
   RAZON_JUSTIFICAC: 21,       // V
   PERMISO_PERSONAL_MINS: 22,  // W
-  PERMISO_MEDICO_MINS: 23     // X
+  PERMISO_MEDICO_MINS: 23,    // X
+  TIEMPO_JUSTIFICADO_MINS: 24 // Y
 };
 
 // Columnas de la hoja EMPLEADOS
@@ -220,6 +221,7 @@ function doPost(e) {
           var r_razonJustificac = r.razon_justificac || r.razon_ausencia || '';
           var r_permisoPersonalMins = r.permiso_personal_mins || 0;
           var r_permisoMedicoMins = r.permiso_medico_mins || 0;
+          var r_tiempoJustificadoMins = r.tiempo_justificado_mins || 0;
 
           var esVacaciones = (String(r_tipo).toUpperCase() === 'VACACIONES' || String(r_tipo).toUpperCase() === 'VACACION');
 
@@ -227,7 +229,7 @@ function doPost(e) {
             // Rellenar únicamente FECHA, ID, TIPO, TIMESTAMP
             var rowVac = [
               r_fecha, r_id, '', r_tipo, '', '', '', '', '', tsStr,
-              '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+              '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ];
             filasVacs.push(rowVac);
           } else {
@@ -235,7 +237,7 @@ function doPost(e) {
               r_fecha, r_id, r_nombre, r_tipo, r_almuerzo, r_hora, r_lat, r_lng, r_dispositivo, tsStr,
               r_dia, r_modo, r_horasExtra, r_autoriza, r_razonSalidaTemprana, r_quienJustifica,
               r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso,
-              r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins
+              r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins, r_tiempoJustificadoMins
             ]);
           }
         }
@@ -295,6 +297,7 @@ function doPost(e) {
           var r_razonEntradaTardia = r[COLUMNAS.RAZON_ENTRADA_TARDIA]?String(r[COLUMNAS.RAZON_ENTRADA_TARDIA]):'';
           var r_permisoPersonalMins = r[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(r[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0;
           var r_permisoMedicoMins = r[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(r[COLUMNAS.PERMISO_MEDICO_MINS]) : 0;
+          var r_tiempoJustificadoMins = r[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(r[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0;
           
           registros.push({
             fecha: fechaStr, 
@@ -317,7 +320,8 @@ function doPost(e) {
             razonEntradaTardia: r_razonEntradaTardia,
             razon_entrada_tardia: r_razonEntradaTardia,
             permiso_personal_mins: r_permisoPersonalMins,
-            permiso_medico_mins: r_permisoMedicoMins
+            permiso_medico_mins: r_permisoMedicoMins,
+            tiempo_justificado_mins: r_tiempoJustificadoMins
           });
         }
         return ContentService.createTextOutput(JSON.stringify({ok: true, registros: registros})).setMimeType(ContentService.MimeType.JSON);
@@ -1397,6 +1401,40 @@ function guardarRegistro(data) {
       return { error: "No se puede registrar el estado: no tienes ENTRADA registrada hoy." };
     }
     
+    // SI YA EXISTE UN REGISTRO DE AUSENCIA PARA ESTE EMPLEADO Y FECHA, ACTUALIZARLO EN LUGAR DE AGREGAR UNO NUEVO
+    if (esAusenciaTipo(data.tipo)) {
+      const lastRow = hoja.getLastRow();
+      if (lastRow > 1) {
+        const rango = hoja.getRange(2, 1, lastRow - 1, 22).getValues(); // Column A to V (A=0, V=21)
+        for (let i = rango.length - 1; i >= 0; i--) {
+          const fFecha = rango[i][COLUMNAS.FECHA] instanceof Date
+            ? formatearFecha(rango[i][COLUMNAS.FECHA])
+            : rango[i][COLUMNAS.FECHA]?.toString() || '';
+          const fId    = rango[i][COLUMNAS.ID]?.toString().trim() || '';
+          const fTipo  = rango[i][COLUMNAS.TIPO]?.toString() || '';
+          
+          if (fId === data.id.toString().trim() && fFecha === fechaStr && esAusenciaTipo(fTipo)) {
+            const filaReal = i + 2;
+            hoja.getRange(filaReal, COLUMNAS.TIPO + 1).setValue(data.tipo);
+            hoja.getRange(filaReal, COLUMNAS.RAZON_AUSENCIA + 1).setValue(data.razon_ausencia || "");
+            
+            // Actualizar timestamp para registrar la modificación
+            hoja.getRange(filaReal, COLUMNAS.TIMESTAMP + 1).setValue(fechaRegistro);
+            
+            // Si el supervisor asigna una justificación
+            if (data.justificado) {
+              hoja.getRange(filaReal, COLUMNAS.JUSTIFICADO + 1).setValue(data.justificado);
+            }
+            if (data.quien_justifica) {
+              hoja.getRange(filaReal, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(data.quien_justifica);
+            }
+            
+            return { ok: true, msg: `${data.tipo} actualizado con éxito en histórico` };
+          }
+        }
+      }
+    }
+
     // Armar fila (21 columnas A-U)
     const nuevaFila = new Array(21).fill("");
     nuevaFila[COLUMNAS.FECHA]                = fechaStr;  // <-- usa la fecha correcta (puede ser pasada)
@@ -1472,7 +1510,10 @@ function obtenerRegistrosEmpleado(empleadoId) {
           quien_justifica_entrada: fila[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA]?.toString() || '',
           tipo_salida: fila[COLUMNAS.TIPO_SALIDA]?.toString() || '',
           razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || '',
-          razon_ausencia: fila[COLUMNAS.RAZON_AUSENCIA]?.toString() || ''
+          razon_ausencia: fila[COLUMNAS.RAZON_AUSENCIA]?.toString() || '',
+          permiso_personal_mins: fila[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(fila[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0,
+          permiso_medico_mins: fila[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(fila[COLUMNAS.PERMISO_MEDICO_MINS]) : 0,
+          tiempo_justificado_mins: fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0
         });
       }
     }
@@ -1569,6 +1610,11 @@ function obtenerDatosSupervisorConTimestamp() {
         quien_justifica_entrada: fila[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA]?.toString() || '',
         tipo_salida: fila[COLUMNAS.TIPO_SALIDA]?.toString() || '',
         razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || '',
+        permiso_personal_mins: fila[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(fila[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0,
+        permiso_medico_mins: fila[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(fila[COLUMNAS.PERMISO_MEDICO_MINS]) : 0,
+        tiempo_justificado_mins: fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0,
+        justificado: fila[COLUMNAS.JUSTIFICADO]?.toString() || 'NO',
+        razon_justificac: fila[COLUMNAS.RAZON_JUSTIFICAC]?.toString() || '',
         razon_ausencia: (function() {
           // Si contiene "|" es un estado de emergencia codificado: "valor|HH:MM"
           const raw = fila[COLUMNAS.RAZON_AUSENCIA]?.toString() || '';
@@ -3056,8 +3102,10 @@ function guardarPermisoSupervisor(params) {
     }
 
     const colDestino = tipo === 'personal'
-      ? COLUMNAS.PERMISO_PERSONAL_MINS   // índice 21 → col V
-      : COLUMNAS.PERMISO_MEDICO_MINS;    // índice 22 → col W
+      ? COLUMNAS.PERMISO_PERSONAL_MINS
+      : (tipo === 'medico'
+        ? COLUMNAS.PERMISO_MEDICO_MINS
+        : COLUMNAS.TIEMPO_JUSTIFICADO_MINS);
 
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
     if (!sheet) return { ok: false, error: 'Hoja REGISTROS no encontrada.' };
@@ -3281,4 +3329,4 @@ function guardarModalidadSupervisor(params) {
   } catch (e) {
     return { ok: false, error: e.toString() };
   }
-}
+}
