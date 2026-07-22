@@ -90,10 +90,7 @@ window.FirebaseBackend = {
                     return await this.actualizarMasivoEmpleados(params);
                 case 'eliminarRegistro':
                     return await this.eliminarRegistro(params);
-                case 'depurarDuplicados':
-                    return await this.depurarDuplicados(params);
-                case 'regularizacionMasiva':
-                    return await this.regularizacionMasiva(params);
+
                 case 'desvincularDispositivo':
                     return await this.desvincularDispositivo(params);
                 case 'escribirHojaActualizar':
@@ -423,7 +420,8 @@ window.FirebaseBackend = {
                 estado: data.estado || '',
                 estado_timestamp: data.estado_timestamp ? (data.estado_timestamp.toDate ? data.estado_timestamp.toDate().getTime() : new Date(data.estado_timestamp).getTime()) : null,
                 permiso_personal_mins: data.permiso_personal_mins || 0,
-                permiso_medico_mins: data.permiso_medico_mins || 0
+                permiso_medico_mins: data.permiso_medico_mins || 0,
+                tiempo_justificado_mins: data.tiempo_justificado_mins || 0
             });
         });
 
@@ -483,7 +481,8 @@ window.FirebaseBackend = {
                 tipo_salida: data.tipoSalida || data.tipo_salida || '',
                 razon_permiso: data.razonPermiso || data.razon_permiso || '',
                 permiso_personal_mins: data.permiso_personal_mins || 0,
-                permiso_medico_mins: data.permiso_medico_mins || 0
+                permiso_medico_mins: data.permiso_medico_mins || 0,
+                tiempo_justificado_mins: data.tiempo_justificado_mins || 0
             }));
 
             registros = registros.concat(archivadosDelEmpleado);
@@ -1620,7 +1619,8 @@ window.FirebaseBackend = {
                 justificado: reg.justificado || '',
                 razon_justificac: reg.razon_justificac || '',
                 permiso_personal_mins: reg.permiso_personal_mins || 0,
-                permiso_medico_mins: reg.permiso_medico_mins || 0
+                permiso_medico_mins: reg.permiso_medico_mins || 0,
+                tiempo_justificado_mins: reg.tiempo_justificado_mins || 0
             })).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
 
             // Registros de Firebase: también normalizar fecha por si acaso
@@ -1754,134 +1754,7 @@ window.FirebaseBackend = {
         return await this.obtenerDatosSupervisor();
     },
 
-    async depurarDuplicados() {
-        try {
-            console.log("🧹 Iniciando depuración de duplicados...");
-            const snap = await db.collection('registros').get();
-            const docs = snap.docs;
-            console.log(`📦 Analizando ${docs.length} registros...`);
 
-            const unicos = new Map();
-            const duplicados = [];
-
-            docs.forEach(doc => {
-                const data = doc.data();
-                // Llave única: empleado_fecha_tipo_hora
-                const llave = `${data.empleadoId}_${data.fecha}_${data.tipo}_${data._id_original || data.hora}`;
-
-                if (unicos.has(llave)) {
-                    duplicados.push(doc.id);
-                } else {
-                    unicos.set(llave, doc.id);
-                }
-            });
-
-            console.log(`⚠️ Se encontraron ${duplicados.length} duplicados.`);
-
-            if (duplicados.length > 0) {
-                let batch = db.batch();
-                let count = 0;
-                let totalEliminados = 0;
-
-                for (const id of duplicados) {
-                    batch.delete(db.collection('registros').doc(id));
-                    count++;
-                    totalEliminados++;
-
-                    if (count === 400) {
-                        await batch.commit();
-                        batch = db.batch();
-                        count = 0;
-                    }
-                }
-                if (count > 0) await batch.commit();
-
-                return { ok: true, eliminados: totalEliminados };
-            }
-
-            return { ok: true, eliminados: 0 };
-        } catch (e) {
-            console.error("❌ Error en depuración:", e);
-            return { error: e.message };
-        }
-    },
-
-    async regularizacionMasiva(params) {
-        try {
-            const { fecha, horaE, horaS, soloFaltantes } = params;
-            if (!fecha) return { error: "Falta fecha" };
-
-            console.log(`⚡ Iniciando regularización masiva para el ${fecha}...`);
-
-            const empsSnap = await db.collection('empleados').get();
-            const tInicio = firebase.firestore.Timestamp.fromDate(new Date(fecha + 'T00:00:00'));
-            const tFin = firebase.firestore.Timestamp.fromDate(new Date(fecha + 'T23:59:59'));
-            const regsSnap = await db.collection('registros')
-                .where('timestamp', '>=', tInicio)
-                .where('timestamp', '<=', tFin)
-                .get();
-
-            const regsByEmp = {};
-            regsSnap.docs.forEach(d => {
-                const data = this._processDoc(d.id, d.data());
-                if (!data) return;
-                if (!regsByEmp[data.empleadoId]) regsByEmp[data.empleadoId] = { E: false, S: false };
-                if (data.tipo === 'ENTRADA' || data.tipo === 'RETORNO_CAMPO') regsByEmp[data.empleadoId].E = true;
-                if (data.tipo === 'SALIDA' || data.tipo === 'SALIDA_CAMPO') regsByEmp[data.empleadoId].S = true;
-            });
-
-            let batch = db.batch();
-            let total = 0;
-            let count = 0;
-
-            for (const empDoc of empsSnap.docs) {
-                const eid = empDoc.id;
-                const status = regsByEmp[eid] || { E: false, S: false };
-
-                // Entrada
-                if (!status.E || !soloFaltantes) {
-                    const ref = db.collection('registros').doc();
-                    const eDate = new Date(fecha + 'T' + (horaE || '07:30:00'));
-                    batch.set(ref, {
-                        empleadoId: eid,
-                        tipo: 'ENTRADA',
-                        modo: 'OFICINA',
-                        timestamp: firebase.firestore.Timestamp.fromDate(eDate)
-                    });
-                    count++;
-                }
-
-                // Salida
-                if (!status.S || !soloFaltantes) {
-                    const ref = db.collection('registros').doc();
-                    const sDate = new Date(fecha + 'T' + (horaS || '16:15:00'));
-                    batch.set(ref, {
-                        empleadoId: eid,
-                        tipo: 'SALIDA',
-                        modo: 'OFICINA',
-                        timestamp: firebase.firestore.Timestamp.fromDate(sDate)
-                    });
-                    count++;
-                }
-
-                if (count >= 400) {
-                    await batch.commit();
-                    batch = db.batch();
-                    total += count;
-                    count = 0;
-                }
-            }
-
-            if (count > 0) {
-                await batch.commit();
-                total += count;
-            }
-            return { ok: true, procesados: total };
-        } catch (e) {
-            console.error("❌ Error en regularización masiva:", e);
-            return { error: e.message };
-        }
-    },
 
     // ==========================================
     // AUXILIARES
@@ -2170,19 +2043,24 @@ window.FirebaseBackend = {
                 }
             }
 
-            // Buscar la entrada de ese día
+            // Buscar la entrada o cualquier registro de ese día
             const regSnap = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
-                .where('tipo', '==', 'ENTRADA')
                 .get();
 
             let entryDocId = null;
+            let fallbackDocId = null;
             regSnap.forEach(doc => {
                 const docData = this._processDoc(doc.id, doc.data());
                 if (docData && docData.fecha === fecha) {
-                    entryDocId = doc.id;
+                    if (docData.tipo === 'ENTRADA') {
+                        entryDocId = doc.id;
+                    } else if (!fallbackDocId) {
+                        fallbackDocId = doc.id;
+                    }
                 }
             });
+            entryDocId = entryDocId || fallbackDocId;
 
             if (entryDocId) {
                 const updateField = tipo === 'personal'

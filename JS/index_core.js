@@ -3104,13 +3104,35 @@
                 return `${y}-${m}-${day}`;
             }
 
+            function normalizarFechaYYYYMMDD(fVal) {
+                if (!fVal) return '';
+                if (typeof fVal === 'string') {
+                    let s = fVal.trim();
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+                    let mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+                    if (mIso) {
+                        return `${mIso[1]}-${mIso[2].padStart(2, '0')}-${mIso[3].padStart(2, '0')}`;
+                    }
+                    let mDmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+                    if (mDmy) {
+                        return `${mDmy[3]}-${mDmy[2].padStart(2, '0')}-${mDmy[1].padStart(2, '0')}`;
+                    }
+                }
+                let d = (fVal instanceof Date) ? fVal : new Date(fVal);
+                if (!isNaN(d.getTime())) {
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                }
+                return '';
+            }
+
             const iniStr = formatearFechaLocal(inicioPeriodo);
             const finStr = formatearFechaLocal(finPeriodo);
 
-            // Filtrar registros por el periodo actual
+            // Filtrar registros por el periodo actual con normalización segura de fechas
             const registrosFiltrados = registrosCompletos.filter(r => {
-                const f = getVal(r, 'fecha', 0) || r[0];
-                return f && f >= iniStr && f <= finStr;
+                const fVal = getVal(r, 'fecha', 0) || r[0];
+                const fNorm = normalizarFechaYYYYMMDD(fVal);
+                return fNorm && fNorm >= iniStr && fNorm <= finStr;
             });
 
             if (!registrosFiltrados || registrosFiltrados.length === 0) {
@@ -3136,12 +3158,13 @@
             // Agrupar por día para cálculos más precisos
             const grupos = {};
             registrosFiltrados.forEach(reg => {
-                const fecha = getVal(reg, 'fecha', 0) || reg[0];
-                if (fecha) {
-                    if (!grupos[fecha]) {
-                        grupos[fecha] = [];
+                const fVal = getVal(reg, 'fecha', 0) || reg[0];
+                const fNorm = normalizarFechaYYYYMMDD(fVal);
+                if (fNorm) {
+                    if (!grupos[fNorm]) {
+                        grupos[fNorm] = [];
                     }
-                    grupos[fecha].push(reg);
+                    grupos[fNorm].push(reg);
                 }
             });
 
@@ -3180,6 +3203,21 @@
 
             function obtenerMinutos(valor) {
                 if (!valor) return null;
+                if (typeof valor === 'object') {
+                    if (typeof valor.toDate === 'function') {
+                        let d = valor.toDate();
+                        return d.getHours() * 60 + d.getMinutes();
+                    }
+                    if (typeof valor.seconds === 'number') {
+                        let d = new Date(valor.seconds * 1000);
+                        return d.getHours() * 60 + d.getMinutes();
+                    }
+                    if (typeof valor._seconds === 'number') {
+                        let d = new Date(valor._seconds * 1000);
+                        return d.getHours() * 60 + d.getMinutes();
+                    }
+                    if (valor instanceof Date) return valor.getHours() * 60 + valor.getMinutes();
+                }
                 if (typeof valor === 'number') {
                     if (valor > 0 && valor < 1) {
                         let s = Math.round(valor * 86400);
@@ -3197,7 +3235,6 @@
                     let d = new Date(valor);
                     if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
                 }
-                if (valor instanceof Date) return valor.getHours() * 60 + valor.getMinutes();
                 return null;
             }
 
@@ -3208,7 +3245,7 @@
 
                 // Calcular atraso automáticamente basado en hora local real (nunca usar timestamp por desfase UTC)
                 if (entrada) {
-                    const horaEntrada = getVal(entrada, 'hora', 5) || entrada[5];
+                    const horaEntrada = getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5];
                     const mEntrada = obtenerMinutos(horaEntrada);
                     if (mEntrada !== null) {
                         const refEntrada = esFestivo ? 420 : H_INI_REF;
@@ -3237,16 +3274,16 @@
                 let entradaPendiente = null;
 
                 let sortedRegs = [...registrosDia].sort((a, b) => {
-                    const tsA = getVal(a, 'timestamp', 2) || a[2];
-                    const tsB = getVal(b, 'timestamp', 2) || b[2];
+                    const tsA = getVal(a, 'timestamp', 2) || a.timestamp || a[2];
+                    const tsB = getVal(b, 'timestamp', 2) || b.timestamp || b[2];
                     if (tsA && tsB) return String(tsA).localeCompare(String(tsB));
-                    const timeA = getVal(a, 'hora', 5) || a[5];
-                    const timeB = getVal(b, 'hora', 5) || b[5];
+                    const timeA = getVal(a, 'hora', 5) || a.hora || a[5];
+                    const timeB = getVal(b, 'hora', 5) || b.hora || b[5];
                     return String(timeA).localeCompare(String(timeB));
                 });
 
                 sortedRegs.forEach(r => {
-                    const tipo = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
+                    const tipo = String(getVal(r, 'tipo', 3) || r.tipo || r[3]).toUpperCase();
                     if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
                         entradaPendiente = r;
                     } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
@@ -3263,8 +3300,10 @@
                 let minutosTrabajadosHoy = 0;
                 periodosDia.forEach(p => {
                     if (!p.entrada || !p.salida) return;
-                    let mE = obtenerMinutos(getVal(p.entrada, 'hora', 5) || p.entrada[5]);
-                    let mS = obtenerMinutos(getVal(p.salida, 'hora', 5) || p.salida[5]);
+                    let valE = getVal(p.entrada, 'hora', 5) || getVal(p.entrada, 'timestamp', 2) || p.entrada.hora || p.entrada.timestamp || p.entrada[5];
+                    let valS = getVal(p.salida, 'hora', 5) || getVal(p.salida, 'timestamp', 2) || p.salida.hora || p.salida.timestamp || p.salida[5];
+                    let mE = obtenerMinutos(valE);
+                    let mS = obtenerMinutos(valS);
                     if (mE === null || mS === null || mS <= mE) return;
                     minutosTrabajadosHoy += (mS - mE);
                 });
@@ -3273,7 +3312,7 @@
                 if (!esFestivo && netWorked > 240) netWorked -= 45; // Restar descanso
 
                 // Auto-autorización de horas extras
-                let autorizado = registrosDia.some(r => getVal(r, 'horasExtra', 13) === 'SI' || r[13] === 'SI');
+                let autorizado = registrosDia.some(r => getVal(r, 'horasExtra', 13) === 'SI' || r.horasExtra === 'SI' || r[13] === 'SI');
                 if (esFestivo) {
                     if (netWorked > 60) autorizado = true;
                     if (netWorked <= 60) autorizado = false;
@@ -3286,8 +3325,10 @@
 
                 periodosDia.forEach(p => {
                     if (!p.entrada || !p.salida) return;
-                    let mE = obtenerMinutos(getVal(p.entrada, 'hora', 5) || p.entrada[5]);
-                    let mS = obtenerMinutos(getVal(p.salida, 'hora', 5) || p.salida[5]);
+                    let valE = getVal(p.entrada, 'hora', 5) || getVal(p.entrada, 'timestamp', 2) || p.entrada.hora || p.entrada.timestamp || p.entrada[5];
+                    let valS = getVal(p.salida, 'hora', 5) || getVal(p.salida, 'timestamp', 2) || p.salida.hora || p.salida.timestamp || p.salida[5];
+                    let mE = obtenerMinutos(valE);
+                    let mS = obtenerMinutos(valS);
                     if (mE === null || mS === null || mS <= mE) return;
                     let duracion = mS - mE;
 

@@ -1628,6 +1628,7 @@
       { id: 'permisoMedico', label: 'Permiso Médico', tipo: 'tiempo' },
       { id: 'permisoPersonal', label: 'Permiso Personal', tipo: 'tiempo' },
       { id: 'tiempoPorJustificar', label: 'Tiempo por Justificar', tipo: 'tiempo' },
+      { id: 'tiempoADescontar', label: 'Tiempo a Descontar', tipo: 'tiempo' },
       { id: 'horasExtra50', label: 'Horas Extra 50% (A)', tipo: 'tiempo' },
       { id: 'horasExtra100', label: 'Horas Extra 100% (B)', tipo: 'tiempo' },
       { id: 'horasCampoNormales', label: 'Horas Campo Normales', tipo: 'tiempo' },
@@ -1747,6 +1748,7 @@
         let totalTiempoPersonal = 0;
         let totalTiempoMedico = 0;
         let totalTiempoPorJustificar = 0;
+        let totalDescuentoBruto = 0;
 
         // Generar lista de todas las fechas en el rango R_INI a R_FIN
         let todasLasFechas = [];
@@ -1760,22 +1762,23 @@
         todasLasFechas.forEach(fecha => {
           const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
-          const isJustificado = regsDia.some(r =>
-            r.justificado === 'SI' ||
-            ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
-          );
+          const isJustificado = regsDia.some(r => {
+            if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
+            if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
+            const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+            if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
+            return false;
+          });
+          const esHoyOFuturo = fecha >= getLocalHoyStr();
 
           if (regsDia.length === 0) {
-            if (!esFestivo && diasLaborables.includes(fecha)) {
-              totalTiempoPorJustificar += 480;
-            }
             return;
           }
 
-          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
+          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
           let atrasoMinsHoy = 0;
-          if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
-            let mE = obtenerMinutos(primerReg.hora);
+          if (primerReg) {
+            let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
             let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
             if (mE !== null && mE > refEntrada + 5) {
               atrasoMinsHoy = mE - refEntrada;
@@ -1810,8 +1813,11 @@
           let tiempoMedicoHoy = 0;
           let tiempoJustificarHoy = 0;
 
-          const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
-          if (hasCumpleanos) tiempoPersonalHoy += 240;
+          const hasCumpleanos = regsDia.some(r => {
+            const raz = String(r.razon_ausencia || '').toLowerCase();
+            const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
+            return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
+          });
 
           let ultimoSalidaMins = null;
           let ultimoSalidaReg = null;
@@ -1903,15 +1909,15 @@
           }
 
           // Sumar permisos asignados manualmente
-          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-          const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-          const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
-          const justMins = (entradaDia && entradaDia.tiempo_justificado_mins) ? Number(entradaDia.tiempo_justificado_mins) : 0;
+          const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
+          const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
+          const medMins  = regPermiso ? Number(regPermiso.permiso_medico_mins || 0)   : 0;
+          const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
           tiempoPersonalHoy += persMins;
           tiempoMedicoHoy   += medMins;
-          let tiempoJustificadoHoy = justMins;
+          let tiempoJustificadoHoy = justMins + (hasCumpleanos ? 240 : 0);
 
-          if (isJustificado) {
+          if (isJustificado || esHoyOFuturo) {
             tiempoJustificarHoy = 0;
           } else {
             let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
@@ -1927,6 +1933,9 @@
             atrasos++;
             minutosAtrasos += atrasoMinsHoy;
           }
+
+          let descuentoBrutoHoy = tiempoPersonalHoy + (tiempoJustificarHoy > 0 ? Math.max(tiempoJustificarHoy, atrasoMinsHoy) : atrasoMinsHoy);
+          totalDescuentoBruto += descuentoBrutoHoy;
 
           totalTiempoPersonal += tiempoPersonalHoy;
           totalTiempoMedico   += tiempoMedicoHoy;
@@ -1944,6 +1953,7 @@
           permisoMedico: totalTiempoMedico,
           permisoPersonal: totalTiempoPersonal,
           tiempoPorJustificar: totalTiempoPorJustificar,
+          tiempoADescontar: Math.max(0, totalDescuentoBruto - 240),
           atrasos: atrasos,
           minutosAtrasos: minutosAtrasos,
           almPlanta: almPlanta,
@@ -1966,6 +1976,7 @@
       let totalPermisoPersonal = stats.reduce((s, r) => s + r.permisoPersonal, 0);
       let totalAtrasos = stats.reduce((s, r) => s + r.atrasos, 0);
       let totalTiempoPorJustificar = stats.reduce((s, r) => s + r.tiempoPorJustificar, 0);
+      let totalTiempoADescontar = stats.reduce((s, r) => s + r.tiempoADescontar, 0);
       let totalHorasExtra50 = stats.reduce((s, r) => s + r.horasExtra50, 0);
       let totalHorasExtra100 = stats.reduce((s, r) => s + r.horasExtra100, 0);
       let totalHorasCampoNormales = stats.reduce((s, r) => s + r.horasCampoNormales, 0);
@@ -1981,6 +1992,9 @@
       $('repAtrasos').textContent = totalAtrasos;
       if ($('repTiempoPorJustificar')) {
         $('repTiempoPorJustificar').textContent = formatearMinutos(totalTiempoPorJustificar);
+      }
+      if ($('repTiempoADescontar')) {
+        $('repTiempoADescontar').textContent = formatearMinutos(totalTiempoADescontar);
       }
       $('repHorasExtra50').textContent = formatearHorasDecimal(totalHorasExtra50);
       $('repHorasExtra100').textContent = formatearHorasDecimal(totalHorasExtra100);
@@ -2363,7 +2377,8 @@
       totTP = 0; totTM = 0; totTJustificado = 0; totTJ = 0; totHoras = 0; totAtrasos = 0;
       let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
       let totExtra50 = 0, totExtra100 = 0;
-      let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0; // NUEVO
+      let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0;
+      let totDescuentoBruto = 0;
       const esSuperPermiso = ['7','1058'].includes(String(sessionData.id || ''));
 
       let filas = fechasOrdenadas.map(f => {
@@ -2377,11 +2392,13 @@
         const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
         const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 
-        const isJustificado = regsDia.some(r =>
-          r.justificado === 'SI' ||
-          esAusenciaTipo(r.tipo) ||
-          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
-        );
+        const isJustificado = regsDia.some(r => {
+          if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
+          if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
+          const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+          if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
+          return false;
+        });
 
         const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
         const esFalta = regsDia.some(r => esAusenciaTipo(r.tipo)) || !tieneAsistencia;
@@ -2446,10 +2463,10 @@
           aBadge = `<span class="editable-pill" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}', '${(d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'NO' : 'SI'}', '${f}')">${aBadge}</span>`;
         }
 
-        let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
+        let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
         let atrasoMins = 0;
-        if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
-          let mE = obtenerMinutos(primerReg.hora);
+        if (primerReg) {
+          let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
           let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
           if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
         }
@@ -2537,15 +2554,15 @@
         });
 
         let selectRazonHtml = `
-          <select onchange="window.guardarRazonAusenciaFecha('${e.id}', '${f}', this.value)" ${(!esSuperPermiso || !esFalta) ? 'disabled' : ''} style="font-size:10px; border:1px solid #d1d5db; border-radius:6px; padding:2px 4px; background:#f8fafc; cursor:pointer; width:110px;">
-            <option value="">-- Sin Razón --</option>
+          <select onchange="window.guardarRazonAusenciaFecha('${e.id}', '${f}', this.value)" ${(!esSuperPermiso || !esFalta) ? 'disabled' : ''} style="font-size:10px; border:1px solid #d1d5db; border-radius:5px; padding:1px 3px; background:#f8fafc; cursor:pointer; width:92px; max-width:92px;">
+            <option value="">-- Razón --</option>
             <option value="Vacación" ${razonAusenciaVal === 'Vacación' || razonAusenciaVal === 'Vacacion' ? 'selected' : ''}>🏖️ Vacación</option>
-            <option value="Permiso Médico" ${razonAusenciaVal === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
-            <option value="Permiso Personal" ${razonAusenciaVal === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
-            <option value="Calamidad Doméstica" ${razonAusenciaVal === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
-            <option value="Salida a Campo" ${razonAusenciaVal === 'Salida a Campo' || razonAusenciaVal === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Salida a Campo</option>
+            <option value="Permiso Médico" ${razonAusenciaVal === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Med.</option>
+            <option value="Permiso Personal" ${razonAusenciaVal === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Pers.</option>
+            <option value="Calamidad Doméstica" ${razonAusenciaVal === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad</option>
+            <option value="Salida a Campo" ${razonAusenciaVal === 'Salida a Campo' || razonAusenciaVal === 'Trabajo de Campo' ? 'selected' : ''}>🚗 S. Campo</option>
             <option value="Cumpleaños" ${razonAusenciaVal === 'Cumpleaños' ? 'selected' : ''}>🎂 Cumpleaños</option>
-            <option value="Salida Justificada" ${razonAusenciaVal === 'Salida Justificada' ? 'selected' : ''}>✅ Salida Justificada</option>
+            <option value="Salida Justificada" ${razonAusenciaVal === 'Salida Justificada' ? 'selected' : ''}>✅ S. Justif.</option>
             <option value="Otro" ${razonAusenciaVal && !['Vacación','Vacacion','Permiso Médico','Permiso Personal','Calamidad Doméstica','Trabajo de Campo','Salida a Campo','Cumpleaños','Salida Justificada'].includes(razonAusenciaVal) ? 'selected' : ''}>✏️ Otro...</option>
           </select>
         `;
@@ -2559,13 +2576,13 @@
         let badgeDia = "";
         if (dayOfWeek === 0) {
           rowStyle = "background-color: rgba(239, 68, 68, 0.04);";
-          badgeDia = `<span class="pill miss" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">DOMINGO</span>`;
+          badgeDia = `<span class="pill danger" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">DOMINGO</span>`;
         } else if (dayOfWeek === 6) {
-          rowStyle = "background-color: rgba(59, 130, 246, 0.04);";
-          badgeDia = `<span class="pill" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; background: #dbeafe; color: #1e40af; font-weight: 700;">SÁBADO</span>`;
-        } else if (esFeriadoODomingo(f)) {
           rowStyle = "background-color: rgba(245, 158, 11, 0.04);";
-          badgeDia = `<span class="pill late" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">FERIADO</span>`;
+          badgeDia = `<span class="pill warn" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">SÁBADO</span>`;
+        } else if (esFeriadoODomingo(f)) {
+          rowStyle = "background-color: rgba(99, 102, 241, 0.04);";
+          badgeDia = `<span class="pill indigo" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">FERIADO</span>`;
         } else {
           badgeDia = `<span class="pill ok" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">LABORAL</span>`;
         }
@@ -2581,8 +2598,6 @@
         let minsEmpresa = 0;
         let minsCampo = 0;
 
-        const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
-        if (hasCumpleanos) tiempoPersonal += 240;
         ultimoSalidaMins = null;
         ultimoSalidaReg = null;
 
@@ -2625,7 +2640,6 @@
           ultimoSalidaReg = p.salida;
         });
 
-        // Descontar almuerzo si superó 4 horas (solo en días normales)
         let netWorked = minutosTrabajadosHoy;
         if (!esFestivo && netWorked > 240) {
           netWorked -= 45;
@@ -2635,18 +2649,21 @@
         minsEmpresa = Math.max(0, minsEmpresa);
         minsCampo = Math.max(0, minsCampo);
         
-        let minsSalidaTemprana = 0;
-        if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < 975) {
-          const hasSalidaTemprana = regsDia.some(r => {
-            const val = r.tipo_salida || r.tipo || '';
-            return val.includes('SALIDA_TEMPRANA');
-          });
-          if (hasSalidaTemprana || ultimoSalidaMins < 975) {
-            minsSalidaTemprana = 975 - ultimoSalidaMins;
-          }
+        let ultSalReg = [...regsDia].reverse().find(r => {
+          const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+          return t.includes('SALIDA');
+        });
+        if (ultSalReg) {
+          let mS = obtenerMinutos(ultSalReg.hora || ultSalReg.timestamp);
+          if (mS !== null) ultimoSalidaMins = mS;
         }
 
-        // Auto-autorización de horas extras
+        let minsSalidaTemprana = 0;
+        let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+        if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
+          minsSalidaTemprana = refSalida - ultimoSalidaMins;
+        }
+
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
         if (esFestivo) {
           if (netWorked > 60) autorizadoGlobal = true;
@@ -2668,7 +2685,6 @@
 
         let extraMins50Acum = 0;
         let extraMins100Acum = 0;
-        let shiftMins = 0;
 
         periodosDia.forEach(p => {
           if (!p.entrada || !p.salida) return;
@@ -2696,7 +2712,6 @@
                 hC50 += mExtra;
               }
             } else {
-              // Normal (no campo) - Horas extra solo después de las 16:15
               if (autorizadoGlobal && mS > H_FIN) {
                 extraMins50Acum += (mS - Math.max(mE, H_FIN));
               }
@@ -2705,23 +2720,30 @@
         });
 
         if (esFestivo) {
-          // Ya calculados directamente en el loop anterior
         } else {
           h50 = extraMins50Acum;
         }
 
         let tiempoJustificado = 0;
-        if (isJustificado) {
+        const hasCumpleanos = regsDia.some(r => {
+          const raz = String(r.razon_ausencia || '').toLowerCase();
+          const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
+          return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
+        });
+        if (hasCumpleanos) tiempoJustificado += 240;
+
+        const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
+        const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
+        const medMins  = regPermiso ? Number(regPermiso.permiso_medico_mins || 0)   : 0;
+        const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
+        tiempoPersonal    += persMins;
+        tiempoMedico      += medMins;
+        tiempoJustificado += justMins;
+
+        const esHoyOFuturo = f >= getLocalHoyStr();
+        if (isJustificado || esHoyOFuturo) {
           tiempoPorJustificar = 0;
         } else {
-          // Sumar minutos de permiso asignados manualmente por supervisor
-          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-          const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-          const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
-          const justMins = (entradaDia && entradaDia.tiempo_justificado_mins) ? Number(entradaDia.tiempo_justificado_mins) : 0;
-          tiempoPersonal    += persMins;
-          tiempoMedico      += medMins;
-          tiempoJustificado += justMins;
           let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
           let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
@@ -2729,14 +2751,22 @@
           tiempoPorJustificar = Math.max(0, tiempoPorJustificar - tiempoJustificado);
         }
 
-        // Ajustar atrasos descontando los permisos del día y tiempo justificado
         const originalAtrasoMins = atrasoMins;
-        atrasoMins = Math.max(0, originalAtrasoMins - tiempoPersonal - tiempoMedico - tiempoJustificado);
+        const originalSalidaTemprana = minsSalidaTemprana;
+        if (isJustificado) {
+          atrasoMins = 0;
+          minsSalidaTemprana = 0;
+        } else {
+          const permisosTotales = tiempoPersonal + tiempoMedico;
+          atrasoMins = Math.max(0, originalAtrasoMins - permisosTotales);
+          const permisosRestantes = Math.max(0, permisosTotales - originalAtrasoMins);
+          minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
+        }
 
-        // Sumar tiempo personal, médico y tiempo justificado a TOTAL HRS (netWorked)
-        netWorked += (tiempoPersonal + tiempoMedico + tiempoJustificado);
+        netWorked += (tiempoPersonal + tiempoMedico);
+        
+        const descuentoDia = tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins);
 
-        // MODALIDAD — editable inline para supervisores autorizados
         const todosRegsConModo = regsDia.filter(r => r.modo);
         const tieneCampo   = todosRegsConModo.some(r => r.modo === 'CAMPO');
         const tieneEmpresa = todosRegsConModo.some(r => r.modo === 'EMPRESA' || r.modo === 'OFICINA');
@@ -2754,31 +2784,43 @@
           modalidadCell = `<span style="font-size:10px;">${mIcon} ${modActual}</span>`;
         }
 
-        // T.PERSONAL / T.MEDICO — celda inline editable
-        // ponytail: click convierte el texto en <input>, Enter/blur llama guardarPermiso
-        function celdaTiempo(tipo, mins, empId, fecha) {
-          const display = mins > 0 ? minutosAHHMMSS(mins) : '—';
-          const color = tipo === 'personal' ? 'var(--indigo)' : (tipo === 'medico' ? 'var(--teal)' : '#eab308');
-          if (!esSuperPermiso || esFalta) return `<span style="color:${color};">${display}</span>`;
-          const uid = `cel_${tipo}_${empId}_${fecha.replace(/-/g,'')}`;
-          const eReg = regsDia.find(r => r.tipo === 'ENTRADA');
-          const comentarioActual = eReg ? (eReg.razon_permiso || '') : '';
-          const comentarioEscapado = comentarioActual.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
-          return `<span id="${uid}" style="color:${color};cursor:pointer;border-bottom:1px dashed ${color};" title="Clic para editar" onclick="editarCeldaTiempo('${uid}','${empId}','${fecha}','${tipo}',${mins},'${comentarioEscapado}')">${display}</span>`;
+        const eRegPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia[0];
+        const comentarioPermiso = eRegPermiso ? (eRegPermiso.razon_permiso || '') : '';
+        const comentarioEscapadoPermiso = comentarioPermiso.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+
+        let badgesTiemposHtml = [];
+        if (tiempoJustificado > 0) {
+          badgesTiemposHtml.push(`<span class="badge-tiempo badge-just" title="Tiempo Justificado: ${minutosAHHMMSS(tiempoJustificado)}">TJ: ${minutosAHHMMSS(tiempoJustificado)}</span>`);
+        }
+        if (tiempoPersonal > 0) {
+          badgesTiemposHtml.push(`<span class="badge-tiempo badge-pers" title="Tiempo Personal: ${minutosAHHMMSS(tiempoPersonal)}">TP: ${minutosAHHMMSS(tiempoPersonal)}</span>`);
+        }
+        if (tiempoMedico > 0) {
+          badgesTiemposHtml.push(`<span class="badge-tiempo badge-med" title="Tiempo Médico: ${minutosAHHMMSS(tiempoMedico)}">TM: ${minutosAHHMMSS(tiempoMedico)}</span>`);
+        }
+        if (tiempoPorJustificar > 0) {
+          badgesTiemposHtml.push(`<span class="badge-tiempo badge-falt" title="Tiempo Por Justificar: ${minutosAHHMMSS(tiempoPorJustificar)}">Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
         }
 
-        const celTP = celdaTiempo('personal', tiempoPersonal, e.id, f);
-        const celTM = celdaTiempo('medico',   tiempoMedico,   e.id, f);
-        const celTJ = celdaTiempo('justificado', tiempoJustificado, e.id, f);
+        const badgesStr = badgesTiemposHtml.length > 0 ? badgesTiemposHtml.join(' ') : '<span style="color:#94a3b8; font-size:10px;">—</span>';
+        
+        let btnGestionTiempos = '';
+        if (esSuperPermiso && !esFalta && tiempoPorJustificar > 0) {
+          btnGestionTiempos = `<button type="button" onclick="editarCeldaTiempo('cel_gest_${e.id}_${f.replace(/-/g,'')}','${e.id}','${f}','justificado',${tiempoJustificado},'${comentarioEscapadoPermiso}',${tiempoPersonal},${tiempoMedico},${tiempoPorJustificar})" style="background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:2px 6px; font-size:10px; font-weight:700; color:#b45309; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; transition:all 0.15s;" onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'" title="Justificar ${minutosAHHMMSS(tiempoPorJustificar)} faltantes">
+            <i class="fas fa-plus-circle" style="color:#d97706; font-size:10px;"></i> + Tiempo
+          </button>`;
+        }
 
-        let btnPermisoHtml = '';
+        const celdaGestionTiempos = `<div style="display:flex; align-items:center; justify-content:center; gap:5px; flex-wrap:wrap;">
+          ${badgesStr}
+          ${btnGestionTiempos}
+        </div>`;
 
-
-        // Acumular totales
         totTP     += tiempoPersonal;
         totTM     += tiempoMedico;
         totTJustificado += tiempoJustificado;
         totTJ     += tiempoPorJustificar;
+        totDescuentoBruto += descuentoDia;
         totHoras  += netWorked;
         totAtrasos+= atrasoMins;
         totEmpresa+= minsEmpresa;
@@ -2798,14 +2840,14 @@
           const razonMostrar = razonAusenciaVal || razonJustificadaVal || 'Ausencia';
           const icon = razonMostrar.toLowerCase().includes('vacac') ? '🏖️' : razonMostrar.toLowerCase().includes('medico') ? '🩺' : '📋';
           return `<tr style="${rowStyle}">
-        <td style="white-space:nowrap; font-weight:600; font-size:11px; padding:3px 5px;">${fechaFormateada}</td>
-        <td colspan="20" style="font-size:11px; padding:6px 12px; font-weight:600; background:rgba(79, 70, 229, 0.03);">
-          <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-            <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:#312e81; background:#e0e7ff; padding:3px 8px; border-radius:6px; border:1px solid #c7d2fe;">
+        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px;">${fechaFormateada}</td>
+        <td colspan="14" style="font-size:10px; padding:4px 8px; font-weight:600; background:rgba(79, 70, 229, 0.03);">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="display:inline-flex; align-items:center; gap:4px; font-weight:700; color:#312e81; background:#e0e7ff; padding:2px 6px; border-radius:5px; border:1px solid #c7d2fe;">
               ${icon} ${razonMostrar.toUpperCase()}
             </span>
-            <div style="display:flex; align-items:center; gap:6px; color:#64748b; font-size:11px;">
-              <span>Ajustar Razón:</span>
+            <div style="display:flex; align-items:center; gap:4px; color:#64748b; font-size:10px;">
+              <span>Razón:</span>
               ${selectRazonHtml}
             </div>
           </div>
@@ -2814,66 +2856,66 @@
         }
 
         return `<tr style="${rowStyle}">
-      <td style="white-space:nowrap; font-weight:600; font-size:11px; padding:3px 5px;">${fechaFormateada}</td>
-      <td style="font-size:11px; padding:3px 4px; text-align:center;">${modalidadCell}</td>
-      <td class="hora-cell" style="font-size:11px;padding:3px 4px;">${horaE}</td>
-      <td class="hora-cell" style="font-size:11px;padding:3px 4px;">${horaS}</td>
-      <td style="font-size:11px; padding:3px 4px;">${selectRazonHtml}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTP}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTM}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${celTJ}</td>
-      <td style="text-align:center; color:var(--red); font-size:11px; padding:3px 4px;">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
-      <td style="text-align:center; color:var(--green); font-weight:600; font-size:11px; padding:3px 4px;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
-      <td style="font-size:11px;padding:3px 4px;">${aBadge}</td>
-      <td style="font-size:11px;padding:3px 4px;">${extBadgeHtml}</td>
-      <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}; font-size:11px; padding:3px 4px;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
-      <td style="text-align:center; color:var(--red); font-size:11px; padding:3px 4px;">${minsSalidaTemprana > 0 ? minutosAHHMMSS(minsSalidaTemprana) : '—'}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${hC50 > 0 ? minutosAHHMMSS(hC50) : '—'}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;">${hC100 > 0 ? minutosAHHMMSS(hC100) : '—'}</td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;"><strong>${(h50+hC50) > 0 ? minutosAHHMMSS(h50+hC50) : '—'}</strong></td>
-      <td style="text-align:center; font-size:11px; padding:3px 4px;"><strong>${(h100+hC100) > 0 ? minutosAHHMMSS(h100+hC100) : '—'}</strong></td>
+      <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px;">${fechaFormateada}</td>
+      <td style="font-size:10px; padding:2px 3px; text-align:center;">${modalidadCell}</td>
+      <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaE}</td>
+      <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaS}</td>
+      <td style="font-size:10px; padding:2px 3px;">${selectRazonHtml}</td>
+      <td style="text-align:center; font-size:10px; padding:2px 4px;">${celdaGestionTiempos}</td>
+      <td style="text-align:center; color:var(--red); font-weight:600; font-size:10px; padding:2px 3px;">${descuentoDia > 0 ? minutosAHHMMSS(descuentoDia) : '—'}</td>
+      <td style="text-align:center; color:var(--green); font-weight:600; font-size:10px; padding:2px 3px;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
+      <td style="font-size:10px; padding:2px 3px;">${aBadge}</td>
+      <td style="font-size:10px; padding:2px 3px;">${extBadgeHtml}</td>
+      <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}; font-size:10px; padding:2px 3px;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
+      <td style="text-align:center; font-size:10px; padding:2px 3px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}"><strong>${(h50+hC50) > 0 ? minutosAHHMMSS(h50+hC50) : '—'}</strong></td>
+      <td style="text-align:center; font-size:10px; padding:2px 3px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}"><strong>${(h100+hC100) > 0 ? minutosAHHMMSS(h100+hC100) : '—'}</strong></td>
     </tr>`;
       }).join('');
 
         thH = Math.floor(totHoras / 60) || 0;
         thM = totHoras % 60 || 0;
-        let thS = 0;
 
-        let tpH = Math.floor((totTP + totTM) / 60) || 0,
-          tpM = (totTP + totTM) % 60 || 0;
+        const totDescontarFinal = Math.max(0, totDescuentoBruto - 240);
 
-      // Fila de totales para el tfoot
-      const mA = v => v > 0 ? `<strong>${minutosAHHMMSS(v)}</strong>` : '—';
-      const tfootRow = `<tr style="background:var(--g50);border-top:2px solid var(--g300);font-weight:700;font-size:11px;">
-        <td style="padding:4px 5px;">TOTALES</td>
+        let celdaTotalDescuentoHtml = '—';
+        if (totDescontarFinal > 0) {
+          celdaTotalDescuentoHtml = `<span style="color:var(--red); font-weight:700;" title="Total Bruto: ${minutosAHHMMSS(totDescuentoBruto)} - 4h Beneficio = ${minutosAHHMMSS(totDescontarFinal)}">${minutosAHHMMSS(totDescontarFinal)}</span>`;
+        } else if (totDescuentoBruto > 0) {
+          celdaTotalDescuentoHtml = `<div style="display:flex; flex-direction:column; align-items:center; line-height:1.1;" title="Total Bruto: ${minutosAHHMMSS(totDescuentoBruto)} — Totalmente cubierto por las 4h de beneficio de la empresa">
+            <span style="color:#16a34a; font-weight:700;">00:00:00</span>
+            <span style="font-size:8px; color:#16a34a; font-weight:600;">(Cubierto 4h)</span>
+          </div>`;
+        }
+
+        // Fila de totales para el tfoot
+        const mA = v => v > 0 ? `<strong>${minutosAHHMMSS(v)}</strong>` : '—';
+        const tfootRow = `<tr style="background:var(--g50);border-top:2px solid var(--g300);font-weight:700;font-size:10px;">
+        <td style="padding:3px 4px;">TOTALES</td>
         <td></td>
         <td></td>
         <td></td>
         <td></td>
-        <td style="text-align:center;color:var(--indigo);">${mA(totTP)}</td>
-        <td style="text-align:center;color:var(--teal);">${mA(totTM)}</td>
-        <td style="text-align:center;color:#eab308;">${mA(totTJustificado)}</td>
-        <td style="text-align:center;color:var(--red);">${mA(totTJ)}</td>
+        <td style="text-align:center; padding:3px 4px;">
+          <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:5px; font-size:9.5px;">
+            ${totTJustificado > 0 ? `<span style="color:#854d0e;" title="Total Tiempo Justificado">TJ: <strong>${minutosAHHMMSS(totTJustificado)}</strong></span>` : ''}
+            ${totTP > 0 ? `<span style="color:var(--indigo);" title="Total Tiempo Personal">TP: <strong>${minutosAHHMMSS(totTP)}</strong></span>` : ''}
+            ${totTM > 0 ? `<span style="color:var(--teal);" title="Total Tiempo Médico">TM: <strong>${minutosAHHMMSS(totTM)}</strong></span>` : ''}
+            ${totTJ > 0 ? `<span style="color:var(--red);" title="Total Por Justificar">Falt: <strong>${minutosAHHMMSS(totTJ)}</strong></span>` : ''}
+            ${(totTJustificado === 0 && totTP === 0 && totTM === 0 && totTJ === 0) ? '—' : ''}
+          </div>
+        </td>
+        <td style="text-align:center; padding:2px 3px;">${celdaTotalDescuentoHtml}</td>
         <td style="text-align:center;color:var(--green);">${mA(totHoras)}</td>
         <td></td>
         <td></td>
         <td style="text-align:center;color:var(--red);">${mA(totAtrasos)}</td>
-        <td style="text-align:center;color:var(--red);">${mA(totSalidaTemprana)}</td>
-        <td style="text-align:center;">${mA(totH50)}</td>
-        <td style="text-align:center;">${mA(totH100)}</td>
-        <td style="text-align:center;">${mA(totHCN)}</td>
-        <td style="text-align:center;">${mA(totHC50)}</td>
-        <td style="text-align:center;">${mA(totHC100)}</td>
         <td style="text-align:center;">${mA(totExtra50)}</td>
         <td style="text-align:center;">${mA(totExtra100)}</td>
       </tr>`;
 
         const tbody = document.getElementById('tbody-historial-periodo');
         if (tbody) {
-          tbody.innerHTML = filas || '<tr><td colspan="19" class="empty-state">Sin registros</td></tr>';
+          tbody.innerHTML = filas || '<tr><td colspan="13" class="empty-state">Sin registros</td></tr>';
         }
         const tfoot = document.getElementById('tfoot-historial-periodo');
         if (tfoot) {
@@ -2912,15 +2954,11 @@
           }
           
           container.innerHTML = `
-            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; flex-direction:column; gap:2px; text-transform:uppercase; letter-spacing:0.03em;">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas: <strong style="color:#0f172a;">${totalVacsTomadas}</strong>
-              </div>
-              <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
-                <i class="fas fa-calendar-check" style="color:var(--green); font-size:12px;"></i> Restantes: <strong style="color:var(--green);">${totalVacsRestantes}</strong>
-              </div>
+            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; justify-content:space-between; text-transform:uppercase; letter-spacing:0.02em;">
+              <span style="display:flex; align-items:center; gap:4px;"><i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:11px;"></i> Vacaciones</span>
+              <span style="font-size:9.5px; color:#475569;"><strong style="color:#0f172a;">${totalVacsTomadas}</strong> tom. / <strong style="color:var(--green);">${totalVacsRestantes}</strong> rest.</span>
             </div>
-            <div style="max-height: 90px; overflow-y: auto; padding-right: 2px;">
+            <div style="max-height: 48px; overflow-y: auto; padding-right: 2px;">
               ${listaVacacionesHTML}
             </div>
           `;
@@ -2974,88 +3012,88 @@
         </div>
       </div>
       
-      <!-- SECCIÓN DE MÉTRICAS REDISEÑADA Y COMPACTA -->
-      <div style="padding:12px 18px; background:#ffffff; border-bottom:1px solid #e2e8f0;">
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; width:100%;">
+      <!-- SECCIÓN DE MÉTRICAS REDISEÑADA Y COMPACTA (ponytail: minimal height) -->
+      <div style="padding:6px 14px; background:#ffffff; border-bottom:1px solid #e2e8f0;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px; width:100%;">
           
           <!-- RESUMEN ASISTENCIA -->
-          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
-            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
-              <i class="fas fa-calendar-check" style="color:var(--blue); font-size:12px;"></i> Resumen de Asistencia
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
+              <i class="fas fa-calendar-check" style="color:var(--blue); font-size:11px;"></i> Asistencia
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 12px; padding:2px 0;">
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:4px 8px;">
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Días Trab.</span>
-                <div style="font-size:15px; font-weight:700; color:#0f172a; margin-top:2px;">${dias} <span style="font-size:10px; color:#94a3b8; font-weight:400; margin-left:2px;">(${entT} ent / ${salT} sal)</span></div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Días Trab.</span>
+                <div style="font-size:13px; font-weight:700; color:#0f172a;">${dias} <span style="font-size:9px; color:#94a3b8; font-weight:400;">(${entT}e/${salT}s)</span></div>
               </div>
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Puntualidad</span>
-                <div style="font-size:15px; font-weight:700; color:${puntualidadColor}; margin-top:2px;">${puntualidadVal}%</div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Puntualidad</span>
+                <div style="font-size:13px; font-weight:700; color:${puntualidadColor};">${puntualidadVal}%</div>
               </div>
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Prom. Entrada</span>
-                <div style="font-size:13px; font-weight:600; color:#334155; margin-top:2px;">${minsToHHMM(pE)}</div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Prom. Ent.</span>
+                <div style="font-size:11.5px; font-weight:600; color:#334155;">${minsToHHMM(pE)}</div>
               </div>
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Prom. Salida</span>
-                <div style="font-size:13px; font-weight:600; color:#334155; margin-top:2px;">${minsToHHMM(pS)}</div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Prom. Sal.</span>
+                <div style="font-size:11.5px; font-weight:600; color:#334155;">${minsToHHMM(pS)}</div>
               </div>
             </div>
           </div>
 
           <!-- JORNADA Y TIEMPOS -->
-          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
-            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
-              <i class="fas fa-clock" style="color:var(--green); font-size:12px;"></i> Jornada y Tiempos
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
+              <i class="fas fa-clock" style="color:var(--green); font-size:11px;"></i> Jornada y Tiempos
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 12px; padding:2px 0;">
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:4px 8px;">
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Total Horas</span>
-                <div style="font-size:15px; font-weight:700; color:var(--green); margin-top:2px;">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Total Horas</span>
+                <div style="font-size:13px; font-weight:700; color:var(--green);">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
               </div>
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Atrasos Acum.</span>
-                <div style="font-size:15px; font-weight:700; color:${totAtrasos > 0 ? 'var(--red)' : '#0f172a'}; margin-top:2px;">${minutosAHHMMSS(totAtrasos)}</div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Atrasos Acum.</span>
+                <div style="font-size:13px; font-weight:700; color:${totAtrasos > 0 ? 'var(--red)' : '#0f172a'};">${minutosAHHMMSS(totAtrasos)}</div>
               </div>
-              <div style="grid-column: span 2; border-top: 1px dashed #f1f5f9; padding-top: 6px; margin-top: 2px;">
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Tiempo por Justificar</span>
-                <div style="font-size:15px; font-weight:700; color:${totTJ > 0 ? 'var(--red)' : 'var(--green)'}; margin-top:2px;">${minutosAHHMMSS(totTJ)}</div>
+              <div style="grid-column: span 2; border-top: 1px dashed #f1f5f9; padding-top: 3px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:9px; color:#64748b; font-weight:600;">T. por Justificar:</span>
+                <span style="font-size:13px; font-weight:700; color:${totTJ > 0 ? 'var(--red)' : 'var(--green)'};">${minutosAHHMMSS(totTJ)}</span>
               </div>
             </div>
           </div>
 
           <!-- PERMISOS Y ALMUERZOS -->
-          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
-            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
-              <i class="fas fa-hand-holding-heart" style="color:var(--indigo); font-size:12px;"></i> Permisos y Almuerzos
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
+              <i class="fas fa-hand-holding-heart" style="color:var(--indigo); font-size:11px;"></i> Permisos y Almuerzos
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 12px; padding:2px 0;">
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:4px 8px;">
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">T. Personal</span>
-                <div style="font-size:13px; font-weight:600; color:var(--indigo); margin-top:2px;">${minutosAHHMMSS(totTP)}</div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">T. Personal</span>
+                <div style="font-size:11.5px; font-weight:600; color:var(--indigo);">${minutosAHHMMSS(totTP)}</div>
               </div>
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">T. Médico</span>
-                <div style="font-size:13px; font-weight:600; color:var(--teal); margin-top:2px;">${minutosAHHMMSS(totTM)}</div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">T. Médico</span>
+                <div style="font-size:11.5px; font-weight:600; color:var(--teal);">${minutosAHHMMSS(totTM)}</div>
               </div>
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Alm. Planta</span>
-                <div style="font-size:13.5px; font-weight:600; color:var(--purple); margin-top:2px;">${almP} <span style="font-size:9px; color:#94a3b8; font-weight:400; margin-left:1px;">días</span></div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Alm. Planta</span>
+                <div style="font-size:11.5px; font-weight:600; color:var(--purple);">${almP}d</div>
               </div>
               <div>
-                <span style="font-size:9.5px; color:#64748b; font-weight:600; text-transform:uppercase;">Alm. Fuera</span>
-                <div style="font-size:13.5px; font-weight:600; color:#475569; margin-top:2px;">${almF} <span style="font-size:9px; color:#94a3b8; font-weight:400; margin-left:1px;">días</span></div>
+                <span style="font-size:9px; color:#64748b; font-weight:600;">Alm. Fuera</span>
+                <div style="font-size:11.5px; font-weight:600; color:#475569;">${almF}d</div>
               </div>
             </div>
           </div>
 
           <!-- HISTORIAL DE VACACIONES -->
-          <div id="card-vacaciones-detalle" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
-            <div style="font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:5px; margin-bottom:4px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:0.03em;">
-              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:12px;"></i> Vacaciones Tomadas
+          <div id="card-vacaciones-detalle" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
+              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:11px;"></i> Vacaciones
             </div>
-            <div style="display:flex; align-items:center; justify-content:center; padding:10px 0; color:#64748b; font-size:11px; gap:6px;">
-              <div class="spinner-border text-primary" role="status" style="width:14px; height:14px; border-width:2px;"></div>
+            <div style="display:flex; align-items:center; justify-content:center; padding:6px 0; color:#64748b; font-size:10px; gap:4px;">
+              <div class="spinner-border text-primary" role="status" style="width:12px; height:12px; border-width:2px;"></div>
               <span>Cargando...</span>
             </div>
           </div>
@@ -3077,33 +3115,25 @@
         </div>
         <div class="table-wrapper">
           <div class="table-scroll-wrap">
-            <table class="employee-table table-compact">
+            <table class="employee-table table-compact table-ultra-compact">
               <thead>
                 <tr>
-                  <th style="font-size:10px;padding:4px 5px;">Fecha</th>
-                  <th style="font-size:10px;padding:4px 5px;">Modalidad</th>
-                  <th style="font-size:10px;padding:4px 5px;">Entrada</th>
-                  <th style="font-size:10px;padding:4px 5px;">Salida</th>
-                  <th style="font-size:10px;padding:4px 5px;">Razón</th>
-                  <th style="font-size:10px;padding:4px 5px;">T.PERSONAL</th>
-                  <th style="font-size:10px;padding:4px 5px;">T.MEDICO</th>
-                  <th style="font-size:10px;padding:4px 5px;">T.JUSTIFICADO</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Tiempo Por Justificar">T.POR JUSTIF.</th>
-                  <th style="font-size:10px;padding:4px 5px;">TOTAL HRS</th>
-                  <th style="font-size:10px;padding:4px 5px;">Alm.</th>
-                  <th style="font-size:10px;padding:4px 5px;">H.E.Aut.</th>
-                  <th style="font-size:10px;padding:4px 5px;">ATRASOS</th>
-                  <th style="font-size:10px;padding:4px 5px;">S. TEMPRANA</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Horas Extra 50%">HE 50% (A)</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Horas Extra 100%">HE 100% (B)</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Horas Campo Normales">HC Norm.</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Horas Campo 50%">HC 50% (C)</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Horas Campo 100%">HC 100% (D)</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Total Extras 50% (A+C)">∑ 50%</th>
-                  <th style="font-size:10px;padding:4px 5px;" title="Total Extras 100% (B+D)">∑ 100%</th>
+                  <th style="font-size:10px;padding:3px 4px;">Fecha</th>
+                  <th style="font-size:10px;padding:3px 4px;">Mod.</th>
+                  <th style="font-size:10px;padding:3px 4px;">Entrada</th>
+                  <th style="font-size:10px;padding:3px 4px;">Salida</th>
+                  <th style="font-size:10px;padding:3px 4px;">Razón</th>
+                  <th style="font-size:10px;padding:3px 4px;text-align:center;" title="Gestión de Tiempos: Justificado (TJ), Personal (TP), Médico (TM), Por Justificar (Falt)">Novedades / Tiempos</th>
+                  <th style="font-size:10px;padding:3px 4px;text-align:center;color:var(--red);" title="Tiempo a Descontar (Tiempo Personal + Faltante/Atrasos sin duplicar)">T. Descontar</th>
+                  <th style="font-size:10px;padding:3px 4px;" title="Total Horas Trabajadas">Tot.Hrs</th>
+                  <th style="font-size:10px;padding:3px 4px;">Alm.</th>
+                  <th style="font-size:10px;padding:3px 4px;" title="Horas Extra Autorizadas">HE Aut.</th>
+                  <th style="font-size:10px;padding:3px 4px;">Atraso</th>
+                  <th style="font-size:10px;padding:3px 4px;" title="Horas Extra 50% (Oficina + Campo)">H.E. 50%</th>
+                  <th style="font-size:10px;padding:3px 4px;" title="Horas Extra 100% (Oficina + Campo)">H.E. 100%</th>
                 </tr>
               </thead>
-              <tbody id="tbody-historial-periodo">${filas || '<tr><td colspan="19" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tbody id="tbody-historial-periodo">${filas || '<tr><td colspan="13" class="empty-state">Sin registros</td></tr>'}</tbody>
               <tfoot id="tfoot-historial-periodo">${tfootRow}</tfoot>
             </table>
           </div>
@@ -3270,7 +3300,8 @@
       let originalPermiso = null;
       let reg = null;
       if (emp) {
-        reg = (emp.registros || []).find(r => r.fecha === fecha && r.tipo === 'ENTRADA');
+        reg = (emp.registros || []).find(r => r.fecha === fecha && r.tipo === 'ENTRADA')
+           || (emp.registros || []).find(r => r.fecha === fecha);
         if (reg) {
           originalPermiso = {
             personal: reg.permiso_personal_mins || 0,
@@ -3343,18 +3374,14 @@
       }
     };
 
-    // editarCeldaTiempo: popup modal interactivo para ingresar T.PERSONAL y T.MEDICO con conversor de horas y minutos y comentario
-    window.editarCeldaTiempo = function(uid, empId, fecha, tipo, minsActual, comentarioActual = '') {
+    // editarCeldaTiempo: modal interactivo profesional para ingresar T.JUSTIFICADO, T.PERSONAL, T.MEDICO con confirmación
+    window.editarCeldaTiempo = function(uid, empId, fecha, tipoInicial = 'justificado', minsJustificado = 0, comentarioActual = '', minsPersonal = 0, minsMedico = 0, minsPorJustificar = 0) {
       // Eliminar modal anterior si existe
       const prev = document.getElementById('modalConversorTiempo');
       if (prev) prev.remove();
 
-      const labelTipo = tipo === 'personal' ? 'Tiempo Personal' : (tipo === 'medico' ? 'Tiempo Médico' : 'Tiempo Justificado');
-      const colorTheme = tipo === 'personal' ? '#6366f1' : (tipo === 'medico' ? '#0d9488' : '#eab308');
-      const iconTheme = tipo === 'personal' ? 'fa-user' : (tipo === 'medico' ? 'fa-stethoscope' : 'fa-balance-scale');
-
-      const initialHrs = Math.floor(minsActual / 60);
-      const initialMins = minsActual % 60;
+      const emp = empCache.find(x => x.id === empId);
+      const nombreEmp = emp ? emp.nombre : empId;
 
       const modal = document.createElement('div');
       modal.id = 'modalConversorTiempo';
@@ -3365,16 +3392,33 @@
         font-family: system-ui, -apple-system, sans-serif;
       `;
 
+      const mapTipos = {
+        justificado: { label: 'Tiempo Justificado', color: '#d97706', bgIcon: '#fef3c7', icon: 'fa-scale-balanced', defaultMins: minsJustificado },
+        personal:    { label: 'Tiempo Personal',    color: '#6366f1', bgIcon: '#e0e7ff', icon: 'fa-user',           defaultMins: minsPersonal },
+        medico:      { label: 'Tiempo Médico',      color: '#0d9488', bgIcon: '#ccfbf1', icon: 'fa-stethoscope',    defaultMins: minsMedico }
+      };
+
+      let currentTipo = tipoInicial in mapTipos ? tipoInicial : 'justificado';
+      let currentMins = mapTipos[currentTipo].defaultMins || 0;
+      if (currentMins === 0 && minsPorJustificar > 0) {
+        currentMins = minsPorJustificar;
+      }
+      let currentHrs = Math.floor(currentMins / 60);
+      let currentRemMins = currentMins % 60;
+
+      const conf = mapTipos[currentTipo];
+
       modal.innerHTML = `
-        <div style="background: #ffffff; border-radius: 16px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; animation: modalFadeIn 0.2s ease-out;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="background: ${colorTheme}15; color: ${colorTheme}; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px;">
-                <i class="fas ${iconTheme}"></i>
+        <div id="modalCardBody" style="background: #ffffff; border-radius: 16px; padding: 24px; max-width: 420px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; animation: modalFadeIn 0.2s ease-out;">
+          <!-- HEADER -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div id="modalIconContainer" style="background: ${conf.bgIcon}; color: ${conf.color}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 17px; transition: all 0.2s;">
+                <i id="modalHeaderIcon" class="fas ${conf.icon}"></i>
               </div>
               <div>
-                <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #0f172a;">${labelTipo}</h3>
-                <span style="font-size: 11px; color: #64748b;">${fecha}</span>
+                <h3 id="modalTitleText" style="margin: 0; font-size: 16px; font-weight: 700; color: #0f172a;">${conf.label}</h3>
+                <span style="font-size: 11px; color: #64748b; font-weight: 500;">📅 ${fecha} &bull; ${nombreEmp}</span>
               </div>
             </div>
             <button onclick="document.getElementById('modalConversorTiempo').remove()" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 18px; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s;" onmouseover="this.style.background='#f1f5f9'; this.style.color='#475569'" onmouseout="this.style.background='none'; this.style.color='#94a3b8'">
@@ -3382,97 +3426,143 @@
             </button>
           </div>
 
-          <div style="margin-bottom: 20px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-              <div>
-                <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Horas</label>
-                <input id="convHrs" type="number" min="0" step="any" value="${initialHrs}" placeholder="0" 
-                  style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #0f172a; outline: none; box-sizing: border-box;" 
-                  onfocus="this.style.borderColor='${colorTheme}'; this.style.boxShadow='0 0 0 3px ${colorTheme}15'" 
-                  onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">
-              </div>
-              <div>
-                <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Minutos</label>
-                <input id="convMins" type="number" min="0" value="${initialMins}" placeholder="0" 
-                  style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #0f172a; outline: none; box-sizing: border-box;" 
-                  onfocus="this.style.borderColor='${colorTheme}'; this.style.boxShadow='0 0 0 3px ${colorTheme}15'" 
-                  onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">
-              </div>
+          <!-- BANNER JORNADA MÍNIMA 8 HORAS -->
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px; color: #475569; font-weight:500;">
+              <i class="fas fa-briefcase" style="color: #6366f1;"></i>
+              <span>Jornada Base: <strong>8h (480 min)</strong></span>
             </div>
-
-            <div style="margin-bottom: 16px;">
-              <span style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 8px;">Accesos Rápidos</span>
-              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                <button onclick="setConvVals(0, 15)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">15m</button>
-                <button onclick="setConvVals(0, 30)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">30m</button>
-                <button onclick="setConvVals(1, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">1h</button>
-                <button onclick="setConvVals(2, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">2h</button>
-                <button onclick="setConvVals(4, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">4h</button>
-                <button onclick="setConvVals(8, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='${colorTheme}'; this.style.color='#fff'; this.style.borderColor='${colorTheme}'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'; this.style.borderColor='#e2e8f0'">8h</button>
-                <button onclick="setConvVals(0, 0)" style="background: #fef2f2; border: 1px solid #fee2e2; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #ef4444; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ef4444'; this.style.color='#fff'; this.style.borderColor='#ef4444'" onmouseout="this.style.background='#fef2f2'; this.style.color='#ef4444'; this.style.borderColor='#fee2e2'">Limpiar</button>
-              </div>
-            </div>
-
-            <!-- Comentario / Razón del Permiso -->
-            <div style="margin-bottom: 16px;">
-              <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Comentario / Razón</label>
-              <textarea id="convComentario" placeholder="Escribe el motivo del permiso..." rows="2"
-                style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #0f172a; outline: none; box-sizing: border-box; resize: none; font-family: inherit;"
-                onfocus="this.style.borderColor='${colorTheme}'; this.style.boxShadow='0 0 0 3px ${colorTheme}15'" 
-                onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none'">${comentarioActual}</textarea>
-            </div>
-
-            <div style="background: #f8fafc; border: 1px dashed #e2e8f0; border-radius: 12px; padding: 12px 16px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 12px; font-weight: 500; color: #64748b;">Total en minutos:</span>
-                <span id="previewTotalMins" style="font-size: 15px; font-weight: 700; color: ${colorTheme};">0 min</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 11px; color: #94a3b8;">Formato a registrar:</span>
-                <span id="previewFormatted" style="font-size: 12px; font-weight: 600; color: #475569; font-family: monospace;">00:00:00</span>
-              </div>
-            </div>
+            ${minsPorJustificar > 0 ? `<div style="color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; border:1px solid #fde68a; display:flex; align-items:center; gap:4px;">
+              <i class="fas fa-exclamation-triangle"></i> Faltante: ${minutosAHHMMSS(minsPorJustificar)}
+            </div>` : `<div style="color: #15803d; background: #dcfce7; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; border:1px solid #bbf7d0; display:flex; align-items:center; gap:4px;">
+              <i class="fas fa-check-circle"></i> Jornada Completa
+            </div>`}
           </div>
 
-          <div style="display: flex; gap: 10px; justify-content: flex-end;">
-            <button onclick="document.getElementById('modalConversorTiempo').remove()" 
-              style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#ffffff'">
-              Cancelar
-            </button>
-            <button id="btnSaveConv"
-              style="padding: 8px 20px; border-radius: 8px; border: none; background: ${colorTheme}; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
-              <i class="fas fa-save"></i> Guardar
-            </button>
+          <!-- FORMULARIO INTERACTIVO -->
+          <div id="modalFormContainer">
+            <!-- SELECTOR DE TIPO DE TIEMPO -->
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em;">Tipo de Tiempo / Permiso</label>
+              <select id="convTipoTiempo" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 13.5px; font-weight: 600; color: #0f172a; outline: none; background: #f8fafc; cursor: pointer; box-sizing: border-box;">
+                <option value="justificado" ${currentTipo === 'justificado' ? 'selected' : ''}>⚖️ Tiempo Justificado</option>
+                <option value="personal" ${currentTipo === 'personal' ? 'selected' : ''}>👤 Tiempo Personal</option>
+                <option value="medico" ${currentTipo === 'medico' ? 'selected' : ''}>🩺 Tiempo Médico</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+              <!-- HORAS / MINUTOS -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+                <div>
+                  <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Horas</label>
+                  <input id="convHrs" type="number" min="0" step="any" value="${currentHrs}" placeholder="0" 
+                    style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #0f172a; outline: none; box-sizing: border-box;">
+                </div>
+                <div>
+                  <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Minutos</label>
+                  <input id="convMins" type="number" min="0" value="${currentRemMins}" placeholder="0" 
+                    style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 14px; color: #0f172a; outline: none; box-sizing: border-box;">
+                </div>
+              </div>
+
+              <!-- ACCESOS RÁPIDOS -->
+              <div style="margin-bottom: 16px;">
+                <span style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 8px;">Accesos Rápidos</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  ${minsPorJustificar > 0 ? `<button type="button" onclick="setConvVals(${Math.floor(minsPorJustificar/60)}, ${minsPorJustificar%60})" style="background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; color: #b45309; cursor: pointer; transition: all 0.2s;" title="Cargar el tiempo faltante de la jornada">⚡ Faltante (${minutosAHHMMSS(minsPorJustificar)})</button>` : ''}
+                  <button type="button" onclick="setConvVals(0, 15)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">15m</button>
+                  <button type="button" onclick="setConvVals(0, 30)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">30m</button>
+                  <button type="button" onclick="setConvVals(1, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">1h</button>
+                  <button type="button" onclick="setConvVals(2, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">2h</button>
+                  <button type="button" onclick="setConvVals(4, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">4h</button>
+                  <button type="button" onclick="setConvVals(8, 0)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">8h</button>
+                  <button type="button" onclick="setConvVals(0, 0)" style="background: #fef2f2; border: 1px solid #fee2e2; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #ef4444; cursor: pointer; transition: all 0.2s;">Limpiar</button>
+                </div>
+              </div>
+
+              <!-- COMENTARIO / RAZÓN -->
+              <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 6px;">Comentario / Razón</label>
+                <textarea id="convComentario" placeholder="Escribe el motivo del permiso..." rows="2"
+                  style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #0f172a; outline: none; box-sizing: border-box; resize: none; font-family: inherit;">${comentarioActual}</textarea>
+              </div>
+
+              <!-- PREVIEW -->
+              <div style="background: #f8fafc; border: 1px dashed #e2e8f0; border-radius: 12px; padding: 12px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 12px; font-weight: 500; color: #64748b;">Total en minutos:</span>
+                  <span id="previewTotalMins" style="font-size: 15px; font-weight: 700; color: ${conf.color};">0 min</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 11px; color: #94a3b8;">Formato a registrar:</span>
+                  <span id="previewFormatted" style="font-size: 12px; font-weight: 600; color: #475569; font-family: monospace;">00:00:00</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ACCIONES -->
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+              <button type="button" onclick="document.getElementById('modalConversorTiempo').remove()" 
+                style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#ffffff'">
+                Cancelar
+              </button>
+              <button type="button" id="btnSaveConv"
+                style="padding: 8px 20px; border-radius: 8px; border: none; background: ${conf.color}; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                <i class="fas fa-arrow-right"></i> Continuar
+              </button>
+            </div>
           </div>
         </div>
       `;
 
       document.body.appendChild(modal);
 
-      // Global helper for settings values
       window.setConvVals = function(h, m) {
         document.getElementById('convHrs').value = h;
         document.getElementById('convMins').value = m;
         updatePreview();
       };
 
+      const updateThemeUI = (tipoKey) => {
+        currentTipo = tipoKey;
+        const c = mapTipos[currentTipo];
+        const iconElem = document.getElementById('modalHeaderIcon');
+        const iconCont = document.getElementById('modalIconContainer');
+        const titleText = document.getElementById('modalTitleText');
+        const saveBtn = document.getElementById('btnSaveConv');
+        const prevMins = document.getElementById('previewTotalMins');
+
+        if (iconElem) iconElem.className = `fas ${c.icon}`;
+        if (iconCont) { iconCont.style.background = c.bgIcon; iconCont.style.color = c.color; }
+        if (titleText) titleText.textContent = c.label;
+        if (saveBtn) saveBtn.style.background = c.color;
+        if (prevMins) prevMins.style.color = c.color;
+
+        // Cargar minutos por defecto del tipo seleccionado
+        const defaultVal = c.defaultMins || 0;
+        document.getElementById('convHrs').value = Math.floor(defaultVal / 60);
+        document.getElementById('convMins').value = defaultVal % 60;
+        updatePreview();
+      };
+
       const updatePreview = () => {
         let hrs = parseFloat(document.getElementById('convHrs').value) || 0;
         let mins = parseInt(document.getElementById('convMins').value) || 0;
-        
         if (hrs < 0) hrs = 0;
         if (mins < 0) mins = 0;
-        
         const total = Math.round(hrs * 60) + mins;
-        
         const computedHrs = Math.floor(total / 60);
         const computedMins = total % 60;
         const formatted = `${String(computedHrs).padStart(2, '0')}:${String(computedMins).padStart(2, '0')}:00`;
 
-        document.getElementById('previewTotalMins').textContent = `${total} min`;
-        document.getElementById('previewFormatted').textContent = formatted;
+        const prevMins = document.getElementById('previewTotalMins');
+        const prevFmt = document.getElementById('previewFormatted');
+        if (prevMins) prevMins.textContent = `${total} min`;
+        if (prevFmt) prevFmt.textContent = formatted;
       };
 
+      document.getElementById('convTipoTiempo').addEventListener('change', (e) => updateThemeUI(e.target.value));
       document.getElementById('convHrs').addEventListener('input', updatePreview);
       document.getElementById('convMins').addEventListener('input', updatePreview);
 
@@ -3482,16 +3572,84 @@
         if (e.target === modal) modal.remove();
       });
 
+      // PASO DE CONFIRMACIÓN
       document.getElementById('btnSaveConv').onclick = () => {
         let hrs = parseFloat(document.getElementById('convHrs').value) || 0;
         let mins = parseInt(document.getElementById('convMins').value) || 0;
         if (hrs < 0) hrs = 0;
         if (mins < 0) mins = 0;
-        const total = Math.round(hrs * 60) + mins;
+        const totalMins = Math.round(hrs * 60) + mins;
         const comentario = document.getElementById('convComentario').value;
+        const c = mapTipos[currentTipo];
+        const formattedFmt = minutosAHHMMSS(totalMins);
 
-        guardarPermiso(empId, fecha, tipo, total, comentario);
-        modal.remove();
+        const cardBody = document.getElementById('modalCardBody');
+        if (!cardBody) return;
+
+        // Renderizar pantalla de confirmación
+        cardBody.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom:1px solid #f1f5f9; padding-bottom:12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="background: ${c.bgIcon}; color: ${c.color}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 17px;">
+                <i class="fas fa-clipboard-check"></i>
+              </div>
+              <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #0f172a;">Confirmar Información</h3>
+                <span style="font-size: 11px; color: #64748b;">Verifica el tiempo a guardar</span>
+              </div>
+            </div>
+            <button onclick="document.getElementById('modalConversorTiempo').remove()" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 18px; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 20px; display:flex; flex-direction:column; gap:10px; font-size:13px;">
+            <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:6px;">
+              <span style="color:#64748b; font-weight:500;">Empleado:</span>
+              <strong style="color:#0f172a;">${nombreEmp}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:6px;">
+              <span style="color:#64748b; font-weight:500;">Fecha:</span>
+              <strong style="color:#0f172a;">${fecha}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:6px;">
+              <span style="color:#64748b; font-weight:500;">Tipo de Tiempo:</span>
+              <span style="font-weight:700; color:${c.color}; background:${c.bgIcon}; padding:2px 8px; border-radius:6px; font-size:12px;">
+                <i class="fas ${c.icon}"></i> ${c.label}
+              </span>
+            </div>
+            <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:6px;">
+              <span style="color:#64748b; font-weight:500;">Tiempo Afectado:</span>
+              <strong style="color:#0f172a;">${formattedFmt} <span style="font-size:11px; color:#64748b;">(${totalMins} min)</span></strong>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="color:#64748b; font-weight:500;">Comentario / Razón:</span>
+              <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; font-size:12px; color:#334155; font-style:${comentario ? 'normal' : 'italic'};">
+                ${comentario || 'Sin comentario especificado'}
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" id="btnVolverEditModal"
+              style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#ffffff'">
+              <i class="fas fa-arrow-left"></i> Modificar
+            </button>
+            <button type="button" id="btnConfirmarFinalSave"
+              style="padding: 8px 20px; border-radius: 8px; border: none; background: #16a34a; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+              <i class="fas fa-check-circle"></i> Confirmar y Guardar
+            </button>
+          </div>
+        `;
+
+        document.getElementById('btnVolverEditModal').onclick = () => {
+          window.editarCeldaTiempo(uid, empId, fecha, currentTipo, minsJustificado, comentario, minsPersonal, minsMedico, minsPorJustificar);
+        };
+
+        document.getElementById('btnConfirmarFinalSave').onclick = () => {
+          guardarPermiso(empId, fecha, currentTipo, totalMins, comentario);
+          modal.remove();
+        };
       };
     };
 
@@ -3718,21 +3876,23 @@
       if (!cantidad || cantidad < 1) { mostrarToast('Ingrese una cantidad válida', 'error'); return; }
 
       let supervisorName = "Supervisor";
+      let supervisorId = "";
       try {
         let sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}');
-        let id = sessionData.id || "";
-        if (String(id) === "1058") {
+        supervisorId = String(sessionData.id || "").trim();
+        if (supervisorId === "1058") {
           supervisorName = "Admin Master";
-        } else if (id) {
-          let sup = empCache.find(x => x.id === id);
+        } else if (supervisorId) {
+          let sup = empCache.find(x => String(x.id).trim() === supervisorId);
           if (sup) supervisorName = sup.nombre;
-          else supervisorName = "Supervisor ID " + id;
+          else supervisorName = "Supervisor ID " + supervisorId;
         }
       } catch(e) {}
       
       let observacionesFinal = observaciones;
-      if (supervisorName) {
-        observacionesFinal = observacionesFinal ? `${observacionesFinal} (Creado por: ${supervisorName})` : `(Creado por: ${supervisorName})`;
+      if (supervisorId || supervisorName) {
+        const supInfoStr = supervisorId ? `ID: ${supervisorId} - ${supervisorName}` : supervisorName;
+        observacionesFinal = observacionesFinal ? `${observacionesFinal} (Creado por: ${supInfoStr})` : `(Creado por: ${supInfoStr})`;
       }
 
       mostrarLoader(true);
@@ -3744,7 +3904,9 @@
           fecha: fecha,
           tipo: 'Formulario',
           observaciones: observacionesFinal,
-          cantidad: cantidad
+          cantidad: cantidad,
+          supervisorId: supervisorId,
+          supervisorName: supervisorName
         });
         mostrarLoader(false);
         if (res?.error) { mostrarToast(res.error, 'error'); return; }
@@ -3818,25 +3980,7 @@
       }
     }
 
-    async function depurarBaseDeDatos() {
-      if (!confirm('¿Deseas depurar los registros duplicados de hoy? Esta acción es irreversible.')) return;
 
-      mostrarLoader(true);
-      try {
-        const res = await jsonpRequest({ accion: 'depurarDuplicados' });
-        mostrarLoader(false);
-        if (res.ok) {
-          mostrarToast(`Depuración exitosa: ${res.eliminados} duplicados eliminados`, 'success');
-          limpiarCachesLocales();
-          await cargarDatosCompletos(true);
-        } else {
-          mostrarToast(res.error || 'Error en depuración', 'error');
-        }
-      } catch (e) {
-        mostrarLoader(false);
-        mostrarToast('Error de conexión', 'error');
-      }
-    }
 
     // ============================================================
     // ARCHIVADO A GOOGLE SHEETS
@@ -3883,12 +4027,6 @@
       if (!confirm(`¿Estás seguro de mover permanentemente los registros de hace más de ${diasNum} días a la hoja de cálculo REGISTROS?\n\nEsto limpiará tu Firebase y reducirá los costos. Esta acción es irreversible en Firebase.`)) return;
 
       mostrarLoader(true);
-      mostrarToast('Autocompletando salidas faltantes recientes...', 'info');
-      try {
-        await autoCompletarSalidasFaltantes();
-      } catch (err) {
-        console.warn("Fallo al autocompletar salidas antes del archivado:", err);
-      }
 
       try {
         const limite = new Date();
@@ -4525,53 +4663,7 @@
       }
     }
 
-    function mostrarModalMasivo() {
-      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
-      const modal = $('masivoModal');
-      $('masFecha').value = hoy;
-      modal.classList.remove('hidden');
-    }
 
-    function cerrarModalMasivo() {
-      $('masivoModal').classList.add('hidden');
-    }
-
-    async function ejecutarRegularizacionMasiva() {
-      const fecha = $('masFecha').value;
-      const hE = $('masHoraE').value;
-      const hS = $('masHoraS').value;
-      const soloFaltantes = $('masSoloFaltantes').checked;
-
-      if (!fecha) { mostrarToast('Seleccione una fecha', 'error'); return; }
-
-      if (!confirm(`¿Está seguro de regularizar MASIVAMENTE el día ${fecha}? Esta acción afectará a todos los empleados.`)) return;
-
-      mostrarLoader(true);
-      try {
-        const res = await jsonpRequest({
-          accion: 'regularizacionMasiva',
-          fecha: fecha,
-          horaE: hE,
-          horaS: hS,
-          soloFaltantes: soloFaltantes
-        });
-
-        if (res.ok) {
-          mostrarToast(`Éxito: ${res.procesados} registros procesados`, 'success');
-          cerrarModalMasivo();
-          limpiarCachesLocales();
-          cargarDatosCompletos(true, true).then(() => {
-            cargarAsistencia();
-          });
-        } else {
-          mostrarToast(res.error || 'Error', 'error');
-        }
-      } catch (e) {
-        mostrarToast('Error de conexión', 'error');
-      } finally {
-        mostrarLoader(false);
-      }
-    }
 
     // ============================================================
     // ============================================================
@@ -4705,137 +4797,6 @@
       }
     };
 
-    let estaCompletandoSalidas = false;
-    let ultimoChequeoAutoCompletar = 0;
-    function obtenerFechaYMD(dateObj = new Date()) {
-      const y = dateObj.getFullYear();
-      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const d = String(dateObj.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    }
-    function obtenerDiaSemanaLocal(dateObj) {
-      const dias = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
-      return dias[dateObj.getDay()];
-    }
-    async function autoCompletarSalidasFaltantes() {
-      if (estaCompletandoSalidas) return;
-      
-      const ahoraMs = new Date().getTime();
-      if (ahoraMs - ultimoChequeoAutoCompletar < 1800000) {
-        console.log("🤖 [Auto-completar] Omitido: verificación realizada hace menos de 30 minutos.");
-        return;
-      }
-      
-      let sessionData = {};
-      try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
-      if (!sessionData.id) {
-        console.log("🤖 [Auto-completar] Cancelado: No hay sesión de supervisor activa.");
-        return;
-      }
-
-      estaCompletandoSalidas = true;
-      console.log("🤖 [Auto-completar] Iniciando verificación...");
-      try {
-        const ahora = new Date();
-        const hoyStr = obtenerFechaYMD(ahora);
-
-        const fechasAProcesar = [];
-        for (let i = 1; i <= 7; i++) {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
-          const fStr = obtenerFechaYMD(d);
-          fechasAProcesar.push(fStr);
-        }
-        console.log("🤖 [Auto-completar] Fechas anteriores a procesar (últimos 7 días):", fechasAProcesar);
-
-        if (fechasAProcesar.length === 0) {
-          estaCompletandoSalidas = false;
-          return;
-        }
-
-        const snap = await db.collection('registros')
-          .where('fecha', 'in', fechasAProcesar)
-          .get();
-
-        console.log(`🤖 [Auto-completar] Registros recuperados de Firestore: ${snap.size}`);
-
-        const mapaRegs = {};
-        snap.docs.forEach(doc => {
-          const r = doc.data();
-          const empIdStr = String(r.empleadoId || '').trim();
-          const key = `${empIdStr}_${r.fecha}`;
-          if (!mapaRegs[key]) mapaRegs[key] = {};
-          mapaRegs[key][r.tipo] = true;
-        });
-
-        const batch = db.batch();
-        let creados = 0;
-
-        console.log(`🤖 [Auto-completar] Analizando ${empCache.length} empleados de la cache...`);
-
-        for (const emp of empCache) {
-          if ((emp.cargo || '').toUpperCase() === 'SIN ASISTENCIA') continue;
-          const empIdStr = String(emp.id || '').trim();
-
-          for (const fecha of fechasAProcesar) {
-            const key = `${empIdStr}_${fecha}`;
-            const regs = mapaRegs[key] || {};
-            
-            if (regs.ENTRADA && !regs.SALIDA) {
-              console.log(`🤖 [Auto-completar] ¡Detectado! Empleado: ${emp.nombre} (${empIdStr}) el día ${fecha} tiene ENTRADA pero no SALIDA.`);
-              try {
-                const horaSalida = "16:15:00";
-                const idLimpio = horaSalida.replace(/:/g, '');
-                const idDocumento = `${empIdStr}_SALIDA_${fecha}_${idLimpio}`;
-                
-                const [yStr, mStr, dStr] = fecha.split('-');
-                const dateObj = new Date(parseInt(yStr), parseInt(mStr) - 1, parseInt(dStr), 16, 15, 0);
-                
-                const timestampVal = (window.firebase && firebase.firestore && firebase.firestore.Timestamp) 
-                  ? firebase.firestore.Timestamp.fromDate(dateObj) 
-                  : dateObj;
-
-                batch.set(db.collection('registros').doc(idDocumento), {
-                  empleadoId: empIdStr,
-                  nombre: emp.nombre || '',
-                  fecha: fecha,
-                  tipo: 'SALIDA',
-                  hora: horaSalida,
-                  almuerzo: 'NO',
-                  modo: 'OFICINA',
-                  horasExtra: 'NO',
-                  justificado: 'NO',
-                  timestamp: timestampVal,
-                  dia: obtenerDiaSemanaLocal(dateObj),
-                  observacion_automatica: "Auto-completado salida faltante",
-                  observaciones: "No registró salida",
-                  razon_salida: "No registró salida"
-                });
-                creados++;
-              } catch (innerErr) {
-                console.error(`🤖 [Auto-completar] Error preparando registro para ${emp.nombre}:`, innerErr);
-              }
-            }
-          }
-        }
-
-        ultimoChequeoAutoCompletar = new Date().getTime();
-        if (creados > 0) {
-          console.log(`🤖 [Auto-completar] Guardando ${creados} salidas en Firebase...`);
-          await batch.commit();
-          mostrarToast(`🤖 Auto-completadas ${creados} salidas faltantes (16:15).`, 'success');
-          localStorage.removeItem('tcontrol_registros_cache_v1');
-          await cargarDatosCompletos(true, true);
-        } else {
-          console.log("🤖 [Auto-completar] No se encontraron salidas faltantes por completar.");
-        }
-      } catch (err) {
-        console.error("🤖 [Auto-completar] Error auto-completando salidas:", err);
-      } finally {
-        estaCompletandoSalidas = false;
-      }
-    }
-
     // ============================================================
     // CARGA DE DATOS
     // ============================================================
@@ -4917,7 +4878,6 @@
         if (tardanzaSelect) tardanzaSelect.innerHTML = periodos.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
 
         $('lastUpdate').textContent = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
-        autoCompletarSalidasFaltantes();
         cargarPanelActual();
       } catch (e) {
         if (!silencioso) {
@@ -5121,7 +5081,7 @@
       if (document.hidden) return;
 
       // Pausar sincronización si el supervisor tiene algún modal de edición/justificación abierto
-      const modalesVisibles = ['extraLunchModal', 'justificarModal', 'manualRegistroModal', 'masivoModal', 'eventoFuturoModal']
+      const modalesVisibles = ['extraLunchModal', 'justificarModal', 'manualRegistroModal', 'eventoFuturoModal']
         .some(id => {
           const el = $(id);
           return el && !el.classList.contains('hidden');
@@ -5143,10 +5103,8 @@
       await cargarDatosCompletos(true, false, true);
     });
     $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
-    $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
-    $('btnMasivo').addEventListener('click', mostrarModalMasivo);
+    if ($('btnNuevoRegistroManual')) $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
     if ($('btnArchivar')) $('btnArchivar').addEventListener('click', iniciarArchivadoFirebase);
-    if ($('btnDepurar')) $('btnDepurar').addEventListener('click', depurarBaseDeDatos);
 
     document.getElementById('extraLunchModal').addEventListener('click', e => {
       if (e.target === document.getElementById('extraLunchModal')) cerrarModal();
@@ -5159,9 +5117,6 @@
     });
     document.getElementById('eventoFuturoModal').addEventListener('click', e => {
       if (e.target === document.getElementById('eventoFuturoModal')) cerrarModalFuturos();
-    });
-    document.getElementById('masivoModal').addEventListener('click', e => {
-      if (e.target === document.getElementById('masivoModal')) cerrarModalMasivo();
     });
 
     // Buscadores Debounced para optimización de rendimiento
@@ -5305,6 +5260,7 @@
         let totalTiempoPersonal = 0;
         let totalTiempoMedico = 0;
         let totalTiempoPorJustificar = 0;
+        let totalDescuentoBruto = 0;
 
         // Generar lista de todas las fechas en el rango
         let todasLasFechas = [];
@@ -5318,22 +5274,23 @@
         todasLasFechas.forEach(fecha => {
           const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
           const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
-          const isJustificado = regsDia.some(r =>
-            r.justificado === 'SI' ||
-            ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
-          );
+          const isJustificado = regsDia.some(r => {
+            if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
+            if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
+            const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+            if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
+            return false;
+          });
+          const esHoyOFuturo = fecha >= getLocalHoyStr();
 
           if (regsDia.length === 0) {
-            if (!esFestivo && diasLaborables.includes(fecha)) {
-              totalTiempoPorJustificar += 480;
-            }
             return;
           }
 
-          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
+          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
           let atrasoMinsHoy = 0;
-          if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
-            let mE = obtenerMinutos(primerReg.hora);
+          if (primerReg) {
+            let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
             let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
             if (mE !== null && mE > refEntrada + 5) {
               atrasoMinsHoy = mE - refEntrada;
@@ -5368,8 +5325,11 @@
           let tiempoMedicoHoy = 0;
           let tiempoJustificarHoy = 0;
 
-          const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
-          if (hasCumpleanos) tiempoPersonalHoy += 240;
+          const hasCumpleanos = regsDia.some(r => {
+            const raz = String(r.razon_ausencia || '').toLowerCase();
+            const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
+            return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
+          });
 
           let ultimoSalidaMins = null;
           let ultimoSalidaReg = null;
@@ -5461,15 +5421,15 @@
           }
 
           // Sumar permisos asignados manualmente
-          const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-          const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-          const medMins  = (entradaDia && entradaDia.permiso_medico_mins)   ? Number(entradaDia.permiso_medico_mins)   : 0;
-          const justMins = (entradaDia && entradaDia.tiempo_justificado_mins) ? Number(entradaDia.tiempo_justificado_mins) : 0;
+          const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
+          const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
+          const medMins  = regPermiso ? Number(regPermiso.permiso_medico_mins || 0)   : 0;
+          const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
           tiempoPersonalHoy += persMins;
           tiempoMedicoHoy   += medMins;
-          let tiempoJustificadoHoy = justMins;
+          let tiempoJustificadoHoy = justMins + (hasCumpleanos ? 240 : 0);
 
-          if (isJustificado) {
+          if (isJustificado || esHoyOFuturo) {
             tiempoJustificarHoy = 0;
           } else {
             let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
@@ -5485,6 +5445,10 @@
             atrasos++;
             minutosAtrasos += atrasoMinsHoy;
           }
+
+          // Descuento bruto del día: tiempo personal + (si hay tiempo por justificar: max(tjustificar, atraso), si no: solo atraso)
+          const descuentoBrutoHoy = tiempoPersonalHoy + (tiempoJustificarHoy > 0 ? Math.max(tiempoJustificarHoy, atrasoMinsHoy) : atrasoMinsHoy);
+          totalDescuentoBruto += descuentoBrutoHoy;
 
           totalTiempoPersonal += tiempoPersonalHoy;
           totalTiempoMedico   += tiempoMedicoHoy;
@@ -5504,6 +5468,7 @@
           permisoMedico: totalTiempoMedico,
           permisoPersonal: totalTiempoPersonal,
           tiempoPorJustificar: totalTiempoPorJustificar,
+          tiempoADescontar: Math.max(0, totalDescuentoBruto - 240),
           atrasos: atrasos,
           minutosAtrasos: minutosAtrasos,
           almPlanta: almPlanta,
@@ -5926,42 +5891,26 @@
       let todosRegs = e.registros || [];
       let regs = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN);
 
-      let porDia = {};
-      [...regs].sort((a, b) => {
-        if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
-        return String(a.hora || '').localeCompare(String(b.hora || ''));
-      }).forEach(r => {
-        const fechaNorm = normalizarFechaStr(r.fecha);
-        if (!fechaNorm) return;
-        if (!porDia[fechaNorm]) porDia[fechaNorm] = { registros: [], almuerzo: null };
-        porDia[fechaNorm].registros.push(r);
-        if (r.tipo === 'ENTRADA' && r.almuerzo) porDia[fechaNorm].almuerzo = r.almuerzo;
-      });
-
-      // Ordenar cronológicamente (de más antiguo a más reciente) para la exportación a Excel
-      let fechasOrdenadas = Object.keys(porDia).filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f)).sort((a, b) => a.localeCompare(b));
-
-      if (fechasOrdenadas.length === 0) {
-        mostrarToast('No hay registros en este período', 'warning');
-        return;
-      }
-
       let bodyHtml = '';
       
       // Inicializar acumuladores totales
       let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0, totSalidaTemprana = 0;
       let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
       let totExtra50 = 0, totExtra100 = 0;
+      let totDescuentoBruto = 0;
 
       fechasOrdenadas.forEach(f => {
         const regsDia = porDia[f].registros;
         const d = porDia[f];
         const dayOfWeek = new Date(f + 'T12:00:00').getDay();
         const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
-        const isJustificado = regsDia.some(r =>
-          r.justificado === 'SI' ||
-          ['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Feriado', 'Sábado/Domingo', 'Salida Justificada'].includes(r.razon_ausencia)
-        );
+        const isJustificado = regsDia.some(r => {
+          if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
+          if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
+          const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+          if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
+          return false;
+        });
 
         let periodosDia = [];
         let entradaPendiente = null;
@@ -5994,10 +5943,10 @@
 
         let aBadgeVal = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'SI' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? 'NO' : '—';
 
-        let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO');
+        let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
         let atrasoMins = 0;
-        if (primerReg && String(primerReg.tipo || '').toUpperCase() === 'ENTRADA') {
-          let mE = obtenerMinutos(primerReg.hora);
+        if (primerReg) {
+          let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
           let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
           if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
         }
@@ -6027,8 +5976,7 @@
         let tiempoMedico = 0;
         let tiempoPorJustificar = 0;
 
-        const hasCumpleanos = regsDia.some(r => r.razon_ausencia === 'Cumpleaños');
-        if (hasCumpleanos) tiempoPersonal += 240;
+
 
         ultimoSalidaMins = null;
         ultimoSalidaReg = null;
@@ -6071,9 +6019,19 @@
           netWorked -= 45;
         }
 
+        let ultSalReg = [...regsDia].reverse().find(r => {
+          const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+          return t.includes('SALIDA');
+        });
+        if (ultSalReg) {
+          let mS = obtenerMinutos(ultSalReg.hora || ultSalReg.timestamp);
+          if (mS !== null) ultimoSalidaMins = mS;
+        }
+
         let minsSalidaTemprana = 0;
-        if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < 975) {
-          minsSalidaTemprana = 975 - ultimoSalidaMins;
+        let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+        if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
+          minsSalidaTemprana = refSalida - ultimoSalidaMins;
         }
 
         let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
@@ -6117,7 +6075,16 @@
           }
         });
 
-        if (isJustificado) {
+        let tiempoJustificado = 0;
+        const hasCumpleanos = regsDia.some(r => {
+          const raz = String(r.razon_ausencia || '').toLowerCase();
+          const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
+          return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
+        });
+        if (hasCumpleanos) tiempoJustificado += 240;
+
+        const esHoyOFuturo = f >= getLocalHoyStr();
+        if (isJustificado || esHoyOFuturo) {
           tiempoPorJustificar = 0;
         } else {
           const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
@@ -6131,10 +6098,23 @@
           tiempoPorJustificar += unaccountedMissing;
         }
 
-        // Ajustar atrasos descontando permisos
-        atrasoMins = Math.max(0, atrasoMins - tiempoPersonal - tiempoMedico);
+        // Ajustar atrasos y salida temprana descontando permisos
+        const originalAtrasoMins = atrasoMins;
+        const originalSalidaTemprana = minsSalidaTemprana;
+        if (isJustificado) {
+          atrasoMins = 0;
+          minsSalidaTemprana = 0;
+        } else {
+          const permisosTotales = tiempoPersonal + tiempoMedico;
+          atrasoMins = Math.max(0, originalAtrasoMins - permisosTotales);
+          const permisosRestantes = Math.max(0, permisosTotales - originalAtrasoMins);
+          minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
+        }
         // Sumar permisos a TOTAL HRS
         netWorked += (tiempoPersonal + tiempoMedico);
+        
+        const descuentoDia = tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins);
+        totDescuentoBruto += descuentoDia;
 
         // Acumuladores
         totTP += tiempoPersonal;
@@ -6163,11 +6143,13 @@
           <td style="text-align:center;">${tiempoPersonal > 0 ? minutosAHHMMSS(tiempoPersonal) : '—'}</td>
           <td style="text-align:center;">${tiempoMedico > 0 ? minutosAHHMMSS(tiempoMedico) : '—'}</td>
           <td style="text-align:center;">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
+          <td style="text-align:center; color:#dc2626; font-weight:bold;">${descuentoDia > 0 ? minutosAHHMMSS(descuentoDia) : '—'}</td>
           <td style="text-align:center;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
           <td style="text-align:center;">${aBadgeVal}</td>
           <td style="text-align:center;">${autorizadoGlobal ? 'SI' : 'NO'}</td>
           <td>${escapeHtml(razonText)}</td>
           <td style="text-align:center;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
+          <td style="text-align:center;">${minsSalidaTemprana > 0 ? minutosAHHMMSS(minsSalidaTemprana) : '—'}</td>
           <td style="text-align:center;">${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
           <td style="text-align:center;">${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
           <td style="text-align:center;">${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
@@ -6178,6 +6160,8 @@
         </tr>`;
       });
 
+      const totDescontarFinal = Math.max(0, totDescuentoBruto - 240);
+
       // Fila de totales
       let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold;">
         <td>TOTALES</td>
@@ -6186,11 +6170,13 @@
         <td style="text-align:center;">${minutosAHHMMSS(totTP)}</td>
         <td style="text-align:center;">${minutosAHHMMSS(totTM)}</td>
         <td style="text-align:center;">${minutosAHHMMSS(totTJ)}</td>
+        <td style="text-align:center; color:#dc2626;">${minutosAHHMMSS(totDescontarFinal)}</td>
         <td style="text-align:center;">${minutosAHHMMSS(totHoras)}</td>
         <td style="text-align:center;">—</td>
         <td style="text-align:center;">—</td>
         <td>—</td>
         <td style="text-align:center;">${minutosAHHMMSS(totAtrasos)}</td>
+        <td style="text-align:center;">${minutosAHHMMSS(totSalidaTemprana)}</td>
         <td style="text-align:center;">${minutosAHHMMSS(totH50)}</td>
         <td style="text-align:center;">${minutosAHHMMSS(totH100)}</td>
         <td style="text-align:center;">${minutosAHHMMSS(totHCN)}</td>
@@ -6228,9 +6214,9 @@
         </head>
         <body>
           <table>
-            <tr><td colspan="18" class="title-cell">TCONTROL S.A. - REPORTE INDIVIDUAL DE ASISTENCIA</td></tr>
-            <tr><td colspan="18" class="meta-cell">Empleado: ${escapeHtml(e.nombre)} (ID: ${escapeHtml(e.id)}) | Periodo: ${periodo.label} (Rango: ${R_INI} a ${R_FIN}) | Generado: ${formatearTimestampCompleto(new Date())}</td></tr>
-            <tr><td colspan="18" style="height:15px;"></td></tr>
+            <tr><td colspan="19" class="title-cell">TCONTROL S.A. - REPORTE INDIVIDUAL DE ASISTENCIA</td></tr>
+            <tr><td colspan="19" class="meta-cell">Empleado: ${escapeHtml(e.nombre)} (ID: ${escapeHtml(e.id)}) | Periodo: ${periodo.label} (Rango: ${R_INI} a ${R_FIN}) | Generado: ${formatearTimestampCompleto(new Date())}</td></tr>
+            <tr><td colspan="19" style="height:15px;"></td></tr>
             <thead>
               <tr>
                 <th>Fecha</th>
@@ -6239,11 +6225,13 @@
                 <th>TIEMPO PERSONAL</th>
                 <th>TIEMPO MEDICO</th>
                 <th>TIEMPO POR JUSTIFICAR</th>
+                <th>TIEMPO A DESCONTAR</th>
                 <th>TOTAL HORAS</th>
                 <th>Almuerzo</th>
                 <th>Autoriz. H.E.</th>
                 <th>Razón</th>
                 <th>ATRASOS</th>
+                <th>SALIDA TEMPRANA</th>
                 <th>HORAS EXTRA (A)</th>
                 <th>HORAS EXTRA 100% (B)</th>
                 <th>HORAS CAMPO NORMALES</th>

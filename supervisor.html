@@ -620,10 +620,7 @@
               
               <div style="display:flex; flex-direction:column; gap:12px;">
                 <button class="btn-primary-modal" id="btnNuevoRegistroManual" style="width:100%; padding: 12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fas fa-plus"></i> Nuevo Registro Manual</button>
-                <button class="btn-primary-modal" id="btnMasivo" style="width:100%; padding: 12px; font-weight:600; background:var(--indigo); display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fas fa-bolt"></i> Completado Masivo (Regularizar)</button>
                 <button class="btn-primary-modal" id="btnArchivar" style="width:100%; padding: 12px; font-weight:600; background:var(--teal); display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fas fa-archive"></i> Archivar Datos históricos</button>
-                <button class="btn-primary-modal" id="btnDepurar" style="width:100%; padding: 12px; font-weight:600; background:var(--red); display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fas fa-broom"></i> Depurar Registros Duplicados</button>
-                <button class="btn-primary-modal" id="btnCalcularVacaciones" style="width:100%; padding: 12px; font-weight:600; background:#d97706; display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fas fa-umbrella-beach"></i> Calcular Vacaciones Reales (Hoja CALCULAR)</button>
               </div>
             </div>
             <div style="margin-top:20px; padding:12px; background:#fef2f2; border:1px solid #fee2e2; border-radius:10px; font-size:11.5px; color:#991b1b; display:flex; align-items:center; gap:8px;">
@@ -1019,42 +1016,7 @@
   </div>
 
 
-  <!-- MODAL REGISTRO MASIVO -->
-  <div id="masivoModal" class="modal-overlay hidden">
-    <div class="modal-container">
-      <div class="modal-header">
-        <h3 class="modal-title"><i class="fas fa-bolt"></i> Regularización Masiva</h3><button class="modal-close"
-          onclick="cerrarModalMasivo()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p style="font-size: 13px; color: var(--g600); margin-bottom: 15px;">Esta herramienta completará automáticamente
-          los registros faltantes para <strong>TODOS</strong> los empleados en la fecha seleccionada.</p>
 
-        <div class="form-group"><label class="form-label">Fecha a regularizar</label><input type="date" id="masFecha"
-            class="form-input"></div>
-
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-          <div class="form-group"><label class="form-label">Hora Entrada</label><input type="time" id="masHoraE"
-              class="form-input" value="07:30:00" step="1"></div>
-          <div class="form-group"><label class="form-label">Hora Salida</label><input type="time" id="masHoraS"
-              class="form-input" value="16:15:00" step="1"></div>
-        </div>
-
-        <div class="form-group"
-          style="background: #fff9db; padding: 10px; border-radius: 6px; border: 1px solid #fab005;">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; color: #856404;">
-            <input type="checkbox" id="masSoloFaltantes" checked> Solo completar registros faltantes (No sobrescribir
-            existentes)
-          </label>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary-modal" onclick="cerrarModalMasivo()">Cancelar</button>
-        <button class="btn-primary-modal" style="background:var(--indigo)"
-          onclick="ejecutarRegularizacionMasiva()">Ejecutar Regularización</button>
-      </div>
-    </div>
-  </div>
 
   <script src="./JS/tcontrol_core.js?v=20260716_01"></script>
   <script src="./JS/supervisor_core.js?v=20260716_01"></script>

@@ -193,6 +193,54 @@ async function testListaCatering() {
     }
 }
 
+async function testConexion() {
+    logConexion.innerHTML = '';
+    log('Iniciando prueba de conexión...', 'info');
+    actualizarStatus('warning', 'Prueba en progreso...');
+    
+    try {
+        log('Enviando solicitud de prueba...', 'info');
+        const res = await jsonpRequest({ accion: 'verificarClaveGuardia', clave: 'TCONTROL2026' });
+        
+        if (res) {
+            log(`✓ Respuesta recibida del servidor`, 'success');
+            log(`Datos: ${JSON.stringify(res)}`, 'success');
+            actualizarStatus('ok', 'Conexión exitosa');
+        } else {
+            log('❌ Respuesta vacía del servidor', 'error');
+            actualizarStatus('error', 'Respuesta inválida');
+        }
+    } catch (err) {
+        log(`❌ Error: ${err.message}`, 'error');
+        actualizarStatus('error', err.message);
+    }
+}
+
+async function testListaCatering() {
+    logConexion.innerHTML = '';
+    log('Probando: obtenerListaCatering', 'info');
+    actualizarStatus('warning', 'Cargando...');
+    
+    try {
+        const res = await jsonpRequest({ accion: 'obtenerListaCatering' });
+        
+        if (res && res.empleados) {
+            log(`✓ ${res.empleados.length} empleados cargados`, 'success');
+            log(`Primero: ${res.empleados[0]?.nombre || 'N/A'}`, 'success');
+            actualizarStatus('ok', 'Catering funcionando');
+        } else if (res && res.error) {
+            log(`⚠️ Error del servidor: ${res.error}`, 'warning');
+            actualizarStatus('warning', res.error);
+        } else {
+            log(`❌ Respuesta inválida: ${JSON.stringify(res)}`, 'error');
+            actualizarStatus('error', 'Formato de respuesta incorrecto');
+        }
+    } catch (err) {
+        log(`❌ ${err.message}`, 'error');
+        actualizarStatus('error', err.message);
+    }
+}
+
 async function testDatosSupervisor() {
     logConexion.innerHTML = '';
     log('Probando: obtenerDatosSupervisor', 'info');
@@ -239,27 +287,6 @@ async function testVerificarCambios() {
         }
     } catch (err) {
         log(`❌ ${err.message}`, 'error');
-        actualizarStatus('error', err.message);
-    }
-}
-
-async function testDepurarDuplicados() {
-    if (!confirm('¿Seguro que deseas depurar los duplicados? Esta acción no se puede deshacer.')) return;
-    logInfo.innerHTML = '';
-    log('Iniciando depuración de duplicados en Firestore...', 'warning', 'info');
-    actualizarStatus('warning', 'Depurando...');
-    
-    try {
-        const res = await jsonpRequest({ accion: 'depurarDuplicados' });
-        if (res.ok) {
-            log(`✓ Éxito: Se eliminaron ${res.eliminados} registros duplicados`, 'success', 'info');
-            actualizarStatus('ok', 'Limpieza completada');
-        } else {
-            log(`❌ Error: ${res.error}`, 'error', 'info');
-            actualizarStatus('error', res.error);
-        }
-    } catch (err) {
-        log(`❌ ${err.message}`, 'error', 'info');
         actualizarStatus('error', err.message);
     }
 }

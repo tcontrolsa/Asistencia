@@ -459,7 +459,8 @@ function procesarAccion(params) {
         registros.push({
           fecha: r[0]?String(r[0]):'', empleadoId: rEmpId, nombre: r[2]?String(r[2]):'', tipo: r[3]?String(r[3]):'', almuerzo: r[4]?String(r[4]):'', hora: r[5]?String(r[5]):'', lat: r[6]?String(r[6]):'', lng: r[7]?String(r[7]):'', dispositivo: r[8]?String(r[8]):'', timestamp: r[9]?String(r[9]):'', dia: r[10]?String(r[10]):'', modo: r[11]?String(r[11]):'', horasExtra: r[12]?String(r[12]):'', autoriza: r[13]?String(r[13]):'', razonSalidaTemprana: r[14]?String(r[14]):'', quienJustifica: r[15]?String(r[15]):'', razonEntradaTardia: r[16]?String(r[16]):'', quienJustificaEntrada: r[17]?String(r[17]):'', tipoSalida: r[18]?String(r[18]):'', razonPermiso: r[19]?String(r[19]):'', justificado: r[20]?String(r[20]):'', razon_justificac: r[21]?String(r[21]):'',
           permiso_personal_mins: r[22] !== undefined && r[22] !== '' ? Number(r[22]) : 0,
-          permiso_medico_mins:   r[23] !== undefined && r[23] !== '' ? Number(r[23]) : 0
+          permiso_medico_mins:   r[23] !== undefined && r[23] !== '' ? Number(r[23]) : 0,
+          tiempo_justificado_mins: r[24] !== undefined && r[24] !== '' ? Number(r[24]) : 0
         });
       }
       return { ok: true, registros: registros };
@@ -1975,6 +1976,7 @@ function registrarAlmuerzoExtra(params) {
     const tipo = params.tipo?.toString().trim() || "planta";
     const observaciones = params.observaciones?.toString().trim() || "";
     const cantidad = parseInt(params.cantidad) || 1;
+    const supervisorId = params.supervisorId?.toString().trim() || params.supervisor_id?.toString().trim() || "";
     const horaRegistro = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "HH:mm:ss");
     const timestamp = new Date();
     
@@ -1983,10 +1985,10 @@ function registrarAlmuerzoExtra(params) {
     
     if (!sheet) {
       sheet = ss.insertSheet(HOJA_ALMUERZOS_EXTRA);
-      sheet.appendRow(["FECHA", "NOMBRE", "EMPRESA", "TIPO", "CANTIDAD", "HORA_REGISTRO", "TIMESTAMP", "OBSERVACIONES"]);
+      sheet.appendRow(["FECHA", "NOMBRE", "EMPRESA", "TIPO", "CANTIDAD", "HORA_REGISTRO", "TIMESTAMP", "OBSERVACIONES", "SUPERVISOR_ID"]);
     }
     
-    sheet.appendRow([fecha, nombre, empresa, tipo, cantidad, horaRegistro, timestamp, observaciones]);
+    sheet.appendRow([fecha, nombre, empresa, tipo, cantidad, horaRegistro, timestamp, observaciones, supervisorId]);
     
   } finally { lock.releaseLock(); }
 }
@@ -2028,6 +2030,7 @@ function obtenerAlmuerzosExtra() {
       var tipo = r[3] ? String(r[3]).trim() : '';
       var cantidad = parseInt(r[4]) || 0;
       var obs = r[7] ? String(r[7]).trim() : '';
+      var supervisorId = r[8] ? String(r[8]).trim() : '';
       
       if (fechaStr && cantidad > 0) {
         almuerzos.push({
@@ -2036,7 +2039,8 @@ function obtenerAlmuerzosExtra() {
           empresa: empresa,
           tipo: tipo,
           cantidad: cantidad,
-          observaciones: obs
+          observaciones: obs,
+          supervisorId: supervisorId
         });
       }
     }
@@ -3000,7 +3004,8 @@ function exportarBaseDatosParaFirebase() {
           tipo_salida: fila[COLUMNAS.TIPO_SALIDA] || "",
           razon_permiso: fila[COLUMNAS.RAZON_PERMISO] || "",
           permiso_personal_mins: Number(fila[COLUMNAS.PERMISO_PERSONAL_MINS]) || 0,
-          permiso_medico_mins: Number(fila[COLUMNAS.PERMISO_MEDICO_MINS]) || 0
+          permiso_medico_mins: Number(fila[COLUMNAS.PERMISO_MEDICO_MINS]) || 0,
+          tiempo_justificado_mins: Number(fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) || 0
         });
       }
     }
@@ -3113,6 +3118,7 @@ function guardarPermisoSupervisor(params) {
     const data = sheet.getDataRange().getValues();
     const tz   = Session.getScriptTimeZone();
     let filaIndex = -1;
+    let fallbackIndex = -1;
 
     for (let i = 1; i < data.length; i++) {
       const rEmpId = String(data[i][COLUMNAS.ID] || '').trim();
@@ -3123,14 +3129,19 @@ function guardarPermisoSupervisor(params) {
       } else {
         fStr = String(data[i][COLUMNAS.FECHA] || '').trim();
       }
-      if (rEmpId === empleadoId && fStr === fecha && rTipo === 'ENTRADA') {
-        filaIndex = i + 1; // 1-indexed
-        break;
+      if (rEmpId === empleadoId && fStr === fecha) {
+        if (rTipo === 'ENTRADA') {
+          filaIndex = i + 1; // 1-indexed
+          break;
+        } else if (fallbackIndex === -1) {
+          fallbackIndex = i + 1;
+        }
       }
     }
+    if (filaIndex === -1) filaIndex = fallbackIndex;
 
     if (filaIndex === -1) {
-      return { ok: false, error: `No se encontró registro ENTRADA para empleado ${empleadoId} en ${fecha}.` };
+      return { ok: false, error: `No se encontró registro para empleado ${empleadoId} en ${fecha}.` };
     }
 
     // Columnas en Sheets son 1-indexed

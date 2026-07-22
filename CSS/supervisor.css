@@ -1621,6 +1621,26 @@
       white-space: nowrap
     }
 
+    /* ponytail: Tabla ultra compacta para reducir ancho de pantalla */
+    .table-ultra-compact th {
+      padding: 4px 5px !important;
+      font-size: 10px !important;
+      letter-spacing: -0.2px !important;
+      white-space: nowrap !important;
+    }
+
+    .table-ultra-compact td {
+      padding: 2px 4px !important;
+      font-size: 10px !important;
+      white-space: nowrap !important;
+    }
+
+    .table-ultra-compact select {
+      font-size: 10px !important;
+      padding: 1px 3px !important;
+      height: 22px !important;
+    }
+
     .table-compact .employee-photo,
     .table-compact .employee-photo-placeholder {
       width: 26px;
@@ -2637,4 +2657,20 @@
     @keyframes modalFadeIn {
       from { opacity: 0; transform: scale(0.95); }
       to { opacity: 1; transform: scale(1); }
-    }
+    }
+
+    /* BADGES DE GESTIÓN DE TIEMPOS CONSOLIDADOS */
+    .badge-tiempo {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 9.5px;
+      font-weight: 700;
+      white-space: nowrap;
+      line-height: 1.3;
+    }
+    .badge-tiempo.badge-just { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
+    .badge-tiempo.badge-pers { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+    .badge-tiempo.badge-med { background: #ccfbf1; color: #115e59; border: 1px solid #99f6e4; }
+    .badge-tiempo.badge-falt { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
