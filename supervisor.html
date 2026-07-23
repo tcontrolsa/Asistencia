@@ -1015,6 +1015,76 @@
     </div>
   </div>
 
+  <!-- MODAL TRABAJO EN CAMPO (SUPERVISOR) -->
+  <div id="trabajoCampoSupModal" class="modal-overlay hidden">
+    <div class="modal-container" style="max-width: 520px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); color:white; border-radius: 12px 12px 0 0;">
+        <h3 class="modal-title" style="color:white;"><i class="fas fa-hammer"></i> Registrar Trabajo en Campo</h3>
+        <button class="modal-close" onclick="cerrarModalCampoSupervisor()" style="color:white; opacity:0.8;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px; background: #f8fafc;">
+        <form id="formCampoSupervisor" onsubmit="event.preventDefault(); guardarTrabajoEnCampoSupervisor();">
+          <!-- Empleado -->
+          <div class="form-group" style="margin-bottom:14px;">
+            <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">👤 Empleado</label>
+            <input type="hidden" id="supCampoEmpId">
+            <input type="text" id="supCampoEmpNombreDisplay" class="form-input" style="border:2px solid #a7f3d0; border-radius:8px; padding:8px 12px; font-size:13px; background:#f0fdf4; font-weight:700;" readonly>
+          </div>
+
+          <!-- Proyecto -->
+          <div class="form-group" style="margin-bottom:14px;">
+            <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">🏗️ Proyecto *</label>
+            <input type="text" id="supCampoProyectoInput" class="form-input" placeholder="Ej: Proyecto Central Huallanca" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:13px;" required>
+          </div>
+
+          <!-- Rango de Fechas -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">📅 Desde *</label>
+              <input type="date" id="supCampoFechaInicioInput" class="form-input" onchange="generarListaDiasCampoSupervisor()" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:13px;" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">📅 Hasta *</label>
+              <input type="date" id="supCampoFechaFinInput" class="form-input" onchange="generarListaDiasCampoSupervisor()" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:13px;" required>
+            </div>
+          </div>
+
+          <!-- Lista Dinámica de Fechas -->
+          <div class="form-group" style="margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700; margin-bottom:0;">📅 Fechas y Horarios</label>
+              <small id="supCntDiasCampo" style="font-weight:700; color:#64748b; font-size:11px;">1 día(s)</small>
+            </div>
+            <div id="supListaDiasCampoContainer" style="max-height:280px; overflow-y:auto; padding-right:2px;">
+              <!-- Se renderiza dinámicamente -->
+            </div>
+          </div>
+
+          <!-- Observaciones -->
+          <div class="form-group" style="margin-bottom:14px;">
+            <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">📝 Observaciones</label>
+            <textarea id="supCampoObservacionesInput" class="form-input" rows="2" placeholder="Ej: Trabajo en campo lejos" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:13px;"></textarea>
+          </div>
+
+          <!-- Autorizado Por -->
+          <div class="form-group" style="margin-bottom:18px;">
+            <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">✅ Autorizado por *</label>
+            <select id="supCampoAutorizadoPorSelect" class="form-select" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:13px;" required>
+              <option value="">-- Cargar Autorizador (Ingeniería)... --</option>
+            </select>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="btn-secondary-modal" onclick="cerrarModalCampoSupervisor()">Cancelar</button>
+            <button type="submit" id="btnGuardarCampoSup" class="btn-primary-modal" style="background:#059669; border-color:#059669;">
+              <i class="fas fa-save me-1"></i> Registrar / Actualizar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
 
 
 

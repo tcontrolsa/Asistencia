@@ -516,13 +516,22 @@ window.FirebaseBackend = {
         let ahora = new Date();
         let fechaRegistro = ahora;
 
-        const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
+        const esMarcacionOrdinaria = (tipo) => {
+            const t = String(tipo || '').toUpperCase();
+            return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(t) || t.includes('CAMPO');
+        };
         const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 
-        if (esAusenciaTipo(data.tipo) && data.fecha_falta) {
-            const partes = data.fecha_falta.toString().trim().split('-');
+        const reqFecha = data.fecha_falta || data.fecha || null;
+        if (reqFecha) {
+            const partes = reqFecha.toString().trim().split('-');
             if (partes.length === 3) {
-                fechaRegistro = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+                const anio = parseInt(partes[0]);
+                const mes = parseInt(partes[1]) - 1;
+                const dia = parseInt(partes[2]);
+                if (!isNaN(anio) && !isNaN(mes) && !isNaN(dia)) {
+                    fechaRegistro = new Date(anio, mes, dia, 12, 0, 0);
+                }
             }
         }
 
@@ -533,11 +542,17 @@ window.FirebaseBackend = {
         const h = ahora.getHours().toString().padStart(2, '0');
         const m = ahora.getMinutes().toString().padStart(2, '0');
         const s = ahora.getSeconds().toString().padStart(2, '0');
-        const horaStr = esAusenciaTipo(data.tipo) ? "00:00:00" : `${h}:${m}:${s}`;
+        
+        let horaStr = "00:00:00";
+        if (data.hora && String(data.hora).trim() !== "") {
+            horaStr = String(data.hora).trim();
+        } else if (!esAusenciaTipo(data.tipo)) {
+            horaStr = `${h}:${m}:${s}`;
+        }
 
         const modo = data.modo || "OFICINA";
         const horasExtra = modo === "CAMPO" ? "SI" : "NO";
-        const autoriza = modo === "CAMPO" ? "SISTEMA (CAMPO)" : "";
+        const autoriza = data.autoriza || (modo === "CAMPO" ? "SISTEMA (CAMPO)" : "");
 
         // Lógica de Estado de Emergencia dentro de ENTRADA
         if (data.tipo === 'ESTADO') {
@@ -600,44 +615,47 @@ window.FirebaseBackend = {
             }
         }
 
-        // Guardar en Firestore (Minimización de campos a 11 campos clave)
+        const idLimpio = horaStr.replace(/:/g, '');
+        const idDocumento = `${empleadoId}_${data.tipo}_${fechaStr}_${idLimpio}`;
+
+        let tsObj = firebase.firestore.FieldValue.serverTimestamp();
+        if (data.hora && String(data.hora).trim() !== "") {
+            try {
+                const parsedDate = new Date(`${fechaStr}T${horaStr}`);
+                if (!isNaN(parsedDate.getTime())) {
+                    tsObj = firebase.firestore.Timestamp.fromDate(parsedDate);
+                }
+            } catch(e) {}
+        } else if (esAusenciaTipo(data.tipo)) {
+            tsObj = firebase.firestore.Timestamp.fromDate(fechaRegistro);
+        }
+
+        // Guardar en Firestore
         const nuevoRegistro = {
             empleadoId: empleadoId,
             nombre: infoEmpleado.nombre,
             fecha: fechaStr,
+            hora: horaStr,
             tipo: data.tipo,
             almuerzo: almuerzo,
             lat: parseFloat(data.lat) || null,
             lng: parseFloat(data.lng) || null,
             dispositivo: data.dispositivo || "",
-            timestamp: esAusenciaTipo(data.tipo) ? firebase.firestore.Timestamp.fromDate(fechaRegistro) : firebase.firestore.FieldValue.serverTimestamp(),
+            timestamp: tsObj,
             modo: modo,
             horasExtra: horasExtra,
             autoriza: autoriza
         };
+
         if (esAusenciaTipo(data.tipo)) {
             nuevoRegistro.razon_ausencia = data.razon_ausencia || "";
+        } else if (data.razon_ausencia) {
+            nuevoRegistro.observaciones = data.razon_ausencia;
+            nuevoRegistro.razon_ausencia = data.razon_ausencia;
         }
 
-        const hoyStrLocal = this._hoyStr();
-        const isPastDate = fechaStr < hoyStrLocal;
-
-        // Si es fecha pasada, escribir directamente en la hoja de REGISTROS (Google Sheets)
-        // para evitar el dual-write y duplicados, ya que el archivo ocurre por día.
-        if (isPastDate) {
-            try {
-                const sheetsParams = { ...params, accion: 'guardarRegistro' };
-                await this._jsonp(sheetsParams);
-            } catch (e) {
-                console.warn("⚠️ Error al sincronizar histórico con Sheets:", e);
-                return { error: "Error de conexión con histórico: " + e.message };
-            }
-            return { ok: true, msg: `${data.tipo} registrado en histórico` };
-        }
-
-        // Si es fecha actual, guardar SOLO en Firestore con ID Determinístico
-        const idLimpio = horaStr.replace(/:/g, '');
-        const idDocumento = `${empleadoId}_${data.tipo}_${fechaStr}_${idLimpio}`;
+        // Guardar en Firestore siempre (disponibilidad inmediata en cliente)
+        await db.collection('registros').doc(idDocumento).set(nuevoRegistro, { merge: true });
 
         // SI YA EXISTE UN REGISTRO DE AUSENCIA PREVIO PARA ESTA FECHA Y EMPLEADO, BORRAR EL ANTERIOR DOCUMENTO PARA EVITAR DUPLICIDAD
         if (esAusenciaTipo(data.tipo)) {
@@ -1950,23 +1968,28 @@ window.FirebaseBackend = {
                 const y = d.getFullYear();
                 const m = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
-                res.fecha = `${y}-${m}-${day}`;
+                if (!res.fecha) res.fecha = `${y}-${m}-${day}`;
                 
                 const hh = String(d.getHours()).padStart(2, '0');
                 const mm = String(d.getMinutes()).padStart(2, '0');
                 const ss = String(d.getSeconds()).padStart(2, '0');
-                res.hora = `${hh}:${mm}:${ss}`;
+                if (!res.hora || res.hora === '') {
+                    res.hora = `${hh}:${mm}:${ss}`;
+                }
                 
                 res.dia = this._obtenerDiaSemana(d);
             }
         }
 
         // Si el tipo es de ausencia, calcular dinámicamente hora y razon_ausencia si no están
-        const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
+        const esMarcacionOrdinaria = (tipo) => {
+            const t = String(tipo || '').toUpperCase();
+            return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(t) || t.includes('CAMPO');
+        };
         const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 
         if (esAusenciaTipo(res.tipo)) {
-            res.hora = '00:00:00';
+            if (!res.hora || res.hora === '') res.hora = '00:00:00';
             if (!res.razon_ausencia) {
                 const t = String(res.tipo).toUpperCase();
                 if (t === 'VACACIONES' || t === 'VACACION') res.razon_ausencia = 'Vacación';

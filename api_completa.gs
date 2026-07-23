@@ -1289,26 +1289,30 @@ function guardarRegistro(data) {
     const ahora = new Date();
     
     // =========================================================
-    // CORRECCIÃ“N CRÃTICA: Para tipo FALTA (justificaciÃ³n masiva)
+    // CORRECCIÃ“N CRÃ TICA: Para tipo FALTA (justificaciÃ³n masiva)
     // usar la fecha enviada por el cliente (fecha_falta),
     // NO la fecha de hoy.
     // =========================================================
-    const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
+    const esMarcacionOrdinaria = (tipo) => {
+      const t = String(tipo || '').toUpperCase();
+      return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(t) || t.includes('CAMPO');
+    };
     const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 
+    const reqFecha = data.fecha_falta || data.fecha || null;
     let fechaRegistro = ahora;
     let fechaStr = formatearFecha(ahora);
     
-    if (esAusenciaTipo(data.tipo) && data.fecha_falta) {
+    if (reqFecha) {
       // Parsear la fecha enviada como string YYYY-MM-DD
-      const partes = data.fecha_falta.toString().trim().split('-');
+      const partes = reqFecha.toString().trim().split('-');
       if (partes.length === 3) {
         const anio = parseInt(partes[0]);
         const mes  = parseInt(partes[1]) - 1; // meses 0-indexed
         const dia  = parseInt(partes[2]);
         if (!isNaN(anio) && !isNaN(mes) && !isNaN(dia)) {
-          fechaRegistro = new Date(anio, mes, dia, 0, 0, 0);
-          fechaStr = data.fecha_falta.toString().trim().substring(0, 10);
+          fechaRegistro = new Date(anio, mes, dia, 12, 0, 0);
+          fechaStr = `${anio}-${(mes + 1).toString().padStart(2, '0')}-${dia.toString().padStart(2, '0')}`;
         }
       }
     }
@@ -1319,15 +1323,15 @@ function guardarRegistro(data) {
     // Determinar DÃ­a y Horas Extra automÃ¡ticas para CAMPO
     const diaDesc = obtenerDiaEcuador(fechaRegistro);
     let horasExtra = "NO";
-    let autoriza = "";
+    let autoriza = data.autoriza || "";
     
     if (modo === "CAMPO") {
       horasExtra = "SI";
-      autoriza = "SISTEMA (CAMPO)";
+      if (!autoriza) autoriza = "SISTEMA (CAMPO)";
     }
     
-    // Validar duplicados bÃ¡sicos (solo para registros que NO sean FALTA ni ESTADO)
-    if (esMarcacionOrdinaria(data.tipo) && data.tipo !== 'ESTADO') {
+    // Validar duplicados bÃ¡sicos (solo para registros que NO sean FALTA ni ESTADO ni CAMPO)
+    if (esMarcacionOrdinaria(data.tipo) && data.tipo !== 'ESTADO' && !String(data.tipo).toUpperCase().includes('CAMPO')) {
       const hoyStr = formatearFecha(ahora); // Para duplicados siempre usar hoy
       const lastRow = hoja.getLastRow();
       if (lastRow > 1) {
@@ -1347,7 +1351,7 @@ function guardarRegistro(data) {
     }
     
     // Validar GPS (FALTA no requiere GPS)
-    const saltarGPS = ["GUARDIA", "MANUAL"].includes(data.dispositivo) || (esAusenciaTipo(data.tipo) || data.tipo === 'ESTADO');
+    const saltarGPS = ["GUARDIA", "MANUAL", "FORM_CAMPO"].includes(data.dispositivo) || (esAusenciaTipo(data.tipo) || data.tipo === 'ESTADO');
     if (!saltarGPS) {
       if (lat === null || lng === null) return { error: "GPS requerido para registro" };
       
@@ -1378,24 +1382,15 @@ function guardarRegistro(data) {
     // =========================================================
     if (data.tipo === 'ESTADO') {
       const hoyStr = formatearFecha(ahora);
-      const horaReporte = Utilities.formatDate(ahora, Session.getScriptTimeZone(), "HH:mm");
-      const estadoMsg = data.razon_ausencia || "";
-      // Codificar: "estadoValor|HH:MM" para distinguir la hora de reporte de la hora de entrada
-      const valorCodificado = estadoMsg + "|" + horaReporte;
-
       const lastRow = hoja.getLastRow();
       if (lastRow > 1) {
-        const rango = hoja.getRange(2, 1, lastRow - 1, 21).getValues();
-        for (let i = rango.length - 1; i >= 0; i--) {
-          const fFecha = rango[i][COLUMNAS.FECHA] instanceof Date
-            ? formatearFecha(rango[i][COLUMNAS.FECHA])
-            : rango[i][COLUMNAS.FECHA]?.toString() || '';
-          const fId    = rango[i][COLUMNAS.ID]?.toString().trim() || '';
-          const fTipo  = rango[i][COLUMNAS.TIPO]?.toString() || '';
-          if (fId === data.id.toString().trim() && fFecha === hoyStr && fTipo === 'ENTRADA') {
-            // Actualizar columna RAZON_AUSENCIA (U = índice 20, 1-based col 21)
-            hoja.getRange(i + 2, COLUMNAS.RAZON_AUSENCIA + 1).setValue(valorCodificado);
-            return { ok: true, msg: "Estado de emergencia registrado correctamente." };
+        const dataHoja = hoja.getRange(2, 1, lastRow - 1, 6).getValues();
+        for (let i = dataHoja.length - 1; i >= 0; i--) {
+          const fFila = formatearFecha(new Date(dataHoja[i][0]));
+          if (dataHoja[i][1].toString() === data.id.toString() && fFila === hoyStr && dataHoja[i][3] === 'ENTRADA') {
+            const filaReal = i + 2;
+            hoja.getRange(filaReal, COLUMNAS.RAZON_AUSENCIA + 1).setValue(data.razon_ausencia || "A salvo");
+            return { ok: true, msg: "Estado de emergencia guardado en la Entrada de hoy" };
           }
         }
       }
@@ -1436,6 +1431,23 @@ function guardarRegistro(data) {
       }
     }
 
+    let horaFinal = "00:00:00";
+    if (data.hora && String(data.hora).trim() !== "") {
+      horaFinal = String(data.hora).trim();
+    } else if (!esAusenciaTipo(data.tipo)) {
+      horaFinal = Utilities.formatDate(ahora, Session.getScriptTimeZone(), "HH:mm:ss");
+    }
+
+    let tsFinal = ahora;
+    if (data.hora && String(data.hora).trim() !== "") {
+      try {
+        tsFinal = new Date(`${fechaStr}T${horaFinal}`);
+        if (isNaN(tsFinal.getTime())) tsFinal = ahora;
+      } catch(e) { tsFinal = ahora; }
+    } else if (esAusenciaTipo(data.tipo)) {
+      tsFinal = fechaRegistro;
+    }
+
     // Armar fila (21 columnas A-U)
     const nuevaFila = new Array(21).fill("");
     nuevaFila[COLUMNAS.FECHA]                = fechaStr;  // <-- usa la fecha correcta (puede ser pasada)
@@ -1443,13 +1455,11 @@ function guardarRegistro(data) {
     nuevaFila[COLUMNAS.NOMBRE]               = infoEmpleado.nombre;
     nuevaFila[COLUMNAS.TIPO]                 = data.tipo;
     nuevaFila[COLUMNAS.ALMUERZO]             = data.almuerzo || "";
-    nuevaFila[COLUMNAS.HORA]                 = esAusenciaTipo(data.tipo)
-                                               ? "00:00:00"
-                                               : Utilities.formatDate(ahora, Session.getScriptTimeZone(), "HH:mm:ss");
+    nuevaFila[COLUMNAS.HORA]                 = horaFinal;
     nuevaFila[COLUMNAS.LAT]                  = lat || "";
     nuevaFila[COLUMNAS.LNG]                  = lng || "";
     nuevaFila[COLUMNAS.DISPOSITIVO]          = data.dispositivo || "";
-    nuevaFila[COLUMNAS.TIMESTAMP]            = esAusenciaTipo(data.tipo) ? fechaRegistro : ahora;
+    nuevaFila[COLUMNAS.TIMESTAMP]            = tsFinal;
     nuevaFila[COLUMNAS.DIA]                  = diaDesc;
     nuevaFila[COLUMNAS.MODO]                 = modo;
     nuevaFila[COLUMNAS.HORAS_EXTRA]          = horasExtra;

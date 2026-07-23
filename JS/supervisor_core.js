@@ -1775,7 +1775,7 @@
             return;
           }
 
-          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
+          let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO' || String(r.tipo || '').toUpperCase() === 'ENTRADA_CAMPO');
           let atrasoMinsHoy = 0;
           if (primerReg) {
             let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
@@ -1795,7 +1795,7 @@
 
           sortedRegs.forEach(r => {
             const tipo = String(r.tipo || '').toUpperCase();
-            if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+            if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO' || tipo === 'ENTRADA_CAMPO') {
               entradaPendiente = r;
             } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
               if (entradaPendiente) {
@@ -2396,11 +2396,11 @@
           if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
           if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
           const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
-          if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
+          if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(tipo)) return true;
           return false;
         });
 
-        const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
+        const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
         const esFalta = regsDia.some(r => esAusenciaTipo(r.tipo)) || !tieneAsistencia;
 
         let periodosDia = [];
@@ -2410,7 +2410,7 @@
 
         regsDia.forEach(r => {
           const tipo = String(r.tipo || '').toUpperCase();
-          if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+          if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO' || tipo === 'ENTRADA_CAMPO') {
             let mE = obtenerMinutos(r.hora);
             if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
               minutosPermisoHoy += (mE - ultimoSalidaMins);
@@ -2766,6 +2766,7 @@
         netWorked += (tiempoPersonal + tiempoMedico);
         
         const descuentoDia = tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins);
+        const descuentoDiaVis = tiempoPersonal + atrasoMins;
 
         const todosRegsConModo = regsDia.filter(r => r.modo);
         const tieneCampo   = todosRegsConModo.some(r => r.modo === 'CAMPO');
@@ -2861,12 +2862,12 @@
       <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaE}</td>
       <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaS}</td>
       <td style="font-size:10px; padding:2px 3px;">${selectRazonHtml}</td>
+      <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}; font-size:10px; padding:2px 3px;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
       <td style="text-align:center; font-size:10px; padding:2px 4px;">${celdaGestionTiempos}</td>
-      <td style="text-align:center; color:var(--red); font-weight:600; font-size:10px; padding:2px 3px;">${descuentoDia > 0 ? minutosAHHMMSS(descuentoDia) : '—'}</td>
+      <td style="text-align:center; color:var(--red); font-weight:600; font-size:10px; padding:2px 3px;">${descuentoDiaVis > 0 ? minutosAHHMMSS(descuentoDiaVis) : '—'}</td>
       <td style="text-align:center; color:var(--green); font-weight:600; font-size:10px; padding:2px 3px;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
       <td style="font-size:10px; padding:2px 3px;">${aBadge}</td>
       <td style="font-size:10px; padding:2px 3px;">${extBadgeHtml}</td>
-      <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}; font-size:10px; padding:2px 3px;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
       <td style="text-align:center; font-size:10px; padding:2px 3px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}"><strong>${(h50+hC50) > 0 ? minutosAHHMMSS(h50+hC50) : '—'}</strong></td>
       <td style="text-align:center; font-size:10px; padding:2px 3px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}"><strong>${(h100+hC100) > 0 ? minutosAHHMMSS(h100+hC100) : '—'}</strong></td>
     </tr>`;
@@ -2895,6 +2896,7 @@
         <td></td>
         <td></td>
         <td></td>
+        <td style="text-align:center;color:var(--red);">${mA(totAtrasos)}</td>
         <td style="text-align:center; padding:3px 4px;">
           <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:5px; font-size:9.5px;">
             ${totTJustificado > 0 ? `<span style="color:#854d0e;" title="Total Tiempo Justificado">TJ: <strong>${minutosAHHMMSS(totTJustificado)}</strong></span>` : ''}
@@ -2908,7 +2910,6 @@
         <td style="text-align:center;color:var(--green);">${mA(totHoras)}</td>
         <td></td>
         <td></td>
-        <td style="text-align:center;color:var(--red);">${mA(totAtrasos)}</td>
         <td style="text-align:center;">${mA(totExtra50)}</td>
         <td style="text-align:center;">${mA(totExtra100)}</td>
       </tr>`;
@@ -3110,6 +3111,9 @@
             <button class="btn btn-primary" onclick="window.mostrarModalFuturos('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:var(--purple); border-color:var(--purple); color:white; cursor:pointer;">
               <i class="fas fa-calendar-plus"></i> Registrar Evento Futuro
             </button>
+            <button class="btn btn-primary" onclick="window.mostrarModalCampoSupervisor('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:#059669; border-color:#059669; color:white; cursor:pointer;">
+              <i class="fas fa-hammer"></i> Trabajo en Campo
+            </button>
           </div>
           <span style="color:var(--indigo);font-weight:600;font-size:13px;background:#e0e7ff;padding:4px 10px;border-radius:12px;">${periodoSeleccionado ? periodoSeleccionado.label : ''}</span>
         </div>
@@ -3123,12 +3127,12 @@
                   <th style="font-size:10px;padding:3px 4px;">Entrada</th>
                   <th style="font-size:10px;padding:3px 4px;">Salida</th>
                   <th style="font-size:10px;padding:3px 4px;">Razón</th>
+                  <th style="font-size:10px;padding:3px 4px;text-align:center;">Atraso</th>
                   <th style="font-size:10px;padding:3px 4px;text-align:center;" title="Gestión de Tiempos: Justificado (TJ), Personal (TP), Médico (TM), Por Justificar (Falt)">Novedades / Tiempos</th>
                   <th style="font-size:10px;padding:3px 4px;text-align:center;color:var(--red);" title="Tiempo a Descontar (Tiempo Personal + Faltante/Atrasos sin duplicar)">T. Descontar</th>
                   <th style="font-size:10px;padding:3px 4px;" title="Total Horas Trabajadas">Tot.Hrs</th>
                   <th style="font-size:10px;padding:3px 4px;">Alm.</th>
                   <th style="font-size:10px;padding:3px 4px;" title="Horas Extra Autorizadas">HE Aut.</th>
-                  <th style="font-size:10px;padding:3px 4px;">Atraso</th>
                   <th style="font-size:10px;padding:3px 4px;" title="Horas Extra 50% (Oficina + Campo)">H.E. 50%</th>
                   <th style="font-size:10px;padding:3px 4px;" title="Horas Extra 100% (Oficina + Campo)">H.E. 100%</th>
                 </tr>
@@ -7518,5 +7522,415 @@
         mostrarLoader(false);
         console.error('toggleEmergenciaSupervisor error:', e);
         mostrarToast('Error: ' + (e.message || 'No se pudo conectar con el servidor'), 'error');
+      }
+    };
+
+    // ponytail: Supervisor Multi-date Trabajo en Campo modal, auto-load & overwrite confirmation
+    let _supDiasCampoState = [];
+
+    window.mostrarModalCampoSupervisor = async function(empId) {
+      const modal = document.getElementById('trabajoCampoSupModal');
+      if (!modal) return;
+
+      const emp = empCache.find(e => e.id === empId);
+      const empNombre = emp ? emp.nombre : empId;
+
+      document.getElementById('supCampoEmpId').value = empId;
+      document.getElementById('supCampoEmpNombreDisplay').value = `${empId} - ${empNombre}`;
+      document.getElementById('supCampoProyectoInput').value = '';
+      
+      const hoy = new Date();
+      const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+      document.getElementById('supCampoFechaInicioInput').value = hoyStr;
+      document.getElementById('supCampoFechaFinInput').value = hoyStr;
+      document.getElementById('supCampoObservacionesInput').value = '';
+
+      await cargarIngenierosAutorizadoresSupervisor();
+      await generarListaDiasCampoSupervisor();
+      modal.classList.remove('hidden');
+    };
+
+    window.cerrarModalCampoSupervisor = function() {
+      const modal = document.getElementById('trabajoCampoSupModal');
+      if (modal) modal.classList.add('hidden');
+    };
+
+    window.generarListaDiasCampoSupervisor = async function() {
+      const empId = document.getElementById('supCampoEmpId')?.value;
+      const fIniStr = document.getElementById('supCampoFechaInicioInput')?.value;
+      const fFinStr = document.getElementById('supCampoFechaFinInput')?.value;
+      const container = document.getElementById('supListaDiasCampoContainer');
+      const cntSpan = document.getElementById('supCntDiasCampo');
+
+      if (!container || !fIniStr || !fFinStr) return;
+
+      const dIni = new Date(fIniStr + 'T12:00:00');
+      const dFin = new Date(fFinStr + 'T12:00:00');
+
+      if (isNaN(dIni.getTime()) || isNaN(dFin.getTime()) || dFin < dIni) {
+        container.innerHTML = `<div style="background:#fef3c7; border:1px solid #fde68a; padding:8px 12px; border-radius:6px; font-size:12px; color:#b45309;">Selecciona un rango de fechas válido.</div>`;
+        return;
+      }
+
+      // Buscar únicamente registros existentes de TRABAJO EN CAMPO (por modo, tipo o razón)
+      function esRegistroCampoSup(r) {
+        if (!r) return false;
+        const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const m = String(r.modo || '').toUpperCase();
+        const raz = String(r.razon_ausencia || r.razon || r.observaciones || '').toUpperCase();
+        return (
+          m === 'CAMPO' || 
+          t.includes('CAMPO') || 
+          t === 'TRABAJO_DE_CAMPO' || 
+          t === 'SALIDA_A_CAMPO' || 
+          raz.includes('CAMPO') || 
+          raz.includes('TRABAJO_DE_CAMPO') || 
+          raz.includes('TRABAJO EN CAMPO')
+        );
+      }
+
+      let regsExistentes = [];
+      const empObj = (empCache || []).find(e => e.id === empId);
+      if (empObj && Array.isArray(empObj.registros)) {
+        empObj.registros.forEach(r => {
+          if (esRegistroCampoSup(r)) regsExistentes.push(r);
+        });
+      }
+
+      const firestoreDb = (typeof db !== 'undefined' ? db : (window.db || null));
+      if (empId && firestoreDb && typeof firestoreDb.collection === 'function') {
+        try {
+          const snap = await firestoreDb.collection('registros').where('empleadoId', '==', empId).get();
+          snap.forEach(doc => {
+            const d = doc.data();
+            if (esRegistroCampoSup(d)) {
+              if (!regsExistentes.some(x => x.id === doc.id || (x.fecha === d.fecha && x.tipo === d.tipo))) {
+                regsExistentes.push({ id: doc.id, ...d });
+              }
+            }
+          });
+        } catch(e) {}
+      }
+
+      const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      const fechas = [];
+      let curr = new Date(dIni);
+
+      while (curr <= dFin) {
+        const y = curr.getFullYear();
+        const m = String(curr.getMonth() + 1).padStart(2, '0');
+        const d = String(curr.getDate()).padStart(2, '0');
+        const fStr = `${y}-${m}-${d}`;
+        const diaNombre = diasSemana[curr.getDay()];
+
+        const regsFecha = regsExistentes.filter(r => r.fecha === fStr && esRegistroCampoSup(r));
+        const regEntrada = regsFecha.find(r => {
+          const t = String(r.tipo || '').toUpperCase();
+          return t === 'ENTRADA_CAMPO' || t === 'RETORNO_CAMPO' || (t.includes('ENTRADA') && t.includes('CAMPO')) || t === 'ENTRADA';
+        });
+        const regSalida = regsFecha.find(r => {
+          const t = String(r.tipo || '').toUpperCase();
+          return t === 'SALIDA_CAMPO' || (t.includes('SALIDA') && t.includes('CAMPO')) || t === 'SALIDA';
+        });
+
+        const hoyObj = new Date();
+        const hoyStr = `${hoyObj.getFullYear()}-${String(hoyObj.getMonth() + 1).padStart(2, '0')}-${String(hoyObj.getDate()).padStart(2, '0')}`;
+
+        const yaExiste = regsFecha.length > 0;
+        const esPasado = fStr < hoyStr;
+
+        // Omitir fechas pasadas que no correspondan a Trabajo en Campo previo
+        if (!esPasado || yaExiste) {
+          const hEntrada = regEntrada && regEntrada.hora ? regEntrada.hora.substring(0, 5) : '';
+          const hSalida = regSalida && regSalida.hora ? regSalida.hora.substring(0, 5) : '';
+
+          fechas.push({
+            fecha: fStr,
+            diaNombre: diaNombre,
+            isFestivo: (typeof esFeriado === 'function' && esFeriado(fStr)) || curr.getDay() === 0 || curr.getDay() === 6,
+            hE: hEntrada,
+            hS: hSalida,
+            yaExiste: yaExiste,
+            docEntradaId: regEntrada ? regEntrada.id : null,
+            docSalidaId: regSalida ? regSalida.id : null
+          });
+        }
+
+        curr.setDate(curr.getDate() + 1);
+      }
+
+      // Auto-cargar Proyecto, Observaciones y Autorizado Por si existe algún registro de CAMPO previo en el rango
+      const regConInfo = regsExistentes.find(r => {
+        if (!r.fecha) return false;
+        return r.fecha >= fIniStr && r.fecha <= fFinStr && (r.observaciones || r.razon_ausencia || r.autoriza);
+      });
+
+      if (regConInfo) {
+        const proyInput = document.getElementById('supCampoProyectoInput');
+        const obsInput = document.getElementById('supCampoObservacionesInput');
+        const autSelect = document.getElementById('supCampoAutorizadoPorSelect');
+
+        const rawObs = String(regConInfo.observaciones || regConInfo.razon_ausencia || '').trim();
+        let projFound = '';
+        let obsFound = '';
+
+        const match = rawObs.match(/\[Proyecto:\s*([^\]]+)\]/i);
+        if (match) {
+          projFound = match[1].trim();
+          obsFound = rawObs.replace(match[0], '').trim();
+        } else {
+          obsFound = rawObs;
+        }
+
+        if (proyInput && projFound) proyInput.value = projFound;
+        if (obsInput && obsFound && obsFound.toUpperCase() !== 'TRABAJO EN CAMPO') obsInput.value = obsFound;
+        if (autSelect && regConInfo.autoriza) {
+          autSelect.value = regConInfo.autoriza;
+        }
+      }
+
+      _supDiasCampoState = fechas;
+      if (cntSpan) cntSpan.textContent = `${fechas.length} día(s)`;
+      renderListaDiasCampoSupervisorHTML();
+    };
+
+    function calcularTotalesDiaCampo(fechaVal, hEStr, hSStr) {
+      if (!hEStr || !hSStr) return { t50: '0h 0m', t100: '0h 0m' };
+      function toMins(hStr) {
+        const parts = hStr.split(':');
+        if (parts.length < 2) return null;
+        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      }
+      const mE = toMins(hEStr);
+      const mS = toMins(hSStr);
+      if (mE === null || mS === null || mS <= mE) return { t50: '0h 0m', t100: '0h 0m' };
+
+      const minutosBrutos = mS - mE;
+      const minutosNetos = Math.max(0, minutosBrutos - 30);
+
+      const parts = fechaVal.split('-');
+      const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+      const esFestivo = (typeof esFeriado === 'function' && esFeriado(fechaVal)) || dObj.getDay() === 0 || dObj.getDay() === 6;
+
+      let t50 = 0, t100 = 0;
+      if (esFestivo) {
+        t100 = minutosNetos;
+      } else {
+        const antes = Math.max(0, 450 - mE);
+        const despues = Math.max(0, mS - 975);
+        t50 = antes + despues;
+      }
+
+      function fmt(m) {
+        return `${Math.floor(m / 60)}h ${Math.round(m % 60)}m`;
+      }
+      return { t50: fmt(t50), t100: fmt(t100) };
+    }
+    window.calcularTotalesDiaCampo = calcularTotalesDiaCampo;
+
+    window.renderListaDiasCampoSupervisorHTML = function() {
+      const container = document.getElementById('supListaDiasCampoContainer');
+      if (!container) return;
+
+      if (_supDiasCampoState.length === 0) {
+        container.innerHTML = `<div style="background:#f1f5f9; padding:8px; border-radius:6px; font-size:12px; text-align:center; color:#64748b;">No hay fechas válidas disponibles en el rango seleccionado (las fechas pasadas que no sean Trabajo en Campo no están disponibles).</div>`;
+        return;
+      }
+
+      container.innerHTML = _supDiasCampoState.map((item, idx) => {
+        const totales = calcularTotalesDiaCampo(item.fecha, item.hE, item.hS);
+        const bgStyle = item.yaExiste ? '#fff7ed' : '#ffffff';
+        const borderStyle = item.yaExiste ? '#fdba74' : '#e2e8f0';
+
+        return `
+        <div style="background: ${bgStyle}; border: 1px solid ${borderStyle}; padding: 10px; border-radius: 8px; margin-bottom: 8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div>
+              <span style="font-weight:700; font-size:12.5px; color:#1e293b;">${item.fecha} (${item.diaNombre})</span>
+              ${item.isFestivo ? '<span style="background:#fef3c7; color:#b45309; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:4px;">Festivo / Finde</span>' : ''}
+              ${item.yaExiste ? '<span style="background:#ffedd5; color:#c2410c; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:4px;">⚠️ Registro existente (Se actualizará)</span>' : ''}
+            </div>
+            ${_supDiasCampoState.length > 1 ? `<button type="button" onclick="eliminarDiaCampoSupervisor(${idx})" style="background:none; border:none; color:#ef4444; font-weight:700; cursor:pointer; font-size:16px; padding:0 4px;" title="Quitar fecha">&times;</button>` : ''}
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; align-items:center;">
+            <div>
+              <label style="font-size:10px; font-weight:700; color:#64748b; display:block;">ENTRADA</label>
+              <input type="time" class="form-input" value="${item.hE}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hE', this.value)" style="padding:4px 6px; font-size:12px; height:auto; border-radius:6px;">
+            </div>
+            <div>
+              <label style="font-size:10px; font-weight:700; color:#64748b; display:block;">SALIDA</label>
+              <input type="time" class="form-input" value="${item.hS}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hS', this.value)" style="padding:4px 6px; font-size:12px; height:auto; border-radius:6px;">
+            </div>
+            <div style="text-align:center;">
+              <small style="font-size:9.5px; font-weight:700; color:#b45309; display:block;">50%</small>
+              <span style="font-weight:800; font-size:12px; color:#d97706;">${totales.t50}</span>
+            </div>
+            <div style="text-align:center;">
+              <small style="font-size:9.5px; font-weight:700; color:#b91c1c; display:block;">100%</small>
+              <span style="font-weight:800; font-size:12px; color:#dc2626;">${totales.t100}</span>
+            </div>
+          </div>
+        </div>
+        `;
+      }).join('');
+    };
+
+    window.actualizarHorarioDiaCampoSupervisor = function(idx, prop, val) {
+      if (_supDiasCampoState[idx]) {
+        _supDiasCampoState[idx][prop] = val;
+        renderListaDiasCampoSupervisorHTML();
+      }
+    };
+
+    window.eliminarDiaCampoSupervisor = function(idx) {
+      _supDiasCampoState.splice(idx, 1);
+      const cntSpan = document.getElementById('supCntDiasCampo');
+      if (cntSpan) cntSpan.textContent = `${_supDiasCampoState.length} día(s)`;
+      renderListaDiasCampoSupervisorHTML();
+    };
+
+    window.cargarIngenierosAutorizadoresSupervisor = async function() {
+      const select = document.getElementById('supCampoAutorizadoPorSelect');
+      if (!select) return;
+
+      select.innerHTML = '<option value="">-- Cargando Autorizadores (Ingeniería)... --</option>';
+      let ingenieros = [];
+
+      const firestoreDb = (typeof db !== 'undefined' ? db : (window.db || null));
+      if (firestoreDb && typeof firestoreDb.collection === 'function') {
+        try {
+          const snap = await firestoreDb.collection('empleados').get();
+          snap.forEach(doc => {
+            const d = doc.data();
+            const areaStr = String(d.area || d.cargo || '').toUpperCase().trim();
+            const normStr = areaStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+            const esActivo = d.activo === 'SI' || d.activo === true || d.activo !== 'NO';
+            const esIngenieria = normStr.includes('INGENIERIA') || normStr.includes('INGENIERO') || normStr.includes('ING');
+
+            if (esActivo && esIngenieria) {
+              ingenieros.push({ id: doc.id, nombre: d.nombre, area: d.area || d.cargo || 'INGENIERIA' });
+            }
+          });
+        } catch(e) {}
+      }
+
+      const unicosMap = new Map();
+      ingenieros.forEach(item => {
+        if (item.nombre && !unicosMap.has(item.nombre)) {
+          unicosMap.set(item.nombre, item);
+        }
+      });
+      const listaFinal = Array.from(unicosMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+      if (listaFinal.length > 0) {
+        select.innerHTML = '<option value="">-- Seleccionar Autorizador (Ingeniería) --</option>' +
+          listaFinal.map(i => `<option value="${i.nombre}">${i.nombre} (${i.area || 'INGENIERIA'})</option>`).join('');
+      } else {
+        select.innerHTML = '<option value="">-- Sin personal del área de Ingeniería encontrado --</option>';
+      }
+    };
+
+    window.guardarTrabajoEnCampoSupervisor = async function() {
+      const empId = document.getElementById('supCampoEmpId')?.value;
+      const proyecto = document.getElementById('supCampoProyectoInput')?.value.trim();
+      const obs = document.getElementById('supCampoObservacionesInput')?.value.trim();
+      const autoriza = document.getElementById('supCampoAutorizadoPorSelect')?.value;
+
+      if (!empId) { mostrarToast('ID de empleado no especificado', 'error'); return; }
+      if (!proyecto) { mostrarToast('Ingresa el nombre del proyecto', 'error'); return; }
+      if (!_supDiasCampoState || _supDiasCampoState.length === 0) { mostrarToast('No hay fechas válidas disponibles en el rango seleccionado.', 'error'); return; }
+      if (!autoriza) { mostrarToast('Selecciona quién autoriza la actividad', 'error'); return; }
+
+      const diasExistentes = _supDiasCampoState.filter(d => d.yaExiste);
+      if (diasExistentes.length > 0) {
+        const listaFechas = diasExistentes.map(d => `${d.fecha} (${d.diaNombre})`).join('\n• ');
+        const confirmar = confirm(`⚠️ ATENCIÓN:\nYa existe(n) registro(s) previo(s) para la(s) fecha(s):\n• ${listaFechas}\n\n¿Deseas SOBREESCRIBIR / ACTUALIZAR estos registros?`);
+        if (!confirmar) return;
+      }
+
+      const emp = empCache.find(e => e.id === empId);
+      const empNombre = emp ? emp.nombre : empId;
+      const obsFinal = obs ? `[Proyecto: ${proyecto}] ${obs}` : `[Proyecto: ${proyecto}] Trabajo en Campo`;
+
+      const btn = document.getElementById('btnGuardarCampoSup');
+      if (btn) btn.disabled = true;
+
+      for (const item of _supDiasCampoState) {
+        if (!item.hE || !item.hS) {
+          mostrarToast(`Por favor ingresa la hora de entrada y salida para la fecha ${item.fecha}`, 'error');
+          if (btn) btn.disabled = false;
+          return;
+        }
+      }
+
+      try {
+        const firestoreDb = (typeof db !== 'undefined' ? db : (window.db || null));
+        if (!firestoreDb || typeof firestoreDb.collection !== 'function') {
+          mostrarToast('Base de datos Firebase no disponible', 'error');
+          if (btn) btn.disabled = false;
+          return;
+        }
+
+        let guardadosCount = 0;
+        for (const item of _supDiasCampoState) {
+          const hE = item.hE.length === 5 ? item.hE + ':00' : item.hE;
+          const hS = item.hS.length === 5 ? item.hS + ':00' : item.hS;
+          const hEClean = hE.replace(/:/g, '');
+          const hSClean = hS.replace(/:/g, '');
+
+          const targetEntradaId = item.docEntradaId || `${empId}_Entrada_campo_${item.fecha}_${hEClean}`;
+          const targetSalidaId = item.docSalidaId || `${empId}_SALIDA_CAMPO_${item.fecha}_${hSClean}`;
+
+          const tsEntrada = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hE}`));
+          const tsSalida = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hS}`));
+
+          const dataEntrada = {
+            empleadoId: empId,
+            nombre: empNombre,
+            fecha: item.fecha,
+            hora: hE,
+            tipo: 'Entrada_campo',
+            almuerzo: '',
+            dispositivo: 'FORM_CAMPO_SUPERVISOR',
+            timestamp: tsEntrada,
+            modo: 'CAMPO',
+            horasExtra: 'SI',
+            autoriza: autoriza,
+            observaciones: obsFinal,
+            razon_ausencia: obsFinal
+          };
+
+          const dataSalida = {
+            empleadoId: empId,
+            nombre: empNombre,
+            fecha: item.fecha,
+            hora: hS,
+            tipo: 'SALIDA_CAMPO',
+            almuerzo: '',
+            dispositivo: 'FORM_CAMPO_SUPERVISOR',
+            timestamp: tsSalida,
+            modo: 'CAMPO',
+            horasExtra: 'SI',
+            autoriza: autoriza,
+            observaciones: obsFinal,
+            razon_ausencia: obsFinal
+          };
+
+          await firestoreDb.collection('registros').doc(targetEntradaId).set(dataEntrada, { merge: true });
+          await firestoreDb.collection('registros').doc(targetSalidaId).set(dataSalida, { merge: true });
+          guardadosCount++;
+        }
+
+        mostrarToast(`✅ Trabajo en Campo guardado/actualizado para ${guardadosCount} día(s)`, 'success');
+        cerrarModalCampoSupervisor();
+
+        if (typeof window.cargarResumenGeneral === 'function') {
+          window.cargarResumenGeneral();
+        }
+      } catch(e) {
+        mostrarToast('Error al guardar Trabajo en Campo: ' + e.message, 'error');
+      } finally {
+        if (btn) btn.disabled = false;
       }
     };
