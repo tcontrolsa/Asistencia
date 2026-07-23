@@ -7564,10 +7564,18 @@
 
       if (!container || !fIniStr || !fFinStr) return;
 
-      const dIni = new Date(fIniStr + 'T12:00:00');
-      const dFin = new Date(fFinStr + 'T12:00:00');
+      function parseFechaLocalStr(fStr) {
+        if (!fStr) return null;
+        const parts = fStr.split('-');
+        if (parts.length < 3) return null;
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
+        return isNaN(d.getTime()) ? null : d;
+      }
 
-      if (isNaN(dIni.getTime()) || isNaN(dFin.getTime()) || dFin < dIni) {
+      const dIni = parseFechaLocalStr(fIniStr);
+      const dFin = parseFechaLocalStr(fFinStr);
+
+      if (!dIni || !dFin || dFin < dIni) {
         container.innerHTML = `<div style="background:#fef3c7; border:1px solid #fde68a; padding:8px 12px; border-radius:6px; font-size:12px; color:#b45309;">Selecciona un rango de fechas válido.</div>`;
         return;
       }
@@ -7752,20 +7760,20 @@
             </div>
             ${_supDiasCampoState.length > 1 ? `<button type="button" onclick="eliminarDiaCampoSupervisor(${idx})" style="background:none; border:none; color:#ef4444; font-weight:700; cursor:pointer; font-size:16px; padding:0 4px;" title="Quitar fecha">&times;</button>` : ''}
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; align-items:center;">
-            <div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+            <div style="flex:1; min-width:115px;">
               <label style="font-size:10px; font-weight:700; color:#64748b; display:block;">ENTRADA</label>
-              <input type="time" class="form-input" value="${item.hE}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hE', this.value)" style="padding:4px 6px; font-size:12px; height:auto; border-radius:6px;">
+              <input type="time" class="form-input" value="${item.hE}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hE', this.value)" oninput="actualizarHorarioDiaCampoSupervisor(${idx}, 'hE', this.value)" style="padding:6px 8px; font-size:13px; height:auto; border-radius:6px; width:100%;">
             </div>
-            <div>
+            <div style="flex:1; min-width:115px;">
               <label style="font-size:10px; font-weight:700; color:#64748b; display:block;">SALIDA</label>
-              <input type="time" class="form-input" value="${item.hS}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hS', this.value)" style="padding:4px 6px; font-size:12px; height:auto; border-radius:6px;">
+              <input type="time" class="form-input" value="${item.hS}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hS', this.value)" oninput="actualizarHorarioDiaCampoSupervisor(${idx}, 'hS', this.value)" style="padding:6px 8px; font-size:13px; height:auto; border-radius:6px; width:100%;">
             </div>
-            <div style="text-align:center;">
+            <div style="text-align:center; min-width:50px;">
               <small style="font-size:9.5px; font-weight:700; color:#b45309; display:block;">50%</small>
               <span style="font-weight:800; font-size:12px; color:#d97706;">${totales.t50}</span>
             </div>
-            <div style="text-align:center;">
+            <div style="text-align:center; min-width:50px;">
               <small style="font-size:9.5px; font-weight:700; color:#b91c1c; display:block;">100%</small>
               <span style="font-weight:800; font-size:12px; color:#dc2626;">${totales.t100}</span>
             </div>

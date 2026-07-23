@@ -1016,8 +1016,8 @@
   </div>
 
   <!-- MODAL TRABAJO EN CAMPO (SUPERVISOR) -->
-  <div id="trabajoCampoSupModal" class="modal-overlay hidden">
-    <div class="modal-container" style="max-width: 520px;">
+  <div id="trabajoCampoSupModal" class="modal-overlay hidden" style="z-index: 9999;">
+    <div class="modal-container" style="max-width: 520px; width: 95%; max-height: 90vh; overflow-y: auto;">
       <div class="modal-header" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); color:white; border-radius: 12px 12px 0 0;">
         <h3 class="modal-title" style="color:white;"><i class="fas fa-hammer"></i> Registrar Trabajo en Campo</h3>
         <button class="modal-close" onclick="cerrarModalCampoSupervisor()" style="color:white; opacity:0.8;">&times;</button>
@@ -1041,11 +1041,11 @@
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">📅 Desde *</label>
-              <input type="date" id="supCampoFechaInicioInput" class="form-input" onchange="generarListaDiasCampoSupervisor()" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:13px;" required>
+              <input type="date" id="supCampoFechaInicioInput" class="form-input" onchange="generarListaDiasCampoSupervisor()" oninput="generarListaDiasCampoSupervisor()" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:13px;" required>
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">📅 Hasta *</label>
-              <input type="date" id="supCampoFechaFinInput" class="form-input" onchange="generarListaDiasCampoSupervisor()" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:13px;" required>
+              <input type="date" id="supCampoFechaFinInput" class="form-input" onchange="generarListaDiasCampoSupervisor()" oninput="generarListaDiasCampoSupervisor()" style="border:2px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:13px;" required>
             </div>
           </div>
 
