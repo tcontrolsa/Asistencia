@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ========== FUNCIONES DE DISTANCIA GLOBAL ==========
+// ========== FUNCIONES DE DISTANCIA GLOBAL Y UTILIDADES DE FECHA / SEGURIDAD ==========
 function calcularDistancia(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
@@ -180,4 +180,22 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
     const Δλ = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function parseFechaLocalStr(fStr) {
+    if (!fStr) return null;
+    const parts = String(fStr).trim().split('-');
+    if (parts.length < 3) return null;
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }

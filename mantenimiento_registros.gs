@@ -417,9 +417,21 @@ function crearHojaReporte() {
   let sheet = ss.getSheetByName('REPORTE_MANTENIMIENTO');
   
   if (sheet) {
-    sheet.clear();
+    sheet.clear({ contentsOnly: false, formatOnly: false });
+    sheet.getRange(1, 1, Math.max(1, sheet.getMaxRows()), Math.max(1, sheet.getMaxColumns())).breakApart();
   } else {
     sheet = ss.insertSheet('REPORTE_MANTENIMIENTO');
+  }
+
+  // Asegurar que la hoja tenga al menos 7 columnas
+  if (sheet.getMaxColumns() < 7) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), 7 - sheet.getMaxColumns());
+  }
+
+  // Asegurar que la hoja tenga filas suficientes para el encabezado y registros
+  const filasNecesarias = 15 + (logsMantenimiento.length * 2);
+  if (sheet.getMaxRows() < filasNecesarias) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), filasNecesarias - sheet.getMaxRows());
   }
 
   // Si no hay logs, crear un reporte vacío indicando que todo está limpio
@@ -505,6 +517,10 @@ function crearHojaReporte() {
   const GROUP_BG_B = "#fefce8"; // amarillo muy claro para grupos impares
 
   for (let i = 0; i < ordenados.length; i++) {
+    if (currentRow + 2 > sheet.getMaxRows()) {
+      sheet.insertRowsAfter(sheet.getMaxRows(), 50);
+    }
+
     const log = ordenados[i];
     const isNewId = log.id !== lastId;
 

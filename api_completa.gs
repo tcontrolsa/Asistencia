@@ -477,6 +477,9 @@ function procesarAccion(params) {
     case 'eliminarSupervisor':
       return eliminarSupervisor(params.empleadoId);
       
+    case 'eliminarEmpleadoDefinitivo':
+      return eliminarEmpleadoDefinitivo(params);
+      
     case 'listarSupervisores':
       return listarSupervisores();
       
@@ -1935,10 +1938,66 @@ function eliminarSupervisor(empleadoId) {
     
     sheet.getRange(fila, COLUMNAS_EMPLEADOS.SUPERVISOR + 1).setValue("");
     return { ok: true, mensaje: "Supervisor eliminado correctamente" };
-  } catch (error) {
-    console.error("Error en eliminarSupervisor:", error);
-    return { error: error.toString() };
   } finally { lock.releaseLock(); }
+}
+
+function eliminarEmpleadoDefinitivo(params) {
+  const lock = LockService.getDocumentLock();
+  try {
+    lock.waitLock(15000);
+    
+    let ids = [];
+    if (params.empleadoIds) {
+      ids = String(params.empleadoIds).split(',').map(s => s.trim()).filter(Boolean);
+    } else if (params.empleadoId) {
+      ids = [String(params.empleadoId).trim()];
+    }
+    
+    if (ids.length === 0) return { error: "No se especificaron IDs de empleados a eliminar" };
+
+    const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
+    if (!sheet) return { error: "Hoja EMPLEADOS no encontrada" };
+
+    const data = sheet.getDataRange().getValues();
+    let idsSet = new Set(ids);
+    let eliminados = [];
+
+    // Recorrer de abajo hacia arriba para eliminar filas en la hoja EMPLEADOS
+    for (let i = data.length - 1; i >= 1; i--) {
+      const rowId = String(data[i][COLUMNAS_EMPLEADOS.ID] || '').trim();
+      if (idsSet.has(rowId)) {
+        const nombreEmp = String(data[i][COLUMNAS_EMPLEADOS.NOMBRE] || '').trim();
+        eliminados.push({ id: rowId, nombre: nombreEmp || rowId });
+        sheet.deleteRow(i + 1);
+      }
+    }
+
+    // Si params.eliminarRegistros === 'SI', eliminar también marcaciones de REGISTROS
+    if (params.eliminarRegistros === 'SI') {
+      const sheetRegs = SpreadsheetApp.getActive().getSheetByName(HOJA_REGISTROS);
+      if (sheetRegs) {
+        const regData = sheetRegs.getDataRange().getValues();
+        for (let j = regData.length - 1; j >= 1; j--) {
+          const rId = String(regData[j][COLUMNAS.ID] || '').trim();
+          if (idsSet.has(rId)) {
+            sheetRegs.deleteRow(j + 1);
+          }
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      totalEliminados: eliminados.length,
+      detalles: eliminados,
+      mensaje: `Se eliminaron exitosamente ${eliminados.length} colaborador(es) de la base de datos de empleados.`
+    };
+  } catch (error) {
+    console.error("Error en eliminarEmpleadoDefinitivo:", error);
+    return { error: error.toString() };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }
 
 function listarSupervisores() {
@@ -2599,50 +2658,60 @@ function actualizarAlmuerzoSupervisor(params) {
     const empleadoId = params.empleadoId?.toString().trim();
     const nuevoAlmuerzo = params.almuerzo?.toString().trim().toUpperCase();
     
-    if (!empleadoId) return { error: "ID de empleado no vÃ¡lido" };
-    if (!["SI", "NO"].includes(nuevoAlmuerzo)) return { error: "Valor de almuerzo no vÃ¡lido. Use SI o NO" };
+    if (!empleadoId) return { error: "ID de empleado no válido" };
+    if (!["SI", "NO"].includes(nuevoAlmuerzo)) return { error: "Valor de almuerzo no válido. Use SI o NO" };
     
     const timeZone = Session.getScriptTimeZone();
     const hoyStr = Utilities.formatDate(new Date(), timeZone, 'yyyy-MM-dd');
+    const targetFecha = (params.fecha && params.fecha.toString().trim()) ? params.fecha.toString().trim() : hoyStr;
     
     const ss = SpreadsheetApp.getActive();
     const sheetRegistros = ss.getSheetByName(HOJA_REGISTROS);
     
     if (!sheetRegistros) return { error: "Hoja REGISTROS no encontrada" };
     
-    // Buscar el registro de entrada de hoy para este empleado
+    // Buscar el registro de este empleado para la fecha especificada (pasada o actual)
     const data = sheetRegistros.getDataRange().getValues();
-    let filaEncontrada = -1;
+    let filaPreferida = -1;
+    let filaCualquiera = -1;
     let valorAnterior = "";
     let empleadoNombre = "";
     
     for (let i = 1; i < data.length; i++) {
-      const fecha = data[i][COLUMNAS.FECHA];
+      const fechaCell = data[i][COLUMNAS.FECHA];
       let fechaStr = '';
-      if (fecha instanceof Date) {
-        fechaStr = Utilities.formatDate(fecha, timeZone, 'yyyy-MM-dd');
-      } else if (typeof fecha === 'string') {
-        fechaStr = fecha;
+      if (fechaCell instanceof Date) {
+        fechaStr = Utilities.formatDate(fechaCell, timeZone, 'yyyy-MM-dd');
+      } else if (typeof fechaCell === 'string') {
+        fechaStr = fechaCell.trim().substring(0, 10);
       }
       
       const id = data[i][COLUMNAS.ID]?.toString().trim() || '';
-      const tipo = data[i][COLUMNAS.TIPO]?.toString() || '';
+      const tipo = data[i][COLUMNAS.TIPO]?.toString().toUpperCase() || '';
       
-      if (fechaStr === hoyStr && id === empleadoId && (tipo === "ENTRADA" || tipo === "SOLO_ALMUERZO")) {
-        filaEncontrada = i + 1;
-        valorAnterior = data[i][COLUMNAS.ALMUERZO]?.toString() || '';
-        empleadoNombre = data[i][COLUMNAS.NOMBRE]?.toString() || '';
-        break;
+      if (fechaStr === targetFecha && id === empleadoId) {
+        if (["ENTRADA", "ENTRADA_CAMPO", "RETORNO_CAMPO", "SOLO_ALMUERZO"].includes(tipo)) {
+          filaPreferida = i + 1;
+          valorAnterior = data[i][COLUMNAS.ALMUERZO]?.toString() || '';
+          empleadoNombre = data[i][COLUMNAS.NOMBRE]?.toString() || '';
+          break;
+        } else if (filaCualquiera === -1) {
+          filaCualquiera = i + 1;
+          valorAnterior = data[i][COLUMNAS.ALMUERZO]?.toString() || '';
+          empleadoNombre = data[i][COLUMNAS.NOMBRE]?.toString() || '';
+        }
       }
     }
     
+    const filaEncontrada = filaPreferida !== -1 ? filaPreferida : filaCualquiera;
+    
     if (filaEncontrada === -1) {
-      // Si no hay registro previo de ENTRADA o SOLO_ALMUERZO, lo creamos para usuarios sin asistencia.
+      // Si no hay registro previo para esa fecha, creamos uno de SOLO_ALMUERZO para la fecha especificada
       const infoEmpleado = obtenerInfoEmpleado(empleadoId);
       empleadoNombre = infoEmpleado.encontrado ? infoEmpleado.nombre : 'Desconocido';
       const ahora = new Date();
       const nuevaFila = new Array(21).fill("");
-      nuevaFila[COLUMNAS.FECHA] = hoyStr;
+      nuevaFila[COLUMNAS.FECHA] = targetFecha;
       nuevaFila[COLUMNAS.ID] = empleadoId;
       nuevaFila[COLUMNAS.NOMBRE] = empleadoNombre;
       nuevaFila[COLUMNAS.TIPO] = "SOLO_ALMUERZO";
@@ -2656,11 +2725,11 @@ function actualizarAlmuerzoSupervisor(params) {
       sheetRegistros.appendRow(nuevaFila);
       valorAnterior = "NINGUNO";
     } else {
-      // Actualizar el campo de almuerzo
+      // Actualizar el campo de almuerzo en la fila existente encontrada
       sheetRegistros.getRange(filaEncontrada, COLUMNAS.ALMUERZO + 1).setValue(nuevoAlmuerzo);
     }
     
-    // Registrar en hoja de auditorÃ­a
+    // Registrar en hoja de auditoría
     let sheetAuditoria = ss.getSheetByName("AUDITORIA_ALMUERZOS");
     if (!sheetAuditoria) {
       sheetAuditoria = ss.insertSheet("AUDITORIA_ALMUERZOS");
@@ -2671,7 +2740,7 @@ function actualizarAlmuerzoSupervisor(params) {
     const ahora = new Date();
     const horaActual = Utilities.formatDate(ahora, timeZone, 'HH:mm:ss');
     
-    sheetAuditoria.appendRow([hoyStr, horaActual, empleadoId, empleadoNombre, valorAnterior, nuevoAlmuerzo, "SUPERVISOR"]);
+    sheetAuditoria.appendRow([targetFecha, horaActual, empleadoId, empleadoNombre, valorAnterior, nuevoAlmuerzo, "SUPERVISOR"]);
     
     return { ok: true, mensaje: "Almuerzo actualizado correctamente" };
     
@@ -2679,7 +2748,7 @@ function actualizarAlmuerzoSupervisor(params) {
     console.error("Error en actualizarAlmuerzoSupervisor:", error);
     return { error: error.toString() };
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) {}
   }
 }
 

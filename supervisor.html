@@ -230,13 +230,13 @@
 
         <div class="metricas-row" style="grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));">
           <div class="metric-card">
-            <div class="metric-title"><i class="fas fa-user-clock"></i> Sin Salida en el Período</div>
+            <div class="metric-title"><i class="fas fa-magic"></i> Autocompletados en el Período</div>
             <div id="sinSalidaRanking" class="ranking-list" style="max-height: 250px; overflow-y: auto;">
               <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
             </div>
           </div>
           <div class="metric-card">
-            <div class="metric-title"><i class="fas fa-calendar-times"></i> Faltas y Ausencias del Período</div>
+            <div class="metric-title"><i class="fas fa-calendar-times"></i> Faltas Injustificadas del Período</div>
             <div id="ausenciasRanking" class="ranking-list" style="max-height: 250px; overflow-y: auto;">
               <div class="empty-state"><i class="fas fa-spinner fa-spin"></i></div>
             </div>
@@ -249,31 +249,31 @@
 
           <!-- KPI Cards de Reportes -->
           <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('faltas')" style="cursor:pointer;" title="Clic para ver detalle de cálculo de Faltas">
               <div class="reporte-icon red"><i class="fas fa-calendar-times"></i></div>
               <div class="reporte-value" id="repFaltas">--</div>
               <div class="reporte-label">FALTAS</div>
               <div class="reporte-period">días sin asistencia</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('permisoMedico')" style="cursor:pointer;" title="Clic para ver detalle de Permiso Médico">
               <div class="reporte-icon blue"><i class="fas fa-notes-medical"></i></div>
               <div class="reporte-value" id="repPermisoMedico">--</div>
               <div class="reporte-label">Permiso Médico</div>
               <div class="reporte-period">con justificativo</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('permisoPersonal')" style="cursor:pointer;" title="Clic para ver detalle de Permiso Personal">
               <div class="reporte-icon purple"><i class="fas fa-user-clock"></i></div>
               <div class="reporte-value" id="repPermisoPersonal">--</div>
               <div class="reporte-label">Permiso Personal</div>
               <div class="reporte-period">sin justificativo</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('atrasos')" style="cursor:pointer;" title="Clic para ver detalle de Atrasos">
               <div class="reporte-icon amber"><i class="fas fa-clock"></i></div>
               <div class="reporte-value" id="repAtrasos">--</div>
               <div class="reporte-label">Atrasos</div>
               <div class="reporte-period">número de atrasos</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('tiempoPorJustificar')" style="cursor:pointer;" title="Clic para ver detalle de Tiempo Por Justificar">
               <div class="reporte-icon red"><i class="fas fa-exclamation-circle"></i></div>
               <div class="reporte-value" id="repTiempoPorJustificar">--</div>
               <div class="reporte-label">Por Justificar</div>
@@ -282,25 +282,25 @@
           </div>
 
           <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almPlanta')" style="cursor:pointer;" title="Clic para ver detalle de Almuerzos Empleados">
               <div class="reporte-icon green"><i class="fas fa-utensils"></i></div>
               <div class="reporte-value" id="repAlmuerzosEmp">--</div>
               <div class="reporte-label">Almuerzos Empleados</div>
               <div class="reporte-period">en planta</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almExtras')" style="cursor:pointer;" title="Clic para ver detalle de Almuerzos Extras">
               <div class="reporte-icon blue"><i class="fas fa-plus-circle"></i></div>
               <div class="reporte-value" id="repAlmuerzosExt">--</div>
               <div class="reporte-label">Almuerzos Extras</div>
               <div class="reporte-period">de visitantes/varios</div>
             </div>
-            <div class="reporte-card" style="border-color: var(--green);">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almTotal')" style="cursor:pointer; border-color: var(--green);" title="Clic para ver detalle de Total Almuerzos">
               <div class="reporte-icon green" style="background: rgba(16, 185, 129, 0.1); color: var(--green);"><i class="fas fa-calculator"></i></div>
               <div class="reporte-value" id="repAlmuerzosTotal">--</div>
               <div class="reporte-label">TOTAL ALMUERZOS</div>
               <div class="reporte-period">empleados + extras</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almFuera')" style="cursor:pointer;" title="Clic para ver detalle de Almuerzos Fuera">
               <div class="reporte-icon pink"><i class="fas fa-home"></i></div>
               <div class="reporte-value" id="repAlmuerzosFuera">--</div>
               <div class="reporte-label">Almuerzos Fuera</div>
@@ -309,25 +309,25 @@
           </div>
 
           <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasExtra50')" style="cursor:pointer;" title="Clic para ver detalle de Horas Extras 50%">
               <div class="reporte-icon green"><i class="fas fa-charging-station"></i></div>
               <div class="reporte-value" id="repHorasExtra50">--</div>
               <div class="reporte-label">Horas Extras 50% (A)</div>
               <div class="reporte-period">después de 16:15</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasExtra100')" style="cursor:pointer;" title="Clic para ver detalle de Horas Extras 100%">
               <div class="reporte-icon teal"><i class="fas fa-calendar-week"></i></div>
               <div class="reporte-value" id="repHorasExtra100">--</div>
               <div class="reporte-label">Horas Extras 100% (B)</div>
               <div class="reporte-period">fines de semana/feriados</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasCampoNormales')" style="cursor:pointer;" title="Clic para ver detalle de Horas en Campo Normales">
               <div class="reporte-icon blue"><i class="fas fa-map-marker-alt"></i></div>
               <div class="reporte-value" id="repHorasCampoNormales">--</div>
               <div class="reporte-label">Horas en campo normales</div>
               <div class="reporte-period">fuera de ubicación</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasCampo50')" style="cursor:pointer;" title="Clic para ver detalle de Horas en Campo 50%">
               <div class="reporte-icon purple"><i class="fas fa-charging-station"></i></div>
               <div class="reporte-value" id="repHorasCampo50">--</div>
               <div class="reporte-label">Horas en campo 50% (C)</div>
@@ -335,25 +335,25 @@
             </div>
           </div>
           <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasCampo100')" style="cursor:pointer;" title="Clic para ver detalle de Horas en Campo 100%">
               <div class="reporte-icon pink"><i class="fas fa-charging-station"></i></div>
               <div class="reporte-value" id="repHorasCampo100">--</div>
               <div class="reporte-label">Horas en campo 100% (D)</div>
               <div class="reporte-period">fines de semana/feriados</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('totalExtras50')" style="cursor:pointer;" title="Clic para ver detalle de TOTAL Extras 50%">
               <div class="reporte-icon amber"><i class="fas fa-calculator"></i></div>
               <div class="reporte-value" id="repTotalExtras50">--</div>
               <div class="reporte-label">TOTAL Extras 50% (A+C)</div>
               <div class="reporte-period">A + C</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('totalExtras100')" style="cursor:pointer;" title="Clic para ver detalle de TOTAL Extras 100%">
               <div class="reporte-icon teal"><i class="fas fa-calculator"></i></div>
               <div class="reporte-value" id="repTotalExtras100">--</div>
               <div class="reporte-label">TOTAL Extras 100% (B+D)</div>
               <div class="reporte-period">B + D</div>
             </div>
-            <div class="reporte-card">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('totalHorasExtra')" style="cursor:pointer;" title="Clic para ver detalle de TOTAL HORAS EXTRA">
               <div class="reporte-icon green"><i class="fas fa-chart-line"></i></div>
               <div class="reporte-value" id="repTotalHorasExtra">--</div>
               <div class="reporte-label">TOTAL HORAS EXTRA</div>
@@ -639,6 +639,7 @@
               <button onclick="cambiarModoGestion('sheets')" id="btnModoSheets" style="flex:1; border:none; padding:8px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer; background:white; color:var(--g800); transition:all 0.2s;" class="tab-gestion active"><i class="fas fa-file-excel" style="color:#0f9d58; margin-right:4px;"></i> 1. Google Sheets</button>
               <button onclick="cambiarModoGestion('manual')" id="btnModoManual" style="flex:1; border:none; padding:8px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer; background:transparent; color:var(--g500); transition:all 0.2s;" class="tab-gestion"><i class="fas fa-user-plus" style="color:var(--blue); margin-right:4px;"></i> 2. Formulario Nuevo</button>
               <button onclick="cambiarModoGestion('pasted')" id="btnModoPasted" style="flex:1; border:none; padding:8px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer; background:transparent; color:var(--g500); transition:all 0.2s;" class="tab-gestion"><i class="fas fa-clipboard" style="color:var(--indigo); margin-right:4px;"></i> 3. Pegar Texto</button>
+              <button onclick="cambiarModoGestion('eliminar')" id="btnModoEliminar" style="flex:1; border:none; padding:8px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer; background:transparent; color:#e11d48; transition:all 0.2s;" class="tab-gestion"><i class="fas fa-user-minus" style="color:#e11d48; margin-right:4px;"></i> 4. Eliminar Usuarios</button>
             </div>
 
             <!-- CONTENEDOR 1: MODO GOOGLE SHEETS (ACTUALIZAR) -->
@@ -718,6 +719,52 @@
                 <button class="btn" onclick="procesarVistaPreviaMasiva()" style="flex:1; padding:8px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid var(--g300); background:#ffffff; color:var(--g600); display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;"><i class="fas fa-eye"></i> Previsualizar</button>
                 <button class="btn btn-primary" onclick="guardarMasivoEmpleados()" style="flex:1.2; padding:8px; border-radius:8px; font-size:12px; font-weight:600; background:var(--blue); border:none; color:white; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; box-shadow:0 2px 4px rgba(59,130,246,0.15);"><i class="fas fa-cloud-upload-alt"></i> Guardar Personal</button>
               </div>
+            </div>
+
+            <!-- CONTENEDOR 4: MODO ELIMINAR USUARIOS (INDIVIDUAL Y MASIVO) -->
+            <div id="contModoEliminar" style="display:none; overflow-y:auto; max-height:280px; padding-right:4px;">
+              <div style="background:#fff1f2; border:1px solid #fecdd3; border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:11.5px; color:#9f1239;">
+                <i class="fas fa-exclamation-circle" style="color:#e11d48; margin-right:4px;"></i>
+                <strong>Eliminación Definitiva:</strong> Selecciona un colaborador o múltiples colaboradores para removerlos de Google Sheets y Firebase.
+              </div>
+
+              <!-- Opción A: Eliminación Individual mediante Dropdown -->
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px; margin-bottom:12px;">
+                <label style="font-size:11px; font-weight:700; color:#334155; display:block; margin-bottom:4px;"><i class="fas fa-user-times" style="color:#e11d48;"></i> 1. Eliminar Colaborador Individual:</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <select id="selEliminarIndividual" class="form-select" style="flex:1; padding:6px; font-size:11.5px; height:32px;">
+                    <option value="">Cargando lista de colaboradores...</option>
+                  </select>
+                  <button onclick="eliminarEmpleadoSeleccionadoCombo()" class="btn" style="background:#e11d48; color:white; border:none; padding:6px 12px; font-size:11.5px; font-weight:700; border-radius:8px; cursor:pointer; height:32px; display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-trash-alt"></i> Eliminar</button>
+                </div>
+              </div>
+
+              <!-- Opción B: Eliminación Masiva mediante Checkboxes -->
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                  <label style="font-size:11px; font-weight:700; color:#334155;"><i class="fas fa-users-slash" style="color:#e11d48;"></i> 2. Selección Múltiple para Eliminar Varios:</label>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="font-size:11px; font-weight:600; color:#475569; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+                      <input type="checkbox" id="chkTodosEliminar" onchange="toggleSeleccionarTodosEliminar(this.checked)"> Seleccionar Todos
+                    </label>
+                  </div>
+                </div>
+
+                <div style="margin-bottom:8px;">
+                  <input type="text" id="srchEliminarEmp" onkeyup="filtrarListaEliminarEmp()" class="search-input" placeholder="🔍 Filtrar colaboradores por nombre, ID o área..." style="width:100%; font-size:11px; padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1;">
+                </div>
+
+                <div id="listaEliminarCheckboxesContainer" style="max-height:130px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; background:#ffffff; padding:4px;">
+                  <!-- Checkbox list items rendered dynamically -->
+                </div>
+
+                <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+                  <button id="btnEliminarEmpMasivo" onclick="eliminarEmpleadosSeleccionadosCheckboxes()" class="btn" style="background:#be123c; color:white; border:none; padding:8px 16px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(190,18,60,0.2);">
+                    <i class="fas fa-trash"></i> Eliminar Seleccionados (<span id="cntEliminarEmpSel">0</span>)
+                  </button>
+                </div>
+              </div>
+
             </div>
 
           </div>
@@ -857,6 +904,7 @@
             <option value="permiso_personal">Permiso Personal</option>
             <option value="permiso_medico">Permiso Médico</option>
             <option value="salida_campo">Salida a Campo</option>
+            <option value="cumpleanos">Cumpleaños</option>
             <option value="justificado_supervisor">Justificado por Supervisor (Otro)</option>
           </select>
         </div>

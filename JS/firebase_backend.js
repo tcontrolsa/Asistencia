@@ -90,6 +90,8 @@ window.FirebaseBackend = {
                     return await this.actualizarMasivoEmpleados(params);
                 case 'eliminarRegistro':
                     return await this.eliminarRegistro(params);
+                case 'eliminarEmpleadoDefinitivo':
+                    return await this.eliminarEmpleadoDefinitivo(params);
 
                 case 'desvincularDispositivo':
                     return await this.desvincularDispositivo(params);
@@ -913,75 +915,67 @@ window.FirebaseBackend = {
         const id = params.empleadoId;
         const nuevoAlmuerzo = params.almuerzo; // "SI" o "NO"
         const hoy = new Date();
-        const hoyStr = params.fecha || new Date().toISOString().split('T')[0];
+        const hoyStrLocal = this._hoyStr();
+        const targetFecha = params.fecha || hoyStrLocal;
 
-        // Buscar registro de entrada/almuerzo del empleado sin filtrar por fecha en query
+        // Buscar todos los registros de este empleado en Firestore
         const allSnap = await db.collection('registros')
             .where('empleadoId', '==', id)
-            .where('tipo', 'in', ['ENTRADA', 'SOLO_ALMUERZO'])
             .get();
 
         const docs = allSnap.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
-        const matchedReg = docs.find(r => r.fecha === hoyStr);
-
-        const hoyStrLocal = this._hoyStr();
-        const isPastDate = hoyStr < hoyStrLocal;
-
+        let matchedReg = docs.find(r => r.fecha === targetFecha && ['ENTRADA', 'ENTRADA_CAMPO', 'RETORNO_CAMPO', 'SOLO_ALMUERZO'].includes(r.tipo));
         if (!matchedReg) {
-            if (isPastDate) {
-                // Para fechas anteriores, si no está en Firebase, debe estar en Sheets.
-                // Lo enviamos a Sheets y NO lo creamos en Firebase para evitar dualidad.
-                try {
-                    await this._jsonp(params);
-                } catch (e) { console.warn("Error Sheets:", e); }
-            } else {
-                // Crear registro SOLO_ALMUERZO en Firebase para la fecha actual
-                const empDoc = await db.collection('empleados').doc(id).get();
-                const nombre = empDoc.exists ? empDoc.data().nombre : 'Desconocido';
-                
-                const h = hoy.getHours().toString().padStart(2, '0');
-                const m = hoy.getMinutes().toString().padStart(2, '0');
-                const s = hoy.getSeconds().toString().padStart(2, '0');
-                const horaStr = `${h}:${m}:${s}`;
-                
-                const idLimpio = horaStr.replace(/:/g, '');
-                const idDocumento = `${id}_SOLO_ALMUERZO_${hoyStr}_${idLimpio}`;
-                
-                await db.collection('registros').doc(idDocumento).set({
-                    empleadoId: id,
-                    nombre: nombre,
-                    tipo: 'SOLO_ALMUERZO',
-                    almuerzo: nuevoAlmuerzo,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    modo: 'OFICINA',
-                    horasExtra: 'NO'
-                });
-            }
-        } else {
-            // Actualizar el existente en Firebase
+            matchedReg = docs.find(r => r.fecha === targetFecha);
+        }
+
+        if (matchedReg) {
+            // Actualizar el registro existente en Firestore para la fecha especificada
             await db.collection('registros').doc(matchedReg.id).update({
                 almuerzo: nuevoAlmuerzo
             });
+        } else if (targetFecha === hoyStrLocal) {
+            // Crear registro SOLO_ALMUERZO en Firestore únicamente para la fecha actual si no existía ningún registro
+            const empDoc = await db.collection('empleados').doc(id).get();
+            const nombre = empDoc.exists ? empDoc.data().nombre : 'Desconocido';
             
-            // Si es fecha anterior y aún estaba en Firebase, también mandarlo a Sheets 
-            // por si estaba archivado parcialmente
-            if (isPastDate) {
-                try {
-                    await this._jsonp(params);
-                } catch (e) { console.warn("Error Sheets:", e); }
-            }
+            const h = hoy.getHours().toString().padStart(2, '0');
+            const m = hoy.getMinutes().toString().padStart(2, '0');
+            const s = hoy.getSeconds().toString().padStart(2, '0');
+            const horaStr = `${h}:${m}:${s}`;
+            
+            const idLimpio = horaStr.replace(/:/g, '');
+            const idDocumento = `${id}_SOLO_ALMUERZO_${targetFecha}_${idLimpio}`;
+            
+            await db.collection('registros').doc(idDocumento).set({
+                empleadoId: id,
+                nombre: nombre,
+                fecha: targetFecha,
+                tipo: 'SOLO_ALMUERZO',
+                almuerzo: nuevoAlmuerzo,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                modo: 'OFICINA',
+                horasExtra: 'NO'
+            });
         }
 
-        // Registrar en auditoría
-        await db.collection('auditoria_almuerzos').add({
-            empleadoId: id,
-            fecha: hoyStr,
-            nuevoValor: nuevoAlmuerzo,
-            autor: "SUPERVISOR",
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        // SIEMPRE enviar la solicitud a Google Sheets para que busque y actualice la fila en REGISTROS sin crear duplicados
+        try {
+            await this._jsonp(params);
+        } catch (e) { console.warn("Error Sheets:", e); }
 
-        return { ok: true };
+        // Registrar auditoría en Firebase
+        try {
+            await db.collection('auditoria_almuerzos').add({
+                empleadoId: id,
+                fecha: targetFecha,
+                nuevoValor: nuevoAlmuerzo,
+                autor: "SUPERVISOR",
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (e) {}
+
+        return { ok: true, mensaje: "Almuerzo actualizado" };
     },
 
     async actualizarRegistroGeneral(params) {
@@ -1342,6 +1336,51 @@ window.FirebaseBackend = {
 
         await db.collection('empleados').doc(id).update(updateData);
         return { ok: true };
+    },
+
+    async eliminarEmpleadoDefinitivo(params) {
+        let ids = [];
+        if (params.empleadoIds) {
+            ids = String(params.empleadoIds).split(',').map(s => s.trim()).filter(Boolean);
+        } else if (params.empleadoId) {
+            ids = [String(params.empleadoId).trim()];
+        }
+
+        if (ids.length === 0) return { error: "No se proporcionaron IDs para eliminar." };
+
+        let count = 0;
+        let detalles = [];
+
+        for (const id of ids) {
+            try {
+                const docRef = db.collection('empleados').doc(id);
+                const docSnap = await docRef.get();
+                let nombre = docSnap.exists ? (docSnap.data().nombre || id) : id;
+                await docRef.delete();
+                count++;
+                detalles.push({ id, nombre });
+            } catch (e) {
+                console.warn(`Error eliminando empleado ${id} en Firestore:`, e);
+            }
+        }
+
+        let resSheets = null;
+        try {
+            resSheets = await this._jsonp(params);
+        } catch (e) {
+            console.warn("Error en eliminación Sheets:", e);
+        }
+
+        const totalFinal = resSheets && resSheets.totalEliminados ? resSheets.totalEliminados : count;
+        const detallesFinal = resSheets && resSheets.detalles ? resSheets.detalles : detalles;
+        const msg = resSheets && resSheets.mensaje ? resSheets.mensaje : `Se eliminaron ${totalFinal} colaborador(es) de la base de datos.`;
+
+        return {
+            ok: true,
+            totalEliminados: totalFinal,
+            detalles: detallesFinal,
+            mensaje: msg
+        };
     },
 
     async actualizarMasivoEmpleados(params) {

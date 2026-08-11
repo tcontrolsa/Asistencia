@@ -2297,20 +2297,6 @@
             }
 
             mainContent.innerHTML = `
-            <div class="credencial-header-profesional">
-                <div class="header-logo-section">
-                    <div class="header-logo-icon">T</div>
-                    <div>
-                        <div class="header-text-main">TCONTROL</div>
-                        <div class="header-text-sub">Asistencia</div>
-                    </div>
-                </div>
-                <div class="header-date-section">
-                    <div class="header-date-day">${new Date().getDate()}</div>
-                    <div class="header-date-month">${new Date().toLocaleDateString('es-EC', { month: 'short' })}</div>
-                </div>
-            </div>
-
             <div class="credencial-wrapper">
                 ${!empleado.foto_url || empleado.foto_url.trim() === '' ? `
                 <div class="glass-card mb-3" style="background: rgba(239, 68, 68, 0.08); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: 20px; padding: 14px 16px; animation: pulseGlowRed 2.5s infinite ease-in-out; margin: 0 10px 15px; box-sizing: border-box; text-align: left;">
@@ -2329,16 +2315,25 @@
                 </div>
                 ` : ''}
                 <div class="credencial-profesional ${esCumpleanosHoy ? 'birthday-glow' : ''}">
+                    <!-- ponytail: Adornos curvados rojos estilo credencial corporativa Liceria & Co -->
+                    <div class="credencial-decorative-top"></div>
+                    <div class="credencial-decorative-bottom"></div>
+
+                    <!-- Header con Logotipo Oficial T Control -->
+                    <div class="credencial-brand-header">
+                        <img src="Logotipo T Control.png" alt="TCONTROL - Tecnología en Control Industrial" class="credencial-logo-img">
+                    </div>
+
                     <div class="photo-name-section">
-                        <div class="photo-frame" style="position: relative;">
+                        <div class="photo-frame rectangular-frame" style="position: relative;">
                             ${esCumpleanosHoy ? `
                             <div class="birthday-hat-overlay">
                                 <div class="birthday-hat-badge">🥳</div>
                             </div>` : ''}
                             <div onclick="showPhotoModal('${empleado.foto_url || ''}')">
                                 ${empleado.foto_url && empleado.foto_url.trim() ?
-                    `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto">` :
-                    `<div class="employee-photo-placeholder-profesional">👤</div>`
+                    `<img class="employee-photo-profesional rectangular-photo" src="${empleado.foto_url}" alt="Foto">` :
+                    `<div class="employee-photo-placeholder-profesional rectangular-photo">👤</div>`
                 }
                             </div>
                             <div class="photo-edit-badge" onclick="triggerProfilePhotoUpload(event)" title="Cambiar foto de perfil">
@@ -2353,8 +2348,8 @@
                         <div class="insignias-container-credencial" style="margin-top: 38px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 0px; position: relative; z-index: 20;">
                             ${generarInsigniasHTMLCompacto(stats)}
                         </div>
-                        <div style="margin-top: 15px; margin-bottom: 6px;">
-                            <div style="color: #64748b; font-size: clamp(12px, 3.5vw, 14px); font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+                        <div style="margin-top: 15px; margin-bottom: 4px;">
+                            <div style="color: #64748b; font-size: clamp(11px, 3.2vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
                                 ${(() => {
                     const h = new Date().getHours();
                     if (h >= 5 && h < 12) return 'Buenos días';
@@ -2362,12 +2357,14 @@
                     return 'Buenas noches';
                 })()}
                             </div>
-                            <div class="employee-name-profesional" style="margin-top: 2px;">${primerNombre} ${apellido}</div>
+                            <div class="employee-name-profesional" style="margin-top: 2px; font-weight: 900; font-size: clamp(14px, 4.2vw, 17px); color: #0f172a; letter-spacing: 0.5px; text-transform: uppercase;">${primerNombre} ${apellido}</div>
                         </div>
-                        <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
-                            <div style="color: #64748b; font-size: clamp(12px, 3.5vw, 14px); font-weight: 600;">${empleado.area || 'General'}</div>
-                            <div style="color: #1e293b; font-size: clamp(11px, 3vw, 12px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">${empleado.cargo || 'Empleado'}</div>
+
+                        <!-- Badge Rojo de Cargo / Rol (Estilo Liceria & Co) -->
+                        <div>
+                            <div class="employee-cargo-pill-badge">${empleado.cargo || 'COLABORADOR'}</div>
                         </div>
+                        <div style="margin-top: 6px; color: #64748b; font-size: clamp(11px, 3vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${empleado.area || 'General'}</div>
 
                         <!-- Selector de Modo de Trabajo Compacto -->
                         <div class="mode-selector-premium" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
@@ -2391,18 +2388,18 @@
 
                     
                     <div class="status-section">
-                        <div class="status-title">ESTADO DE ASISTENCIA - HOY</div>
+                        <div class="status-title" style="white-space: nowrap !important; font-size: clamp(9px, 2.8vw, 11.5px) !important; text-align: center; display: block; width: 100%; letter-spacing: 0.5px; margin-bottom: 10px;">ESTADO DE ASISTENCIA - HOY</div>
                         <div class="status-grid">
-                            <!-- Tarjeta Unificada de Entrada y Salida -->
-                            <div class="status-card unified" style="width: 100%;">
-                                <div class="unified-item">
-                                    <div class="unified-label">ENTRADA</div>
-                                    <div class="unified-value ${tieneEntrada ? 'success' : 'pending'}" style="font-size: 17px;">${horaEntradaMostrar}</div>
+                            <!-- Tarjeta Unificada de Entrada y Salida Lado a Lado (1 sola fila) -->
+                            <div class="status-card unified" style="width: 100%; display: flex; flex-direction: row !important; align-items: center; justify-content: space-around; padding: 12px 16px; border-radius: 14px;">
+                                <div class="unified-item" style="flex: 1; text-align: center;">
+                                    <div class="unified-label" style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">ENTRADA</div>
+                                    <div class="unified-value ${tieneEntrada ? 'success' : 'pending'}" style="font-size: 17px; font-weight: 800; margin-top: 2px;">${horaEntradaMostrar}</div>
                                 </div>
-                                <div class="unified-divider"></div>
-                                <div class="unified-item">
-                                    <div class="unified-label">SALIDA</div>
-                                    <div class="unified-value ${tieneSalida ? 'success' : 'pending'}" style="font-size: 17px;">${horaSalidaMostrar}</div>
+                                <div class="unified-divider" style="width: 1px; height: 32px; background: #e2e8f0; margin: 0 10px;"></div>
+                                <div class="unified-item" style="flex: 1; text-align: center;">
+                                    <div class="unified-label" style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">SALIDA</div>
+                                    <div class="unified-value ${tieneSalida ? 'success' : 'pending'}" style="font-size: 17px; font-weight: 800; margin-top: 2px;">${horaSalidaMostrar}</div>
                                 </div>
                             </div>
                         </div>
@@ -4382,6 +4379,7 @@
             document.querySelectorAll('.nav-item').forEach(item => {
                 if (item.dataset.page === page) {
                     item.classList.add('active');
+                    try { item.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (e) {}
                 } else {
                     item.classList.remove('active');
                 }

@@ -952,7 +952,7 @@
               }
             }
 
-            if (minsFaltantes > 15) {
+            if (minsFaltantes > 0 || razon) {
               totalMinutosJustificarPeriodo += minsFaltantes;
               justificacionesPendientes.push({
                 empId: e.id,
@@ -2806,8 +2806,8 @@
         const badgesStr = badgesTiemposHtml.length > 0 ? badgesTiemposHtml.join(' ') : '<span style="color:#94a3b8; font-size:10px;">—</span>';
         
         let btnGestionTiempos = '';
-        if (esSuperPermiso && !esFalta && tiempoPorJustificar > 0) {
-          btnGestionTiempos = `<button type="button" onclick="editarCeldaTiempo('cel_gest_${e.id}_${f.replace(/-/g,'')}','${e.id}','${f}','justificado',${tiempoJustificado},'${comentarioEscapadoPermiso}',${tiempoPersonal},${tiempoMedico},${tiempoPorJustificar})" style="background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:2px 6px; font-size:10px; font-weight:700; color:#b45309; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; transition:all 0.15s;" onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'" title="Justificar ${minutosAHHMMSS(tiempoPorJustificar)} faltantes">
+        if (esSuperPermiso && !esFalta) {
+          btnGestionTiempos = `<button type="button" onclick="editarCeldaTiempo('cel_gest_${e.id}_${f.replace(/-/g,'')}','${e.id}','${f}','justificado',${tiempoJustificado},'${comentarioEscapadoPermiso}',${tiempoPersonal},${tiempoMedico},${tiempoPorJustificar})" style="background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:2px 6px; font-size:10px; font-weight:700; color:#b45309; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; transition:all 0.15s;" onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'" title="Gestionar o Justificar tiempo">
             <i class="fas fa-plus-circle" style="color:#d97706; font-size:10px;"></i> + Tiempo
           </button>`;
         }
@@ -3399,7 +3399,8 @@
       const mapTipos = {
         justificado: { label: 'Tiempo Justificado', color: '#d97706', bgIcon: '#fef3c7', icon: 'fa-scale-balanced', defaultMins: minsJustificado },
         personal:    { label: 'Tiempo Personal',    color: '#6366f1', bgIcon: '#e0e7ff', icon: 'fa-user',           defaultMins: minsPersonal },
-        medico:      { label: 'Tiempo Médico',      color: '#0d9488', bgIcon: '#ccfbf1', icon: 'fa-stethoscope',    defaultMins: minsMedico }
+        medico:      { label: 'Tiempo Médico',      color: '#0d9488', bgIcon: '#ccfbf1', icon: 'fa-stethoscope',    defaultMins: minsMedico },
+        cumpleanos:  { label: 'Cumpleaños',         color: '#e11d48', bgIcon: '#ffe4e6', icon: 'fa-birthday-cake',  defaultMins: 480 }
       };
 
       let currentTipo = tipoInicial in mapTipos ? tipoInicial : 'justificado';
@@ -3452,6 +3453,7 @@
                 <option value="justificado" ${currentTipo === 'justificado' ? 'selected' : ''}>⚖️ Tiempo Justificado</option>
                 <option value="personal" ${currentTipo === 'personal' ? 'selected' : ''}>👤 Tiempo Personal</option>
                 <option value="medico" ${currentTipo === 'medico' ? 'selected' : ''}>🩺 Tiempo Médico</option>
+                <option value="cumpleanos" ${currentTipo === 'cumpleanos' ? 'selected' : ''}>🥳 Cumpleaños</option>
               </select>
             </div>
 
@@ -6749,22 +6751,30 @@
       const contSheets = $('contModoSheets');
       const contManual = $('contModoManual');
       const contPasted = $('contModoPasted');
+      const contEliminar = $('contModoEliminar');
       
       if (contSheets) contSheets.style.display = modo === 'sheets' ? 'block' : 'none';
       if (contManual) contManual.style.display = modo === 'manual' ? 'block' : 'none';
-      if (contPasted) contPasted.style.display = modo === 'pasted' ? 'flex' : 'none';
+      if (contPasted) contPasted.style.display = modo === 'pasted' ? 'block' : 'none';
+      if (contEliminar) {
+        contEliminar.style.display = modo === 'eliminar' ? 'block' : 'none';
+        if (modo === 'eliminar') {
+          window.renderGestionEliminacionEmpleados();
+        }
+      }
       
       // Actualizar estilos activos de los botones de pestaña
       document.querySelectorAll('.tab-gestion').forEach(btn => {
         btn.style.background = 'transparent';
         btn.style.color = 'var(--g500)';
+        btn.style.boxShadow = 'none';
       });
       
       let modoCapitalized = modo.charAt(0).toUpperCase() + modo.slice(1);
       const activeBtn = $('btnModo' + modoCapitalized);
       if (activeBtn) {
         activeBtn.style.background = 'white';
-        activeBtn.style.color = 'var(--g800)';
+        activeBtn.style.color = modo === 'eliminar' ? '#e11d48' : 'var(--g800)';
         activeBtn.style.boxShadow = 'var(--sh)';
       }
     };
@@ -7941,4 +7951,197 @@
       } finally {
         if (btn) btn.disabled = false;
       }
+    };
+
+    // ============================================================
+    // GESTIÓN Y ELIMINACIÓN DE EMPLEADOS (INDIVIDUAL Y MASIVA)
+    // ============================================================
+
+    // Renderizar la lista de colaboradores en el panel de eliminación
+    window.renderGestionEliminacionEmpleados = function() {
+      const selInd = document.getElementById('selEliminarIndividual');
+      const listContainer = document.getElementById('listaEliminarCheckboxesContainer');
+      if (!selInd || !listContainer) return;
+
+      let empleadosSorted = [...empCache].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+
+      // 1. Dropdown Individual
+      let optsHtml = '<option value="">-- Seleccionar colaborador a eliminar --</option>';
+      optsHtml += empleadosSorted.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (ID: ${escapeHtml(e.id)} - Área: ${escapeHtml(e.area || '—')})</option>`).join('');
+      selInd.innerHTML = optsHtml;
+
+      // 2. Lista con Checkboxes para Selección Múltiple
+      let chkHtml = empleadosSorted.map(e => `
+        <label class="item-eliminar-emp" data-text="${escapeHtml((e.nombre + ' ' + e.id + ' ' + (e.area || '')).toLowerCase())}" style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-bottom:1px solid #f1f5f9; cursor:pointer; font-size:11.5px; transition:background 0.15s;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" class="chk-eliminar-item" value="${e.id}" onchange="actualizarConteoEliminarSeleccionados()" style="cursor:pointer;">
+            <strong style="color:#1e293b;">${escapeHtml(e.nombre)}</strong>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="background:#f1f5f9; color:#64748b; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:600;">ID: ${escapeHtml(e.id)}</span>
+            <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:600;">${escapeHtml(e.area || '—')}</span>
+          </div>
+        </label>
+      `).join('');
+
+      listContainer.innerHTML = chkHtml || '<div style="padding:10px; font-size:11px; color:#94a3b8; text-align:center;">No hay colaboradores registrados</div>';
+      window.actualizarConteoEliminarSeleccionados();
+    };
+
+    // Actualizar el contador de checkboxes seleccionados
+    window.actualizarConteoEliminarSeleccionados = function() {
+      const checkedCount = document.querySelectorAll('.chk-eliminar-item:checked').length;
+      const cntSpan = document.getElementById('cntEliminarEmpSel');
+      if (cntSpan) cntSpan.innerText = checkedCount;
+    };
+
+    // Toggle para Seleccionar Todos los visibles
+    window.toggleSeleccionarTodosEliminar = function(checked) {
+      const items = document.querySelectorAll('.item-eliminar-emp');
+      items.forEach(item => {
+        if (item.style.display !== 'none') {
+          const chk = item.querySelector('.chk-eliminar-item');
+          if (chk) chk.checked = checked;
+        }
+      });
+      window.actualizarConteoEliminarSeleccionados();
+    };
+
+    // Filtrar lista de checkboxes
+    window.filtrarListaEliminarEmp = function() {
+      const input = document.getElementById('srchEliminarEmp');
+      if (!input) return;
+      const query = input.value.toLowerCase().trim();
+      const items = document.querySelectorAll('.item-eliminar-emp');
+      items.forEach(item => {
+        const text = item.getAttribute('data-text') || '';
+        item.style.display = text.includes(query) ? 'flex' : 'none';
+      });
+    };
+
+    // Eliminar Empleado Individual desde Selector Combo u otro lugar
+    window.eliminarEmpleadoSeleccionadoCombo = function() {
+      const sel = document.getElementById('selEliminarIndividual');
+      if (!sel || !sel.value) {
+        mostrarToast('Por favor, selecciona un colaborador para eliminar', 'warning');
+        return;
+      }
+      window.eliminarEmpleadoIndividual(sel.value);
+    };
+
+    async function ejecutarEliminarEmpleadoBackend(params) {
+      if (window.FirebaseBackend && window.FirebaseBackend.eliminarEmpleadoDefinitivo) {
+        return await window.FirebaseBackend.eliminarEmpleadoDefinitivo(params);
+      }
+      return await jsonpRequest({ accion: 'eliminarEmpleadoDefinitivo', ...params });
+    }
+
+    window.eliminarEmpleadoIndividual = async function(empleadoId) {
+      if (!empleadoId) return;
+      const emp = empCache.find(e => String(e.id) === String(empleadoId));
+      const nombreEmp = emp ? emp.nombre : `ID ${empleadoId}`;
+
+      if (!confirm(`⚠️ ALERTA DE ELIMINACIÓN:\n\n¿Estás seguro de eliminar definitivamente a "${nombreEmp}" (ID: ${empleadoId})?\n\nEsta acción removerá el registro de Firebase y Google Sheets.`)) {
+        return;
+      }
+
+      mostrarLoader(true);
+      try {
+        const res = await ejecutarEliminarEmpleadoBackend({ empleadoId: empleadoId });
+        mostrarLoader(false);
+
+        if (res && res.ok) {
+          window.mostrarModalResultadoEliminacion(res);
+          if (typeof cargarDatosCompletos === 'function') {
+            await cargarDatosCompletos(true, true);
+          }
+          if (typeof cargarDirectorio === 'function') {
+            cargarDirectorio();
+          }
+          window.renderGestionEliminacionEmpleados();
+        } else {
+          mostrarToast(res.error || 'Error al eliminar el colaborador', 'error');
+        }
+      } catch (err) {
+        mostrarLoader(false);
+        console.error("Error al eliminar empleado:", err);
+        mostrarToast('Error al procesar la eliminación', 'error');
+      }
+    };
+
+    // Eliminar Empleados Masivamente desde Checkboxes
+    window.eliminarEmpleadosSeleccionadosCheckboxes = function() {
+      window.eliminarEmpleadosMasivo();
+    };
+
+    window.eliminarEmpleadosMasivo = async function() {
+      const checkedBoxes = Array.from(document.querySelectorAll('.chk-eliminar-item:checked'));
+      if (checkedBoxes.length === 0) {
+        mostrarToast('Por favor, selecciona al menos un colaborador para eliminar', 'warning');
+        return;
+      }
+
+      const ids = checkedBoxes.map(chk => chk.value);
+      if (!confirm(`⚠️ ALERTA DE ELIMINACIÓN MASIVA:\n\n¿Estás seguro de eliminar definitivamente a ${ids.length} colaborador(es)?\n\nEsta acción no se puede deshacer.`)) {
+        return;
+      }
+
+      mostrarLoader(true);
+      try {
+        const res = await ejecutarEliminarEmpleadoBackend({ empleadoIds: ids.join(',') });
+        mostrarLoader(false);
+
+        if (res && res.ok) {
+          window.mostrarModalResultadoEliminacion(res);
+          if (typeof cargarDatosCompletos === 'function') {
+            await cargarDatosCompletos(true, true);
+          }
+          if (typeof cargarDirectorio === 'function') {
+            cargarDirectorio();
+          }
+          window.renderGestionEliminacionEmpleados();
+        } else {
+          mostrarToast(res.error || 'Error al eliminar los colaboradores', 'error');
+        }
+      } catch (err) {
+        mostrarLoader(false);
+        console.error("Error al eliminar colaboradores masivo:", err);
+        mostrarToast('Error al procesar la eliminación masiva', 'error');
+      }
+    };
+
+    // Modal de Respuesta con Resultado de Eliminación
+    window.mostrarModalResultadoEliminacion = function(res) {
+      let oldModal = document.getElementById('modalResultadoEliminacion');
+      if (oldModal) oldModal.remove();
+
+      let count = res.totalEliminados || 0;
+      let detalles = res.detalles || [];
+      let detallesHtml = detalles.map(d => `<li style="padding:4px 0; border-bottom:1px solid #f1f5f9;"><strong>${escapeHtml(d.nombre || d.id)}</strong> (ID: ${escapeHtml(d.id)})</li>`).join('');
+
+      let html = `
+        <div id="modalResultadoEliminacion" class="modal-overlay">
+          <div class="modal-container" style="max-width:440px; border-top:4px solid #e11d48;">
+            <div class="modal-header" style="background:#fff1f2;">
+              <h3 class="modal-title" style="color:#be123c;"><i class="fas fa-trash-alt" style="color:#e11d48;"></i> Resultado de Eliminación</h3>
+              <button class="modal-close" onclick="document.getElementById('modalResultadoEliminacion').remove()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:16px;">
+              <div style="display:flex; align-items:center; gap:10px; background:#f0fdf4; border:1px solid #bbf7d0; padding:10px 12px; border-radius:8px; margin-bottom:12px;">
+                <i class="fas fa-check-circle" style="color:#16a34a; font-size:20px;"></i>
+                <div style="font-size:12.5px; color:#166534; font-weight:600;">${escapeHtml(res.mensaje || `Se procesó la eliminación de ${count} colaborador(es).`)}</div>
+              </div>
+              <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:6px;">Colaboradores eliminados (${count}):</div>
+              <ul style="max-height:160px; overflow-y:auto; font-size:11.5px; color:#475569; padding-left:16px; margin:0 0 12px 0; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px;">
+                ${detallesHtml || '<li>Operación completada exitosamente.</li>'}
+              </ul>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-primary-modal" onclick="document.getElementById('modalResultadoEliminacion').remove()" style="background:#e11d48;">Entendido</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.insertAdjacentHTML('beforeend', html);
     };
