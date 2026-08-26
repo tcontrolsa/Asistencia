@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TCONTROL">
     <meta name="application-name" content="TCONTROL">
-    <meta name="theme-color" content="#1e40af">
+    <meta name="theme-color" content="#dc2626">
     <meta name="description" content="Sistema de control de asistencia TCONTROL S.A.">
     <link rel="apple-touch-icon" href="./icon-192.png">
     <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png">
@@ -30,11 +30,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
         media="print" onload="this.media='all'">
 
-    <link rel="stylesheet" href="./CSS/index.css?v=20260716_01">
+    <link rel="stylesheet" href="./CSS/index.css?v=20260825_10">
     <!-- ===== FIREBASE SDKS & BACKEND ===== -->
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-    <script src="./JS/firebase_backend.js?v=20260716_01"></script>
+    <script src="./JS/firebase_backend.js?v=20260825_10"></script>
 
     <script>
         // FIREBASE POR DEFECTO PARA TODOS LOS USUARIOS
@@ -46,17 +46,110 @@
 </head>
 
 <body>
-    <!-- STATIC SPLASH SCREEN FOR PERFORMANCE -->
+    <!-- STATIC SPLASH SCREEN (ANIMACIÓN INDUSTRIAL: GRÚA, BANDA, RAYO Y LOGO TRANSFORMADO) -->
     <div id="initialSplash" class="splash-screen">
-        <div class="splash-logo">🛡️</div>
-        <div class="splash-title">CONTROL 2026</div>
-        <div class="splash-subtitle">Sistema de Asistencia</div>
+        <div class="splash-body">
+            
+            <!-- ESCENARIO INDUSTRIAL INTERACTIVO -->
+            <div class="splash-industrial-stage">
+                
+                <!-- 1. GRÚA CON CABLES Y GANCHO -->
+                <div class="crane-rig" aria-hidden="true">
+                    <div class="crane-trolley"></div>
+                    <div class="crane-cable-line"></div>
+                    <div class="crane-hook-assembly">
+                        <svg viewBox="0 0 50 35" class="crane-hook-svg">
+                            <path d="M 25,0 L 25,10 M 10,10 L 40,10 M 14,10 L 8,26 A 6,6 0 0,0 20,26 M 36,10 L 42,26 A 6,6 0 0,1 30,26" stroke="#ffffff" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- 2. CONTENEDOR DEL LOGO (BAJADO POR LA GRÚA Y TRANSFORMADO POR EL RAYO) -->
+                <div class="splash-logo-container">
+                    <!-- Logo Inicial (Gris/Metálico) -->
+                    <img src="./logo gris-blanco.png" alt="TCONTROL" class="splash-logo-img logo-state-initial"
+                        onerror="this.src='./logo-blanco.png'">
+                    
+                    <!-- Logo Transformado (Vibrante Rojo y Blanco con Rayo) -->
+                    <img src="./logo rojo_blanco.png" alt="TCONTROL" class="splash-logo-img logo-state-transformed"
+                        onerror="this.src='./logo-blanco.png'">
+
+                    <div id="splashLogoFallback" style="display:none;" class="splash-logo">🛡️</div>
+
+                    <!-- 3. ANIMACIÓN DE RAYO SOBRE LA LETRA N -->
+                    <div class="lightning-strike-container" aria-hidden="true">
+                        <svg class="lightning-bolt-svg" viewBox="0 0 100 200" preserveAspectRatio="none">
+                            <defs>
+                                <filter id="lightningGlow" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur stdDeviation="3.5" result="blur1" />
+                                    <feGaussianBlur stdDeviation="8" result="blur2" />
+                                    <feMerge>
+                                        <feMergeNode in="blur2" />
+                                        <feMergeNode in="blur1" />
+                                        <feMergeNode in="SourceGraphic" />
+                                    </feMerge>
+                                </filter>
+                                <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#ffffff" />
+                                    <stop offset="50%" stop-color="#ffffff" />
+                                    <stop offset="85%" stop-color="#fffbeb" />
+                                    <stop offset="100%" stop-color="#fde047" />
+                                </linearGradient>
+                            </defs>
+                            <!-- Rayo principal cayendo directo a la N -->
+                            <path class="lightning-path" d="M 65,-40 L 42,35 L 68,48 L 26,120 L 52,128 L 47,192" filter="url(#lightningGlow)" />
+                            <!-- Ramificaciones eléctricas -->
+                            <path class="lightning-branch" d="M 42,35 L 18,65" filter="url(#lightningGlow)" />
+                            <path class="lightning-branch" d="M 26,120 L 8,145" filter="url(#lightningGlow)" />
+                        </svg>
+                        <div class="lightning-impact-glow"></div>
+                        <div class="lightning-impact-spark"></div>
+                    </div>
+
+                    <!-- 4. ONDA EXPANSIVA ELÉCTRICA Y AURA NEÓN EXPANDIÉNDOSE DESDE LA LETRA N -->
+                    <div class="logo-shockwave-container" aria-hidden="true">
+                        <div class="shockwave-ring ring-1"></div>
+                        <div class="shockwave-ring ring-2"></div>
+                        <div class="shockwave-pulse-beam"></div>
+                    </div>
+                </div>
+
+                <!-- 4. BANDA TRANSPORTADORA INDUSTRIAL CON RODILLOS EN MOVIMIENTO -->
+                <div class="conveyor-belt-assembly" aria-hidden="true">
+                    <div class="conveyor-track">
+                        <div class="conveyor-treads"></div>
+                    </div>
+                    <div class="conveyor-rollers">
+                        <div class="roller-wheel"><div class="wheel-spoke"></div></div>
+                        <div class="roller-wheel"><div class="wheel-spoke"></div></div>
+                        <div class="roller-wheel"><div class="wheel-spoke"></div></div>
+                        <div class="roller-wheel"><div class="wheel-spoke"></div></div>
+                        <div class="roller-wheel"><div class="wheel-spoke"></div></div>
+                    </div>
+                    <div class="conveyor-legs">
+                        <div class="conveyor-leg leg-left"></div>
+                        <div class="conveyor-leg leg-right"></div>
+                    </div>
+                </div>
+
+            </div>
+            
+            <div class="splash-badge-year">2026</div>
+            <div class="splash-subtitle">Control Biométrico de Asistencia</div>
+        </div>
+
+        <div class="splash-footer">
+            <div class="splash-loader-bar">
+                <div class="splash-loader-progress"></div>
+            </div>
+            <div class="splash-version-text">Sistema de Asistencia</div>
+        </div>
     </div>
 
     <div class="app-container">
         <div class="status-bar"></div>
         <div class="main-content" id="mainContent"></div>
-        <div class="bottom-nav">
+        <div class="bottom-nav" style="display: none;">
             <button class="nav-item active" data-page="home">
                 <i class="fas fa-id-card"></i>
                 <span>Credencial</span>
@@ -118,12 +211,13 @@
     <div id="loadingOverlay" class="loading-overlay hidden">
         <div class="loading-card">
             <div class="loading-spinner"></div>
-            <div class="loading-text">Procesando...</div>
+            <div class="loading-text" id="loadingText">Procesando...</div>
+            <div class="loading-subtext" id="loadingSubtext">Por favor espera un momento</div>
         </div>
     </div>
 
-    <script src="./JS/tcontrol_core.js?v=20260716_01"></script>
-    <script src="./JS/index_core.js?v=20260716_01"></script>
+    <script src="./JS/tcontrol_core.js?v=20260825_10"></script>
+    <script src="./JS/index_core.js?v=20260825_10"></script>
 </body>
 
 </html>

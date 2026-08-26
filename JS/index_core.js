@@ -1,367 +1,600 @@
 // ========== CONFIGURACIÓN GLOBAL ==========
-        const CONFIG = window.TCONTROL_CONFIG || {
-            API_URL: 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec',
-            ADMIN_ID: "1058",
-            LAT_EMPRESA: -0.1288771313385675,
-            LNG_EMPRESA: -78.47896772889067,
-            RADIO_METROS: 250,
-            HORA_LIMITE_ALMUERZO: "09:30",
-            HORA_INICIO_ESPERADA: "07:30",
-            HORA_ENTRADA_LIMITE: "07:45",
-            HORA_SALIDA: "16:15",
-            ALMUERZO_ACTIVO: true,
-            WHATSAPP_NUMBER: "593963561149",
-            WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
-        };
+const CONFIG = window.TCONTROL_CONFIG || {
+    API_URL: 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec',
+    ADMIN_ID: "1058",
+    LAT_EMPRESA: -0.1288771313385675,
+    LNG_EMPRESA: -78.47896772889067,
+    RADIO_METROS: 250,
+    HORA_LIMITE_ALMUERZO: "09:30",
+    HORA_INICIO_ESPERADA: "07:30",
+    HORA_ENTRADA_LIMITE: "07:45",
+    HORA_SALIDA: "16:15",
+    ALMUERZO_ACTIVO: true,
+    WHATSAPP_NUMBER: "593963561149",
+    WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
+};
 
-        const API_URL = CONFIG.API_URL;
-        const ADMIN_ID = CONFIG.ADMIN_ID;
-        let LAT_EMPRESA = CONFIG.LAT_EMPRESA;
-        let LNG_EMPRESA = CONFIG.LNG_EMPRESA;
-        let RADIO_METROS = CONFIG.RADIO_METROS;
-        let HORA_LIMITE_ALMUERZO = CONFIG.HORA_LIMITE_ALMUERZO;
-        let HORA_INICIO_ESPERADA = CONFIG.HORA_INICIO_ESPERADA;
-        let HORA_ENTRADA_LIMITE = CONFIG.HORA_ENTRADA_LIMITE;
-        let HORA_SALIDA = CONFIG.HORA_SALIDA;
-        let ALMUERZO_ACTIVO = CONFIG.ALMUERZO_ACTIVO;
-        let WHATSAPP_NUMBER = CONFIG.WHATSAPP_NUMBER;
-        let WHATSAPP_MESSAGE = CONFIG.WHATSAPP_MESSAGE;
+const API_URL = CONFIG.API_URL;
+const ADMIN_ID = CONFIG.ADMIN_ID;
+let LAT_EMPRESA = CONFIG.LAT_EMPRESA;
+let LNG_EMPRESA = CONFIG.LNG_EMPRESA;
+let RADIO_METROS = CONFIG.RADIO_METROS;
+let HORA_LIMITE_ALMUERZO = CONFIG.HORA_LIMITE_ALMUERZO;
+let HORA_INICIO_ESPERADA = CONFIG.HORA_INICIO_ESPERADA;
+let HORA_ENTRADA_LIMITE = CONFIG.HORA_ENTRADA_LIMITE;
+let HORA_SALIDA = CONFIG.HORA_SALIDA;
+let ALMUERZO_ACTIVO = CONFIG.ALMUERZO_ACTIVO;
+let WHATSAPP_NUMBER = CONFIG.WHATSAPP_NUMBER;
+let WHATSAPP_MESSAGE = CONFIG.WHATSAPP_MESSAGE;
 
 
-        // ========== VARIABLES GLOBALES ==========
-        let deviceToken = null;
-        let posicion = { lat: null, lng: null };
-        let currentMode = 'OFICINA'; // 'OFICINA' o 'CAMPO'
-        let gpsActivo = false;
-        let registrosCompletos = [];
-        let vacacionesCompletas = [];
-        let menuSemanal = null;
-        let cargandoRegistros = false;
-        let intervaloGPS = null;
-        let currentPage = 'home';
-        let isAuthenticated = false;
-        let configuracionesSistema = null;
-        let _lastEmActiva = null;
+// ========== VARIABLES GLOBALES ==========
+let deviceToken = null;
+let posicion = { lat: null, lng: null };
+let currentMode = 'OFICINA'; // 'OFICINA' o 'CAMPO'
+let gpsActivo = false;
+let registrosCompletos = [];
+let vacacionesCompletas = [];
+let menuSemanal = null;
+let cargandoRegistros = false;
+let intervaloGPS = null;
+let currentPage = 'home';
+let isAuthenticated = false;
+let configuracionesSistema = null;
+let _lastEmActiva = null;
 
-        let estado = {
-            tieneEntrada: false,
-            tieneSalida: false,
-            horaEntrada: null,
-            horaSalida: null,
-            almuerzo: null,
-            esSupervisor: false
-        };
+let estado = {
+    tieneEntrada: false,
+    tieneSalida: false,
+    horaEntrada: null,
+    horaSalida: null,
+    almuerzo: null,
+    esSupervisor: false
+};
 
-        let empleado = {
-            id: '',
-            nombre: '',
-            area: '',
-            foto_url: '',
-            tipoRegistro: '',
-            almuerzo: '',
-            sopa: '',
-            almidon: '',
-            proteina1: '',
-            proteina2: '',
-            ensalada: '',
-            otro: '',
-            jugo: '',
-            razon_entrada_tardia: '',
-            quien_justifica_entrada: '',
-            tipo_salida: '',
-            razon_permiso: ''
-        };
+let empleado = {
+    id: '',
+    nombre: '',
+    area: '',
+    foto_url: '',
+    tipoRegistro: '',
+    almuerzo: '',
+    sopa: '',
+    almidon: '',
+    proteina1: '',
+    proteina2: '',
+    ensalada: '',
+    otro: '',
+    jugo: '',
+    razon_entrada_tardia: '',
+    quien_justifica_entrada: '',
+    tipo_salida: '',
+    razon_permiso: ''
+};
 
-        // Variables para selección del menú
-        let lugarSeleccionado = null;
+// Variables para selección del menú
+let lugarSeleccionado = null;
 
-        let razonEntradaTardia = null;
-        let detalleRazonEntrada = null;
+let razonEntradaTardia = null;
+let detalleRazonEntrada = null;
 
-        let razonSalidaTemprana = null;
-        let detalleRazonSalida = null;
+let razonSalidaTemprana = null;
+let detalleRazonSalida = null;
 
-        let esPermisoIntermedio = false;
-        let razonPermiso = null;
+let esPermisoIntermedio = false;
+let razonPermiso = null;
 
-        function getLocalHoyStr(date = new Date()) {
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const d = String(date.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
+function getLocalHoyStr(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+async function hashPassword(str) {
+    if (!str) return '';
+    try {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(str.toString().trim());
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+        console.warn("Fallback hash:", e);
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return 'h_' + Math.abs(hash).toString(16);
+    }
+}
+window.hashPassword = hashPassword;
+
+function togglePassVisibility(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (btn) btn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+    } else {
+        input.type = 'password';
+        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i>';
+    }
+}
+window.togglePassVisibility = togglePassVisibility;
+
+function normalizarFechaYYYYMMDD(fVal) {
+    if (!fVal) return '';
+    if (typeof fVal === 'string') {
+        let s = fVal.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        let mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        if (mIso) {
+            return `${mIso[1]}-${mIso[2].padStart(2, '0')}-${mIso[3].padStart(2, '0')}`;
+        }
+        let mDmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+        if (mDmy) {
+            return `${mDmy[3]}-${mDmy[2].padStart(2, '0')}-${mDmy[1].padStart(2, '0')}`;
+        }
+    }
+    let d = (fVal instanceof Date) ? fVal : new Date(fVal);
+    if (!isNaN(d.getTime())) {
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return '';
+}
+window.normalizarFechaYYYYMMDD = normalizarFechaYYYYMMDD;
+
+// ========== FUNCIONES GLOBALES PARA EL MENÚ ==========
+window.seleccionarLugar = function (lugar) {
+    lugarSeleccionado = lugar;
+    const lunchSi = document.getElementById('lunchSi');
+    const lunchNo = document.getElementById('lunchNo');
+    const btnConfirmar = document.getElementById('btnConfirmarAlmuerzo');
+
+    if (lugar === 'SI') {
+        if (lunchSi) lunchSi.classList.add('selected');
+        if (lunchNo) lunchNo.classList.remove('selected');
+    } else {
+        if (lunchNo) lunchNo.classList.add('selected');
+        if (lunchSi) lunchSi.classList.remove('selected');
+    }
+
+    if (btnConfirmar) btnConfirmar.disabled = false;
+};
+
+
+window.confirmarMenuYOpcion = function () {
+    const opcion = lugarSeleccionado;
+    if (!opcion) {
+        mostrarToast('👈 Selecciona dónde almuerzas primero', 'error');
+        return;
+    }
+
+    empleado.almuerzo = opcion;
+    registrar();
+};
+
+// ========== CARGAR CONFIGURACIONES ==========
+async function cargarConfiguracionesSistema() {
+    try {
+        const res = await jsonpRequest({ accion: 'obtenerConfiguraciones' });
+        if (res && !res.error) {
+            configuracionesSistema = res;
+            if (res.ubicacion) {
+                LAT_EMPRESA = res.ubicacion.lat || LAT_EMPRESA;
+                LNG_EMPRESA = res.ubicacion.lng || LNG_EMPRESA;
+                RADIO_METROS = res.ubicacion.radio || RADIO_METROS;
+            }
+            if (res.horarios) {
+                HORA_LIMITE_ALMUERZO = res.horarios.hora_almuerzo || CONFIG.HORA_LIMITE_ALMUERZO;
+                HORA_INICIO_ESPERADA = res.horarios.hora_inicio || CONFIG.HORA_INICIO_ESPERADA;
+                HORA_ENTRADA_LIMITE = res.horarios.hora_entrada_limite || CONFIG.HORA_ENTRADA_LIMITE;
+                HORA_SALIDA = res.horarios.hora_salida || CONFIG.HORA_SALIDA;
+                ALMUERZO_ACTIVO = res.horarios.almuerzo_activo !== false;
+            }
+            if (res.otras) {
+                WHATSAPP_NUMBER = res.otras.whatsapp_number || WHATSAPP_NUMBER;
+                WHATSAPP_MESSAGE = res.otras.mensaje_soporte || WHATSAPP_MESSAGE;
+            }
+            // Guardar en localStorage para uso offline
+            localStorage.setItem('HORA_SALIDA', HORA_SALIDA);
+            localStorage.setItem('HORA_ENTRADA_LIMITE', HORA_ENTRADA_LIMITE);
+
+            // Pre-cargar el menú semanal
+            jsonpRequest({ accion: 'obtenerMenuSemanal' }).then(m => {
+                if (m && !m.error) {
+                    menuSemanal = m;
+                }
+            }).catch(e => console.error("Error pre-cargando menú:", e));
+
+            return true;
+        }
+    } catch (error) {
+        console.error("Error cargando configuraciones:", error);
+    }
+    return false;
+}
+
+// ========== FUNCIÓN PARA AJUSTAR LAYOUT ==========
+function ajustarLayout() {
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) {
+        appContainer.style.display = 'flex';
+        void appContainer.offsetHeight;
+    }
+
+    const bottomNav = document.querySelector('.bottom-nav');
+    if (bottomNav) {
+        if (!isAuthenticated) {
+            bottomNav.style.display = 'none';
+        }
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        if (isAndroid) {
+            const originalHeight = window.innerHeight;
+            setTimeout(() => {
+                const newHeight = window.innerHeight;
+                const bottomBarHeight = Math.max(0, originalHeight - newHeight);
+                if (bottomBarHeight > 10) {
+                    bottomNav.style.paddingBottom = (bottomBarHeight + 8) + 'px';
+                    const fab = document.querySelector('.fab-whatsapp');
+                    if (fab) fab.style.bottom = (bottomBarHeight + 80) + 'px';
+                }
+            }, 100);
+        }
+    }
+}
+
+window.addEventListener('resize', () => setTimeout(ajustarLayout, 50));
+window.addEventListener('orientationchange', () => setTimeout(ajustarLayout, 100));
+
+// ========== SPLASH SCREEN ==========
+function hideSplash() {
+    const splash = document.getElementById('initialSplash');
+    if (splash) {
+        splash.classList.add('fade-out');
+        const mainContent = document.getElementById('mainContent');
+        if (mainContent) {
+            mainContent.classList.remove('page-content-enter');
+            void mainContent.offsetWidth;
+            mainContent.classList.add('page-content-enter');
+        }
+        setTimeout(() => splash.remove(), 650);
+    }
+    ajustarLayout();
+}
+
+// ========== FUNCIONES DE UI ==========
+function showLoading(show, message = 'Procesando...', subtext = 'Por favor espera un momento') {
+    const loading = document.getElementById('loadingOverlay');
+    const txt = document.getElementById('loadingText');
+    const sub = document.getElementById('loadingSubtext');
+    if (loading) {
+        if (show) {
+            if (txt) txt.textContent = message;
+            if (sub) {
+                sub.textContent = subtext;
+                sub.style.display = subtext ? 'block' : 'none';
+            }
+            loading.classList.remove('hidden');
+        } else {
+            loading.classList.add('hidden');
+        }
+    }
+}
+
+// ========== SPLASH SCREEN DE TRANSICIÓN Y ÉXITO ==========
+function mostrarSplashTransicion({
+    titulo = "¡Proceso Exitoso!",
+    subtitulo = "Por favor espera un momento...",
+    nombreEmpleado = "",
+    detalles = [],
+    icono = "check", // 'check' | 'lock' | 'attendance' | 'sync' | 'badge'
+    duracion = 2800,
+    onPreExit = null
+} = {}) {
+    return new Promise(resolve => {
+        const existing = document.getElementById('transitionSplashOverlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'transitionSplashOverlay';
+        overlay.className = 'transition-splash-overlay';
+
+        let iconHtml = '';
+        if (icono === 'entrada') {
+            iconHtml = `
+                <div class="trans-action-stage shift-start-stage" aria-hidden="true">
+                    <div class="workday-scene-box start-work-box">
+                        <div class="workday-gears-header">
+                            <i class="fas fa-gear gear-left"></i>
+                            <i class="fas fa-gear gear-right"></i>
+                        </div>
+                        <div class="workday-hero-zone">
+                            <i class="fas fa-hard-hat workday-helmet-icon"></i>
+                            <div class="workday-status-pulse"></div>
+                            <div class="workday-sparkle-dots">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </div>
+                        <div class="workday-active-bar">
+                            <div class="active-bar-fill"></div>
+                        </div>
+                    </div>
+                    <div class="trans-pill-badge shift-start-pill">
+                        <i class="fas fa-briefcase me-1"></i> ¡INICIO DE JORNADA!
+                    </div>
+                </div>
+            `;
+        } else if (icono === 'salida') {
+            iconHtml = `
+                <div class="trans-action-stage shift-end-stage" aria-hidden="true">
+                    <div class="workday-scene-box end-work-box">
+                        <div class="workday-stamp-header">
+                            <i class="fas fa-clock clock-tick"></i>
+                        </div>
+                        <div class="workday-hero-zone">
+                            <i class="fas fa-clipboard-check workday-clipboard-icon"></i>
+                            <div class="workday-complete-seal">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="workday-stars-row">
+                                <i class="fas fa-star s1"></i>
+                                <i class="fas fa-star s2"></i>
+                                <i class="fas fa-star s3"></i>
+                            </div>
+                        </div>
+                        <div class="workday-active-bar completed-bar">
+                            <div class="completed-bar-fill"></div>
+                        </div>
+                    </div>
+                    <div class="trans-pill-badge shift-end-pill">
+                        <i class="fas fa-house-user me-1"></i> ¡FIN DE JORNADA!
+                    </div>
+                </div>
+            `;
+        } else if (icono === 'campo') {
+            iconHtml = `
+                <div class="trans-action-stage campo-stage" aria-hidden="true">
+                    <div class="trans-radar-circle">
+                        <div class="radar-sweep-beam"></div>
+                        <i class="fas fa-map-location-dot"></i>
+                        <div class="radar-ping-ring"></div>
+                    </div>
+                    <div class="trans-pill-badge campo-pill">
+                        <i class="fas fa-truck-pickup me-1"></i> MODO CAMPO ACTIVO
+                    </div>
+                </div>
+            `;
+        } else if (icono === 'permiso') {
+            iconHtml = `
+                <div class="trans-action-stage permiso-stage" aria-hidden="true">
+                    <div class="trans-document-stamp">
+                        <i class="fas fa-file-signature"></i>
+                        <div class="permiso-approved-badge"><i class="fas fa-check-double"></i></div>
+                        <div class="scanner-success-shockwave"></div>
+                    </div>
+                    <div class="trans-pill-badge permiso-pill">
+                        <i class="fas fa-user-clock me-1"></i> PERMISO CONFIRMADO
+                    </div>
+                </div>
+            `;
+        } else if (icono === 'check') {
+            iconHtml = `<div class="trans-icon-circle success-pulse"><i class="fas fa-check"></i></div>`;
+        } else if (icono === 'lock') {
+            iconHtml = `<div class="trans-icon-circle primary-pulse"><i class="fas fa-shield-alt"></i></div>`;
+        } else if (icono === 'attendance') {
+            iconHtml = `<div class="trans-icon-circle success-pulse"><i class="fas fa-fingerprint"></i></div>`;
+        } else if (icono === 'badge') {
+            iconHtml = `<div class="trans-icon-circle primary-pulse"><i class="fas fa-id-card"></i></div>`;
+        } else {
+            iconHtml = `<div class="trans-icon-circle sync-pulse"><i class="fas fa-rotate"></i></div>`;
         }
 
-        // ========== FUNCIONES GLOBALES PARA EL MENÚ ==========
-        window.seleccionarLugar = function (lugar) {
-            lugarSeleccionado = lugar;
-            const lunchSi = document.getElementById('lunchSi');
-            const lunchNo = document.getElementById('lunchNo');
-            const btnConfirmar = document.getElementById('btnConfirmarAlmuerzo');
+        let stepsHtml = '';
+        if (detalles && detalles.length > 0) {
+            stepsHtml = `
+                <div class="trans-steps-container">
+                    ${detalles.map((step, idx) => `
+                        <div class="trans-step-item" style="animation-delay: ${idx * 0.15}s;">
+                            <i class="fas fa-check-circle me-2" style="color: #dc2626;"></i>
+                            <span>${step}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
 
-            if (lugar === 'SI') {
-                if (lunchSi) lunchSi.classList.add('selected');
-                if (lunchNo) lunchNo.classList.remove('selected');
-            } else {
-                if (lunchNo) lunchNo.classList.add('selected');
-                if (lunchSi) lunchSi.classList.remove('selected');
+        overlay.innerHTML = `
+            <div class="transition-splash-card">
+                ${iconHtml}
+                <h4 class="trans-title">${escapeHtml(titulo)}</h4>
+                ${nombreEmpleado ? `<div class="trans-employee-name">${escapeHtml(nombreEmpleado)}</div>` : ''}
+                <p class="trans-subtitle">${escapeHtml(subtitulo)}</p>
+                ${stepsHtml}
+                <div class="trans-progress-bar">
+                    <div class="trans-progress-fill" style="animation-duration: ${duracion / 1000}s;"></div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        if (navigator.vibrate) {
+            navigator.vibrate([40, 60, 40]);
+        }
+
+        // Ejecutar actualización de datos y renderizado previo de la pantalla de fondo
+        const preExitDelay = Math.max(duracion - 650, 200);
+        setTimeout(() => {
+            if (typeof onPreExit === 'function') {
+                try { onPreExit(); } catch (e) { console.error(e); }
             }
+        }, preExitDelay);
 
-            if (btnConfirmar) btnConfirmar.disabled = false;
-        };
+        setTimeout(() => {
+            overlay.classList.add('fade-out');
 
-
-        window.confirmarMenuYOpcion = function () {
-            const opcion = lugarSeleccionado;
-            if (!opcion) {
-                mostrarToast('👈 Selecciona dónde almuerzas primero', 'error');
-                return;
-            }
-
-            empleado.almuerzo = opcion;
-            showLoading(true);
-
-            if (opcion === 'SI') {
-                mostrarToast('✅ Entrada registrada - Almuerzas en planta', 'success');
-            } else {
-                mostrarToast('✅ Entrada registrada - Almuerzas fuera de planta', 'success');
+            // Revelación fluida del contenido principal
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent) {
+                mainContent.classList.remove('page-content-enter');
+                void mainContent.offsetWidth; // Forzar reflow
+                mainContent.classList.add('page-content-enter');
             }
 
             setTimeout(() => {
-                registrar();
-            }, 800);
-        };
+                overlay.remove();
+                resolve();
+            }, 500);
+        }, duracion);
+    });
+}
+window.mostrarSplashTransicion = mostrarSplashTransicion;
 
-        // ========== CARGAR CONFIGURACIONES ==========
-        async function cargarConfiguracionesSistema() {
-            try {
-                const res = await jsonpRequest({ accion: 'obtenerConfiguraciones' });
-                if (res && !res.error) {
-                    configuracionesSistema = res;
-                    if (res.ubicacion) {
-                        LAT_EMPRESA = res.ubicacion.lat || LAT_EMPRESA;
-                        LNG_EMPRESA = res.ubicacion.lng || LNG_EMPRESA;
-                        RADIO_METROS = res.ubicacion.radio || RADIO_METROS;
-                    }
-                    if (res.horarios) {
-                        HORA_LIMITE_ALMUERZO = res.horarios.hora_almuerzo || CONFIG.HORA_LIMITE_ALMUERZO;
-                        HORA_INICIO_ESPERADA = res.horarios.hora_inicio || CONFIG.HORA_INICIO_ESPERADA;
-                        HORA_ENTRADA_LIMITE = res.horarios.hora_entrada_limite || CONFIG.HORA_ENTRADA_LIMITE;
-                        HORA_SALIDA = res.horarios.hora_salida || CONFIG.HORA_SALIDA;
-                        ALMUERZO_ACTIVO = res.horarios.almuerzo_activo !== false;
-                    }
-                    if (res.otras) {
-                        WHATSAPP_NUMBER = res.otras.whatsapp_number || WHATSAPP_NUMBER;
-                        WHATSAPP_MESSAGE = res.otras.mensaje_soporte || WHATSAPP_MESSAGE;
-                    }
-                    // Guardar en localStorage para uso offline
-                    localStorage.setItem('HORA_SALIDA', HORA_SALIDA);
-                    localStorage.setItem('HORA_ENTRADA_LIMITE', HORA_ENTRADA_LIMITE);
+function mostrarToast(msg, tipo = 'info') {
+    // Vibración háptica en dispositivos compatibles
+    if (navigator.vibrate) {
+        if (tipo === 'success') navigator.vibrate(50);
+        else if (tipo === 'error') navigator.vibrate([80, 40, 80]);
+        else navigator.vibrate(30);
+    }
 
-                    // Pre-cargar el menú semanal
-                    jsonpRequest({ accion: 'obtenerMenuSemanal' }).then(m => {
-                        if (m && !m.error) {
-                            menuSemanal = m;
-                        }
-                    }).catch(e => console.error("Error pre-cargando menú:", e));
+    // Eliminar toast anterior si existe
+    document.querySelectorAll('.custom-toast').forEach(t => t.remove());
 
-                    return true;
-                }
-            } catch (error) {
-                console.error("Error cargando configuraciones:", error);
-            }
-            return false;
+    const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
+    const classes = { success: 'success-toast', error: 'error-toast', info: 'info-toast' };
+
+    const toast = document.createElement('div');
+    toast.className = `custom-toast ${classes[tipo] || ''}`;
+    toast.innerHTML = `<span class="toast-icon">${icons[tipo] || 'ℹ️'}</span><span>${msg}</span>`;
+    document.body.appendChild(toast);
+
+    // Auto-dismiss con animación de salida
+    const duration = tipo === 'error' ? 3500 : 2800;
+    setTimeout(() => {
+        toast.style.animation = 'toastOut 0.3s ease forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+function formatearHora(fecha) {
+    if (!fecha) return '--:--';
+    try {
+        const d = new Date(fecha);
+        if (isNaN(d.getTime())) return '--:--';
+        let hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'p. m.' : 'a. m.';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        return `${hours}:${minutes} ${ampm}`;
+    } catch (e) {
+        return '--:--';
+    }
+}
+
+function formatearFechaCorta() {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+}
+
+function formatearFechaParaGrupo(fecha) {
+    if (!fecha) return 'Fecha desconocida';
+
+    let fechaObj;
+    if (typeof fecha === 'string') {
+        if (fecha.includes('-')) {
+            const partes = fecha.split('-');
+            fechaObj = new Date(partes[0], partes[1] - 1, partes[2]);
+        } else {
+            fechaObj = new Date(fecha);
         }
+    } else if (fecha instanceof Date) {
+        fechaObj = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+    } else {
+        fechaObj = new Date(fecha);
+    }
 
-        // ========== FUNCIÓN PARA AJUSTAR LAYOUT ==========
-        function ajustarLayout() {
-            const appContainer = document.querySelector('.app-container');
-            if (appContainer) {
-                appContainer.style.display = 'flex';
-                void appContainer.offsetHeight;
-            }
+    if (isNaN(fechaObj.getTime())) return 'Fecha inválida';
 
-            const isAndroid = /Android/i.test(navigator.userAgent);
-            if (isAndroid) {
-                const bottomNav = document.querySelector('.bottom-nav');
-                if (bottomNav) {
-                    const originalHeight = window.innerHeight;
-                    setTimeout(() => {
-                        const newHeight = window.innerHeight;
-                        const bottomBarHeight = Math.max(0, originalHeight - newHeight);
-                        if (bottomBarHeight > 10) {
-                            bottomNav.style.paddingBottom = (bottomBarHeight + 8) + 'px';
-                            const fab = document.querySelector('.fab-whatsapp');
-                            if (fab) fab.style.bottom = (bottomBarHeight + 80) + 'px';
-                        }
-                    }, 100);
-                }
-            }
-        }
+    const hoy = new Date();
+    const hoyNormalizado = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+    const ayerNormalizado = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+    const fechaNormalizada = new Date(fechaObj.getFullYear(), fechaObj.getMonth(), fechaObj.getDate());
 
-        window.addEventListener('resize', () => setTimeout(ajustarLayout, 50));
-        window.addEventListener('orientationchange', () => setTimeout(ajustarLayout, 100));
+    if (fechaNormalizada.getTime() === hoyNormalizado.getTime()) {
+        return 'Hoy';
+    } else if (fechaNormalizada.getTime() === ayerNormalizado.getTime()) {
+        return 'Ayer';
+    } else {
+        return fechaObj.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+}
 
-        // ========== SPLASH SCREEN ==========
-        function hideSplash() {
-            const splash = document.getElementById('initialSplash');
-            if (splash) {
-                splash.classList.add('fade-out');
-                setTimeout(() => splash.remove(), 500);
-            }
-            ajustarLayout();
-        }
+function showPhotoModal(url) {
+    if (!url || url.trim() === '') {
+        mostrarToast('No hay foto disponible', 'info');
+        return;
+    }
+    const modal = document.createElement('div');
+    modal.className = 'photo-modal';
+    modal.onclick = () => modal.remove();
 
-        // ========== FUNCIONES DE UI ==========
-        function showLoading(show) {
-            const loading = document.getElementById('loadingOverlay');
-            if (loading) {
-                if (show) loading.classList.remove('hidden');
-                else loading.classList.add('hidden');
-            }
-        }
+    const img = document.createElement('img');
+    img.src = url;
+    img.onerror = () => {
+        modal.innerHTML = '<div style="color:white; text-align:center;"><i class="fas fa-image fa-4x mb-3"></i><br>No se pudo cargar la imagen</div>';
+    };
 
-        function mostrarToast(msg, tipo = 'info') {
-            // Vibración háptica en dispositivos compatibles
-            if (navigator.vibrate) {
-                if (tipo === 'success') navigator.vibrate(50);
-                else if (tipo === 'error') navigator.vibrate([80, 40, 80]);
-                else navigator.vibrate(30);
-            }
+    modal.appendChild(img);
+    document.body.appendChild(modal);
+}
 
-            // Eliminar toast anterior si existe
-            document.querySelectorAll('.custom-toast').forEach(t => t.remove());
+function abrirWhatsAppSoporte() {
+    // Eliminar modal anterior si existe por seguridad
+    const existingModal = document.getElementById('support-modal');
+    if (existingModal) existingModal.remove();
 
-            const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
-            const classes = { success: 'success-toast', error: 'error-toast', info: 'info-toast' };
+    // Contenedor principal con fondo difuminado
+    const modal = document.createElement('div');
+    modal.id = 'support-modal';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.backgroundColor = 'rgba(15, 23, 42, 0.55)';
+    modal.style.backdropFilter = 'blur(6px)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '3000';
+    modal.style.padding = '15px';
+    modal.style.animation = 'fadeIn 0.25s ease';
 
-            const toast = document.createElement('div');
-            toast.className = `custom-toast ${classes[tipo] || ''}`;
-            toast.innerHTML = `<span class="toast-icon">${icons[tipo] || 'ℹ️'}</span><span>${msg}</span>`;
-            document.body.appendChild(toast);
+    // Tarjeta del modal
+    const card = document.createElement('div');
+    card.style.backgroundColor = 'white';
+    card.style.borderRadius = '20px';
+    card.style.width = '100%';
+    card.style.maxWidth = '390px';
+    card.style.padding = '22px';
+    card.style.boxShadow = '0 20px 40px rgba(15,23,42,0.15)';
+    card.style.border = '1px solid rgba(226, 232, 240, 0.8)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+    card.style.animation = 'scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
 
-            // Auto-dismiss con animación de salida
-            const duration = tipo === 'error' ? 3500 : 2800;
-            setTimeout(() => {
-                toast.style.animation = 'toastOut 0.3s ease forwards';
-                setTimeout(() => toast.remove(), 300);
-            }, duration);
-        }
-
-        function formatearHora(fecha) {
-            if (!fecha) return '--:--';
-            try {
-                const d = new Date(fecha);
-                if (isNaN(d.getTime())) return '--:--';
-                let hours = d.getHours();
-                const minutes = String(d.getMinutes()).padStart(2, '0');
-                const ampm = hours >= 12 ? 'p. m.' : 'a. m.';
-                hours = hours % 12;
-                hours = hours ? hours : 12;
-                return `${hours}:${minutes} ${ampm}`;
-            } catch (e) {
-                return '--:--';
-            }
-        }
-
-        function formatearFechaCorta() {
-            const d = new Date();
-            return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-        }
-
-        function formatearFechaParaGrupo(fecha) {
-            if (!fecha) return 'Fecha desconocida';
-
-            let fechaObj;
-            if (typeof fecha === 'string') {
-                if (fecha.includes('-')) {
-                    const partes = fecha.split('-');
-                    fechaObj = new Date(partes[0], partes[1] - 1, partes[2]);
-                } else {
-                    fechaObj = new Date(fecha);
-                }
-            } else if (fecha instanceof Date) {
-                fechaObj = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
-            } else {
-                fechaObj = new Date(fecha);
-            }
-
-            if (isNaN(fechaObj.getTime())) return 'Fecha inválida';
-
-            const hoy = new Date();
-            const hoyNormalizado = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-            const ayerNormalizado = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
-            const fechaNormalizada = new Date(fechaObj.getFullYear(), fechaObj.getMonth(), fechaObj.getDate());
-
-            if (fechaNormalizada.getTime() === hoyNormalizado.getTime()) {
-                return 'Hoy';
-            } else if (fechaNormalizada.getTime() === ayerNormalizado.getTime()) {
-                return 'Ayer';
-            } else {
-                return fechaObj.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
-            }
-        }
-
-        function showPhotoModal(url) {
-            if (!url || url.trim() === '') {
-                mostrarToast('No hay foto disponible', 'info');
-                return;
-            }
-            const modal = document.createElement('div');
-            modal.className = 'photo-modal';
-            modal.onclick = () => modal.remove();
-
-            const img = document.createElement('img');
-            img.src = url;
-            img.onerror = () => {
-                modal.innerHTML = '<div style="color:white; text-align:center;"><i class="fas fa-image fa-4x mb-3"></i><br>No se pudo cargar la imagen</div>';
-            };
-
-            modal.appendChild(img);
-            document.body.appendChild(modal);
-        }
-
-        function abrirWhatsAppSoporte() {
-            // Eliminar modal anterior si existe por seguridad
-            const existingModal = document.getElementById('support-modal');
-            if (existingModal) existingModal.remove();
-
-            // Contenedor principal con fondo difuminado
-            const modal = document.createElement('div');
-            modal.id = 'support-modal';
-            modal.style.position = 'fixed';
-            modal.style.top = '0';
-            modal.style.left = '0';
-            modal.style.width = '100vw';
-            modal.style.height = '100vh';
-            modal.style.backgroundColor = 'rgba(15, 23, 42, 0.55)';
-            modal.style.backdropFilter = 'blur(6px)';
-            modal.style.display = 'flex';
-            modal.style.alignItems = 'center';
-            modal.style.justifyContent = 'center';
-            modal.style.zIndex = '3000';
-            modal.style.padding = '15px';
-            modal.style.animation = 'fadeIn 0.25s ease';
-
-            // Tarjeta del modal
-            const card = document.createElement('div');
-            card.style.backgroundColor = 'white';
-            card.style.borderRadius = '20px';
-            card.style.width = '100%';
-            card.style.maxWidth = '390px';
-            card.style.padding = '22px';
-            card.style.boxShadow = '0 20px 40px rgba(15,23,42,0.15)';
-            card.style.border = '1px solid rgba(226, 232, 240, 0.8)';
-            card.style.display = 'flex';
-            card.style.flexDirection = 'column';
-            card.style.gap = '14px';
-            card.style.animation = 'scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
-
-            // Cabecera
-            const header = document.createElement('div');
-            header.style.display = 'flex';
-            header.style.alignItems = 'center';
-            header.style.gap = '12px';
-            header.innerHTML = `
+    // Cabecera
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.gap = '12px';
+    header.innerHTML = `
                 <div style="width: 42px; height: 42px; background: #e0f2fe; color: #0284c7; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">
                     <i class="fas fa-headset"></i>
                 </div>
@@ -370,114 +603,114 @@
                     <span style="font-size: 11px; color: #64748b; font-weight: 600; display: block;">Reporte de Incidente / Ayuda</span>
                 </div>
             `;
-            card.appendChild(header);
+    card.appendChild(header);
 
-            // Información del empleado
-            const userInfo = document.createElement('div');
-            userInfo.style.background = '#f8fafc';
-            userInfo.style.border = '1.5px solid #f1f5f9';
-            userInfo.style.borderRadius = '12px';
-            userInfo.style.padding = '10px 14px';
-            userInfo.style.fontSize = '12px';
-            userInfo.style.color = '#334155';
-            userInfo.style.textAlign = 'left';
-            userInfo.innerHTML = `
+    // Información del empleado
+    const userInfo = document.createElement('div');
+    userInfo.style.background = '#f8fafc';
+    userInfo.style.border = '1.5px solid #f1f5f9';
+    userInfo.style.borderRadius = '12px';
+    userInfo.style.padding = '10px 14px';
+    userInfo.style.fontSize = '12px';
+    userInfo.style.color = '#334155';
+    userInfo.style.textAlign = 'left';
+    userInfo.innerHTML = `
                 <div style="margin-bottom: 2px;"><strong>Usuario:</strong> ${empleado.nombre || 'No identificado'}</div>
                 <div><strong>ID Empleado:</strong> ${empleado.id || '---'}</div>
             `;
-            card.appendChild(userInfo);
+    card.appendChild(userInfo);
 
-            // Campo de fecha del incidente
-            const dateGroup = document.createElement('div');
-            dateGroup.style.textAlign = 'left';
-            const hoyFormateado = new Date().toISOString().split('T')[0];
-            dateGroup.innerHTML = `
+    // Campo de fecha del incidente
+    const dateGroup = document.createElement('div');
+    dateGroup.style.textAlign = 'left';
+    const hoyFormateado = new Date().toISOString().split('T')[0];
+    dateGroup.innerHTML = `
                 <label style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 6px; display: block;">Fecha del Incidente o Solicitud:</label>
                 <input type="date" id="soporte-fecha" class="form-control" value="${hoyFormateado}" style="font-size: 13px; border-radius: 10px; border: 1.5px solid #cbd5e1; padding: 8px 10px; width: 100%; box-sizing: border-box;">
             `;
-            card.appendChild(dateGroup);
+    card.appendChild(dateGroup);
 
-            // Campo de texto para la solicitud
-            const formGroup = document.createElement('div');
-            formGroup.style.textAlign = 'left';
-            formGroup.innerHTML = `
+    // Campo de texto para la solicitud
+    const formGroup = document.createElement('div');
+    formGroup.style.textAlign = 'left';
+    formGroup.innerHTML = `
                 <label style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 6px; display: block;">¿En qué te podemos ayudar?</label>
                 <textarea id="soporte-detalle" class="form-control" placeholder="Describe brevemente el inconveniente o solicitud..." style="font-size: 13px; border-radius: 10px; border: 1.5px solid #cbd5e1; padding: 10px; min-height: 90px; width: 100%; box-sizing: border-box; resize: none;"></textarea>
             `;
-            card.appendChild(formGroup);
+    card.appendChild(formGroup);
 
-            // Botones de acción
-            const actions = document.createElement('div');
-            actions.style.display = 'flex';
-            actions.style.gap = '10px';
+    // Botones de acción
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '10px';
 
-            const cancelBtn = document.createElement('button');
-            cancelBtn.className = 'btn btn-outline-secondary';
-            cancelBtn.style.flex = '1';
-            cancelBtn.style.fontSize = '13px';
-            cancelBtn.style.padding = '10px';
-            cancelBtn.style.fontWeight = '700';
-            cancelBtn.style.borderRadius = '10px';
-            cancelBtn.innerText = 'Cancelar';
-            cancelBtn.onclick = () => modal.remove();
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-outline-secondary';
+    cancelBtn.style.flex = '1';
+    cancelBtn.style.fontSize = '13px';
+    cancelBtn.style.padding = '10px';
+    cancelBtn.style.fontWeight = '700';
+    cancelBtn.style.borderRadius = '10px';
+    cancelBtn.innerText = 'Cancelar';
+    cancelBtn.onclick = () => modal.remove();
 
-            const sendBtn = document.createElement('button');
-            sendBtn.className = 'btn btn-success';
-            sendBtn.style.flex = '1.3';
-            sendBtn.style.fontSize = '13px';
-            sendBtn.style.padding = '10px';
-            sendBtn.style.fontWeight = '700';
-            sendBtn.style.borderRadius = '10px';
-            sendBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-            sendBtn.style.color = 'white';
-            sendBtn.style.border = 'none';
-            sendBtn.style.display = 'flex';
-            sendBtn.style.alignItems = 'center';
-            sendBtn.style.justifyContent = 'center';
-            sendBtn.style.gap = '6px';
-            sendBtn.innerHTML = '<i class="fab fa-whatsapp"></i> Enviar a WhatsApp';
+    const sendBtn = document.createElement('button');
+    sendBtn.className = 'btn btn-success';
+    sendBtn.style.flex = '1.3';
+    sendBtn.style.fontSize = '13px';
+    sendBtn.style.padding = '10px';
+    sendBtn.style.fontWeight = '700';
+    sendBtn.style.borderRadius = '10px';
+    sendBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+    sendBtn.style.color = 'white';
+    sendBtn.style.border = 'none';
+    sendBtn.style.display = 'flex';
+    sendBtn.style.alignItems = 'center';
+    sendBtn.style.justifyContent = 'center';
+    sendBtn.style.gap = '6px';
+    sendBtn.innerHTML = '<i class="fab fa-whatsapp"></i> Enviar a WhatsApp';
 
-            sendBtn.onclick = () => {
-                const detalle = document.getElementById('soporte-detalle').value.trim();
-                const fecha = document.getElementById('soporte-fecha').value;
-                if (!detalle) {
-                    mostrarToast("Por favor describe el incidente", "warning");
-                    return;
-                }
-                if (!fecha) {
-                    mostrarToast("Por favor selecciona una fecha", "warning");
-                    return;
-                }
+    sendBtn.onclick = () => {
+        const detalle = document.getElementById('soporte-detalle').value.trim();
+        const fecha = document.getElementById('soporte-fecha').value;
+        if (!detalle) {
+            mostrarToast("Por favor describe el incidente", "warning");
+            return;
+        }
+        if (!fecha) {
+            mostrarToast("Por favor selecciona una fecha", "warning");
+            return;
+        }
 
-                // Formatear fecha seleccionada
-                const [year, month, day] = fecha.split('-');
-                const fechaFormateada = `${day}/${month}/${year}`;
+        // Formatear fecha seleccionada
+        const [year, month, day] = fecha.split('-');
+        const fechaFormateada = `${day}/${month}/${year}`;
 
-                // Generar mensaje con formato profesional para WhatsApp
-                let messageText = `⚠️REPORTE DE INCIDENCIA ⚠️\n`;
-                messageText += `DATOS DEL COLABORADOR\n`;
-                messageText += `• Nombre: ${empleado.nombre || 'No identificado'}\n`;
-                messageText += `• ID Empleado: ${empleado.id || '---'}\n`;
-                if (empleado.area) {
-                    messageText += `• Área: ${empleado.area}\n`;
-                }
-                messageText += `\nDETALLE DEL CASO\n`;
-                messageText += `• Fecha: ${fechaFormateada}\n`;
-                messageText += `• Descripción: ${detalle}`;
+        // Generar mensaje con formato profesional para WhatsApp
+        let messageText = `⚠️REPORTE DE INCIDENCIA ⚠️\n`;
+        messageText += `DATOS DEL COLABORADOR\n`;
+        messageText += `• Nombre: ${empleado.nombre || 'No identificado'}\n`;
+        messageText += `• ID Empleado: ${empleado.id || '---'}\n`;
+        if (empleado.area) {
+            messageText += `• Área: ${empleado.area}\n`;
+        }
+        messageText += `\nDETALLE DEL CASO\n`;
+        messageText += `• Fecha: ${fechaFormateada}\n`;
+        messageText += `• Descripción: ${detalle}`;
 
-                const mensajeCodificado = encodeURIComponent(messageText);
-                const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeCodificado}`;
-                window.open(url, '_blank');
-                modal.remove();
-            };
+        const mensajeCodificado = encodeURIComponent(messageText);
+        const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeCodificado}`;
+        window.open(url, '_blank');
+        modal.remove();
+    };
 
-            actions.appendChild(cancelBtn);
-            actions.appendChild(sendBtn);
-            card.appendChild(actions);
+    actions.appendChild(cancelBtn);
+    actions.appendChild(sendBtn);
+    card.appendChild(actions);
 
-            // Agregar estilos inline de animación
-            const style = document.createElement('style');
-            style.innerHTML = `
+    // Agregar estilos inline de animación
+    const style = document.createElement('style');
+    style.innerHTML = `
                 @keyframes fadeIn {
                     from { opacity: 0; }
                     to { opacity: 1; }
@@ -492,386 +725,390 @@
                     outline: none;
                 }
             `;
-            document.head.appendChild(style);
+    document.head.appendChild(style);
 
-            modal.appendChild(card);
-            document.body.appendChild(modal);
+    modal.appendChild(card);
+    document.body.appendChild(modal);
 
-            // Autofoco en el textarea
-            setTimeout(() => {
-                document.getElementById('soporte-detalle')?.focus();
-            }, 100);
-        }
+    // Autofoco en el textarea
+    setTimeout(() => {
+        document.getElementById('soporte-detalle')?.focus();
+    }, 100);
+}
 
-        function abrirPanelAdmin() {
-            window.open('admin_config.html', '_blank');
-        }
+function abrirPanelAdmin() {
+    window.open('admin_config.html', '_blank');
+}
 
-        // ========== FUNCIONES DE DISTANCIA ==========
-        function verificarDistanciaEmpresa() {
-            if (!posicion.lat || !posicion.lng) {
-                mostrarToast('Obteniendo ubicación...', 'info');
-                return false;
-            }
+// ========== FUNCIONES DE DISTANCIA ==========
+function verificarDistanciaEmpresa() {
+    if (!posicion.lat || !posicion.lng) {
+        mostrarToast('Obteniendo ubicación...', 'info');
+        return false;
+    }
 
-            const lat = parseFloat(posicion.lat);
-            const lng = parseFloat(posicion.lng);
+    const lat = parseFloat(posicion.lat);
+    const lng = parseFloat(posicion.lng);
 
-            if (isNaN(lat) || isNaN(lng)) {
-                mostrarToast('Coordenadas inválidas', 'error');
-                return false;
-            }
+    if (isNaN(lat) || isNaN(lng)) {
+        mostrarToast('Coordenadas inválidas', 'error');
+        return false;
+    }
 
-            let targetLat = LAT_EMPRESA;
-            let targetLng = LNG_EMPRESA;
-            let radio = RADIO_METROS;
-            let msgError = 'Fuera del área de la empresa';
+    let targetLat = LAT_EMPRESA;
+    let targetLng = LNG_EMPRESA;
+    let radio = RADIO_METROS;
+    let msgError = 'Fuera del área de la empresa';
 
-            if (currentMode === 'CAMPO') {
-                if (!empleado.baseLat || !empleado.baseLng) {
-                    mostrarToast('❌ Debes registrar la ubicación del proyecto primero', 'error');
-                    return false;
-                }
-                targetLat = parseFloat(empleado.baseLat);
-                targetLng = parseFloat(empleado.baseLng);
-                radio = 300; // Radio sugerido para campo
-                msgError = 'Fuera del área del proyecto';
-            }
-
-            const distancia = calcularDistancia(lat, lng, targetLat, targetLng);
-            const indicator = document.getElementById('distanceIndicator');
-            if (indicator) {
-                indicator.textContent = `📍 ${Math.round(distancia)}m / ${radio}m`;
-                indicator.classList.remove('hidden');
-
-                if (distancia <= radio) {
-                    setTimeout(() => indicator.classList.add('hidden'), 3000);
-                    return true;
-                } else {
-                    mostrarToast(`❌ ${msgError} (${Math.round(distancia)}m)`, 'error');
-                    return false;
-                }
-            }
+    if (currentMode === 'CAMPO') {
+        if (!empleado.baseLat || !empleado.baseLng) {
+            mostrarToast('❌ Debes registrar la ubicación del proyecto primero', 'error');
             return false;
         }
+        targetLat = parseFloat(empleado.baseLat);
+        targetLng = parseFloat(empleado.baseLng);
+        radio = 300; // Radio sugerido para campo
+        msgError = 'Fuera del área del proyecto';
+    }
 
-        function solicitarPermisoGPS() {
-            if (!navigator.geolocation) {
-                mostrarToast('Geolocalización no soportada', 'error');
-                return;
+    const distancia = calcularDistancia(lat, lng, targetLat, targetLng);
+    const indicator = document.getElementById('distanceIndicator');
+    if (indicator) {
+        indicator.textContent = `📍 ${Math.round(distancia)}m / ${radio}m`;
+        indicator.classList.remove('hidden');
+
+        if (distancia <= radio) {
+            setTimeout(() => indicator.classList.add('hidden'), 3000);
+            return true;
+        } else {
+            mostrarToast(`❌ ${msgError} (${Math.round(distancia)}m)`, 'error');
+            return false;
+        }
+    }
+    return false;
+}
+
+function solicitarPermisoGPS() {
+    if (!navigator.geolocation) {
+        mostrarToast('Geolocalización no soportada', 'error');
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            let lat = position.coords.latitude;
+            let lng = position.coords.longitude;
+            lat = Math.round(lat * 1000000) / 1000000;
+            lng = Math.round(lng * 1000000) / 1000000;
+            posicion = { lat: lat, lng: lng };
+            gpsActivo = true;
+            console.log("Ubicación obtenida del GPS:", posicion);
+            verificarDistanciaEmpresa();
+        },
+        (error) => {
+            console.error('GPS error:', error);
+            if (error.code === 1) {
+                mostrarToast('Permiso de ubicación denegado. Activa el GPS para registrar asistencia', 'error');
+            } else {
+                mostrarToast('Error al obtener ubicación', 'error');
             }
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    let lat = position.coords.latitude;
-                    let lng = position.coords.longitude;
-                    lat = Math.round(lat * 1000000) / 1000000;
-                    lng = Math.round(lng * 1000000) / 1000000;
-                    posicion = { lat: lat, lng: lng };
-                    gpsActivo = true;
-                    console.log("Ubicación obtenida del GPS:", posicion);
-                    verificarDistanciaEmpresa();
-                },
-                (error) => {
-                    console.error('GPS error:', error);
-                    if (error.code === 1) {
-                        mostrarToast('Permiso de ubicación denegado. Activa el GPS para registrar asistencia', 'error');
-                    } else {
-                        mostrarToast('Error al obtener ubicación', 'error');
-                    }
-                },
-                { enableHighAccuracy: true, timeout: 10000 }
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+    );
+}
+
+function iniciarGPS() {
+    solicitarPermisoGPS();
+    if (intervaloGPS) {
+        clearInterval(intervaloGPS);
+        intervaloGPS = null;
+    }
+    intervaloGPS = setInterval(solicitarPermisoGPS, 60000);
+}
+
+// ========== FUNCIÓN JSONP CON RETRY AUTOMÁTICO ==========
+// Reintenta automáticamente si el servidor está bloqueado (error de LockService)
+// Esto es crítico en horas pico (ej: 8am cuando todos marcan entrada a la vez)
+function jsonpRequest(params, _retryCount = 0) {
+    // 🔥 INTERCEPTOR FIREBASE
+    if (window.USE_FIREBASE && window.FirebaseBackend) {
+        return window.FirebaseBackend.procesarAccion(params);
+    }
+
+    return new Promise((resolve, reject) => {
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = [1000, 2000, 4000]; // backoff exponencial
+
+        const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+        window[callback] = function (data) {
+            window[callback] = function () { };
+            setTimeout(function () { delete window[callback]; }, 60000);
+            if (script.parentNode) script.parentNode.removeChild(script);
+
+            // Detectar errores de lock del servidor y reintentar
+            const isLockError = data && data.error && (
+                data.error.toString().toLowerCase().includes('lock') ||
+                data.error.toString().toLowerCase().includes('candado') ||
+                data.error.toString().toLowerCase().includes('tiempo de espera')
             );
-        }
 
-        function iniciarGPS() {
-            solicitarPermisoGPS();
-            if (intervaloGPS) {
-                clearInterval(intervaloGPS);
-                intervaloGPS = null;
-            }
-            intervaloGPS = setInterval(solicitarPermisoGPS, 60000);
-        }
-
-        // ========== FUNCIÓN JSONP CON RETRY AUTOMÁTICO ==========
-        // Reintenta automáticamente si el servidor está bloqueado (error de LockService)
-        // Esto es crítico en horas pico (ej: 8am cuando todos marcan entrada a la vez)
-        function jsonpRequest(params, _retryCount = 0) {
-            // 🔥 INTERCEPTOR FIREBASE
-            if (window.USE_FIREBASE && window.FirebaseBackend) {
-                return window.FirebaseBackend.procesarAccion(params);
-            }
-
-            return new Promise((resolve, reject) => {
-                const MAX_RETRIES = 3;
-                const RETRY_DELAY_MS = [1000, 2000, 4000]; // backoff exponencial
-
-                const callback = `callback_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
-                window[callback] = function (data) {
-                    window[callback] = function() {};
-                    setTimeout(function() { delete window[callback]; }, 60000);
-                    if (script.parentNode) script.parentNode.removeChild(script);
-
-                    // Detectar errores de lock del servidor y reintentar
-                    const isLockError = data && data.error && (
-                        data.error.toString().toLowerCase().includes('lock') ||
-                        data.error.toString().toLowerCase().includes('candado') ||
-                        data.error.toString().toLowerCase().includes('tiempo de espera')
-                    );
-
-                    if (isLockError && _retryCount < MAX_RETRIES) {
-                        const delay = RETRY_DELAY_MS[_retryCount] || 4000;
-                        console.warn(`⏳ Servidor ocupado. Reintentando en ${delay}ms (intento ${_retryCount + 1}/${MAX_RETRIES})...`);
-                        setTimeout(() => {
-                            jsonpRequest(params, _retryCount + 1).then(resolve).catch(reject);
-                        }, delay);
-                        return;
-                    }
-
-                    resolve(data);
-                };
-
-                const url = new URL(API_URL);
-                url.searchParams.append('callback', callback);
-    url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
-
-                // Inyectar credenciales de sesión para seguridad si existen
-                const idParaSeguridad = (params.empleadoId || params.id || (window.empleado && window.empleado.id));
-                if (idParaSeguridad) url.searchParams.append('empleadoId', idParaSeguridad);
-                if (window.deviceToken) url.searchParams.append('deviceToken', window.deviceToken);
-
-                Object.keys(params).forEach(key => {
-                    if (params[key] !== undefined && params[key] !== null) {
-                        // Evitar duplicar si ya los inyectamos arriba
-                        if (key === 'empleadoId' || key === 'deviceToken') return;
-                        url.searchParams.append(key, typeof params[key] === 'object' ? JSON.stringify(params[key]) : params[key].toString());
-                    }
-                });
-
-                const script = document.createElement('script');
-                script.src = url.toString();
-                script.onerror = () => {
-                    window[callback] = function() {};
-                    setTimeout(function() { delete window[callback]; }, 60000);
-                    if (script.parentNode) script.parentNode.removeChild(script);
-
-                    if (_retryCount < MAX_RETRIES) {
-                        const delay = RETRY_DELAY_MS[_retryCount] || 4000;
-                        console.warn(`🔌 Error de red. Reintentando en ${delay}ms...`);
-                        setTimeout(() => {
-                            jsonpRequest(params, _retryCount + 1).then(resolve).catch(reject);
-                        }, delay);
-                    } else {
-                        reject(new Error('Error de conexión con el servidor'));
-                    }
-                };
-
-                // Timeout de 25s por intento para evitar requests colgados
-                const timeoutId = setTimeout(() => {
-                    if (window[callback]) {
-                        window[callback] = function() {};
-                        setTimeout(function() { delete window[callback]; }, 60000);
-                        if (script.parentNode) script.parentNode.removeChild(script);
-                        if (_retryCount < MAX_RETRIES) {
-                            const delay = RETRY_DELAY_MS[_retryCount] || 4000;
-                            console.warn(`⏰ Timeout. Reintentando en ${delay}ms...`);
-                            setTimeout(() => {
-                                jsonpRequest(params, _retryCount + 1).then(resolve).catch(reject);
-                            }, delay);
-                        } else {
-                            reject(new Error('Tiempo de espera agotado. Verifica tu conexión.'));
-                        }
-                    }
-                }, 25000);
-
-                window[callback]._timeoutId = timeoutId;
-                const _originalCallback = window[callback];
-                window[callback] = function (data) {
-                    clearTimeout(timeoutId);
-                    _originalCallback(data);
-                };
-
-                document.body.appendChild(script);
-            });
-        }
-
-
-        // ========== FUNCIONES DE AUTENTICACIÓN ==========
-        function generarDeviceToken() {
-            let token = localStorage.getItem('DEVICE_TOKEN');
-            if (!token) {
-                token = 'DEV_' + Math.random().toString(36).substr(2, 8).toUpperCase();
-                localStorage.setItem('DEVICE_TOKEN', token);
-            }
-            return token;
-        }
-
-        function generarPIN() {
-            return Math.floor(1000 + Math.random() * 9000).toString();
-        }
-
-        // ========== FUNCIONES DE API ==========
-        async function verificarDispositivoTienePIN(deviceToken) {
-            return jsonpRequest({ accion: 'verificarDispositivo', deviceToken });
-        }
-
-        async function registrarDispositivoConPIN(empleadoId, pin, deviceToken) {
-            return jsonpRequest({ accion: 'registrarDispositivo', empleadoId, pin, deviceToken });
-        }
-
-        async function verificarPINAPI(pin, deviceToken) {
-            return jsonpRequest({ accion: 'verificarPIN', pin, deviceToken });
-        }
-
-        async function obtenerEstado(id, deviceToken) {
-            return jsonpRequest({ accion: 'obtenerEstado', id, deviceToken });
-        }
-
-        async function guardarRegistroAPI(data) {
-            return jsonpRequest({ accion: 'guardarRegistro', ...data });
-        }
-
-        async function obtenerRegistrosEmpleadoAPI(empleadoId, force = false) {
-            // Siempre incluimos los archivados para poder calcular el periodo fiscal completo (26 al 25)
-            // de forma predeterminada
-            return jsonpRequest({ 
-                accion: 'obtenerRegistros', 
-                empleadoId: empleadoId, 
-                force: force,
-                incluirArchivados: true 
-            });
-        }
-
-        async function desvincularDispositivoAPI(empleadoId, deviceToken) {
-            return jsonpRequest({ accion: 'desvincularDispositivo', empleadoId, deviceToken });
-        }
-
-        // ========== FUNCIONES DE REGISTRO ==========
-        async function obtenerRegistrosEmpleado(force = false) {
-            if (!empleado.id) return;
-            cargandoRegistros = true;
-            try {
-                const registros = await obtenerRegistrosEmpleadoAPI(empleado.id, force);
-
-                // Prevenir crash si el backend devuelve un error (ej: falta de índice en Firebase)
-                if (registros && registros.error) {
-                    console.error('Error del backend al obtener registros:', registros.error);
-                    if (registros.error.includes('index')) {
-                        console.warn("Falta crear un índice Compuesto en Firestore. Revisa el link de error arriba y dale clic para crearlo.");
-                    }
-                    registrosCompletos = [];
-                } else {
-                    registrosCompletos = Array.isArray(registros) ? registros : [];
-                }
-
-                // Cargar también las vacaciones del empleado
-                try {
-                    const vacRes = await jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id });
-                    if (vacRes && vacRes.ok) {
-                        vacacionesCompletas = vacRes.vacaciones || [];
-                    } else {
-                        vacacionesCompletas = [];
-                    }
-                } catch (e) {
-                    console.error("Error al cargar vacaciones en obtenerRegistrosEmpleado:", e);
-                    vacacionesCompletas = [];
-                }
-
-                cargandoRegistros = false;
-
-                // MECANISMO DE AUTO-SANACIÓN en segundo plano
-                let faltas = obtenerDiasFaltantes();
-                if (faltas.length > 0 && !force) {
-                    console.log("⚠️ Detectadas faltas. Re-verificando en segundo plano con refresco forzado...");
-                    await obtenerRegistrosEmpleado(true);
-                    return;
-                }
-
-                if (faltas.length > 0 && currentPage === 'home') {
-                    if (sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
-                        mostrarModalFaltasPasadas(faltas);
-                    }
-                }
-
-                if (currentPage === 'history') actualizarHistorialAgrupado();
-                if (currentPage === 'profile') await renderProfilePage();
-            } catch (error) {
-                console.error('Error:', error);
-                registrosCompletos = [];
-                cargandoRegistros = false;
-            }
-        }
-
-        async function registrar() {
-            if (!verificarDistanciaEmpresa()) return;
-
-            // Proceder con el registro normal
-            procederConRegistro();
-        }
-
-        window.cambiarModo = function (modo) {
-            if (modo === 'CAMPO') {
-                if (!posicion.lat || !posicion.lng) {
-                    mostrarToast('Ubicación no detectada. Esperando GPS...', 'warning');
-                    solicitarPermisoGPS();
-                    return;
-                }
-                const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-                if (dist <= 250000) {
-                    mostrarToast(`No puedes activar CAMPO a menos de 250km de la base (Distancia actual: ${(dist/1000).toFixed(1)} km)`, 'error');
-                    return;
-                }
-            }
-            currentMode = modo;
-            renderHomePage();
-            ajustarLayout();
-        };
-
-        window.fijarBaseCampo = async function () {
-            if (!posicion.lat || !posicion.lng) {
-                mostrarToast('Obteniendo ubicación actual...', 'info');
-                solicitarPermisoGPS();
+            if (isLockError && _retryCount < MAX_RETRIES) {
+                const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                console.warn(`⏳ Servidor ocupado. Reintentando en ${delay}ms (intento ${_retryCount + 1}/${MAX_RETRIES})...`);
+                setTimeout(() => {
+                    jsonpRequest(params, _retryCount + 1).then(resolve).catch(reject);
+                }, delay);
                 return;
             }
 
-            showLoading(true);
-            try {
-                const res = await jsonpRequest({
-                    accion: 'actualizarBaseCampo',
-                    empleadoId: empleado.id,
-                    lat: posicion.lat,
-                    lng: posicion.lng
-                });
-                showLoading(false);
-                if (res.ok) {
-                    empleado.baseLat = posicion.lat;
-                    empleado.baseLng = posicion.lng;
-                    mostrarToast('✅ Ubicación de proyecto registrada', 'success');
-                    renderHomePage();
-                } else {
-                    mostrarToast('Error: ' + res.error, 'error');
-                }
-            } catch (e) {
-                showLoading(false);
-                mostrarToast('Error de conexión', 'error');
+            resolve(data);
+        };
+
+        const url = new URL(API_URL);
+        url.searchParams.append('callback', callback);
+        url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
+
+        // Inyectar credenciales de sesión para seguridad si existen
+        const idParaSeguridad = (params.empleadoId || params.id || (window.empleado && window.empleado.id));
+        if (idParaSeguridad) url.searchParams.append('empleadoId', idParaSeguridad);
+        if (window.deviceToken) url.searchParams.append('deviceToken', window.deviceToken);
+
+        Object.keys(params).forEach(key => {
+            if (params[key] !== undefined && params[key] !== null) {
+                // Evitar duplicar si ya los inyectamos arriba
+                if (key === 'empleadoId' || key === 'deviceToken') return;
+                url.searchParams.append(key, typeof params[key] === 'object' ? JSON.stringify(params[key]) : params[key].toString());
+            }
+        });
+
+        const script = document.createElement('script');
+        script.src = url.toString();
+        script.onerror = () => {
+            window[callback] = function () { };
+            setTimeout(function () { delete window[callback]; }, 60000);
+            if (script.parentNode) script.parentNode.removeChild(script);
+
+            if (_retryCount < MAX_RETRIES) {
+                const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                console.warn(`🔌 Error de red. Reintentando en ${delay}ms...`);
+                setTimeout(() => {
+                    jsonpRequest(params, _retryCount + 1).then(resolve).catch(reject);
+                }, delay);
+            } else {
+                reject(new Error('Error de conexión con el servidor'));
             }
         };
 
-        function obtenerHoraSalidaConfigrada() {
-            // Usar variable global HORA_SALIDA si existe, sino del localStorage, sino default
-            return HORA_SALIDA || localStorage.getItem('HORA_SALIDA') || CONFIG.HORA_SALIDA;
+        // Timeout de 25s por intento para evitar requests colgados
+        const timeoutId = setTimeout(() => {
+            if (window[callback]) {
+                window[callback] = function () { };
+                setTimeout(function () { delete window[callback]; }, 60000);
+                if (script.parentNode) script.parentNode.removeChild(script);
+                if (_retryCount < MAX_RETRIES) {
+                    const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                    console.warn(`⏰ Timeout. Reintentando en ${delay}ms...`);
+                    setTimeout(() => {
+                        jsonpRequest(params, _retryCount + 1).then(resolve).catch(reject);
+                    }, delay);
+                } else {
+                    reject(new Error('Tiempo de espera agotado. Verifica tu conexión.'));
+                }
+            }
+        }, 25000);
+
+        window[callback]._timeoutId = timeoutId;
+        const _originalCallback = window[callback];
+        window[callback] = function (data) {
+            clearTimeout(timeoutId);
+            _originalCallback(data);
+        };
+
+        document.body.appendChild(script);
+    });
+}
+
+
+// ========== FUNCIONES DE AUTENTICACIÓN ==========
+function generarDeviceToken() {
+    let token = localStorage.getItem('DEVICE_TOKEN');
+    if (!token) {
+        token = 'DEV_' + Math.random().toString(36).substr(2, 8).toUpperCase();
+        localStorage.setItem('DEVICE_TOKEN', token);
+    }
+    return token;
+}
+
+function generarPIN() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// ========== FUNCIONES DE API ==========
+async function verificarDispositivoTienePIN(deviceToken) {
+    return jsonpRequest({ accion: 'verificarDispositivo', deviceToken });
+}
+
+async function registrarDispositivoConPIN(empleadoId, pin, deviceToken, rawPin) {
+    const params = { accion: 'registrarDispositivo', empleadoId, pin, deviceToken };
+    if (rawPin) params.rawPin = rawPin;
+    return jsonpRequest(params);
+}
+
+async function verificarPINAPI(pin, deviceToken, empleadoId) {
+    const params = { accion: 'verificarPIN', pin, deviceToken };
+    if (empleadoId) params.empleadoId = empleadoId;
+    return jsonpRequest(params);
+}
+
+async function obtenerEstado(id, deviceToken) {
+    return jsonpRequest({ accion: 'obtenerEstado', id, deviceToken });
+}
+
+async function guardarRegistroAPI(data) {
+    return jsonpRequest({ accion: 'guardarRegistro', ...data });
+}
+
+async function obtenerRegistrosEmpleadoAPI(empleadoId, force = false) {
+    // Siempre incluimos los archivados para poder calcular el periodo fiscal completo (26 al 25)
+    // de forma predeterminada
+    return jsonpRequest({
+        accion: 'obtenerRegistros',
+        empleadoId: empleadoId,
+        force: force,
+        incluirArchivados: true
+    });
+}
+
+async function desvincularDispositivoAPI(empleadoId, deviceToken) {
+    return jsonpRequest({ accion: 'desvincularDispositivo', empleadoId, deviceToken });
+}
+
+// ========== FUNCIONES DE REGISTRO ==========
+async function obtenerRegistrosEmpleado(force = false) {
+    if (!empleado.id) return;
+    cargandoRegistros = true;
+    try {
+        const registros = await obtenerRegistrosEmpleadoAPI(empleado.id, force);
+
+        // Prevenir crash si el backend devuelve un error (ej: falta de índice en Firebase)
+        if (registros && registros.error) {
+            console.error('Error del backend al obtener registros:', registros.error);
+            if (registros.error.includes('index')) {
+                console.warn("Falta crear un índice Compuesto en Firestore. Revisa el link de error arriba y dale clic para crearlo.");
+            }
+            registrosCompletos = [];
+        } else {
+            registrosCompletos = Array.isArray(registros) ? registros : [];
         }
 
-        function esAntesDeSalida(horaSalida) {
-            const ahora = new Date();
-            const [horaSalidaHora, horaSalidaMin] = horaSalida.split(':').map(Number);
-            const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
-            const salidaMinutos = horaSalidaHora * 60 + horaSalidaMin;
-            return ahoraMinutos < salidaMinutos;
+        // Cargar también las vacaciones del empleado
+        try {
+            const vacRes = await jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id });
+            if (vacRes && vacRes.ok) {
+                vacacionesCompletas = vacRes.vacaciones || [];
+            } else {
+                vacacionesCompletas = [];
+            }
+        } catch (e) {
+            console.error("Error al cargar vacaciones en obtenerRegistrosEmpleado:", e);
+            vacacionesCompletas = [];
         }
 
-        function mostrarModalRazonSalida() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+        cargandoRegistros = false;
+
+        // MECANISMO DE AUTO-SANACIÓN en segundo plano
+        let faltas = obtenerDiasFaltantes();
+        if (faltas.length > 0 && !force) {
+            console.log("⚠️ Detectadas faltas. Re-verificando en segundo plano con refresco forzado...");
+            await obtenerRegistrosEmpleado(true);
+            return;
+        }
+
+        if (faltas.length > 0 && currentPage === 'home') {
+            if (sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
+                mostrarModalFaltasPasadas(faltas);
+            }
+        }
+
+        if (currentPage === 'history') actualizarHistorialAgrupado();
+        if (currentPage === 'profile') await renderProfilePage();
+    } catch (error) {
+        console.error('Error:', error);
+        registrosCompletos = [];
+        cargandoRegistros = false;
+    }
+}
+
+async function registrar() {
+    if (!verificarDistanciaEmpresa()) return;
+
+    // Proceder con el registro normal
+    procederConRegistro();
+}
+
+window.cambiarModo = function (modo) {
+    if (modo === 'CAMPO') {
+        if (!posicion.lat || !posicion.lng) {
+            mostrarToast('Ubicación no detectada. Esperando GPS...', 'warning');
+            solicitarPermisoGPS();
+            return;
+        }
+        const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+        if (dist <= 250000) {
+            mostrarToast(`No puedes activar CAMPO a menos de 250km de la base (Distancia actual: ${(dist / 1000).toFixed(1)} km)`, 'error');
+            return;
+        }
+    }
+    currentMode = modo;
+    renderHomePage();
+    ajustarLayout();
+};
+
+window.fijarBaseCampo = async function () {
+    if (!posicion.lat || !posicion.lng) {
+        mostrarToast('Obteniendo ubicación actual...', 'info');
+        solicitarPermisoGPS();
+        return;
+    }
+
+    showLoading(true);
+    try {
+        const res = await jsonpRequest({
+            accion: 'actualizarBaseCampo',
+            empleadoId: empleado.id,
+            lat: posicion.lat,
+            lng: posicion.lng
+        });
+        showLoading(false);
+        if (res.ok) {
+            empleado.baseLat = posicion.lat;
+            empleado.baseLng = posicion.lng;
+            mostrarToast('✅ Ubicación de proyecto registrada', 'success');
+            renderHomePage();
+        } else {
+            mostrarToast('Error: ' + res.error, 'error');
+        }
+    } catch (e) {
+        showLoading(false);
+        mostrarToast('Error de conexión', 'error');
+    }
+};
+
+function obtenerHoraSalidaConfigrada() {
+    // Usar variable global HORA_SALIDA si existe, sino del localStorage, sino default
+    return HORA_SALIDA || localStorage.getItem('HORA_SALIDA') || CONFIG.HORA_SALIDA;
+}
+
+function esAntesDeSalida(horaSalida) {
+    const ahora = new Date();
+    const [horaSalidaHora, horaSalidaMin] = horaSalida.split(':').map(Number);
+    const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+    const salidaMinutos = horaSalidaHora * 60 + horaSalidaMin;
+    return ahoraMinutos < salidaMinutos;
+}
+
+function mostrarModalRazonSalida() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -921,12 +1158,12 @@
                 </div>
             </div>
         `;
-            ajustarLayout();
-        }
+    ajustarLayout();
+}
 
-        function mostrarJustificacionSalida(razon, label) {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+function mostrarJustificacionSalida(razon, label) {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -952,259 +1189,299 @@
                 </div>
             </div>
         `;
-            document.getElementById('quienJustifica').focus();
-            ajustarLayout();
+    document.getElementById('quienJustifica').focus();
+    ajustarLayout();
+}
+
+window.procesarRazonSalidaJustificada = function () {
+    const nombre = document.getElementById('quienJustifica')?.value.trim();
+    if (!nombre) {
+        mostrarToast('Ingresa el nombre de quién autoriza', 'error');
+        return;
+    }
+
+    razonSalidaTemprana = 'salida_justificada';
+    detalleRazonSalida = {
+        razon: 'salida_justificada',
+        quien_justifica: nombre
+    };
+
+    empleado.razon_salida_temprana = razonSalidaTemprana;
+    empleado.quien_justifica_salida = detalleRazonSalida.quien_justifica;
+
+    mostrarModalTipoSalidaTemprana();
+};
+
+window.procesarRazonSalida = function (razon, label) {
+    razonSalidaTemprana = razon;
+    detalleRazonSalida = {
+        razon: razon,
+        quien_justifica: ''
+    };
+
+    empleado.razon_salida_temprana = razon;
+    empleado.quien_justifica_salida = '';
+
+    // Asignar tipo_salida según la razón para automatización de estatus
+    if (razon === 'salida_campo') {
+        empleado.tipo_salida = 'TRABAJO_CAMPO';
+    } else if (razon === 'cumpleanos') {
+        empleado.tipo_salida = 'CUMPLEAÑOS';
+    } else if (razon === 'salida_pasante') {
+        empleado.tipo_salida = 'SALIDA_PASANTE';
+    } else {
+        empleado.tipo_salida = 'SALIDA_TEMPRANA_JUSTIFICADA';
+    }
+
+    // Solo preguntar si va a regresar para razones de PERMISO y SALIDA JUSTIFICADA
+    // Salida pasante es siempre salida final (no regresa)
+    if (razon === 'permiso_medico' || razon === 'permiso_personal' || razon === 'salida_justificada') {
+        mostrarModalTipoSalidaTemprana();
+    } else {
+        procederConRegistro();
+    }
+};
+
+window.cancelarRazonSalida = function () {
+    razonSalidaTemprana = null;
+    detalleRazonSalida = null;
+    renderHomePage();
+};
+
+async function procederConRegistro() {
+    if (!verificarDistanciaEmpresa()) return;
+
+    // Cancelación silenciosa antes de las 09:30 o confirmación antes de las 10:00 a.m.
+    if (empleado.tipoRegistro === 'SALIDA') {
+        const ahora = new Date();
+        const minDelDia = ahora.getHours() * 60 + ahora.getMinutes();
+        if (minDelDia < 570) { // Antes de las 09:30 a.m.
+            empleado.almuerzo = 'NO'; // Cancelación silenciosa y automática
+        } else if (minDelDia < 600) { // Entre 09:30 a.m. y 10:00 a.m.
+            const deseaCancelar = confirm("❓ Vas a registrar tu salida antes de la hora de almuerzo.\n\n¿Deseas cancelar el almuerzo del día de hoy?");
+            if (deseaCancelar) {
+                empleado.almuerzo = 'NO';
+            }
         }
+    }
 
-        window.procesarRazonSalidaJustificada = function () {
-            const nombre = document.getElementById('quienJustifica')?.value.trim();
-            if (!nombre) {
-                mostrarToast('Ingresa el nombre de quién autoriza', 'error');
-                return;
-            }
-
-            razonSalidaTemprana = 'salida_justificada';
-            detalleRazonSalida = {
-                razon: 'salida_justificada',
-                quien_justifica: nombre
-            };
-
-            empleado.razon_salida_temprana = razonSalidaTemprana;
-            empleado.quien_justifica_salida = detalleRazonSalida.quien_justifica;
-
-            mostrarModalTipoSalidaTemprana();
-        };
-
-        window.procesarRazonSalida = function (razon, label) {
-            razonSalidaTemprana = razon;
-            detalleRazonSalida = {
-                razon: razon,
-                quien_justifica: ''
-            };
-
-            empleado.razon_salida_temprana = razon;
-            empleado.quien_justifica_salida = '';
-
-            // Asignar tipo_salida según la razón para automatización de estatus
-            if (razon === 'salida_campo') {
-                empleado.tipo_salida = 'TRABAJO_CAMPO';
-            } else if (razon === 'cumpleanos') {
-                empleado.tipo_salida = 'CUMPLEAÑOS';
-            } else if (razon === 'salida_pasante') {
-                empleado.tipo_salida = 'SALIDA_PASANTE';
-            } else {
-                empleado.tipo_salida = 'SALIDA_TEMPRANA_JUSTIFICADA';
-            }
-
-            // Solo preguntar si va a regresar para razones de PERMISO y SALIDA JUSTIFICADA
-            // Salida pasante es siempre salida final (no regresa)
-            if (razon === 'permiso_medico' || razon === 'permiso_personal' || razon === 'salida_justificada') {
-                mostrarModalTipoSalidaTemprana();
-            } else {
-                procederConRegistro();
-            }
-        };
-
-        window.cancelarRazonSalida = function () {
-            razonSalidaTemprana = null;
-            detalleRazonSalida = null;
-            renderHomePage();
-        };
-
-        async function procederConRegistro() {
-            if (!verificarDistanciaEmpresa()) return;
-
-            // Cancelación silenciosa antes de las 09:30 o confirmación antes de las 10:00 a.m.
-            if (empleado.tipoRegistro === 'SALIDA') {
-                const ahora = new Date();
-                const minDelDia = ahora.getHours() * 60 + ahora.getMinutes();
-                if (minDelDia < 570) { // Antes de las 09:30 a.m.
-                    empleado.almuerzo = 'NO'; // Cancelación silenciosa y automática
-                } else if (minDelDia < 600) { // Entre 09:30 a.m. y 10:00 a.m.
-                    const deseaCancelar = confirm("❓ Vas a registrar tu salida antes de la hora de almuerzo.\n\n¿Deseas cancelar el almuerzo del día de hoy?");
-                    if (deseaCancelar) {
-                        empleado.almuerzo = 'NO';
+    // Advertencia para marcación sospechosa (Entrada muy reciente y marcando Salida)
+    if (empleado.tipoRegistro === 'SALIDA' && Array.isArray(registrosCompletos)) {
+        const dHoy = new Date();
+        const hoyStr = `${dHoy.getFullYear()}-${String(dHoy.getMonth() + 1).padStart(2, '0')}-${String(dHoy.getDate()).padStart(2, '0')}`;
+        const entradaHoy = registrosCompletos.find(r => r.fecha === hoyStr && r.tipo === 'ENTRADA');
+        if (entradaHoy) {
+            const tsEntrada = entradaHoy.timestamp || entradaHoy.hora;
+            const dEntrada = parseDateSafe(tsEntrada);
+            if (dEntrada) {
+                const diferenciaMinutos = (new Date() - dEntrada) / (1000 * 60);
+                if (diferenciaMinutos < 15) {
+                    const confirmarSalidaSospechosa = confirm(
+                        "🚨 ADVERTENCIA IMPORTANTE:\n\n" +
+                        "Has registrado tu ENTRADA hace menos de 15 minutos.\n" +
+                        "Si olvidaste marcar tu Entrada por la mañana, marcar la Salida ahora causará que tu jornada sea calculada en SEGUNDOS.\n\n" +
+                        "¿Deseas continuar de todas formas? Debes comunicar este olvido al área respectiva de inmediato para su corrección."
+                    );
+                    if (!confirmarSalidaSospechosa) {
+                        return;
                     }
                 }
             }
+        }
+    }
 
-            // Advertencia para marcación sospechosa (Entrada muy reciente y marcando Salida)
-            if (empleado.tipoRegistro === 'SALIDA' && Array.isArray(registrosCompletos)) {
-                const dHoy = new Date();
-                const hoyStr = `${dHoy.getFullYear()}-${String(dHoy.getMonth() + 1).padStart(2, '0')}-${String(dHoy.getDate()).padStart(2, '0')}`;
-                const entradaHoy = registrosCompletos.find(r => r.fecha === hoyStr && r.tipo === 'ENTRADA');
-                if (entradaHoy) {
-                    const tsEntrada = entradaHoy.timestamp || entradaHoy.hora;
-                    const dEntrada = parseDateSafe(tsEntrada);
-                    if (dEntrada) {
-                        const diferenciaMinutos = (new Date() - dEntrada) / (1000 * 60);
-                        if (diferenciaMinutos < 15) {
-                            const confirmarSalidaSospechosa = confirm(
-                                "🚨 ADVERTENCIA IMPORTANTE:\n\n" +
-                                "Has registrado tu ENTRADA hace menos de 15 minutos.\n" +
-                                "Si olvidaste marcar tu Entrada por la mañana, marcar la Salida ahora causará que tu jornada sea calculada en SEGUNDOS.\n\n" +
-                                "¿Deseas continuar de todas formas? Debes comunicar este olvido al área respectiva de inmediato para su corrección."
-                            );
-                            if (!confirmarSalidaSospechosa) {
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
+    let latRegistro = posicion.lat;
+    let lngRegistro = posicion.lng;
 
-            showLoading(true);
+    if (typeof latRegistro === 'string') {
+        latRegistro = parseFloat(latRegistro.replace(/\./g, '').replace(',', '.'));
+    }
+    if (typeof lngRegistro === 'string') {
+        lngRegistro = parseFloat(lngRegistro.replace(/\./g, '').replace(',', '.'));
+    }
 
-            let latRegistro = posicion.lat;
-            let lngRegistro = posicion.lng;
-
-            if (typeof latRegistro === 'string') {
-                latRegistro = parseFloat(latRegistro.replace(/\./g, '').replace(',', '.'));
-            }
-            if (typeof lngRegistro === 'string') {
-                lngRegistro = parseFloat(lngRegistro.replace(/\./g, '').replace(',', '.'));
-            }
-
-            if (!isNaN(latRegistro) && !isNaN(lngRegistro)) {
-                if (Math.abs(latRegistro) > 10 && Math.abs(latRegistro) < 1000) {
-                    latRegistro = latRegistro / 1000;
-                }
-                if (Math.abs(lngRegistro) > 180 && Math.abs(lngRegistro) < 1000) {
-                    lngRegistro = lngRegistro / 1000;
-                }
-                if (Math.abs(latRegistro) > 10 && Math.abs(latRegistro) < 100) {
-                    latRegistro = latRegistro / 10;
-                }
-
-                latRegistro = Math.round(latRegistro * 1000000) / 1000000;
-                lngRegistro = Math.round(lngRegistro * 1000000) / 1000000;
-            } else {
-                latRegistro = null;
-                lngRegistro = null;
-            }
-
-            const datos = {
-                id: empleado.id,
-                nombre: empleado.nombre,
-                tipo: empleado.tipoRegistro,
-                almuerzo: empleado.almuerzo || '',
-                lat: latRegistro,
-                lng: lngRegistro,
-                dispositivo: deviceToken,
-                sopa: empleado.sopa || '',
-                almidon: empleado.almidon || '',
-                proteina1: empleado.proteina1 || '',
-                proteina2: empleado.proteina2 || '',
-                ensalada: empleado.ensalada || '',
-                otro: empleado.otro || '',
-                jugo: empleado.jugo || '',
-                razon_salida: detalleRazonSalida?.razon || '',
-                quien_justifica: detalleRazonSalida?.quien_justifica || '',
-                razon_entrada_tardia: detalleRazonEntrada?.razon || '',
-                quien_justifica_entrada: detalleRazonEntrada?.quien_justifica || '',
-                tipo_salida: empleado.tipo_salida || '',
-                modo: currentMode,
-                razon_permiso: empleado.razon_permiso || ''
-            };
-
-            try {
-                const res = await guardarRegistroAPI(datos);
-                showLoading(false);
-
-                if (res.error) {
-                    mostrarToast(res.error, 'error');
-                    return;
-                }
-
-                const ahora = new Date();
-                const horaActual = formatearHora(ahora);
-
-                if (empleado.tipoRegistro === 'ENTRADA') {
-                    estado.tieneEntrada = true;
-                    estado.horaEntrada = horaActual;
-                    estado.almuerzo = empleado.almuerzo;
-                    mostrarToast(`✅ Entrada registrada a las ${horaActual}`, 'success');
-                } else {
-                    estado.tieneSalida = true;
-                    estado.horaSalida = horaActual;
-                    if (detalleRazonSalida?.razon) {
-                        mostrarToast(`✅ Salida registrada (${detalleRazonSalida.razon})`, 'success');
-                    } else {
-                        mostrarToast(`✅ Salida registrada a las ${horaActual}`, 'success');
-                    }
-                }
-
-                await obtenerRegistrosEmpleado();
-                if (currentPage === 'home') renderHomePage();
-                if (currentPage === 'history') renderHistoryPage();
-
-                // Limpiar variables de razón de salida, entrada y permisos
-                razonSalidaTemprana = null;
-                detalleRazonSalida = null;
-                razonEntradaTardia = null;
-                detalleRazonEntrada = null;
-                esPermisoIntermedio = false;
-                razonPermiso = null;
-            } catch (error) {
-                showLoading(false);
-                mostrarToast('Error al registrar: ' + error.message, 'error');
-            }
+    if (!isNaN(latRegistro) && !isNaN(lngRegistro)) {
+        if (Math.abs(latRegistro) > 10 && Math.abs(latRegistro) < 1000) {
+            latRegistro = latRegistro / 1000;
+        }
+        if (Math.abs(lngRegistro) > 180 && Math.abs(lngRegistro) < 1000) {
+            lngRegistro = lngRegistro / 1000;
+        }
+        if (Math.abs(latRegistro) > 10 && Math.abs(latRegistro) < 100) {
+            latRegistro = latRegistro / 10;
         }
 
-        function horaLimiteAlmuerzoPasada() {
-            if (!ALMUERZO_ACTIVO) return false;
+        latRegistro = Math.round(latRegistro * 1000000) / 1000000;
+        lngRegistro = Math.round(lngRegistro * 1000000) / 1000000;
+    } else {
+        latRegistro = null;
+        lngRegistro = null;
+    }
 
-            const ahora = new Date();
-            const [horaLimite, minutoLimite] = HORA_LIMITE_ALMUERZO.split(':').map(Number);
-            const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
-            const limiteMinutos = horaLimite * 60 + minutoLimite;
-            return ahoraMinutos > limiteMinutos;
+    const datos = {
+        id: empleado.id,
+        nombre: empleado.nombre,
+        tipo: empleado.tipoRegistro,
+        almuerzo: empleado.almuerzo || '',
+        lat: latRegistro,
+        lng: lngRegistro,
+        dispositivo: deviceToken,
+        sopa: empleado.sopa || '',
+        almidon: empleado.almidon || '',
+        proteina1: empleado.proteina1 || '',
+        proteina2: empleado.proteina2 || '',
+        ensalada: empleado.ensalada || '',
+        otro: empleado.otro || '',
+        jugo: empleado.jugo || '',
+        razon_salida: detalleRazonSalida?.razon || '',
+        quien_justifica: detalleRazonSalida?.quien_justifica || '',
+        razon_entrada_tardia: detalleRazonEntrada?.razon || '',
+        quien_justifica_entrada: detalleRazonEntrada?.quien_justifica || '',
+        tipo_salida: empleado.tipo_salida || '',
+        modo: currentMode,
+        razon_permiso: empleado.razon_permiso || ''
+    };
+
+    const ahora = new Date();
+    const horaActual = formatearHora(ahora);
+
+    if (empleado.tipoRegistro === 'ENTRADA') {
+        estado.tieneEntrada = true;
+        estado.horaEntrada = horaActual;
+        estado.almuerzo = empleado.almuerzo;
+    } else {
+        estado.tieneSalida = true;
+        estado.horaSalida = horaActual;
+    }
+
+    let transTitulo = "¡Marcación Registrada!";
+    let transSub = `Registrado a las ${horaActual}`;
+    let transIcon = "attendance";
+    let transDetalles = ["Hora exacta registrada", "Ubicación GPS confirmada"];
+
+    if (empleado.tipoRegistro === 'ENTRADA') {
+        transTitulo = "¡Inicio de Jornada!";
+        transSub = `¡Bienvenido(a)! Turno iniciado con éxito • ${horaActual}`;
+        transIcon = "entrada";
+        transDetalles = [
+            "Jornada laboral iniciada",
+            "Hora de entrada registrada (" + horaActual + ")",
+            empleado.almuerzo === 'SI' ? "Almuerzo en planta confirmado" : "Ubicación confirmada"
+        ];
+    } else if (empleado.tipoRegistro === 'SALIDA') {
+        transTitulo = "¡Fin de Jornada!";
+        transSub = `¡Excelente trabajo hoy! Que tengas buen descanso • ${horaActual}`;
+        transIcon = "salida";
+        transDetalles = [
+            "Jornada laboral finalizada",
+            "Hora de salida registrada (" + horaActual + ")",
+            detalleRazonSalida?.razon ? `Motivo: ${detalleRazonSalida.razon}` : "Registro de turno completado"
+        ];
+    } else if (empleado.tipo_salida === 'TRABAJO_CAMPO') {
+        transTitulo = "¡Salida a Campo Registrada!";
+        transSub = `Modo campo activo • ${horaActual}`;
+        transIcon = "campo";
+    } else if (empleado.tipo_salida === 'PERMISO' || empleado.tipo_salida === 'PERMISO_CON_SALIDA_TEMPRANA') {
+        transTitulo = "¡Permiso Registrado!";
+        transSub = `${empleado.razon_permiso || 'Permiso'} • ${horaActual}`;
+        transIcon = "permiso";
+    }
+
+    // ⚡ MOSTRAR EL SPLASH INMEDIATAMENTE (0ms DE RETARDO TRAS EL CLIC)
+    const splashPromise = mostrarSplashTransicion({
+        titulo: transTitulo,
+        nombreEmpleado: empleado.nombre || "",
+        subtitulo: transSub,
+        icono: transIcon,
+        detalles: transDetalles,
+        duracion: 2800,
+        onPreExit: async () => {
+            await obtenerRegistrosEmpleado();
+            if (currentPage === 'home') renderHomePage();
+            if (currentPage === 'history') renderHistoryPage();
+        }
+    });
+
+    try {
+        const res = await guardarRegistroAPI(datos);
+
+        if (res && res.error) {
+            const overlay = document.getElementById('transitionSplashOverlay');
+            if (overlay) overlay.remove();
+            mostrarToast(res.error, 'error');
+            return;
         }
 
-        function iniciarRegistro(tipo) {
-            if (!verificarDistanciaEmpresa()) return;
+        await splashPromise;
 
-            const status = calcularStatusActual();
-            const esReentrada = status.label.includes('PERMISO') || status.label.includes('CAMPO');
+        // Limpiar variables de razón de salida, entrada y permisos
+        razonSalidaTemprana = null;
+        detalleRazonSalida = null;
+        razonEntradaTardia = null;
+        detalleRazonEntrada = null;
+        esPermisoIntermedio = false;
+        razonPermiso = null;
+    } catch (error) {
+        const overlay = document.getElementById('transitionSplashOverlay');
+        if (overlay) overlay.remove();
+        mostrarToast('Error al registrar: ' + error.message, 'error');
+    }
+}
 
-            empleado.tipoRegistro = tipo;
+function horaLimiteAlmuerzoPasada() {
+    if (!ALMUERZO_ACTIVO) return false;
 
-            if (tipo === 'ENTRADA') {
-                // Si ya tiene entrada hoy pero tiene salida intermedia o permiso, es re-entrada
-                if (estado.tieneEntrada && esReentrada) {
-                    // Es re-entrada de permiso o campo - registrar directamente como ENTRADA
-                    empleado.almuerzo = estado.almuerzo || '';
-                    registrar();
-                    return;
-                }
+    const ahora = new Date();
+    const [horaLimite, minutoLimite] = HORA_LIMITE_ALMUERZO.split(':').map(Number);
+    const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+    const limiteMinutos = horaLimite * 60 + minutoLimite;
+    return ahoraMinutos > limiteMinutos;
+}
 
-                if (horaLimiteAlmuerzoPasada()) {
-                    mostrarToast(`⚠️ Fuera del horario (límite ${HORA_LIMITE_ALMUERZO}). Se registra almuerzo fuera de planta.`, 'error');
-                    empleado.almuerzo = 'NO';
-                    setTimeout(() => registrar(), 2000);
-                } else {
-                    mostrarLunchSelector();
-                }
-            } else if (tipo === 'SALIDA') {
-                empleado.almuerzo = estado.almuerzo || '';
-                registrar();
-            } else if (tipo === 'RETORNO_CAMPO') {
-                empleado.tipoRegistro = 'RETORNO_CAMPO';
-                registrar();
-            }
+function iniciarRegistro(tipo) {
+    if (!verificarDistanciaEmpresa()) return;
+
+    const status = calcularStatusActual();
+    const esReentrada = status.label.includes('PERMISO') || status.label.includes('CAMPO');
+
+    empleado.tipoRegistro = tipo;
+
+    if (tipo === 'ENTRADA') {
+        // Si ya tiene entrada hoy pero tiene salida intermedia o permiso, es re-entrada
+        if (estado.tieneEntrada && esReentrada) {
+            // Es re-entrada de permiso o campo - registrar directamente como ENTRADA
+            empleado.almuerzo = estado.almuerzo || '';
+            registrar();
+            return;
         }
 
-        function esEntradaTardia() {
-            const ahora = new Date();
-            const [horaLimite, minutoLimite] = HORA_ENTRADA_LIMITE.split(':').map(Number);
-            const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
-            const limiteMinutos = horaLimite * 60 + minutoLimite;
-            return ahoraMinutos > limiteMinutos;
+        if (horaLimiteAlmuerzoPasada()) {
+            mostrarToast(`⚠️ Fuera del horario (límite ${HORA_LIMITE_ALMUERZO}). Se registra almuerzo fuera de planta.`, 'warning');
+            empleado.almuerzo = 'NO';
+            registrar();
+        } else {
+            mostrarLunchSelector();
         }
+    } else if (tipo === 'SALIDA') {
+        empleado.almuerzo = estado.almuerzo || '';
+        registrar();
+    } else if (tipo === 'RETORNO_CAMPO') {
+        empleado.tipoRegistro = 'RETORNO_CAMPO';
+        registrar();
+    }
+}
 
-        function mostrarModalTipoSalida() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+function esEntradaTardia() {
+    const ahora = new Date();
+    const [horaLimite, minutoLimite] = HORA_ENTRADA_LIMITE.split(':').map(Number);
+    const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+    const limiteMinutos = horaLimite * 60 + minutoLimite;
+    return ahoraMinutos > limiteMinutos;
+}
+
+function mostrarModalTipoSalida() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 24px;">
@@ -1238,12 +1515,12 @@
                 </div>
             </div>
         `;
-            ajustarLayout();
-        }
+    ajustarLayout();
+}
 
-        function mostrarModalTipoSalidaTemprana() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+function mostrarModalTipoSalidaTemprana() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -1274,45 +1551,45 @@
                 </div>
             </div>
         `;
-            ajustarLayout();
+    ajustarLayout();
+}
+
+window.seleccionarTipoSalida = function (tipo) {
+    if (tipo === 'final') {
+        empleado.tipo_salida = 'FINAL';
+        empleado.razon_permiso = '';
+        procederConRegistro();
+    } else if (tipo === 'intermedia') {
+        mostrarModalRazonPermiso();
+    } else if (tipo === 'campo') {
+        empleado.tipoRegistro = 'SALIDA_CAMPO';
+        empleado.tipo_salida = 'TRABAJO_CAMPO';
+        empleado.razon_permiso = 'En Campo';
+        registrar();
+    }
+};
+
+window.seleccionarTipoSalidaTemprana = function (tipo) {
+    if (tipo === 'salida_final') {
+        // Salida temprana final - registrar como SALIDA_TEMPRANA_JUSTIFICADA
+        empleado.tipo_salida = 'SALIDA_TEMPRANA_JUSTIFICADA';
+        procederConRegistro();
+    } else if (tipo === 'permiso') {
+        // Si ya seleccionó una razón específica de permiso anteriormente, usarla directamente
+        if (razonSalidaTemprana === 'permiso_medico' || razonSalidaTemprana === 'permiso_personal') {
+            const razonRef = razonSalidaTemprana === 'permiso_medico' ? 'medico' : 'personal';
+            const labelRef = razonSalidaTemprana === 'permiso_medico' ? 'Médico' : 'Personal';
+            seleccionarRazonPermisoConSalidaTemprana(razonRef, labelRef);
+        } else {
+            // Si viene de "Salida Justificada" general, preguntar el tipo de permiso
+            mostrarModalRazonPermisoConSalidaTemprana();
         }
+    }
+};
 
-        window.seleccionarTipoSalida = function (tipo) {
-            if (tipo === 'final') {
-                empleado.tipo_salida = 'FINAL';
-                empleado.razon_permiso = '';
-                procederConRegistro();
-            } else if (tipo === 'intermedia') {
-                mostrarModalRazonPermiso();
-            } else if (tipo === 'campo') {
-                empleado.tipoRegistro = 'SALIDA_CAMPO';
-                empleado.tipo_salida = 'TRABAJO_CAMPO';
-                empleado.razon_permiso = 'En Campo';
-                registrar();
-            }
-        };
-
-        window.seleccionarTipoSalidaTemprana = function (tipo) {
-            if (tipo === 'salida_final') {
-                // Salida temprana final - registrar como SALIDA_TEMPRANA_JUSTIFICADA
-                empleado.tipo_salida = 'SALIDA_TEMPRANA_JUSTIFICADA';
-                procederConRegistro();
-            } else if (tipo === 'permiso') {
-                // Si ya seleccionó una razón específica de permiso anteriormente, usarla directamente
-                if (razonSalidaTemprana === 'permiso_medico' || razonSalidaTemprana === 'permiso_personal') {
-                    const razonRef = razonSalidaTemprana === 'permiso_medico' ? 'medico' : 'personal';
-                    const labelRef = razonSalidaTemprana === 'permiso_medico' ? 'Médico' : 'Personal';
-                    seleccionarRazonPermisoConSalidaTemprana(razonRef, labelRef);
-                } else {
-                    // Si viene de "Salida Justificada" general, preguntar el tipo de permiso
-                    mostrarModalRazonPermisoConSalidaTemprana();
-                }
-            }
-        };
-
-        function mostrarModalRazonPermiso() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+function mostrarModalRazonPermiso() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -1341,12 +1618,12 @@
                 </div>
             </div>
         `;
-            ajustarLayout();
-        }
+    ajustarLayout();
+}
 
-        function mostrarModalRazonPermisoConSalidaTemprana() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+function mostrarModalRazonPermisoConSalidaTemprana() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -1375,38 +1652,36 @@
                 </div>
             </div>
         `;
-            ajustarLayout();
-        }
+    ajustarLayout();
+}
 
-        window.seleccionarRazonPermiso = function (razon, label) {
-            razonPermiso = razon;
-            empleado.tipo_salida = 'PERMISO';
-            // Estandarizar nombres según solicitud
-            const labelEstandar = razon === 'medico' ? 'PERMISO MEDICO' : 'PERMISO PERSONAL';
-            empleado.razon_permiso = labelEstandar;
-            esPermisoIntermedio = true;
+window.seleccionarRazonPermiso = function (razon, label) {
+    razonPermiso = razon;
+    empleado.tipo_salida = 'PERMISO';
+    // Estandarizar nombres según solicitud
+    const labelEstandar = razon === 'medico' ? 'PERMISO MEDICO' : 'PERMISO PERSONAL';
+    empleado.razon_permiso = labelEstandar;
+    esPermisoIntermedio = true;
 
-            mostrarToast(`✅ ${labelEstandar} registrado.`, 'success');
-            setTimeout(() => procederConRegistro(), 1500);
-        };
+    procederConRegistro();
+};
 
-        window.seleccionarRazonPermisoConSalidaTemprana = function (razon, label) {
-            razonPermiso = razon;
-            empleado.tipo_salida = 'PERMISO_CON_SALIDA_TEMPRANA';
-            empleado.razon_permiso = razon;
-            esPermisoIntermedio = true;
+window.seleccionarRazonPermisoConSalidaTemprana = function (razon, label) {
+    razonPermiso = razon;
+    empleado.tipo_salida = 'PERMISO_CON_SALIDA_TEMPRANA';
+    empleado.razon_permiso = razon;
+    esPermisoIntermedio = true;
 
-            mostrarToast(`✅ Permiso ${label} con salida temprana registrado. Puedes regresar cuando lo necesites.`, 'success');
-            setTimeout(() => procederConRegistro(), 1500);
-        };
+    procederConRegistro();
+};
 
-        window.cancelarPermiso = function () {
-            renderHomePage();
-        }
+window.cancelarPermiso = function () {
+    renderHomePage();
+}
 
-        function mostrarModalRazonEntrada() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+function mostrarModalRazonEntrada() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -1445,12 +1720,12 @@
                 </div>
             </div>
         `;
-            ajustarLayout();
-        }
+    ajustarLayout();
+}
 
-        function mostrarJustificacionEntrada(razon, label) {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+function mostrarJustificacionEntrada(razon, label) {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -1476,61 +1751,61 @@
                 </div>
             </div>
         `;
-            document.getElementById('quienJustificaEntrada').focus();
-            ajustarLayout();
-        }
+    document.getElementById('quienJustificaEntrada').focus();
+    ajustarLayout();
+}
 
-        window.procesarRazonEntradaJustificada = function () {
-            const nombre = document.getElementById('quienJustificaEntrada')?.value.trim();
-            if (!nombre) {
-                mostrarToast('Ingresa el nombre de quién autoriza', 'error');
-                return;
-            }
+window.procesarRazonEntradaJustificada = function () {
+    const nombre = document.getElementById('quienJustificaEntrada')?.value.trim();
+    if (!nombre) {
+        mostrarToast('Ingresa el nombre de quién autoriza', 'error');
+        return;
+    }
 
-            razonEntradaTardia = 'entrada_justificada';
-            detalleRazonEntrada = {
-                razon: 'entrada_justificada',
-                quien_justifica: nombre
-            };
+    razonEntradaTardia = 'entrada_justificada';
+    detalleRazonEntrada = {
+        razon: 'entrada_justificada',
+        quien_justifica: nombre
+    };
 
-            // Verificar si la hora de almuerzo ya pasó
-            if (horaLimiteAlmuerzoPasada()) {
-                empleado.almuerzo = 'NO';
-                mostrarToast(`⚠️ Fuera del horario de almuerzo. Se registra almuerzo fuera de planta.`, 'error');
-                setTimeout(() => registrar(), 2000);
-            } else {
-                mostrarLunchSelector();
-            }
-        };
+    // Verificar si la hora de almuerzo ya pasó
+    if (horaLimiteAlmuerzoPasada()) {
+        empleado.almuerzo = 'NO';
+        mostrarToast(`⚠️ Fuera del horario de almuerzo. Se registra almuerzo fuera de planta.`, 'error');
+        setTimeout(() => registrar(), 2000);
+    } else {
+        mostrarLunchSelector();
+    }
+};
 
-        window.procesarRazonEntrada = function (razon, label) {
-            razonEntradaTardia = razon;
-            detalleRazonEntrada = {
-                razon: razon,
-                quien_justifica: ''
-            };
+window.procesarRazonEntrada = function (razon, label) {
+    razonEntradaTardia = razon;
+    detalleRazonEntrada = {
+        razon: razon,
+        quien_justifica: ''
+    };
 
-            // Verificar si la hora de almuerzo ya pasó
-            if (horaLimiteAlmuerzoPasada()) {
-                empleado.almuerzo = 'NO';
-                mostrarToast(`⚠️ Fuera del horario de almuerzo. Se registra almuerzo fuera de planta.`, 'error');
-                setTimeout(() => registrar(), 2000);
-            } else {
-                mostrarLunchSelector();
-            }
-        };
+    // Verificar si la hora de almuerzo ya pasó
+    if (horaLimiteAlmuerzoPasada()) {
+        empleado.almuerzo = 'NO';
+        mostrarToast(`⚠️ Fuera del horario de almuerzo. Se registra almuerzo fuera de planta.`, 'error');
+        setTimeout(() => registrar(), 2000);
+    } else {
+        mostrarLunchSelector();
+    }
+};
 
-        window.cancelarRazonEntrada = function () {
-            razonEntradaTardia = null;
-            detalleRazonEntrada = null;
-            renderHomePage();
-        }
+window.cancelarRazonEntrada = function () {
+    razonEntradaTardia = null;
+    detalleRazonEntrada = null;
+    renderHomePage();
+}
 
-        function mostrarLunchSelector() {
-            const mainContent = document.getElementById('mainContent');
-            lugarSeleccionado = null;
+function mostrarLunchSelector() {
+    const mainContent = document.getElementById('mainContent');
+    lugarSeleccionado = null;
 
-            mainContent.innerHTML = `
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 24px;">
@@ -1564,425 +1839,1040 @@
                 </div>
             </div>
         `;
-            ajustarLayout();
+    ajustarLayout();
+}
+
+function volverAHome() {
+    lugarSeleccionado = null;
+    if (isAuthenticated) {
+        renderHomePage();
+    } else {
+        renderAuthScreen();
+    }
+    ajustarLayout();
+}
+
+// ========== UTILIDADES DE NOMBRES Y FOTOS ==========
+function capitalizarTexto(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+function extraerPrimerNombre(nombreCompleto) {
+    if (!nombreCompleto) return 'Colaborador';
+    const partes = nombreCompleto.trim().split(/\s+/);
+    if (partes.length >= 3) {
+        // En Ecuador formato habitual: [Apellido 1] [Apellido 2] [Primer Nombre] [Segundo Nombre...]
+        return capitalizarTexto(partes[2]);
+    }
+    return capitalizarTexto(partes[0]);
+}
+window.extraerPrimerNombre = extraerPrimerNombre;
+
+// ========== VERIFICACIÓN DE CONTRASEÑA ENCRIPTADA ==========
+async function verificarPIN() {
+    const empleadoId = document.getElementById('loginEmployeeId')?.value.trim();
+    const rawPass = document.getElementById('pinInput')?.value.trim();
+
+    if (!empleadoId) {
+        mostrarToast('Ingresa tu ID / Cédula de empleado', 'warning');
+        document.getElementById('loginEmployeeId')?.focus();
+        return;
+    }
+
+    if (!rawPass) {
+        mostrarToast('Ingresa tu contraseña de acceso', 'error');
+        document.getElementById('pinInput')?.focus();
+        return;
+    }
+
+    try {
+        const passHash = await hashPassword(rawPass);
+        // 1. Probar validación con Hash Criptográfico
+        let res = await verificarPINAPI(passHash, deviceToken, empleadoId);
+
+        // 2. Fallback de retrocompatibilidad para usuarios antiguos con PIN plano
+        if ((!res || !res.valido) && !res?.debeRegistrarPin && (!res?.error || res?.error === "Contraseña incorrecta")) {
+            const resPlain = await verificarPINAPI(rawPass, deviceToken, empleadoId);
+            if (resPlain && resPlain.valido) {
+                res = resPlain;
+            }
         }
 
-        function volverAHome() {
-            lugarSeleccionado = null;
-            if (isAuthenticated) {
-                renderHomePage();
+        if (res.error) {
+            const pinResult = document.getElementById('pinResult');
+            if (pinResult) {
+                pinResult.classList.remove('hidden');
+                pinResult.textContent = '❌ ' + res.error;
+            }
+            mostrarToast(res.error, 'error');
+
+            if (res.debeRegistrarPin) {
+                setTimeout(() => {
+                    mostrarRegistroInicial();
+                    const regInput = document.getElementById('registroEmployeeId');
+                    if (regInput && empleadoId) {
+                        regInput.value = empleadoId;
+                        verificarEstadoCuentaEmpleado();
+                    }
+                }, 1400);
+            }
+            return;
+        }
+
+        if (res.valido) {
+            localStorage.setItem('SESSION_DATA', JSON.stringify({
+                empleadoId: res.empleado.id,
+                token: deviceToken,
+                timestamp: new Date().toISOString()
+            }));
+
+            // Cargar estado en paralelo con la animación de transición
+            const estadoPromise = obtenerEstado(res.empleado.id, null).catch(e => ({ error: e.message }));
+            const splashPromise = mostrarSplashTransicion({
+                titulo: "¡Identidad Verificada!",
+                nombreEmpleado: res.empleado.nombre || 'Colaborador',
+                subtitulo: "Acceso concedido. Ingresando a tu credencial digital...",
+                icono: "lock",
+                detalles: [
+                    "Credenciales autenticadas",
+                    "Sincronizando estado de hoy"
+                ],
+                duracion: 1400
+            });
+
+            const [estadoRes] = await Promise.all([estadoPromise, splashPromise]);
+
+            estado = {
+                tieneEntrada: estadoRes.tieneEntrada || false,
+                tieneSalida: estadoRes.tieneSalida || false,
+                horaEntrada: estadoRes.horaEntrada || null,
+                horaSalida: estadoRes.horaSalida || null,
+                almuerzo: estadoRes.almuerzo || null,
+                esSupervisor: estadoRes.esSupervisor || false
+            };
+
+            empleado = {
+                id: res.empleado.id,
+                nombre: res.empleado.nombre || 'Empleado',
+                area: res.empleado.area || 'Área',
+                foto_url: res.empleado.foto_url || '',
+                cargo: res.empleado.cargo || '',
+                fechaNacimiento: res.empleado.fechaNacimiento || '',
+                baseLat: res.empleado.baseLat || null,
+                baseLng: res.empleado.baseLng || null,
+                pagos_url: estadoRes.pagos_url || '',
+                tipoRegistro: '',
+                almuerzo: ''
+            };
+
+            actualizarInterfazSegunCargo();
+            isAuthenticated = true;
+            obtenerRegistrosEmpleado();
+
+            const bottomNav = document.querySelector('.bottom-nav');
+            if (bottomNav) bottomNav.style.display = 'flex';
+
+            // Si el PIN es antiguo, se obliga a crear una contraseña antes de entrar
+            if (res.debeActualizarPassword) {
+                renderMigrarPasswordScreen();
             } else {
-                renderAuthScreen();
+                if (esCumpleanos(empleado.fechaNacimiento)) {
+                    setTimeout(celebrarCumpleanos, 1000);
+                }
+                renderHomePage();
             }
-            ajustarLayout();
+        } else {
+            mostrarToast('Contraseña incorrecta', 'error');
+        }
+    } catch (error) {
+        mostrarToast('Error de conexión: ' + error.message, 'error');
+    }
+    ajustarLayout();
+}
+
+let _esVinculacionDispositivoExistente = false;
+let _verificarEstadoTimeout = null;
+
+function mostrarLoaderVerificacionEmpleado(empleadoId) {
+    const alertBox = document.getElementById('registroStatusAlert');
+    if (!alertBox) return;
+    alertBox.classList.remove('hidden');
+    alertBox.className = "alert alert-light py-3 px-3 small mb-3 text-center border";
+    alertBox.style.borderRadius = "16px";
+    alertBox.style.background = "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)";
+    alertBox.style.borderColor = "#cbd5e1";
+    alertBox.style.boxShadow = "0 4px 14px rgba(0,0,0,0.04)";
+    alertBox.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:6px 0;">
+            <div class="spinner-border text-primary" style="width:2.2rem; height:2.2rem; border-width:0.22em;" role="status">
+                <span class="visually-hidden">Buscando...</span>
+            </div>
+            <div>
+                <strong style="font-size:13.5px; color:#0f172a; display:block;">Verificando usuario...</strong>
+                <span style="font-size:11.5px; color:#64748b;">Buscando cuenta para ID: <strong style="color:#0284c7;">${escapeHtml(empleadoId)}</strong></span>
+            </div>
+        </div>
+    `;
+}
+
+function verificarEstadoCuentaEmpleadoDebounced() {
+    clearTimeout(_verificarEstadoTimeout);
+    const empleadoId = document.getElementById('registroEmployeeId')?.value.trim();
+    const alertBox = document.getElementById('registroStatusAlert');
+
+    if (!empleadoId || empleadoId.length < 1) {
+        if (alertBox) alertBox.classList.add('hidden');
+        return;
+    }
+
+    // Mostrar animación y mensaje de carga de forma inmediata al teclear
+    mostrarLoaderVerificacionEmpleado(empleadoId);
+
+    _verificarEstadoTimeout = setTimeout(() => {
+        verificarEstadoCuentaEmpleado();
+    }, 280);
+}
+window.verificarEstadoCuentaEmpleadoDebounced = verificarEstadoCuentaEmpleadoDebounced;
+
+window.irAIniciarSesionDesdeRegistro = function(empleadoId) {
+    empleadoId = empleadoId || document.getElementById('registroEmployeeId')?.value.trim();
+    volverAPIN();
+    const loginIdInput = document.getElementById('loginEmployeeId');
+    if (loginIdInput && empleadoId) {
+        loginIdInput.value = empleadoId;
+        document.getElementById('pinInput')?.focus();
+    }
+};
+
+window.mostrarModalCambioPassword = function(empleadoId) {
+    empleadoId = empleadoId || document.getElementById('registroEmployeeId')?.value.trim();
+    if (!empleadoId) {
+        mostrarToast('Ingresa tu ID de empleado primero', 'warning');
+        return;
+    }
+
+    const modalId = 'modalCambiarPasswordDirecto';
+    let modalEl = document.getElementById(modalId);
+    if (modalEl) modalEl.remove();
+
+    modalEl = document.createElement('div');
+    modalEl.id = modalId;
+    document.body.appendChild(modalEl);
+
+    modalEl.innerHTML = `
+        <div class="modal fade show" style="display:block; background:rgba(15,23,42,0.75); backdrop-filter:blur(6px); z-index:10500;" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered" style="max-width:390px; margin:16px auto;">
+                <div class="modal-content border-0 shadow-lg" style="border-radius:22px; overflow:hidden; background:#ffffff;">
+                    <div class="modal-header border-0 pb-0 pt-4 px-4 text-center justify-content-center flex-column">
+                        <div style="width:56px; height:56px; border-radius:50%; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; font-size:24px; margin-bottom:12px; box-shadow:0 4px 12px rgba(37,99,235,0.15);">
+                            <i class="fas fa-key"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold" style="color:#0f172a; font-size:19px;">Cambiar Contraseña</h5>
+                        <p class="text-muted small mb-0 mt-1">Usuario ID: <strong style="color:#0284c7;">${escapeHtml(empleadoId)}</strong></p>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="mb-3 text-start">
+                            <label class="form-label small fw-bold text-secondary mb-1">Contraseña Actual</label>
+                            <div class="input-group">
+                                <input type="password" id="chgPassActual" class="form-control form-control-lg" placeholder="Ingresa tu clave actual" autocomplete="current-password">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('chgPassActual', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+                        <div class="mb-3 text-start">
+                            <label class="form-label small fw-bold text-secondary mb-1">Nueva Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="chgPassNueva" class="form-control form-control-lg" placeholder="Mínimo 4 caracteres" autocomplete="new-password">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('chgPassNueva', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+                        <div class="mb-4 text-start">
+                            <label class="form-label small fw-bold text-secondary mb-1">Confirmar Nueva Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="chgPassConfirm" class="form-control form-control-lg" placeholder="Repite la nueva clave" autocomplete="new-password">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('chgPassConfirm', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary btn-lg w-100 py-3 mb-2" onclick="ejecutarCambioPasswordDirecto('${escapeHtml(empleadoId)}')" style="border-radius:14px; font-weight:700; background:linear-gradient(135deg, #2563eb, #1d4ed8); border:none; box-shadow:0 4px 14px rgba(37,99,235,0.3);">
+                            <i class="fas fa-save me-1"></i> Actualizar y Vincular
+                        </button>
+                        <button class="btn btn-light w-100 py-2" onclick="cerrarModalCambioPassword()" style="border-radius:12px; font-weight:600; color:#64748b;">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+window.cerrarModalCambioPassword = function() {
+    const modalEl = document.getElementById('modalCambiarPasswordDirecto');
+    if (modalEl) modalEl.remove();
+};
+
+window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
+    const actual = document.getElementById('chgPassActual')?.value.trim();
+    const nueva = document.getElementById('chgPassNueva')?.value.trim();
+    const confirm = document.getElementById('chgPassConfirm')?.value.trim();
+
+    if (!actual) {
+        mostrarToast('Ingresa tu contraseña actual', 'warning');
+        return;
+    }
+    if (!nueva || nueva.length < 4) {
+        mostrarToast('La nueva contraseña debe tener al menos 4 caracteres', 'warning');
+        return;
+    }
+    if (nueva !== confirm) {
+        mostrarToast('Las nuevas contraseñas no coinciden', 'warning');
+        return;
+    }
+
+    try {
+        const actualHash = await hashPassword(actual);
+        const resCheck = await registrarDispositivoConPIN(empleadoId, actualHash, deviceToken, actual);
+        if (resCheck.error) {
+            mostrarToast(resCheck.error, 'error');
+            return;
         }
 
-        // ========== VERIFICACIÓN DE CONTRASEÑA ==========
-        async function verificarPIN() {
-            const pin = document.getElementById('pinInput').value.trim();
-            if (!pin || pin.length < 4) {
-                mostrarToast('Ingresa tu contraseña de acceso', 'error');
-                return;
-            }
+        const nuevaHash = await hashPassword(nueva);
+        const params = {
+            accion: 'actualizarPerfilEmpleado',
+            empleadoId: empleadoId,
+            passwordHash: nuevaHash
+        };
 
-            showLoading(true);
+        if (window.FirebaseBackend && window.USE_FIREBASE) {
+            await window.FirebaseBackend.actualizarPerfilEmpleado(params);
+        } else {
+            await jsonpRequest(params);
+        }
 
-            try {
-                const res = await verificarPINAPI(pin, deviceToken);
-                showLoading(false);
+        cerrarModalCambioPassword();
 
-                if (res.error) {
-                    const pinResult = document.getElementById('pinResult');
-                    if (pinResult) {
-                        pinResult.classList.remove('hidden');
-                        pinResult.textContent = '❌ ' + res.error;
-                    }
-                    mostrarToast(res.error, 'error');
-                    return;
-                }
+        localStorage.setItem('SESSION_DATA', JSON.stringify({
+            empleadoId,
+            token: deviceToken,
+            timestamp: new Date().toISOString()
+        }));
 
-                if (res.valido) {
-                    localStorage.setItem('SESSION_DATA', JSON.stringify({
-                        empleadoId: res.empleado.id,
-                        token: deviceToken,
-                        timestamp: new Date().toISOString()
-                    }));
+        const estadoPromise = obtenerEstado(empleadoId, null);
+        const splashPromise = mostrarSplashTransicion({
+            titulo: "¡Contraseña Actualizada!",
+            nombreEmpleado: resCheck.empleado?.nombre || empleadoId,
+            subtitulo: "Tu nueva clave ha sido guardada y tu dispositivo vinculado exitosamente.",
+            icono: "lock",
+            detalles: [
+                "Clave encriptada SHA-256",
+                "Dispositivo verificado",
+                "Acceso concedido"
+            ],
+            duracion: 1700
+        });
 
-                    // Obtener estado actual (hoy) rápido sin descargar todo el historial de entrada
-                    const estadoRes = await obtenerEstado(res.empleado.id, null).catch(e => ({ error: e.message }));
+        const [estadoRes] = await Promise.all([estadoPromise, splashPromise]);
 
-                    estado = {
-                        tieneEntrada: estadoRes.tieneEntrada || false,
-                        tieneSalida: estadoRes.tieneSalida || false,
-                        horaEntrada: estadoRes.horaEntrada || null,
-                        horaSalida: estadoRes.horaSalida || null,
-                        almuerzo: estadoRes.almuerzo || null,
-                        esSupervisor: estadoRes.esSupervisor || false
-                    };
+        if (!estadoRes.error) {
+            estado = {
+                tieneEntrada: estadoRes.tieneEntrada || false,
+                tieneSalida: estadoRes.tieneSalida || false,
+                horaEntrada: estadoRes.horaEntrada || null,
+                horaSalida: estadoRes.horaSalida || null,
+                almuerzo: estadoRes.almuerzo || null,
+                esSupervisor: estadoRes.esSupervisor || false
+            };
+            empleado = {
+                id: estadoRes.id,
+                nombre: estadoRes.nombre,
+                area: estadoRes.area,
+                foto_url: estadoRes.foto_url,
+                cargo: estadoRes.cargo || '',
+                fechaNacimiento: estadoRes.fechaNacimiento || '',
+                baseLat: estadoRes.baseLat || null,
+                baseLng: estadoRes.baseLng || null,
+                tipoRegistro: '',
+                almuerzo: ''
+            };
+            actualizarInterfazSegunCargo();
+            isAuthenticated = true;
+            obtenerRegistrosEmpleado();
 
-                    empleado = {
-                        id: res.empleado.id,
-                        nombre: res.empleado.nombre || 'Empleado',
-                        area: res.empleado.area || 'Área',
-                        foto_url: res.empleado.foto_url || '',
-                        cargo: res.empleado.cargo || '',
-                        fechaNacimiento: res.empleado.fechaNacimiento || '',
-                        baseLat: res.empleado.baseLat || null,
-                        baseLng: res.empleado.baseLng || null,
-                        pagos_url: estadoRes.pagos_url || '',
-                        tipoRegistro: '',
-                        almuerzo: ''
-                    };
+            const bottomNav = document.querySelector('.bottom-nav');
+            if (bottomNav) bottomNav.style.display = 'flex';
 
-                    // Actualizar interfaz según cargo inmediatamente
-                    actualizarInterfazSegunCargo();
+            renderHomePage();
+        }
+    } catch(e) {
+        mostrarToast('Error al actualizar contraseña: ' + e.message, 'error');
+    }
+};
 
-                    // Verificar Cumpleaños
-                    if (esCumpleanos(empleado.fechaNacimiento)) {
-                        setTimeout(celebrarCumpleanos, 1000);
-                    }
+async function verificarEstadoCuentaEmpleado() {
+    const empleadoId = document.getElementById('registroEmployeeId')?.value.trim();
+    const alertBox = document.getElementById('registroStatusAlert');
+    const containerConfirm = document.getElementById('containerPasswordConfirm');
+    const lblPassword = document.getElementById('lblRegistroPassword');
+    const btnSubmit = document.getElementById('btnConfirmarRegistro');
+    const helpText = document.getElementById('registroHelpText');
 
-                    isAuthenticated = true;
+    if (!empleadoId || empleadoId.length < 1) {
+        if (alertBox) alertBox.classList.add('hidden');
+        return;
+    }
 
-                    // Cargar registros históricos en segundo plano
-                    obtenerRegistrosEmpleado();
+    mostrarLoaderVerificacionEmpleado(empleadoId);
 
-                    renderHomePage();
-                    mostrarToast(`Bienvenido ${empleado.nombre}`, 'success');
+    try {
+        const res = await jsonpRequest({ accion: 'verificarEmpleadoTienePin', empleadoId });
+        if (res && res.ok) {
+            _esVinculacionDispositivoExistente = res.tienePin;
+
+            if (alertBox) {
+                alertBox.classList.remove('hidden');
+                const primerNombre = extraerPrimerNombre(res.nombre);
+                const fotoRaw = res.foto_url || res.foto || res.fotoUrl || res.url_foto || '';
+                const fotoFixed = typeof window.fixFotoUrl === 'function' ? window.fixFotoUrl(fotoRaw) : (typeof fixFotoUrl === 'function' ? fixFotoUrl(fotoRaw) : fotoRaw);
+                const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(primerNombre || 'U')}&background=${res.tienePin ? 'f59e0b' : '0284c7'}&color=fff&bold=true`;
+                const fotoUrl = fotoFixed || defaultAvatar;
+
+                const borderColor = res.tienePin ? '#f59e0b' : '#10b981';
+                const badgeBg = res.tienePin ? '#fef3c7' : '#dcfce7';
+                const badgeColor = res.tienePin ? '#b45309' : '#15803d';
+                const badgeIcon = res.tienePin ? 'fa-key' : 'fa-user-plus';
+                const badgeLabel = res.tienePin ? 'Contraseña Registrada' : 'Primera Vinculación';
+
+                if (res.tienePin) {
+                    alertBox.className = "alert alert-warning py-3 px-3 small mb-3 text-start";
+                    alertBox.innerHTML = `
+                        <div style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px;">
+                            <div style="position:relative; width:96px; height:96px; margin:0 auto;">
+                                <img src="${fotoUrl}" alt="${escapeHtml(res.nombre)}" style="width:96px; height:96px; min-width:96px; border-radius:50%; object-fit:cover; border:3.5px solid ${borderColor}; box-shadow:0 4px 14px rgba(0,0,0,0.14); background:#f1f5f9; display:block;" onerror="this.onerror=null; this.src='${defaultAvatar}';">
+                                <span style="position:absolute; bottom:2px; right:2px; width:26px; height:26px; border-radius:50%; background:${borderColor}; color:white; display:flex; align-items:center; justify-content:center; font-size:12px; border:2px solid white; box-shadow:0 2px 5px rgba(0,0,0,0.2);">
+                                    <i class="fas ${badgeIcon}"></i>
+                                </span>
+                            </div>
+                            <div>
+                                <h4 style="font-size:18px; font-weight:800; color:#0f172a; margin:0;">¡Hola, ${escapeHtml(primerNombre)}! 👋</h4>
+                                <div style="font-size:11.5px; font-weight:600; color:#64748b; margin-top:2px;">${escapeHtml(res.nombre)}</div>
+                                <span style="display:inline-block; font-size:10.5px; font-weight:700; background:${badgeBg}; color:${badgeColor}; padding:2px 10px; border-radius:12px; margin-top:4px;">
+                                    <i class="fas ${badgeIcon} me-1"></i>${badgeLabel}
+                                </span>
+                            </div>
+                            <div style="font-size:12px; color:#475569; line-height:1.4; margin-top:2px;">
+                                Tu cuenta ya posee contraseña registrada. Ingrésala abajo para autorizar y vincular este dispositivo.
+                            </div>
+                        </div>
+
+                        <div class="mt-3 pt-2 border-top" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                            <button type="button" class="btn btn-outline-primary py-2" onclick="irAIniciarSesionDesdeRegistro('${escapeHtml(empleadoId)}')" style="border-radius:10px; font-size:11.5px; font-weight:700;">
+                                <i class="fas fa-sign-in-alt me-1"></i> Iniciar Sesión
+                            </button>
+                            <button type="button" class="btn btn-outline-warning py-2" onclick="mostrarModalCambioPassword('${escapeHtml(empleadoId)}')" style="border-radius:10px; font-size:11.5px; font-weight:700; color:#b45309; border-color:#f59e0b; background:#fffbeb;">
+                                <i class="fas fa-key me-1"></i> Cambiar Clave
+                            </button>
+                        </div>
+
+                        <div class="mt-2 pt-2 border-top" style="font-size:10.5px; color:#64748b;">
+                            <div style="font-weight:700; color:#b45309; margin-bottom:2px;"><i class="fas fa-shield-alt me-1"></i> Restricciones y Seguridad:</div>
+                            <ul style="margin:0; padding-left:16px; line-height:1.4;">
+                                <li><strong>Dispositivo único:</strong> Al vincular este equipo, cualquier otro teléfono previo quedará desvinculado automáticamente.</li>
+                                <li><strong>Identidad y GPS:</strong> Tu marcación es personal y se valida por geolocalización.</li>
+                            </ul>
+                        </div>
+                    `;
+                    if (containerConfirm) containerConfirm.style.display = 'none';
+                    if (lblPassword) lblPassword.innerText = "Contraseña Registrada";
+                    if (btnSubmit) btnSubmit.innerHTML = `<i class="fas fa-link me-1"></i> Autorizar y Vincular Dispositivo`;
+                    if (helpText) helpText.innerText = "🔒 Al vincular este equipo, cualquier otro teléfono previo quedará desvinculado automáticamente.";
                 } else {
-                    mostrarToast('Contraseña incorrecta', 'error');
+                    alertBox.className = "alert alert-info py-3 px-3 small mb-3 text-start";
+                    alertBox.innerHTML = `
+                        <div style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px;">
+                            <div style="position:relative; width:96px; height:96px; margin:0 auto;">
+                                <img src="${fotoUrl}" alt="${escapeHtml(res.nombre)}" style="width:96px; height:96px; min-width:96px; border-radius:50%; object-fit:cover; border:3.5px solid ${borderColor}; box-shadow:0 4px 14px rgba(0,0,0,0.14); background:#f1f5f9; display:block;" onerror="this.onerror=null; this.src='${defaultAvatar}';">
+                                <span style="position:absolute; bottom:2px; right:2px; width:26px; height:26px; border-radius:50%; background:${borderColor}; color:white; display:flex; align-items:center; justify-content:center; font-size:12px; border:2px solid white; box-shadow:0 2px 5px rgba(0,0,0,0.2);">
+                                    <i class="fas ${badgeIcon}"></i>
+                                </span>
+                            </div>
+                            <div>
+                                <h4 style="font-size:18px; font-weight:800; color:#0f172a; margin:0;">¡Hola, ${escapeHtml(primerNombre)}! 👋</h4>
+                                <div style="font-size:11.5px; font-weight:600; color:#64748b; margin-top:2px;">${escapeHtml(res.nombre)}</div>
+                                <span style="display:inline-block; font-size:10.5px; font-weight:700; background:${badgeBg}; color:${badgeColor}; padding:2px 10px; border-radius:12px; margin-top:4px;">
+                                    <i class="fas ${badgeIcon} me-1"></i>${badgeLabel}
+                                </span>
+                            </div>
+                            <div style="font-size:12px; color:#475569; line-height:1.4; margin-top:2px;">
+                                Es tu primera vinculación. Crea una contraseña personal para acceder al sistema.
+                            </div>
+                        </div>
+
+                        <div class="mt-2 pt-2 border-top" style="font-size:10.5px; color:#64748b;">
+                            <div style="font-weight:700; color:#0369a1; margin-bottom:2px;"><i class="fas fa-info-circle me-1"></i> Requisitos y Restricciones:</div>
+                            <ul style="margin:0; padding-left:16px; line-height:1.4;">
+                                <li>Mínimo <strong>4 caracteres</strong> (letras, números o PIN fácil de recordar).</li>
+                                <li><strong>Dispositivo único:</strong> Solo podrás registrar asistencia desde este equipo vinculado.</li>
+                                <li>El registro es <strong>personal e intransferible</strong> con verificación GPS.</li>
+                            </ul>
+                        </div>
+                    `;
+                    if (containerConfirm) containerConfirm.style.display = 'block';
+                    if (lblPassword) lblPassword.innerText = "Nueva Contraseña";
+                    if (btnSubmit) btnSubmit.innerHTML = `<i class="fas fa-check-circle me-1"></i> Crear Contraseña y Vincular`;
+                    if (helpText) helpText.innerText = "🔑 Recuerda esta contraseña, la usarás cada vez que ingreses al sistema.";
                 }
-            } catch (error) {
-                showLoading(false);
-                mostrarToast('Error de conexión: ' + error.message, 'error');
             }
-            ajustarLayout();
+        } else if (res && res.error) {
+            if (alertBox) {
+                alertBox.classList.remove('hidden');
+                alertBox.className = "alert alert-danger py-2 px-3 small mb-3 text-start";
+                alertBox.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-exclamation-triangle text-danger" style="font-size:16px; flex-shrink:0;"></i>
+                        <div>
+                            <strong>No se pudo verificar ID:</strong>
+                            <div style="font-size:11px; margin-top:1px;">${escapeHtml(res.error)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    } catch (e) {
+        console.warn("Aviso al consultar estado del empleado:", e);
+    }
+}
+window.verificarEstadoCuentaEmpleado = verificarEstadoCuentaEmpleado;
+
+async function confirmarRegistroInicial() {
+    const empleadoId = document.getElementById('registroEmployeeId')?.value.trim();
+    const password = document.getElementById('registroPasswordInput')?.value.trim();
+    const passConfirm = document.getElementById('registroPasswordConfirm')?.value.trim();
+
+    if (!empleadoId) {
+        mostrarToast('Ingresa tu ID / Cédula de empleado', 'error');
+        return;
+    }
+    if (!password) {
+        mostrarToast('Ingresa tu contraseña', 'error');
+        return;
+    }
+
+    if (!_esVinculacionDispositivoExistente) {
+        if (password.length < 4) {
+            mostrarToast('La contraseña debe tener al menos 4 caracteres', 'error');
+            return;
+        }
+        if (password !== passConfirm) {
+            mostrarToast('Las contraseñas no coinciden', 'error');
+            return;
+        }
+    }
+
+    try {
+        const passHash = await hashPassword(password);
+        const res = await registrarDispositivoConPIN(empleadoId, passHash, deviceToken, password);
+
+        if (res.error) {
+            mostrarToast(res.error, 'error');
+            return;
         }
 
-        async function confirmarRegistroInicial() {
-            const empleadoId = document.getElementById('registroEmployeeId').value.trim();
-            const pin = document.getElementById('registroPinDisplay').textContent;
+        if (res.ok) {
+            const esVinculacion = res.esVinculacionExistente;
+            localStorage.setItem('SESSION_DATA', JSON.stringify({
+                empleadoId,
+                token: deviceToken,
+                timestamp: new Date().toISOString()
+            }));
 
-            if (!empleadoId) {
-                mostrarToast('Ingresa tu ID de empleado', 'error');
-                return;
-            }
+            // Sincronizar estado en paralelo con la animación de transición
+            const estadoPromise = obtenerEstado(empleadoId, null);
+            const splashPromise = mostrarSplashTransicion({
+                titulo: esVinculacion ? "¡Dispositivo Vinculado!" : "¡Contraseña Creada!",
+                nombreEmpleado: res.empleado?.nombre || empleadoId,
+                subtitulo: "Tu cuenta ha sido autorizada correctamente. Preparando tu credencial digital...",
+                icono: "check",
+                detalles: [
+                    "Contraseña y credenciales validadas",
+                    "Dispositivo enlazado con éxito",
+                    "Credencial corporativa lista"
+                ],
+                duracion: 1700
+            });
 
-            showLoading(true);
+            const [estadoRes] = await Promise.all([estadoPromise, splashPromise]);
 
-            try {
-                const res = await registrarDispositivoConPIN(empleadoId, pin, deviceToken);
-                showLoading(false);
+            if (!estadoRes.error) {
+                estado = {
+                    tieneEntrada: estadoRes.tieneEntrada || false,
+                    tieneSalida: estadoRes.tieneSalida || false,
+                    horaEntrada: estadoRes.horaEntrada || null,
+                    horaSalida: estadoRes.horaSalida || null,
+                    almuerzo: estadoRes.almuerzo || null,
+                    esSupervisor: estadoRes.esSupervisor || false
+                };
+                empleado = {
+                    id: estadoRes.id,
+                    nombre: estadoRes.nombre,
+                    area: estadoRes.area,
+                    foto_url: estadoRes.foto_url,
+                    cargo: estadoRes.cargo || '',
+                    fechaNacimiento: estadoRes.fechaNacimiento || '',
+                    baseLat: estadoRes.baseLat || null,
+                    baseLng: estadoRes.baseLng || null,
+                    tipoRegistro: '',
+                    almuerzo: ''
+                };
 
-                if (res.error) {
-                    mostrarToast(res.error, 'error');
-                    return;
+                actualizarInterfazSegunCargo();
+                isAuthenticated = true;
+                obtenerRegistrosEmpleado();
+
+                const bottomNav = document.querySelector('.bottom-nav');
+                if (bottomNav) bottomNav.style.display = 'flex';
+
+                if (esCumpleanos(empleado.fechaNacimiento)) {
+                    setTimeout(celebrarCumpleanos, 1000);
                 }
 
-                if (res.ok) {
-                    mostrarToast(`Registro exitoso. Tu clave de acceso es: ${pin}`, 'success');
-                    localStorage.setItem('SESSION_DATA', JSON.stringify({
-                        empleadoId,
-                        token: deviceToken,
-                        timestamp: new Date().toISOString()
-                    }));
-
-                    const estadoRes = await obtenerEstado(empleadoId, null);
-                    if (!estadoRes.error) {
-                        estado = {
-                            tieneEntrada: estadoRes.tieneEntrada || false,
-                            tieneSalida: estadoRes.tieneSalida || false,
-                            horaEntrada: estadoRes.horaEntrada || null,
-                            horaSalida: estadoRes.horaSalida || null,
-                            almuerzo: estadoRes.almuerzo || null,
-                            esSupervisor: estadoRes.esSupervisor || false
-                        };
-                        empleado = {
-                            id: estadoRes.id,
-                            nombre: estadoRes.nombre,
-                            area: estadoRes.area,
-                            foto_url: estadoRes.foto_url,
-                            cargo: estadoRes.cargo || '',
-                            fechaNacimiento: estadoRes.fechaNacimiento || '',
-                            baseLat: estadoRes.baseLat || null,
-                            baseLng: estadoRes.baseLng || null,
-                            tipoRegistro: '',
-                            almuerzo: ''
-                        };
-
-                        if (esCumpleanos(empleado.fechaNacimiento)) {
-                            setTimeout(celebrarCumpleanos, 1000);
-                        }
-
-                        // Actualizar interfaz inmediatamente según cargo
-                        actualizarInterfazSegunCargo();
-                        isAuthenticated = true;
-                        await obtenerRegistrosEmpleado();
-                        const faltas = obtenerDiasFaltantes();
-                        if (faltas.length > 0 && sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
-                            mostrarModalFaltasPasadas(faltas);
-                        } else {
-                            renderHomePage();
-                        }
-                    }
+                const faltas = obtenerDiasFaltantes();
+                if (faltas.length > 0 && sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
+                    mostrarModalFaltasPasadas(faltas);
+                } else {
+                    renderHomePage();
                 }
-            } catch (error) {
-                showLoading(false);
-                mostrarToast('Error de conexión: ' + error.message, 'error');
+            } else {
+                const bottomNav = document.querySelector('.bottom-nav');
+                if (bottomNav) bottomNav.style.display = 'flex';
+                renderHomePage();
             }
-            ajustarLayout();
+        }
+    } catch (e) {
+        mostrarToast('Error de registro: ' + e.message, 'error');
+    }
+}
+
+// ========== MIGRACIÓN DE CONTRASEÑA (PIN ANTIGUO → NUEVA CLAVE SEGURA) ==========
+function renderMigrarPasswordScreen() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
+            <div class="page" style="animation: fadeIn 0.35s ease;">
+                <div class="glass-card" style="border-radius: 24px; padding: 30px 22px; background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.92) 100%); box-shadow: 0 16px 48px rgba(0,0,0,0.08); border: 1px solid rgba(255,255,255,0.8); text-align: center;">
+                    
+                    <div style="width: 70px; height: 70px; background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; box-shadow: 0 8px 20px rgba(37,99,235,0.3);">
+                        <i class="fas fa-key" style="color: white; font-size: 28px;"></i>
+                    </div>
+
+                    <h3 class="fw-bold mb-2" style="font-size: 20px; color: #0f172a;">¡Hola, ${escapeHtml(empleado.nombre || 'Colaborador')}! 👋</h3>
+                    <p style="color: #475569; font-size: 14px; line-height: 1.7; margin-bottom: 24px;">
+                        Para poder usar la aplicación necesitas registrar una <strong>contraseña personal</strong>.<br>
+                        Solo lo haces una vez.
+                    </p>
+
+                    <div style="text-align: left; display: flex; flex-direction: column; gap: 14px;">
+                        <div>
+                            <label class="form-label small fw-bold text-secondary mb-1">Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="migPassNueva" class="form-control form-control-lg" placeholder="Escribe tu contraseña" autocomplete="new-password">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('migPassNueva', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="form-label small fw-bold text-secondary mb-1">Repite tu contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="migPassConfirm" class="form-control form-control-lg" placeholder="Escribe tu contraseña otra vez" autocomplete="new-password">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('migPassConfirm', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary btn-lg w-100 mt-2" onclick="confirmarMigracionPassword()" style="border-radius: 14px; font-weight: 700; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); border: none; box-shadow: 0 6px 18px rgba(37,99,235,0.3); padding: 14px;">
+                            Guardar y Continuar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            `;
+    ajustarLayout();
+    document.getElementById('migPassNueva')?.focus();
+}
+
+async function confirmarMigracionPassword() {
+    const passNueva = document.getElementById('migPassNueva')?.value.trim();
+    const passConfirm = document.getElementById('migPassConfirm')?.value.trim();
+
+    if (!passNueva || passNueva.length < 4) {
+        mostrarToast('La contraseña debe tener al menos 4 caracteres', 'warning');
+        return;
+    }
+    if (passNueva !== passConfirm) {
+        mostrarToast('Las contraseñas no coinciden', 'warning');
+        return;
+    }
+
+    showLoading(true);
+    try {
+        const passHash = await hashPassword(passNueva);
+        const params = {
+            accion: 'actualizarPerfilEmpleado',
+            empleadoId: empleado.id,
+            nombre: empleado.nombre,
+            foto_url: empleado.foto_url || '',
+            passwordHash: passHash
+        };
+
+        let res = null;
+        if (window.FirebaseBackend && window.USE_FIREBASE) {
+            res = await window.FirebaseBackend.actualizarPerfilEmpleado(params);
+        } else {
+            res = await jsonpRequest(params);
         }
 
-        // ========== RENDERIZADO DE PÁGINAS ==========
-        function renderAuthScreen() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+        showLoading(false);
+        if (res && (res.ok || res.mensaje)) {
+            await mostrarSplashTransicion({
+                titulo: "¡Contraseña Actualizada!",
+                nombreEmpleado: empleado.nombre,
+                subtitulo: "Tu cuenta ha sido asegurada con tu nueva clave encriptada.",
+                icono: "lock",
+                detalles: [
+                    "Encriptación SHA-256 aplicada",
+                    "Credenciales actualizadas",
+                    "Ingresando al sistema"
+                ],
+                duracion: 1700
+            });
+
+            const faltas = obtenerDiasFaltantes();
+            if (faltas.length > 0 && sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
+                mostrarModalFaltasPasadas(faltas);
+            } else {
+                renderHomePage();
+            }
+        } else {
+            mostrarToast(res?.error || 'Error al guardar la contraseña', 'error');
+        }
+    } catch (e) {
+        showLoading(false);
+        mostrarToast('Error de conexión: ' + e.message, 'error');
+    }
+}
+window.confirmarMigracionPassword = confirmarMigracionPassword;
+
+// ========== RENDERIZADO DE PÁGINAS ==========
+function renderAuthScreen() {
+    const bottomNav = document.querySelector('.bottom-nav');
+    if (bottomNav) bottomNav.style.display = 'none';
+    const fabWhatsApp = document.getElementById('fabWhatsApp');
+    if (fabWhatsApp) fabWhatsApp.style.display = 'none';
+    const fabEmergencia = document.getElementById('fabEmergencia');
+    if (fabEmergencia) fabEmergencia.style.display = 'none';
+
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div id="verifyingScreen">
                     <div class="glass-card text-center py-5">
                         <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
-                        <h5 class="fw-bold">Verificando...</h5>
-                        <p class="text-muted">Por favor espera</p>
+                        <h5 class="fw-bold">Verificando sesión...</h5>
+                        <p class="text-muted">Por favor espera un momento</p>
                     </div>
                 </div>
                 
                 <div id="pinScreen" class="hidden">
                     <div class="glass-card">
                         <div class="text-center mb-4">
-                            <div class="bg-primary-light rounded-circle d-inline-flex p-3 mb-3">
-                                <i class="fas fa-key fa-2x text-primary"></i>
+                            <img src="./Logotipo T Control.png" alt="TCONTROL" style="width: clamp(140px, 45vw, 190px); max-height: 72px; object-fit: contain; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
+                            <h3 class="h5 fw-bold" style="color: #0f172a;">Acceso Seguro al Sistema</h3>
+                            <p class="text-muted small">Ingresa tus credenciales para continuar</p>
+                        </div>
+                        
+                        <div class="mb-3 text-start">
+                            <label class="form-label small fw-bold text-secondary mb-1">ID / Cédula de Empleado</label>
+                            <input type="text" id="loginEmployeeId" class="form-control form-control-lg" placeholder="Ej: 1058" autocomplete="username" onkeydown="if(event.key==='Enter') document.getElementById('pinInput')?.focus()">
+                        </div>
+
+                        <div class="mb-4 text-start">
+                            <label class="form-label small fw-bold text-secondary mb-1">Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="pinInput" class="form-control form-control-lg" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter') verificarPIN()">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('pinInput', this)">
+                                    <i class="fas fa-eye"></i>
+                                </button>
                             </div>
-                            <h3 class="h4 fw-bold">Acceso al sistema</h3>
-                            <p class="text-muted small">Ingresa tu contraseña de acceso</p>
                         </div>
                         
-                        <div class="mb-4">
-                            <input type="password" id="pinInput" class="form-control form-control-lg pin-input" placeholder="••••" maxlength="4" inputmode="numeric" autocomplete="off">
+                        <div class="alert alert-info py-2 small mb-4" style="border-radius: 10px; font-size: 11.5px;">
+                            <i class="fas fa-shield-halved me-1"></i> Si es tu primera vez o vinculas un nuevo dispositivo, haz clic en "Vincular Dispositivo".
                         </div>
                         
-                        <div class="alert alert-info py-2 small mb-4">
-                            <i class="fas fa-info-circle"></i> Si es tu primera vez, haz clic en "Registrar dispositivo"
-                        </div>
-                        
-                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="verificarPIN()">
-                            <i class="fas fa-arrow-right"></i> Ingresar
+                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="verificarPIN()" style="border-radius: 12px; font-weight: 700;">
+                            <i class="fas fa-arrow-right me-1"></i> Ingresar
                         </button>
                         
-                        <button class="btn btn-outline-primary w-100" onclick="mostrarRegistroInicial()">
-                            <i class="fas fa-user-plus"></i> Registrar dispositivo
+                        <button class="btn btn-outline-primary w-100" onclick="mostrarRegistroInicial()" style="border-radius: 12px; font-weight: 600;">
+                            <i class="fas fa-user-plus me-1"></i> Vincular Dispositivo
                         </button>
                         
-                        <div id="pinResult" class="hidden alert alert-danger mt-3"></div>
+                        <div id="pinResult" class="hidden alert alert-danger mt-3" style="border-radius: 10px; font-size: 12px;"></div>
                     </div>
                 </div>
                 
                 <div id="registroInicialScreen" class="hidden">
                     <div class="glass-card">
-                        <div class="text-center mb-4">
-                            <div class="bg-primary-light rounded-circle d-inline-flex p-3 mb-3">
-                                <i class="fas fa-mobile-alt fa-2x text-primary"></i>
+                        <div class="text-center mb-3">
+                            <img src="./Logotipo T Control.png" alt="TCONTROL" style="width: clamp(130px, 42vw, 175px); max-height: 64px; object-fit: contain; margin-bottom: 14px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
+                            <h3 class="h5 fw-bold" id="registroTitle" style="color: #0f172a;">Vincular Dispositivo</h3>
+                            <p class="text-muted small" id="registroSubtitle">Ingresa tu ID de empleado para continuar</p>
+                        </div>
+                        
+                        <div class="mb-3 text-start">
+                            <label class="form-label small fw-bold text-secondary mb-1">ID (Número de usuario)</label>
+                            <input type="text" id="registroEmployeeId" class="form-control form-control-lg" placeholder="Ej: 1 o 1058" oninput="verificarEstadoCuentaEmpleadoDebounced()" onblur="verificarEstadoCuentaEmpleado()" onchange="verificarEstadoCuentaEmpleado()" onkeydown="if(event.key==='Enter') { verificarEstadoCuentaEmpleado(); document.getElementById('registroPasswordInput')?.focus(); }">
+                        </div>
+
+                        <div id="registroStatusAlert" class="alert alert-info py-2 small mb-3 hidden" style="border-radius: 10px; font-size: 11.5px;"></div>
+
+                        <div class="mb-3 text-start">
+                            <label class="form-label small fw-bold text-secondary mb-1" id="lblRegistroPassword">Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="registroPasswordInput" class="form-control form-control-lg" placeholder="Ingresa tu contraseña" onkeydown="if(event.key==='Enter') { if (_esVinculacionDispositivoExistente) { confirmarRegistroInicial(); } else { document.getElementById('registroPasswordConfirm')?.focus(); } }">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('registroPasswordInput', this)">
+                                    <i class="fas fa-eye"></i>
+                                </button>
                             </div>
-                            <h3 class="h4 fw-bold">Registro inicial</h3>
-                            <p class="text-muted small">Vincula este dispositivo a tu cuenta</p>
                         </div>
-                        
-                        <div class="bg-light rounded-3 p-3 mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span class="text-muted">Contraseña generada</span>
-                                <span class="fw-bold text-primary font-monospace fs-4" id="registroPinDisplay">----</span>
+
+                        <div class="mb-4 text-start" id="containerPasswordConfirm">
+                            <label class="form-label small fw-bold text-secondary mb-1">Confirmar Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="registroPasswordConfirm" class="form-control form-control-lg" placeholder="Repite la contraseña" onkeydown="if(event.key==='Enter') confirmarRegistroInicial()">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('registroPasswordConfirm', this)">
+                                    <i class="fas fa-eye"></i>
+                                </button>
                             </div>
                         </div>
                         
-                        <div class="alert alert-danger py-2 small mb-3">
-                            <i class="fas fa-exclamation-triangle"></i> Guarda esta contraseña. La necesitarás para acceder desde cualquier navegador.
-                        </div>
+                        <p class="text-muted small text-center mb-3" id="registroHelpText" style="font-size: 11.5px;">
+                            🔑 Recuerda esta contraseña, la usarás cada vez que ingreses.
+                        </p>
                         
-                        <input type="text" id="registroEmployeeId" class="form-control form-control-lg mb-3" placeholder="Ingresa tu ID de empleado">
-                        
-                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="confirmarRegistroInicial()">
-                            <i class="fas fa-check"></i> Confirmar registro
+                        <button class="btn btn-primary btn-lg w-100 mb-2" id="btnConfirmarRegistro" onclick="confirmarRegistroInicial()" style="border-radius: 12px; font-weight: 700;">
+                            <i class="fas fa-mobile-alt me-1"></i> Vincular Dispositivo
                         </button>
                         
-                        <button class="btn btn-outline-secondary w-100" onclick="volverAPIN()">
-                            <i class="fas fa-arrow-left"></i> Volver
+                        <button class="btn btn-outline-secondary w-100" onclick="volverAPIN()" style="border-radius: 12px; font-weight: 600;">
+                            <i class="fas fa-arrow-left me-1"></i> Volver
                         </button>
                         
-                        <div id="registroResult" class="hidden alert alert-danger mt-3"></div>
+                        <div id="registroResult" class="hidden alert alert-danger mt-3" style="border-radius: 10px; font-size: 12px;"></div>
                     </div>
                 </div>
             </div>
         `;
 
-            verificarDispositivoConPIN();
-            ajustarLayout();
-        }
+    verificarDispositivoConPIN();
+    ajustarLayout();
+}
 
-        async function verificarDispositivoConPIN() {
-            try {
-                const res = await verificarDispositivoTienePIN(deviceToken);
-                const verifyingScreen = document.getElementById('verifyingScreen');
-                const pinScreen = document.getElementById('pinScreen');
-                const registroScreen = document.getElementById('registroInicialScreen');
+async function verificarDispositivoConPIN() {
+    try {
+        const res = await verificarDispositivoTienePIN(deviceToken);
+        const verifyingScreen = document.getElementById('verifyingScreen');
+        const pinScreen = document.getElementById('pinScreen');
+        const registroScreen = document.getElementById('registroInicialScreen');
 
-                if (verifyingScreen) verifyingScreen.classList.add('hidden');
+        if (verifyingScreen) verifyingScreen.classList.add('hidden');
 
-                if (res && res.tienePin) {
-                    if (pinScreen) pinScreen.classList.remove('hidden');
-                    document.getElementById('pinInput')?.focus();
-                } else {
-                    if (registroScreen) {
-                        registroScreen.classList.remove('hidden');
-                        document.getElementById('registroPinDisplay').textContent = generarPIN();
-                    }
+        if (res && res.registrado && res.tienePin) {
+            if (pinScreen) pinScreen.classList.remove('hidden');
+            if (res.empleado && res.empleado.id) {
+                const empIdInput = document.getElementById('loginEmployeeId');
+                if (empIdInput && !empIdInput.value) {
+                    empIdInput.value = res.empleado.id;
                 }
-            } catch (error) {
-                const verifyingScreen = document.getElementById('verifyingScreen');
-                const pinScreen = document.getElementById('pinScreen');
-                if (verifyingScreen) verifyingScreen.classList.add('hidden');
-                if (pinScreen) pinScreen.classList.remove('hidden');
-                mostrarToast('Error de conexión con el servidor', 'error');
             }
-            ajustarLayout();
-        }
-
-        function mostrarRegistroInicial() {
-            const pinScreen = document.getElementById('pinScreen');
-            const registroScreen = document.getElementById('registroInicialScreen');
-            const verifyingScreen = document.getElementById('verifyingScreen');
-
-            if (verifyingScreen) verifyingScreen.classList.add('hidden');
+            document.getElementById('pinInput')?.focus();
+        } else {
             if (pinScreen) pinScreen.classList.add('hidden');
             if (registroScreen) registroScreen.classList.remove('hidden');
-
-            document.getElementById('registroPinDisplay').textContent = generarPIN();
-            ajustarLayout();
+            document.getElementById('registroEmployeeId')?.focus();
         }
+    } catch (error) {
+        const verifyingScreen = document.getElementById('verifyingScreen');
+        const pinScreen = document.getElementById('pinScreen');
+        const registroScreen = document.getElementById('registroInicialScreen');
+        if (verifyingScreen) verifyingScreen.classList.add('hidden');
+        if (registroScreen) registroScreen.classList.add('hidden');
+        if (pinScreen) pinScreen.classList.remove('hidden');
+        mostrarToast('Error de conexión con el servidor', 'error');
+    }
+    ajustarLayout();
+}
 
-        function volverAPIN() {
-            const registroScreen = document.getElementById('registroInicialScreen');
-            const pinScreen = document.getElementById('pinScreen');
+function mostrarRegistroInicial() {
+    const pinScreen = document.getElementById('pinScreen');
+    const registroScreen = document.getElementById('registroInicialScreen');
+    const verifyingScreen = document.getElementById('verifyingScreen');
 
-            if (registroScreen) registroScreen.classList.add('hidden');
-            if (pinScreen) pinScreen.classList.remove('hidden');
-            ajustarLayout();
-        }
+    if (verifyingScreen) verifyingScreen.classList.add('hidden');
+    if (pinScreen) pinScreen.classList.add('hidden');
+    if (registroScreen) registroScreen.classList.remove('hidden');
 
-        function esFeriado(fechaStr) {
-            if (!fechaStr) return false;
-            if (fechaStr === '2026-06-26') return true; // Feriado imprevisto 26/06/2026
-            let fecha = new Date(fechaStr + 'T12:00:00');
-            const m = fecha.getMonth() + 1;
-            const d = fecha.getDate();
-            const md = `${m}/${d}`;
+    document.getElementById('registroEmployeeId')?.focus();
+    ajustarLayout();
+}
 
-            const feriados = [
-                '1/1',   // Año Nuevo
-                '4/30',  // Feriado decretado
-                '5/1',   // Día del Trabajo
-                '5/25',  // Batalla del Pichincha
-                '8/10',  // Primer Grito de Independencia
-                '10/9',  // Independencia de Guayaquil
-                '11/2',  // Día de los Difuntos
-                '11/3',  // Independencia de Cuenca
-                '12/6',  // Fundación de Quito
-                '12/25'  // Navidad
-            ];
-            return feriados.includes(md);
-        }
+function volverAPIN() {
+    const registroScreen = document.getElementById('registroInicialScreen');
+    const pinScreen = document.getElementById('pinScreen');
 
-        // ========== JUSTIFICAR FALTAS ANTERIORES ==========
-        function obtenerDiasFaltantes() {
-            const faltas = [];
-            if (!registrosCompletos || registrosCompletos.length === 0) return faltas;
+    if (registroScreen) registroScreen.classList.add('hidden');
+    if (pinScreen) pinScreen.classList.remove('hidden');
+    ajustarLayout();
+}
 
-            let earliestDate = null;
-            registrosCompletos.forEach(r => {
-                const rFecha = getVal(r, 'fecha', 0);
-                if (rFecha) {
-                    let d = null;
-                    if (typeof rFecha === 'string') {
-                        const parsed = /^\d{4}-\d{2}-\d{2}T/.test(rFecha) ? rFecha.split('T')[0] : rFecha;
-                        const parts = parsed.split('-');
-                        if (parts.length === 3) {
-                            d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-                        } else {
-                            d = new Date(parsed);
-                        }
-                    } else if (rFecha instanceof Date) {
-                        d = new Date(rFecha.getFullYear(), rFecha.getMonth(), rFecha.getDate());
-                    }
-                    if (d && !isNaN(d.getTime())) {
-                        if (!earliestDate || d < earliestDate) earliestDate = d;
-                    }
-                }
-            });
+function esFeriado(fechaStr) {
+    if (!fechaStr) return false;
+    if (fechaStr === '2026-06-26') return true; // Feriado imprevisto 26/06/2026
+    let fecha = new Date(fechaStr + 'T12:00:00');
+    const m = fecha.getMonth() + 1;
+    const d = fecha.getDate();
+    const md = `${m}/${d}`;
 
-            if (!earliestDate) return faltas;
-            earliestDate.setHours(0, 0, 0, 0);
+    const feriados = [
+        '1/1',   // Año Nuevo
+        '4/30',  // Feriado decretado
+        '5/1',   // Día del Trabajo
+        '5/25',  // Batalla del Pichincha
+        '8/10',  // Primer Grito de Independencia
+        '10/9',  // Independencia de Guayaquil
+        '11/2',  // Día de los Difuntos
+        '11/3',  // Independencia de Cuenca
+        '12/6',  // Fundación de Quito
+        '12/25'  // Navidad
+    ];
+    return feriados.includes(md);
+}
 
-            const hoy = new Date();
-            hoy.setHours(0, 0, 0, 0);
+// ========== JUSTIFICAR FALTAS ANTERIORES ==========
+function obtenerDiasFaltantes() {
+    const faltas = [];
+    if (!registrosCompletos) return faltas;
 
-            const limite15Dias = new Date(hoy);
-            limite15Dias.setDate(limite15Dias.getDate() - 15);
-
-            let startDate = earliestDate > limite15Dias ? earliestDate : limite15Dias;
-
-            for (let d = new Date(startDate); d < hoy; d.setDate(d.getDate() + 1)) {
-                const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-                if (d.getDay() === 0 || d.getDay() === 6 || esFeriado(dateStr)) continue; // Skip Sat/Sun/Holidays
-
-                const tieneRegistro = registrosCompletos.some(r => {
-                    const rFecha = getVal(r, 'fecha', 0);
-                    if (!rFecha) return false;
-                    let checkStr = '';
-                    if (typeof rFecha === 'string') {
-                        if (/^\d{4}-\d{2}-\d{2}T/.test(rFecha)) checkStr = rFecha.split('T')[0];
-                        else checkStr = rFecha.substring(0, 10);
-                    } else if (rFecha instanceof Date) {
-                        checkStr = `${rFecha.getFullYear()}-${String(rFecha.getMonth() + 1).padStart(2, '0')}-${String(rFecha.getDate()).padStart(2, '0')}`;
-                    }
-                    return checkStr === dateStr || checkStr.startsWith(dateStr);
-                });
-
-                const tieneVacacion = (vacacionesCompletas || []).some(v => v.fecha === dateStr);
-                if (!tieneRegistro && !tieneVacacion) {
-                    faltas.push(dateStr);
-                }
+    function normStrDate(fVal) {
+        if (!fVal) return '';
+        if (typeof fVal === 'string') {
+            let s = fVal.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+            let mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+            if (mIso) {
+                return `${mIso[1]}-${mIso[2].padStart(2, '0')}-${mIso[3].padStart(2, '0')}`;
             }
-
-            return faltas;
-        }
-
-        let faltasPendientes = [];
-
-        function mostrarModalFaltasPasadas(faltas) {
-            faltasPendientes = faltas.sort((a, b) => new Date(a) - new Date(b));
-            renderFaltasMasivas();
-            ajustarLayout();
-        }
-
-        function renderFaltasMasivas() {
-            currentPage = 'justificar_faltas';
-            if (faltasPendientes.length === 0) {
-                renderHomePage();
-                return;
+            let mDmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+            if (mDmy) {
+                return `${mDmy[3]}-${mDmy[2].padStart(2, '0')}-${mDmy[1].padStart(2, '0')}`;
             }
+        }
+        let d = (fVal instanceof Date) ? fVal : new Date(fVal);
+        if (!isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        return '';
+    }
 
-            const listHtml = faltasPendientes.map((fecha, idx) => {
-                const parts = fecha.split('-');
-                const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-                const diaStr = d.toLocaleDateString('es-EC', { weekday: 'short', day: 'numeric', month: 'short' });
-                return `
+    const fechasVacaciones = new Set();
+    (vacacionesCompletas || []).forEach(v => {
+        const fNorm = normStrDate(typeof v === 'string' ? v : (v.fecha || v.fecha_inicio || v[0]));
+        if (fNorm) fechasVacaciones.add(fNorm);
+    });
+
+    const fechasRegistradas = new Set();
+    (registrosCompletos || []).forEach(r => {
+        const fVal = getVal(r, 'fecha', 0) || r[0];
+        const fNorm = normStrDate(fVal);
+        if (!fNorm) return;
+
+        const t = String(getVal(r, 'tipo', 3) || r[3] || '').toUpperCase();
+        const j = String(getVal(r, 'justificado', 20) || r[20] || r.justificada || '').toUpperCase();
+        const razon = String(getVal(r, 'razon_ausencia', 21) || r[21] || r.razon_justificac || '').trim();
+
+        if (t || j === 'SI' || j === 'TRUE' || (razon && razon !== '—')) {
+            fechasRegistradas.add(fNorm);
+            if (t === 'VACACIONES' || t === 'VACACION' || t === 'VACACION_DISFRUTADA' || razon.toLowerCase().includes('vacacio')) {
+                fechasVacaciones.add(fNorm);
+            }
+        }
+    });
+
+    let earliestDate = null;
+    (registrosCompletos || []).forEach(r => {
+        const fVal = getVal(r, 'fecha', 0) || r[0];
+        const fNorm = normStrDate(fVal);
+        if (fNorm) {
+            const parts = fNorm.split('-');
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            if (!isNaN(d.getTime())) {
+                if (!earliestDate || d < earliestDate) earliestDate = d;
+            }
+        }
+    });
+
+    if (!earliestDate) return faltas;
+    earliestDate.setHours(0, 0, 0, 0);
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const limite15Dias = new Date(hoy);
+    limite15Dias.setDate(limite15Dias.getDate() - 15);
+
+    let startDate = earliestDate > limite15Dias ? earliestDate : limite15Dias;
+
+    for (let d = new Date(startDate); d < hoy; d.setDate(d.getDate() + 1)) {
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        if (d.getDay() === 0 || d.getDay() === 6 || esFeriado(dateStr)) continue; // Skip Sat/Sun/Holidays
+
+        const tieneRegistro = fechasRegistradas.has(dateStr);
+        const tieneVacacion = fechasVacaciones.has(dateStr);
+
+        if (!tieneRegistro && !tieneVacacion) {
+            faltas.push(dateStr);
+        }
+    }
+
+    return faltas;
+}
+
+let faltasPendientes = [];
+
+function mostrarModalFaltasPasadas(faltas) {
+    faltasPendientes = faltas.sort((a, b) => new Date(a) - new Date(b));
+    renderFaltasMasivas();
+    ajustarLayout();
+}
+
+function renderFaltasMasivas() {
+    currentPage = 'justificar_faltas';
+    if (faltasPendientes.length === 0) {
+        renderHomePage();
+        return;
+    }
+
+    const listHtml = faltasPendientes.map((fecha, idx) => {
+        const parts = fecha.split('-');
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        const diaStr = d.toLocaleDateString('es-EC', { weekday: 'short', day: 'numeric', month: 'short' });
+        return `
                 <div class="falta-row" style="display: flex; align-items: center; gap: 12px; padding: 10px; border-bottom: 1px solid #f1f5f9;">
                     <input type="checkbox" id="chk-${idx}" class="falta-chk" value="${fecha}" checked style="width: 20px; height: 20px; accent-color: #3b82f6;">
                     <label for="chk-${idx}" style="flex: 1; font-weight: 500; font-size: 14px; margin: 0;">${diaStr}</label>
                 </div>
             `;
-            }).join('');
+    }).join('');
 
-            document.getElementById('mainContent').innerHTML = `
+    document.getElementById('mainContent').innerHTML = `
             <div class="page">
                 <div class="glass-card">
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -2017,286 +2907,291 @@
                 </div>
             </div>
         `;
-        }
+}
 
-        window.saltarJustificacionMasiva = function () {
-            sessionStorage.setItem('justificar_popup_saltado', 'true');
-            renderHomePage();
-        };
+window.saltarJustificacionMasiva = function () {
+    sessionStorage.setItem('justificar_popup_saltado', 'true');
+    renderHomePage();
+};
 
-        window.procesarJustificacionMasiva = async function () {
-            const checkboxes = document.querySelectorAll('.falta-chk:checked');
-            const motivo = document.getElementById('motivoMasivo').value;
-            const fechas = Array.from(checkboxes).map(cb => cb.value);
+window.procesarJustificacionMasiva = async function () {
+    const checkboxes = document.querySelectorAll('.falta-chk:checked');
+    const motivo = document.getElementById('motivoMasivo').value;
+    const fechas = Array.from(checkboxes).map(cb => cb.value);
 
-            if (fechas.length === 0) {
-                mostrarToast('Selecciona al menos un día', 'error');
-                return;
-            }
+    if (fechas.length === 0) {
+        mostrarToast('Selecciona al menos un día', 'error');
+        return;
+    }
 
-            showLoading(true);
-            let exitos = 0;
-            let errores = 0;
+    showLoading(true);
+    let exitos = 0;
+    let errores = 0;
 
+    try {
+        // Procesamos uno por uno SECUENCIALMENTE para evitar errores de bloqueo en Google Sheets
+        for (const fecha of fechas) {
+            const datos = {
+                id: empleado.id,
+                nombre: empleado.nombre,
+                tipo: 'FALTA',
+                fecha_falta: fecha,
+                razon_permiso: motivo,
+                dispositivo: deviceToken
+            };
             try {
-                // Procesamos uno por uno SECUENCIALMENTE para evitar errores de bloqueo en Google Sheets
-                for (const fecha of fechas) {
-                    const datos = {
-                        id: empleado.id,
-                        nombre: empleado.nombre,
-                        tipo: 'FALTA',
-                        fecha_falta: fecha,
-                        razon_permiso: motivo,
-                        dispositivo: deviceToken
-                    };
-                    try {
-                        const res = await guardarRegistroAPI(datos);
-                        if (res.error) {
-                            console.error(`Error en día ${fecha}:`, res.error);
-                            errores++;
-                        } else {
-                            exitos++;
-                        }
-                    } catch (e) {
-                        console.error(`Excepción en día ${fecha}:`, e);
-                        errores++;
-                    }
-                }
-
-                showLoading(false);
-                if (exitos > 0) {
-                    mostrarToast(`${exitos} día(s) justificado(s) correctamente`, 'success');
-                }
-                if (errores > 0) {
-                    mostrarToast(`${errores} error(es) al procesar. Revisa tu conexión.`, 'error');
-                }
-
-                // Refrescar datos y volver al home si ya no hay faltas
-                await obtenerRegistrosEmpleado();
-                const faltasActualizadas = obtenerDiasFaltantes();
-                if (faltasActualizadas.length === 0) {
-                    renderHomePage();
+                const res = await guardarRegistroAPI(datos);
+                if (res.error) {
+                    console.error(`Error en día ${fecha}:`, res.error);
+                    errores++;
                 } else {
-                    faltasPendientes = faltasActualizadas;
-                    renderFaltasMasivas();
+                    exitos++;
                 }
-            } catch (error) {
-                showLoading(false);
-                mostrarToast('Error al procesar: ' + error.message, 'error');
-            }
-        };
-
-        // ========== LÓGICA DE STATUS LABORAL ==========
-        function calcularStatusActual() {
-            const hoy = new Date();
-            const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-
-            // Filtrar registros de hoy
-            const regsHoy = registrosCompletos.filter(r => {
-                const fecha = getVal(r, 'fecha', 0) || r[0];
-                let fStr = '';
-                if (fecha instanceof Date) fStr = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
-                else fStr = /^\d{4}-\d{2}-\d{2}T/.test(String(fecha)) ? String(fecha).split('T')[0] : String(fecha).substring(0, 10);
-                return fStr === hoyStr;
-            });
-
-            if (regsHoy.length === 0) return { label: 'Fuera de horario', icon: '🌙', color: '#64748b' };
-
-            // Ordenar por hora/timestamp (el último manda)
-            const ultimo = [...regsHoy].sort((a, b) => {
-                const tsA = getVal(a, 'timestamp', 2) || a[2];
-                const tsB = getVal(b, 'timestamp', 2) || b[2];
-                if (tsA && tsB) return String(tsA).localeCompare(String(tsB));
-                const ha = getVal(a, 'hora', 5) || a[5];
-                const hb = getVal(b, 'hora', 5) || b[5];
-                return String(ha).localeCompare(String(hb));
-            }).pop();
-
-            const tipo = (getVal(ultimo, 'tipo', 3) || ultimo[3]).toUpperCase();
-            const razon = String(getVal(ultimo, 'razon_salida', 17) || ultimo[17] || '').toLowerCase();
-
-            switch (tipo) {
-                case 'ENTRADA': case 'RETORNO_CAMPO':
-                    return { label: 'OFICINA', icon: '🏢', color: '#10b981' };
-                case 'SALIDA_CAMPO':
-                    return { label: 'CAMPO', icon: '🚗', color: '#f59e0b' };
-                case 'SALIDA':
-                    const tSalida = String(getVal(ultimo, 'tipo_salida', 21) || ultimo[21] || '').toUpperCase();
-                    const rPermiso = String(getVal(ultimo, 'razon_permiso', 22) || ultimo[22] || '').toUpperCase();
-
-                    if (tSalida === 'PERMISO' || tSalida === 'INTERMEDIA' || tSalida.includes('PERMISO')) {
-                        const label = (rPermiso.includes('MEDICO') || razon.includes('medico') || tSalida.includes('MEDICO')) ? 'PERMISO MEDICO' : 'PERMISO PERSONAL';
-                        return { label: label, icon: '🕐', color: '#8b5cf6' };
-                    }
-                    if (tSalida === 'TRABAJO_CAMPO' || rPermiso === 'EN CAMPO' || razon.includes('campo')) {
-                        return { label: 'CAMPO', icon: '🚗', color: '#f59e0b' };
-                    }
-                    if (tSalida === 'CUMPLEAÑOS' || razon.includes('cumpleanos')) {
-                        return { label: 'CUMPLEAÑOS', icon: '🎂', color: '#ff69b4' };
-                    }
-                    if (tSalida === 'SALIDA_TEMPRANA_JUSTIFICADA' || razon.includes('justificada')) {
-                        return { label: 'SALIDA JUSTIFICADA', icon: '✅', color: '#64748b' };
-                    }
-                    return { label: 'JORNADA FINALIZADA', icon: '🏡', color: '#64748b' };
-                case 'ESTADO':
-                    return { label: (razon || 'ESTADO').toUpperCase(), icon: '👤', color: '#8b5cf6' };
-                case 'FALTA':
-                    const rFalta = String(getVal(ultimo, 'razon_permiso', 22) || ultimo[22] || getVal(ultimo, 'razon_salida', 17) || ultimo[17] || '').toUpperCase();
-                    if (rFalta.includes('VACACIONES')) return { label: 'VACACIONES', icon: '🏖️', color: '#3b82f6' };
-                    if (rFalta.includes('MEDICO')) return { label: 'PERMISO MEDICO', icon: '🏥', color: '#ef4444' };
-                    if (rFalta.includes('PERSONAL')) return { label: 'PERMISO PERSONAL', icon: '👤', color: '#8b5cf6' };
-                    if (rFalta.includes('CAMPO')) return { label: 'SALIDA A CAMPO', icon: '🚗', color: '#f59e0b' };
-                    return { label: rFalta || 'AUSENCIA JUSTIFICADA', icon: '🏖️', color: '#3b82f6' };
-                default:
-                    return { label: 'EN ACTIVIDAD', icon: '⚙️', color: '#10b981' };
+            } catch (e) {
+                console.error(`Excepción en día ${fecha}:`, e);
+                errores++;
             }
         }
 
-        // ========== RENDER HOME (CREDENCIAL) ==========
-        function renderHomePage() {
-            currentPage = 'home';
-            const mainContent = document.getElementById('mainContent');
-            const nombreCompleto = empleado.nombre || 'EMPLEADO';
-            const partes = nombreCompleto.split(' ');
-            const primerNombre = partes[0] || 'EMPLEADO';
-            const apellido = partes.slice(1).join(' ') || '';
+        showLoading(false);
+        if (exitos > 0) {
+            mostrarToast(`${exitos} día(s) justificado(s) correctamente`, 'success');
+        }
+        if (errores > 0) {
+            mostrarToast(`${errores} error(es) al procesar. Revisa tu conexión.`, 'error');
+        }
 
-            const fechaVigencia = new Date();
-            fechaVigencia.setFullYear(fechaVigencia.getFullYear() + 1);
+        // Refrescar datos y volver al home si ya no hay faltas
+        await obtenerRegistrosEmpleado();
+        const faltasActualizadas = obtenerDiasFaltantes();
+        if (faltasActualizadas.length === 0) {
+            renderHomePage();
+        } else {
+            faltasPendientes = faltasActualizadas;
+            renderFaltasMasivas();
+        }
+    } catch (error) {
+        showLoading(false);
+        mostrarToast('Error al procesar: ' + error.message, 'error');
+    }
+};
 
-            const tieneEntrada = estado.tieneEntrada;
-            const tieneSalida = estado.tieneSalida;
-            const almuerzo = estado.almuerzo;
+// ========== LÓGICA DE STATUS LABORAL ==========
+function calcularStatusActual() {
+    const hoy = new Date();
+    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
 
-            // Helper para obtener hora limpia de registro (HH:MM)
-            function obtenerHoraFormateadaDeRegistro(reg) {
-                if (!reg) return null;
-                if (reg.hora) {
-                    const match = reg.hora.match(/^(\d{1,2}):(\d{2})/);
-                    if (match) {
-                        return `${match[1].padStart(2, '0')}:${match[2]}`;
-                    }
+    // Filtrar registros de hoy
+    const regsHoy = registrosCompletos.filter(r => {
+        const fecha = getVal(r, 'fecha', 0) || r[0];
+        let fStr = '';
+        if (fecha instanceof Date) fStr = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+        else fStr = /^\d{4}-\d{2}-\d{2}T/.test(String(fecha)) ? String(fecha).split('T')[0] : String(fecha).substring(0, 10);
+        return fStr === hoyStr;
+    });
+
+    if (regsHoy.length === 0) return { label: 'Fuera de horario', icon: '🌙', color: '#64748b' };
+
+    // Ordenar por hora/timestamp (el último manda)
+    const ultimo = [...regsHoy].sort((a, b) => {
+        const tsA = getVal(a, 'timestamp', 2) || a[2];
+        const tsB = getVal(b, 'timestamp', 2) || b[2];
+        if (tsA && tsB) return String(tsA).localeCompare(String(tsB));
+        const ha = getVal(a, 'hora', 5) || a[5];
+        const hb = getVal(b, 'hora', 5) || b[5];
+        return String(ha).localeCompare(String(hb));
+    }).pop();
+
+    const tipo = (getVal(ultimo, 'tipo', 3) || ultimo[3]).toUpperCase();
+    const razon = String(getVal(ultimo, 'razon_salida', 17) || ultimo[17] || '').toLowerCase();
+
+    switch (tipo) {
+        case 'ENTRADA': case 'RETORNO_CAMPO':
+            return { label: 'OFICINA', icon: '🏢', color: '#10b981' };
+        case 'SALIDA_CAMPO':
+            return { label: 'CAMPO', icon: '🚗', color: '#f59e0b' };
+        case 'SALIDA':
+            const tSalida = String(getVal(ultimo, 'tipo_salida', 21) || ultimo[21] || '').toUpperCase();
+            const rPermiso = String(getVal(ultimo, 'razon_permiso', 22) || ultimo[22] || '').toUpperCase();
+
+            if (tSalida === 'PERMISO' || tSalida === 'INTERMEDIA' || tSalida.includes('PERMISO')) {
+                const label = (rPermiso.includes('MEDICO') || razon.includes('medico') || tSalida.includes('MEDICO')) ? 'PERMISO MEDICO' : 'PERMISO PERSONAL';
+                return { label: label, icon: '🕐', color: '#8b5cf6' };
+            }
+            if (tSalida === 'TRABAJO_CAMPO' || rPermiso === 'EN CAMPO' || razon.includes('campo')) {
+                return { label: 'CAMPO', icon: '🚗', color: '#f59e0b' };
+            }
+            if (tSalida === 'CUMPLEAÑOS' || razon.includes('cumpleanos')) {
+                return { label: 'CUMPLEAÑOS', icon: '🎂', color: '#ff69b4' };
+            }
+            if (tSalida === 'SALIDA_TEMPRANA_JUSTIFICADA' || razon.includes('justificada')) {
+                return { label: 'SALIDA JUSTIFICADA', icon: '✅', color: '#64748b' };
+            }
+            return { label: 'JORNADA FINALIZADA', icon: '🏡', color: '#64748b' };
+        case 'ESTADO':
+            return { label: (razon || 'ESTADO').toUpperCase(), icon: '👤', color: '#8b5cf6' };
+        case 'FALTA':
+            const rFalta = String(getVal(ultimo, 'razon_permiso', 22) || ultimo[22] || getVal(ultimo, 'razon_salida', 17) || ultimo[17] || '').toUpperCase();
+            if (rFalta.includes('VACACIONES')) return { label: 'VACACIONES', icon: '🏖️', color: '#3b82f6' };
+            if (rFalta.includes('MEDICO')) return { label: 'PERMISO MEDICO', icon: '🏥', color: '#ef4444' };
+            if (rFalta.includes('PERSONAL')) return { label: 'PERMISO PERSONAL', icon: '👤', color: '#8b5cf6' };
+            if (rFalta.includes('CAMPO')) return { label: 'SALIDA A CAMPO', icon: '🚗', color: '#f59e0b' };
+            return { label: rFalta || 'AUSENCIA JUSTIFICADA', icon: '🏖️', color: '#3b82f6' };
+        default:
+            return { label: 'EN ACTIVIDAD', icon: '⚙️', color: '#10b981' };
+    }
+}
+
+// ========== RENDER HOME (CREDENCIAL) ==========
+function renderHomePage() {
+    currentPage = 'home';
+    const bottomNav = document.querySelector('.bottom-nav');
+    if (bottomNav) bottomNav.style.display = 'flex';
+    const fabWhatsApp = document.getElementById('fabWhatsApp');
+    if (fabWhatsApp) fabWhatsApp.style.display = 'flex';
+
+    const mainContent = document.getElementById('mainContent');
+    const nombreCompleto = (empleado.nombre || 'EMPLEADO').trim();
+    const partes = nombreCompleto.split(/\s+/);
+    const primerNombre = partes[0] || 'EMPLEADO';
+    const apellido = partes.slice(1).join(' ') || '';
+
+    const fechaVigencia = new Date();
+    fechaVigencia.setFullYear(fechaVigencia.getFullYear() + 1);
+
+    const tieneEntrada = estado.tieneEntrada;
+    const tieneSalida = estado.tieneSalida;
+    const almuerzo = estado.almuerzo;
+
+    // Helper para obtener hora limpia de registro (HH:MM)
+    function obtenerHoraFormateadaDeRegistro(reg) {
+        if (!reg) return null;
+        if (reg.hora) {
+            const match = reg.hora.match(/^(\d{1,2}):(\d{2})/);
+            if (match) {
+                return `${match[1].padStart(2, '0')}:${match[2]}`;
+            }
+        }
+        if (reg.timestamp) {
+            try {
+                const d = reg.timestamp.toDate ? reg.timestamp.toDate() : new Date(reg.timestamp);
+                if (!isNaN(d.getTime())) {
+                    const hh = String(d.getHours()).padStart(2, '0');
+                    const mm = String(d.getMinutes()).padStart(2, '0');
+                    return `${hh}:${mm}`;
                 }
-                if (reg.timestamp) {
-                    try {
-                        const d = reg.timestamp.toDate ? reg.timestamp.toDate() : new Date(reg.timestamp);
-                        if (!isNaN(d.getTime())) {
-                            const hh = String(d.getHours()).padStart(2, '0');
-                            const mm = String(d.getMinutes()).padStart(2, '0');
-                            return `${hh}:${mm}`;
-                        }
-                    } catch (e) {}
-                }
-                return null;
+            } catch (e) { }
+        }
+        return null;
+    }
+
+    const hoyStrLocal = getLocalHoyStr(new Date());
+    const entradaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'ENTRADA') : null;
+    const salidaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'SALIDA') : null;
+
+    let horaEntradaMostrar = 'Pendiente';
+    const horaRegEntrada = obtenerHoraFormateadaDeRegistro(entradaHoyReg);
+    if (horaRegEntrada) {
+        horaEntradaMostrar = horaRegEntrada;
+    } else if (estado.horaEntrada) {
+        const match = estado.horaEntrada.match(/^(\d{1,2}):(\d{2})/);
+        horaEntradaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaEntrada;
+    } else if (tieneEntrada) {
+        horaEntradaMostrar = 'Registrada';
+    }
+
+    let horaSalidaMostrar = 'Pendiente';
+    const horaRegSalida = obtenerHoraFormateadaDeRegistro(salidaHoyReg);
+    if (horaRegSalida) {
+        horaSalidaMostrar = horaRegSalida;
+    } else if (estado.horaSalida) {
+        const match = estado.horaSalida.match(/^(\d{1,2}):(\d{2})/);
+        horaSalidaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaSalida;
+    } else if (tieneSalida) {
+        horaSalidaMostrar = 'Registrada';
+    }
+
+    const esAdmin = empleado.id === ADMIN_ID;
+    const statusActual = calcularStatusActual();
+
+    // Detectar puntualidad del empleado según registros del mes
+    function calcularInsigniaPersonal() {
+        if (!registrosCompletos || registrosCompletos.length === 0) return null;
+        let atrasos = 0, diasConEntrada = 0;
+        const grupos = {};
+        registrosCompletos.forEach(reg => {
+            const fecha = getVal(reg, 'fecha', 0) || reg[0];
+            if (fecha) { if (!grupos[fecha]) grupos[fecha] = []; grupos[fecha].push(reg); }
+        });
+        Object.values(grupos).forEach(regs => {
+            const e = regs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
+            if (e) {
+                diasConEntrada++;
+                const horaEntrada = getVal(e, 'timestamp', 2) || getVal(e, 'hora', 5) || e[2] || e[5];
+                if (calcularMinutosAtraso(horaEntrada) > 0) atrasos++;
             }
+        });
+        if (diasConEntrada === 0) return { tipo: 'sin-registro', icono: '📋', texto: 'SIN REGISTROS' };
+        const porcentaje = (atrasos / diasConEntrada) * 100;
+        if (porcentaje === 0) return { tipo: 'puntual', icono: '⭐', texto: 'ASISTENCIA PERFECTA' };
+        if (porcentaje <= 5) return { tipo: 'puntual', icono: '🏅', texto: 'MUY PUNTUAL' };
+        if (porcentaje >= 40) return { tipo: 'atrasado', icono: '🔴', texto: 'ATRASOS FRECUENTES' };
+        return null; // Solo muestra para el mejor o peor de los casos
+    }
 
-            const hoyStrLocal = getLocalHoyStr(new Date());
-            const entradaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'ENTRADA') : null;
-            const salidaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'SALIDA') : null;
+    // Retorna el emoji del área de trabajo
+    function iconoDeArea(area) {
+        if (!area) return { emoji: '🏢', label: 'General' };
+        const a = area.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (a.includes('taller') || a.includes('mecanica') || a.includes('metal')) return { emoji: '🔧', label: area };
+        if (a.includes('sistemas') || a.includes('ti') || a.includes('tecn') || a.includes('software')) return { emoji: '💻', label: area };
+        if (a.includes('contab') || a.includes('finan') || a.includes('administr')) return { emoji: '📊', label: area };
+        if (a.includes('bodega') || a.includes('logist') || a.includes('almacen')) return { emoji: '📦', label: area };
+        if (a.includes('produccion') || a.includes('planta') || a.includes('manufactur')) return { emoji: '⚙️', label: area };
+        if (a.includes('diseno') || a.includes('calidad') || a.includes('ing')) return { emoji: '📐', label: area };
+        if (a.includes('ventas') || a.includes('comercial')) return { emoji: '📈', label: area };
+        if (a.includes('rrhh') || a.includes('recursos') || a.includes('personal')) return { emoji: '👥', label: area };
+        if (a.includes('gerenc') || a.includes('direcc') || a.includes('jefatur')) return { emoji: '🏆', label: area };
+        if (a.includes('campo') || a.includes('civil') || a.includes('construc')) return { emoji: '🏗️', label: area };
+        if (a.includes('electr')) return { emoji: '⚡', label: area };
+        return { emoji: '🏢', label: area };
+    }
 
-            let horaEntradaMostrar = 'Pendiente';
-            const horaRegEntrada = obtenerHoraFormateadaDeRegistro(entradaHoyReg);
-            if (horaRegEntrada) {
-                horaEntradaMostrar = horaRegEntrada;
-            } else if (estado.horaEntrada) {
-                const match = estado.horaEntrada.match(/^(\d{1,2}):(\d{2})/);
-                horaEntradaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaEntrada;
-            } else if (tieneEntrada) {
-                horaEntradaMostrar = 'Registrada';
-            }
+    // Inicializar variables para la credencial
+    const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
+    const stats = calcularEstadisticas();
+    const areaInfo = iconoDeArea(empleado.area);
+    const hoyDate = new Date();
+    const minDia = hoyDate.getHours() * 60 + hoyDate.getMinutes();
+    const esDespuesDeAlmuerzo = minDia > 840; // Después de las 14:00
 
-            let horaSalidaMostrar = 'Pendiente';
-            const horaRegSalida = obtenerHoraFormateadaDeRegistro(salidaHoyReg);
-            if (horaRegSalida) {
-                horaSalidaMostrar = horaRegSalida;
-            } else if (estado.horaSalida) {
-                const match = estado.horaSalida.match(/^(\d{1,2}):(\d{2})/);
-                horaSalidaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaSalida;
-            } else if (tieneSalida) {
-                horaSalidaMostrar = 'Registrada';
-            }
+    // Crear globos persistentes que permanecen todo el día (via elementos fixed)
+    if (esCumpleanosHoy && !document.getElementById('birthdayBalloons')) {
+        const balloonContainer = document.createElement('div');
+        balloonContainer.id = 'birthdayBalloons';
+        const colors = ['#ff69b4', '#ffb6c1', '#ffd700', '#87ceeb', '#98fb98', '#f472b6', '#c084fc'];
+        for (let i = 0; i < 12; i++) {
+            const b = document.createElement('div');
+            b.className = 'balloon';
+            b.style.left = (Math.random() * 90 + 5) + 'vw';
+            b.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            b.style.animationDuration = (Math.random() * 4 + 5) + 's';
+            b.style.animationDelay = (Math.random() * 6) + 's';
+            balloonContainer.appendChild(b);
+            const c = document.createElement('div');
+            c.className = 'confetti';
+            c.style.left = (Math.random() * 100) + 'vw';
+            c.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            c.style.width = (Math.random() * 8 + 4) + 'px';
+            c.style.height = (Math.random() * 8 + 4) + 'px';
+            c.style.animationDuration = (Math.random() * 3 + 3) + 's';
+            c.style.animationDelay = (Math.random() * 5) + 's';
+            balloonContainer.appendChild(c);
+        }
+        document.body.appendChild(balloonContainer);
+    }
 
-            const esAdmin = empleado.id === ADMIN_ID;
-            const statusActual = calcularStatusActual();
-
-            // Detectar puntualidad del empleado según registros del mes
-            function calcularInsigniaPersonal() {
-                if (!registrosCompletos || registrosCompletos.length === 0) return null;
-                let atrasos = 0, diasConEntrada = 0;
-                const grupos = {};
-                registrosCompletos.forEach(reg => {
-                    const fecha = getVal(reg, 'fecha', 0) || reg[0];
-                    if (fecha) { if (!grupos[fecha]) grupos[fecha] = []; grupos[fecha].push(reg); }
-                });
-                Object.values(grupos).forEach(regs => {
-                    const e = regs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
-                    if (e) {
-                        diasConEntrada++;
-                        const horaEntrada = getVal(e, 'timestamp', 2) || getVal(e, 'hora', 5) || e[2] || e[5];
-                        if (calcularMinutosAtraso(horaEntrada) > 0) atrasos++;
-                    }
-                });
-                if (diasConEntrada === 0) return { tipo: 'sin-registro', icono: '📋', texto: 'SIN REGISTROS' };
-                const porcentaje = (atrasos / diasConEntrada) * 100;
-                if (porcentaje === 0) return { tipo: 'puntual', icono: '⭐', texto: 'ASISTENCIA PERFECTA' };
-                if (porcentaje <= 5) return { tipo: 'puntual', icono: '🏅', texto: 'MUY PUNTUAL' };
-                if (porcentaje >= 40) return { tipo: 'atrasado', icono: '🔴', texto: 'ATRASOS FRECUENTES' };
-                return null; // Solo muestra para el mejor o peor de los casos
-            }
-
-            // Retorna el emoji del área de trabajo
-            function iconoDeArea(area) {
-                if (!area) return { emoji: '🏢', label: 'General' };
-                const a = area.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                if (a.includes('taller') || a.includes('mecanica') || a.includes('metal')) return { emoji: '🔧', label: area };
-                if (a.includes('sistemas') || a.includes('ti') || a.includes('tecn') || a.includes('software')) return { emoji: '💻', label: area };
-                if (a.includes('contab') || a.includes('finan') || a.includes('administr')) return { emoji: '📊', label: area };
-                if (a.includes('bodega') || a.includes('logist') || a.includes('almacen')) return { emoji: '📦', label: area };
-                if (a.includes('produccion') || a.includes('planta') || a.includes('manufactur')) return { emoji: '⚙️', label: area };
-                if (a.includes('diseno') || a.includes('calidad') || a.includes('ing')) return { emoji: '📐', label: area };
-                if (a.includes('ventas') || a.includes('comercial')) return { emoji: '📈', label: area };
-                if (a.includes('rrhh') || a.includes('recursos') || a.includes('personal')) return { emoji: '👥', label: area };
-                if (a.includes('gerenc') || a.includes('direcc') || a.includes('jefatur')) return { emoji: '🏆', label: area };
-                if (a.includes('campo') || a.includes('civil') || a.includes('construc')) return { emoji: '🏗️', label: area };
-                if (a.includes('electr')) return { emoji: '⚡', label: area };
-                return { emoji: '🏢', label: area };
-            }
-
-            // Inicializar variables para la credencial
-            const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
-            const stats = calcularEstadisticas();
-            const areaInfo = iconoDeArea(empleado.area);
-            const hoyDate = new Date();
-            const minDia = hoyDate.getHours() * 60 + hoyDate.getMinutes();
-            const esDespuesDeAlmuerzo = minDia > 840; // Después de las 14:00
-
-            // Crear globos persistentes que permanecen todo el día (via elementos fixed)
-            if (esCumpleanosHoy && !document.getElementById('birthdayBalloons')) {
-                const balloonContainer = document.createElement('div');
-                balloonContainer.id = 'birthdayBalloons';
-                const colors = ['#ff69b4', '#ffb6c1', '#ffd700', '#87ceeb', '#98fb98', '#f472b6', '#c084fc'];
-                for (let i = 0; i < 12; i++) {
-                    const b = document.createElement('div');
-                    b.className = 'balloon';
-                    b.style.left = (Math.random() * 90 + 5) + 'vw';
-                    b.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-                    b.style.animationDuration = (Math.random() * 4 + 5) + 's';
-                    b.style.animationDelay = (Math.random() * 6) + 's';
-                    balloonContainer.appendChild(b);
-                    const c = document.createElement('div');
-                    c.className = 'confetti';
-                    c.style.left = (Math.random() * 100) + 'vw';
-                    c.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-                    c.style.width = (Math.random() * 8 + 4) + 'px';
-                    c.style.height = (Math.random() * 8 + 4) + 'px';
-                    c.style.animationDuration = (Math.random() * 3 + 3) + 's';
-                    c.style.animationDelay = (Math.random() * 5) + 's';
-                    balloonContainer.appendChild(c);
-                }
-                document.body.appendChild(balloonContainer);
-            }
-
-            mainContent.innerHTML = `
+    mainContent.innerHTML = `
             <div class="credencial-wrapper">
                 ${!empleado.foto_url || empleado.foto_url.trim() === '' ? `
                 <div class="glass-card mb-3" style="background: rgba(239, 68, 68, 0.08); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: 20px; padding: 14px 16px; animation: pulseGlowRed 2.5s infinite ease-in-out; margin: 0 10px 15px; box-sizing: border-box; text-align: left;">
@@ -2332,9 +3227,10 @@
                             </div>` : ''}
                             <div onclick="showPhotoModal('${empleado.foto_url || ''}')">
                                 ${empleado.foto_url && empleado.foto_url.trim() ?
-                    `<img class="employee-photo-profesional rectangular-photo" src="${empleado.foto_url}" alt="Foto">` :
-                    `<div class="employee-photo-placeholder-profesional rectangular-photo">👤</div>`
-                }
+            `<img class="employee-photo-profesional rectangular-photo" src="${empleado.foto_url}" alt="Foto" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+             <div class="employee-photo-placeholder-profesional rectangular-photo" style="display:none;">👤</div>` :
+            `<div class="employee-photo-placeholder-profesional rectangular-photo">👤</div>`
+        }
                             </div>
                             <div class="photo-edit-badge" onclick="triggerProfilePhotoUpload(event)" title="Cambiar foto de perfil">
                                 <i class="fas fa-camera"></i>
@@ -2351,11 +3247,11 @@
                         <div style="margin-top: 15px; margin-bottom: 4px;">
                             <div style="color: #64748b; font-size: clamp(11px, 3.2vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
                                 ${(() => {
-                    const h = new Date().getHours();
-                    if (h >= 5 && h < 12) return 'Buenos días';
-                    if (h >= 12 && h < 18) return 'Buenas tardes';
-                    return 'Buenas noches';
-                })()}
+            const h = new Date().getHours();
+            if (h >= 5 && h < 12) return 'Buenos días';
+            if (h >= 12 && h < 18) return 'Buenas tardes';
+            return 'Buenas noches';
+        })()}
                             </div>
                             <div class="employee-name-profesional" style="margin-top: 2px; font-weight: 900; font-size: clamp(14px, 4.2vw, 17px); color: #0f172a; letter-spacing: 0.5px; text-transform: uppercase;">${primerNombre} ${apellido}</div>
                         </div>
@@ -2414,28 +3310,28 @@
                 <!-- Botón de Acción Único y Dinámico -->
                 <div class="main-action-wrapper">
                     ${(() => {
-                    let btn = { type: 'ENTRADA', label: 'REGISTRAR ENTRADA', class: 'bg-entrada', icon: 'fa-sign-in-alt', disabled: '' };
-                    if (statusActual.label.includes('CAMPO')) {
-                        btn = { type: 'RETORNO_CAMPO', label: 'RETORNO DE CAMPO', class: 'bg-campo', icon: 'fa-undo', disabled: '' };
-                    } else if (tieneEntrada && !tieneSalida) {
-                        if (statusActual.label.includes('PERMISO')) {
-                            btn = { type: 'ENTRADA', label: 'REGISTRAR RE-ENTRADA', class: 'bg-reentrada', icon: 'fa-door-open', disabled: '' };
-                        } else {
-                            btn = { type: 'SALIDA', label: 'REGISTRAR SALIDA', class: 'bg-salida', icon: 'fa-sign-out-alt', disabled: '' };
-                        }
-                    } else if (tieneSalida) {
-                        btn = { type: 'NONE', label: 'JORNADA FINALIZADA', class: 'bg-salida', icon: 'fa-check-circle', disabled: 'disabled' };
-                    }
-                    return `
+            let btn = { type: 'ENTRADA', label: 'REGISTRAR ENTRADA', class: 'bg-entrada', icon: 'fa-sign-in-alt', disabled: '' };
+            if (statusActual.label.includes('CAMPO')) {
+                btn = { type: 'RETORNO_CAMPO', label: 'RETORNO DE CAMPO', class: 'bg-campo', icon: 'fa-undo', disabled: '' };
+            } else if (tieneEntrada && !tieneSalida) {
+                if (statusActual.label.includes('PERMISO')) {
+                    btn = { type: 'ENTRADA', label: 'REGISTRAR RE-ENTRADA', class: 'bg-reentrada', icon: 'fa-door-open', disabled: '' };
+                } else {
+                    btn = { type: 'SALIDA', label: 'REGISTRAR SALIDA', class: 'bg-salida', icon: 'fa-sign-out-alt', disabled: '' };
+                }
+            } else if (tieneSalida) {
+                btn = { type: 'NONE', label: 'JORNADA FINALIZADA', class: 'bg-salida', icon: 'fa-check-circle', disabled: 'disabled' };
+            }
+            return `
                         <button class="btn-main-action ${btn.class}" onclick="${btn.type !== 'NONE' ? `iniciarRegistro('${btn.type}')` : ''}" ${btn.disabled}>
                             <div class="btn-type"><i class="fas ${btn.icon}"></i> ${btn.label}</div>
                             ${tieneSalida
-                                ? `<div id="btnTime" class="btn-time" data-completa="true">COMPLETA</div>`
-                                : `<div id="btnTime" class="btn-time">--:--:--</div>`
-                            }
+                    ? `<div id="btnTime" class="btn-time" data-completa="true">COMPLETA</div>`
+                    : `<div id="btnTime" class="btn-time">--:--:--</div>`
+                }
                         </button>
                         `;
-                })()}
+        })()}
                 </div>
                 
                 ${esCumpleanosHoy ? `
@@ -2466,64 +3362,61 @@
             </div>
         `;
 
-            const fabWhatsApp = document.getElementById('fabWhatsApp');
-            if (fabWhatsApp) fabWhatsApp.style.display = 'flex';
+    // ====== RELOJ EN VIVO ======
+    if (window._clockInterval) clearInterval(window._clockInterval);
+    function actualizarReloj() {
+        const clockEl = document.getElementById('liveClock');
+        const dateEl = document.getElementById('liveDate');
+        const btnTime = document.getElementById('btnTime');
 
-            // ====== RELOJ EN VIVO ======
-            if (window._clockInterval) clearInterval(window._clockInterval);
-            function actualizarReloj() {
-                const clockEl = document.getElementById('liveClock');
-                const dateEl = document.getElementById('liveDate');
-                const btnTime = document.getElementById('btnTime');
+        if (!clockEl && !btnTime) return; // No cortamos el intervalo para permitir que se recupere si volvemos a la home
 
-                if (!clockEl && !btnTime) return; // No cortamos el intervalo para permitir que se recupere si volvemos a la home
+        const ahora = new Date();
 
-                const ahora = new Date();
-
-                // Si es después de las 14:00 PM (840 minutos) y el modal de almuerzo está abierto, quitarlo
-                const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
-                if (minutosDia > 840) {
-                    const modal = document.getElementById('almuerzoModal');
-                    if (modal) {
-                        modal.remove();
-                        if (typeof currentPage !== 'undefined' && currentPage === 'home') {
-                            renderHomePage();
-                        }
-                    }
-                }
-                const hh = String(ahora.getHours()).padStart(2, '0');
-                const mm = String(ahora.getMinutes()).padStart(2, '0');
-                const ss = String(ahora.getSeconds()).padStart(2, '0');
-                const timeStr = `${hh}:${mm}:${ss}`;
-
-                if (clockEl) clockEl.textContent = timeStr;
-                if (btnTime) {
-                    if (btnTime.getAttribute('data-completa') === 'true') {
-                        btnTime.textContent = 'COMPLETA';
-                    } else {
-                        btnTime.textContent = timeStr;
-                    }
-                }
-
-                if (dateEl) {
-                    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-                    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-                    dateEl.textContent = `${dias[ahora.getDay()]} ${ahora.getDate()} ${meses[ahora.getMonth()]}`;
+        // Si es después de las 14:00 PM (840 minutos) y el modal de almuerzo está abierto, quitarlo
+        const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
+        if (minutosDia > 840) {
+            const modal = document.getElementById('almuerzoModal');
+            if (modal) {
+                modal.remove();
+                if (typeof currentPage !== 'undefined' && currentPage === 'home') {
+                    renderHomePage();
                 }
             }
-            actualizarReloj();
-            window._clockInterval = setInterval(actualizarReloj, 1000);
+        }
+        const hh = String(ahora.getHours()).padStart(2, '0');
+        const mm = String(ahora.getMinutes()).padStart(2, '0');
+        const ss = String(ahora.getSeconds()).padStart(2, '0');
+        const timeStr = `${hh}:${mm}:${ss}`;
 
-            evaluarPopupAlmuerzo();
-            ajustarLayout();
+        if (clockEl) clockEl.textContent = timeStr;
+        if (btnTime) {
+            if (btnTime.getAttribute('data-completa') === 'true') {
+                btnTime.textContent = 'COMPLETA';
+            } else {
+                btnTime.textContent = timeStr;
+            }
         }
 
-        // ========== DETALLE DE INSIGNIA (CUSTOM MODAL) ==========
-        window.mostrarDetalleInsignia = function (titulo, descripcion, icono, colorBg, colorBorder) {
-            const modalExistente = document.getElementById('insigniaModal');
-            if (modalExistente) modalExistente.remove();
+        if (dateEl) {
+            const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+            const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            dateEl.textContent = `${dias[ahora.getDay()]} ${ahora.getDate()} ${meses[ahora.getMonth()]}`;
+        }
+    }
+    actualizarReloj();
+    window._clockInterval = setInterval(actualizarReloj, 1000);
 
-            const modalHTML = `
+    evaluarPopupAlmuerzo();
+    ajustarLayout();
+}
+
+// ========== DETALLE DE INSIGNIA (CUSTOM MODAL) ==========
+window.mostrarDetalleInsignia = function (titulo, descripcion, icono, colorBg, colorBorder) {
+    const modalExistente = document.getElementById('insigniaModal');
+    if (modalExistente) modalExistente.remove();
+
+    const modalHTML = `
                 <div id="insigniaModal" class="almuerzo-modal-overlay" onclick="if(event.target === this) this.remove();">
                     <div class="almuerzo-modal-card" style="border: 2px solid ${colorBorder};">
                         <button class="almuerzo-modal-close" onclick="document.getElementById('insigniaModal').remove();">&times;</button>
@@ -2541,39 +3434,39 @@
                 </div>
             `;
 
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-        };
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+};
 
-        // ========== POPUP DE ALMUERZO ==========
-        window.mostrarPopupAlmuerzo = function (manual = false) {
-            if (document.getElementById('almuerzoModal')) return;
+// ========== POPUP DE ALMUERZO ==========
+window.mostrarPopupAlmuerzo = function (manual = false) {
+    if (document.getElementById('almuerzoModal')) return;
 
-            const ahora = new Date();
-            const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
-            const esHoraEdicionManana = minutosDia < 570; // Hasta las 09:30
-            const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840; // De 12:25 a 14:00
+    const ahora = new Date();
+    const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
+    const esHoraEdicionManana = minutosDia < 570; // Hasta las 09:30
+    const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840; // De 12:25 a 14:00
 
-            if (manual) {
-                if (!esHoraEdicionManana && !esHoraAlmuerzo) {
-                    if (minutosDia >= 570 && minutosDia < 745) {
-                        mostrarToast('La modificación de almuerzo finalizó a las 09:30. Se habilitará el registro de 12:25 a 14:00.', 'info');
-                    } else {
-                        mostrarToast('El registro de almuerzo ya no está disponible.', 'info');
-                    }
-                    return;
-                }
+    if (manual) {
+        if (!esHoraEdicionManana && !esHoraAlmuerzo) {
+            if (minutosDia >= 570 && minutosDia < 745) {
+                mostrarToast('La modificación de almuerzo finalizó a las 09:30. Se habilitará el registro de 12:25 a 14:00.', 'info');
+            } else {
+                mostrarToast('El registro de almuerzo ya no está disponible.', 'info');
             }
+            return;
+        }
+    }
 
-            if (!manual) {
-                if (!esHoraAlmuerzo) return;
+    if (!manual) {
+        if (!esHoraAlmuerzo) return;
 
-                const alm = empleado.almuerzo || estado.almuerzo;
-                if (alm === 'SI' || alm === 'PLANTA' || alm === 'NO' || alm === 'FUERA') return;
+        const alm = empleado.almuerzo || estado.almuerzo;
+        if (alm === 'SI' || alm === 'PLANTA' || alm === 'NO' || alm === 'FUERA') return;
 
-                if (sessionStorage.getItem('almuerzo_popup_cerrado') === 'true') return;
-            }
+        if (sessionStorage.getItem('almuerzo_popup_cerrado') === 'true') return;
+    }
 
-            const modalHTML = `
+    const modalHTML = `
                 <div id="almuerzoModal" class="almuerzo-modal-overlay" onclick="if(event.target === this) cerrarAlmuerzoPopup();">
                     <div class="almuerzo-modal-card">
                         <button class="almuerzo-modal-close" onclick="cerrarAlmuerzoPopup()">&times;</button>
@@ -2598,114 +3491,114 @@
                 </div>
             `;
 
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-        };
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+};
 
-        window.cerrarAlmuerzoPopup = function () {
-            sessionStorage.setItem('almuerzo_popup_cerrado', 'true');
+window.cerrarAlmuerzoPopup = function () {
+    sessionStorage.setItem('almuerzo_popup_cerrado', 'true');
+    const modal = document.getElementById('almuerzoModal');
+    if (modal) modal.remove();
+};
+
+window.registrarAlmuerzoPopup = async function (opcion) {
+    showLoading(true);
+    try {
+        const res = await jsonpRequest({
+            accion: 'actualizarAlmuerzoSupervisor',
+            empleadoId: empleado.id,
+            almuerzo: opcion
+        });
+        if (res && res.ok !== false) {
+            mostrarToast("Almuerzo registrado correctamente", "success");
+            empleado.almuerzo = opcion;
+            estado.almuerzo = opcion;
             const modal = document.getElementById('almuerzoModal');
             if (modal) modal.remove();
-        };
+            renderHomePage();
+        } else {
+            mostrarToast("Error al registrar almuerzo: " + (res?.error || "Desconocido"), "error");
+        }
+    } catch (error) {
+        console.error("Error registrando almuerzo:", error);
+        mostrarToast("Error de conexión", "error");
+    } finally {
+        showLoading(false);
+    }
+};
 
-        window.registrarAlmuerzoPopup = async function (opcion) {
-            showLoading(true);
-            try {
-                const res = await jsonpRequest({
-                    accion: 'actualizarAlmuerzoSupervisor',
-                    empleadoId: empleado.id,
-                    almuerzo: opcion
-                });
-                if (res && res.ok !== false) {
-                    mostrarToast("Almuerzo registrado correctamente", "success");
-                    empleado.almuerzo = opcion;
-                    estado.almuerzo = opcion;
-                    const modal = document.getElementById('almuerzoModal');
-                    if (modal) modal.remove();
-                    renderHomePage();
-                } else {
-                    mostrarToast("Error al registrar almuerzo: " + (res?.error || "Desconocido"), "error");
-                }
-            } catch (error) {
-                console.error("Error registrando almuerzo:", error);
-                mostrarToast("Error de conexión", "error");
-            } finally {
-                showLoading(false);
-            }
-        };
+window.evaluarPopupAlmuerzo = function () {
+    if (!isAuthenticated || !empleado || !empleado.id) return;
+    if (esCumpleanos(empleado.fechaNacimiento)) return; // No aplica en cumpleaños
+    const ahora = new Date();
+    const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
+    const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840;
+    if (!esHoraAlmuerzo) return;
 
-        window.evaluarPopupAlmuerzo = function () {
-            if (!isAuthenticated || !empleado || !empleado.id) return;
-            if (esCumpleanos(empleado.fechaNacimiento)) return; // No aplica en cumpleaños
-            const ahora = new Date();
-            const minutosDia = ahora.getHours() * 60 + ahora.getMinutes();
-            const esHoraAlmuerzo = minutosDia >= 745 && minutosDia <= 840;
-            if (!esHoraAlmuerzo) return;
+    const alm = empleado.almuerzo || estado.almuerzo;
+    if (alm === 'SI' || alm === 'PLANTA' || alm === 'NO' || alm === 'FUERA') return;
 
-            const alm = empleado.almuerzo || estado.almuerzo;
-            if (alm === 'SI' || alm === 'PLANTA' || alm === 'NO' || alm === 'FUERA') return;
+    if (sessionStorage.getItem('almuerzo_popup_cerrado') === 'true') return;
 
-            if (sessionStorage.getItem('almuerzo_popup_cerrado') === 'true') return;
+    mostrarPopupAlmuerzo(false);
+};
 
-            mostrarPopupAlmuerzo(false);
-        };
+// ========== RENDER HISTORY (RESUMEN) - VERSIÓN MEJORADA CON ESTADÍSTICAS ==========
+function renderHistoryPage() {
+    const mainContent = document.getElementById('mainContent');
 
-        // ========== RENDER HISTORY (RESUMEN) - VERSIÓN MEJORADA CON ESTADÍSTICAS ==========
-        function renderHistoryPage() {
-            const mainContent = document.getElementById('mainContent');
+    // Calcular estadísticas generales
+    const stats = calcularEstadisticas();
 
-            // Calcular estadísticas generales
-            const stats = calcularEstadisticas();
+    // Formatear fecha/hora actual
+    function obtenerFechaHoraActualFormateada() {
+        const ahora = new Date();
+        const dia = String(ahora.getDate()).padStart(2, '0');
+        const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+        const anio = ahora.getFullYear();
+        const hh = String(ahora.getHours()).padStart(2, '0');
+        const mm = String(ahora.getMinutes()).padStart(2, '0');
+        const ss = String(ahora.getSeconds()).padStart(2, '0');
+        return `${dia}-${mes}-${anio} ${hh}:${mm}:${ss}`;
+    }
 
-            // Formatear fecha/hora actual
-            function obtenerFechaHoraActualFormateada() {
-                const ahora = new Date();
-                const dia = String(ahora.getDate()).padStart(2, '0');
-                const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-                const anio = ahora.getFullYear();
-                const hh = String(ahora.getHours()).padStart(2, '0');
-                const mm = String(ahora.getMinutes()).padStart(2, '0');
-                const ss = String(ahora.getSeconds()).padStart(2, '0');
-                return `${dia}-${mes}-${anio} ${hh}:${mm}:${ss}`;
-            }
+    const formatMins = (mins) => {
+        const h = Math.floor(mins / 60);
+        const m = Math.floor(mins % 60);
+        return `${h}h ${m}m`;
+    };
 
-            const formatMins = (mins) => {
-                const h = Math.floor(mins / 60);
-                const m = Math.floor(mins % 60);
-                return `${h}h ${m}m`;
-            };
+    // Generar logros del periodo
+    let logrosHTML = '';
 
-            // Generar logros del periodo
-            let logrosHTML = '';
-            
-            // Logro 1: Asistencia (basado en días trabajados)
-            let asistenciaTitulo = '';
-            let asistenciaDesc = '';
-            let asistenciaIcono = '';
-            let asistenciaColor = '';
-            
-            if (stats.diasTrabajados >= 15) {
-                asistenciaTitulo = 'Asistencia de Platino';
-                asistenciaDesc = `¡Extraordinario! Has registrado ${stats.diasTrabajados} días laborados en este período. Excelente compromiso.`;
-                asistenciaIcono = '🏆';
-                asistenciaColor = 'linear-gradient(135deg, #e2e8f0, #cbd5e1)';
-            } else if (stats.diasTrabajados >= 8) {
-                asistenciaTitulo = 'Asistencia de Oro';
-                asistenciaDesc = `Muy buena constancia con ${stats.diasTrabajados} días laborados en este período. ¡Sigue así!`;
-                asistenciaIcono = '🥇';
-                asistenciaColor = 'linear-gradient(135deg, #fef3c7, #fde68a)';
-            } else if (stats.diasTrabajados >= 1) {
-                asistenciaTitulo = 'Asistencia de Plata';
-                asistenciaDesc = `Has registrado ${stats.diasTrabajados} días laborados en este período. Buen inicio.`;
-                asistenciaIcono = '🥈';
-                asistenciaColor = 'linear-gradient(135deg, #ffedd5, #fed7aa)';
-            } else {
-                asistenciaTitulo = 'Iniciando Camino';
-                asistenciaDesc = 'Aún no registras asistencias en este período. ¡Registra tu entrada hoy!';
-                asistenciaIcono = '🥉';
-                asistenciaColor = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
-            }
+    // Logro 1: Asistencia (basado en días trabajados)
+    let asistenciaTitulo = '';
+    let asistenciaDesc = '';
+    let asistenciaIcono = '';
+    let asistenciaColor = '';
 
-            logrosHTML += `
+    if (stats.diasTrabajados >= 15) {
+        asistenciaTitulo = 'Asistencia de Platino';
+        asistenciaDesc = `¡Extraordinario! Has registrado ${stats.diasTrabajados} días laborados en este período. Excelente compromiso.`;
+        asistenciaIcono = '🏆';
+        asistenciaColor = 'linear-gradient(135deg, #e2e8f0, #cbd5e1)';
+    } else if (stats.diasTrabajados >= 8) {
+        asistenciaTitulo = 'Asistencia de Oro';
+        asistenciaDesc = `Muy buena constancia con ${stats.diasTrabajados} días laborados en este período. ¡Sigue así!`;
+        asistenciaIcono = '🥇';
+        asistenciaColor = 'linear-gradient(135deg, #fef3c7, #fde68a)';
+    } else if (stats.diasTrabajados >= 1) {
+        asistenciaTitulo = 'Asistencia de Plata';
+        asistenciaDesc = `Has registrado ${stats.diasTrabajados} días laborados en este período. Buen inicio.`;
+        asistenciaIcono = '🥈';
+        asistenciaColor = 'linear-gradient(135deg, #ffedd5, #fed7aa)';
+    } else {
+        asistenciaTitulo = 'Iniciando Camino';
+        asistenciaDesc = 'Aún no registras asistencias en este período. ¡Registra tu entrada hoy!';
+        asistenciaIcono = '🥉';
+        asistenciaColor = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+    }
+
+    logrosHTML += `
                 <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
                     <div class="achievement-icon" style="font-size: 24px; background: ${asistenciaColor}; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
                         ${asistenciaIcono}
@@ -2717,41 +3610,41 @@
                 </div>
             `;
 
-            // Logro 2: Puntualidad (basado en porcentaje)
-            const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
-            let puntualidadTitulo = '';
-            let puntualidadDesc = '';
-            let puntualidadIcono = '';
-            let puntualidadColor = '';
-            
-            if (stats.diasTrabajados === 0) {
-                puntualidadTitulo = 'Sin Registro';
-                puntualidadDesc = 'Se evaluará tu puntualidad una vez que registres asistencias.';
-                puntualidadIcono = '⏱️';
-                puntualidadColor = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
-            } else if (puntualidadPct === 100) {
-                puntualidadTitulo = 'Puntualidad Impecable (100%)';
-                puntualidadDesc = '¡Asombroso! No registras ningún atraso en este período. Eres un ejemplo de puntualidad.';
-                puntualidadIcono = '🌟';
-                puntualidadColor = 'linear-gradient(135deg, #ecfdf5, #a7f3d0)';
-            } else if (puntualidadPct >= 90) {
-                puntualidadTitulo = 'Puntualidad de Élite';
-                puntualidadDesc = `Excelente puntualidad del ${puntualidadPct}% (${stats.diasTrabajados - stats.atrasos} de ${stats.diasTrabajados} días a tiempo).`;
-                puntualidadIcono = '🎖️';
-                puntualidadColor = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
-            } else if (puntualidadPct >= 75) {
-                puntualidadTitulo = 'Buen Ritmo de Entrada';
-                puntualidadDesc = `Has mantenido un ${puntualidadPct}% de puntualidad en el periodo. ¡Sigue concentrado!`;
-                puntualidadIcono = '👍';
-                puntualidadColor = 'linear-gradient(135deg, #eff6ff, #dbeafe)';
-            } else {
-                puntualidadTitulo = 'Puntualidad por Mejorar';
-                puntualidadDesc = `Tienes un ${puntualidadPct}% de puntualidad (${stats.atrasos} atrasos en ${stats.diasTrabajados} días). ¡Llega más temprano!`;
-                puntualidadIcono = '⚠️';
-                puntualidadColor = 'linear-gradient(135deg, #fff5f5, #fed7d7)';
-            }
+    // Logro 2: Puntualidad (basado en porcentaje)
+    const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
+    let puntualidadTitulo = '';
+    let puntualidadDesc = '';
+    let puntualidadIcono = '';
+    let puntualidadColor = '';
 
-            logrosHTML += `
+    if (stats.diasTrabajados === 0) {
+        puntualidadTitulo = 'Sin Registro';
+        puntualidadDesc = 'Se evaluará tu puntualidad una vez que registres asistencias.';
+        puntualidadIcono = '⏱️';
+        puntualidadColor = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+    } else if (puntualidadPct === 100) {
+        puntualidadTitulo = 'Puntualidad Impecable (100%)';
+        puntualidadDesc = '¡Asombroso! No registras ningún atraso en este período. Eres un ejemplo de puntualidad.';
+        puntualidadIcono = '🌟';
+        puntualidadColor = 'linear-gradient(135deg, #ecfdf5, #a7f3d0)';
+    } else if (puntualidadPct >= 90) {
+        puntualidadTitulo = 'Puntualidad de Élite';
+        puntualidadDesc = `Excelente puntualidad del ${puntualidadPct}% (${stats.diasTrabajados - stats.atrasos} de ${stats.diasTrabajados} días a tiempo).`;
+        puntualidadIcono = '🎖️';
+        puntualidadColor = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
+    } else if (puntualidadPct >= 75) {
+        puntualidadTitulo = 'Buen Ritmo de Entrada';
+        puntualidadDesc = `Has mantenido un ${puntualidadPct}% de puntualidad en el periodo. ¡Sigue concentrado!`;
+        puntualidadIcono = '👍';
+        puntualidadColor = 'linear-gradient(135deg, #eff6ff, #dbeafe)';
+    } else {
+        puntualidadTitulo = 'Puntualidad por Mejorar';
+        puntualidadDesc = `Tienes un ${puntualidadPct}% de puntualidad (${stats.atrasos} atrasos en ${stats.diasTrabajados} días). ¡Llega más temprano!`;
+        puntualidadIcono = '⚠️';
+        puntualidadColor = 'linear-gradient(135deg, #fff5f5, #fed7d7)';
+    }
+
+    logrosHTML += `
                 <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 8px;">
                     <div class="achievement-icon" style="font-size: 24px; background: ${puntualidadColor}; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
                         ${puntualidadIcono}
@@ -2763,10 +3656,10 @@
                 </div>
             `;
 
-            // Logro 3: Campo
-            if (stats.minutosCampo > 0) {
-                const campoMinsStr = formatMins(stats.minutosCampo);
-                logrosHTML += `
+    // Logro 3: Campo
+    if (stats.minutosCampo > 0) {
+        const campoMinsStr = formatMins(stats.minutosCampo);
+        logrosHTML += `
                     <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 8px;">
                         <div class="achievement-icon" style="font-size: 24px; background: linear-gradient(135deg, #f0f9ff, #e0f2fe); width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
                             🏗️
@@ -2777,33 +3670,33 @@
                         </div>
                     </div>
                 `;
-            }
+    }
 
-            // Logro 4: Almuerzo Saludable (basado en almuerzos en planta)
-            if (stats.almuerzos > 0) {
-                let almTitulo = '';
-                let almDesc = '';
-                let almIcono = '';
-                let almColor = '';
-                
-                if (stats.almuerzos >= 15) {
-                    almTitulo = 'Almuerzo Platinum';
-                    almDesc = `¡Espectacular! Has almorzado en planta ${stats.almuerzos} veces en este período, priorizando tu permanencia y bienestar.`;
-                    almIcono = '👑';
-                    almColor = 'linear-gradient(135deg, #f0fdf4, #bbf7d0)';
-                } else if (stats.almuerzos >= 8) {
-                    almTitulo = 'Almuerzo de Oro';
-                    almDesc = `Muy buen hábito. Has registrado ${stats.almuerzos} almuerzos en la planta durante este período.`;
-                    almIcono = '🥗';
-                    almColor = 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
-                } else {
-                    almTitulo = 'Almuerzo de Plata';
-                    almDesc = `Has registrado ${stats.almuerzos} almuerzos en la planta. ¡Sigue manteniendo tu constancia!`;
-                    almIcono = '🥪';
-                    almColor = 'linear-gradient(135deg, #fdf8f6, #fee2e2)';
-                }
+    // Logro 4: Almuerzo Saludable (basado en almuerzos en planta)
+    if (stats.almuerzos > 0) {
+        let almTitulo = '';
+        let almDesc = '';
+        let almIcono = '';
+        let almColor = '';
 
-                logrosHTML += `
+        if (stats.almuerzos >= 15) {
+            almTitulo = 'Almuerzo Platinum';
+            almDesc = `¡Espectacular! Has almorzado en planta ${stats.almuerzos} veces en este período, priorizando tu permanencia y bienestar.`;
+            almIcono = '👑';
+            almColor = 'linear-gradient(135deg, #f0fdf4, #bbf7d0)';
+        } else if (stats.almuerzos >= 8) {
+            almTitulo = 'Almuerzo de Oro';
+            almDesc = `Muy buen hábito. Has registrado ${stats.almuerzos} almuerzos en la planta durante este período.`;
+            almIcono = '🥗';
+            almColor = 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
+        } else {
+            almTitulo = 'Almuerzo de Plata';
+            almDesc = `Has registrado ${stats.almuerzos} almuerzos en la planta. ¡Sigue manteniendo tu constancia!`;
+            almIcono = '🥪';
+            almColor = 'linear-gradient(135deg, #fdf8f6, #fee2e2)';
+        }
+
+        logrosHTML += `
                     <div class="achievement-card" style="display: flex; align-items: center; gap: 15px; background: rgba(255, 255, 255, 0.7); padding: 12px 15px; border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 8px;">
                         <div class="achievement-icon" style="font-size: 24px; background: ${almColor}; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); flex-shrink: 0;">
                             ${almIcono}
@@ -2814,35 +3707,35 @@
                         </div>
                     </div>
                 `;
-            }
+    }
 
-            const hoy = new Date();
-            const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    const hoy = new Date();
+    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
 
-            const registrosHoy = registrosCompletos.filter(r => {
-                const fecha = getVal(r, 'fecha', 0) || r[0];
-                if (!fecha) return false;
-                let fechaRegistro;
-                if (typeof fecha === 'string' && fecha.includes('-')) {
-                    fechaRegistro = fecha;
-                } else if (fecha instanceof Date) {
-                    fechaRegistro = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
-                } else {
-                    const d = new Date(fecha);
-                    if (isNaN(d.getTime())) return false;
-                    fechaRegistro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                }
-                return fechaRegistro === hoyStr;
-            });
+    const registrosHoy = registrosCompletos.filter(r => {
+        const fecha = getVal(r, 'fecha', 0) || r[0];
+        if (!fecha) return false;
+        let fechaRegistro;
+        if (typeof fecha === 'string' && fecha.includes('-')) {
+            fechaRegistro = fecha;
+        } else if (fecha instanceof Date) {
+            fechaRegistro = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+        } else {
+            const d = new Date(fecha);
+            if (isNaN(d.getTime())) return false;
+            fechaRegistro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        return fechaRegistro === hoyStr;
+    });
 
-            const entrada = registrosHoy.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
-            const salida = registrosHoy.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
+    const entrada = registrosHoy.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
+    const salida = registrosHoy.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
 
-            const entradaHora = entrada ? formatearHora(getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5]) : '--:--';
-            const salidaHora = salida ? formatearHora(getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5]) : '--:--';
-            const almuerzoText = entrada ? (getVal(entrada, 'almuerzo', 4) === 'SI' ? '🍽️ Dentro de planta' : getVal(entrada, 'almuerzo', 4) === 'NO' ? '🏠 Fuera de planta' : '❓ No registrado') : '❓ No registrado';
+    const entradaHora = entrada ? formatearHora(getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5]) : '--:--';
+    const salidaHora = salida ? formatearHora(getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5]) : '--:--';
+    const almuerzoText = entrada ? (getVal(entrada, 'almuerzo', 4) === 'SI' ? '🍽️ Dentro de planta' : getVal(entrada, 'almuerzo', 4) === 'NO' ? '🏠 Fuera de planta' : '❓ No registrado') : '❓ No registrado';
 
-            mainContent.innerHTML = `
+    mainContent.innerHTML = `
             <div class="page">
                 
                 <!-- RESUMEN DE PERÍODO (Estadísticas Generales y Horas Unificadas) -->
@@ -2980,844 +3873,847 @@
             </div>
             `;
 
-            actualizarHistorialAgrupado();
+    actualizarHistorialAgrupado();
 
-            if (entrada && !salida) {
-                const btnContainer = document.createElement('div');
-                btnContainer.className = 'mt-3';
-                btnContainer.innerHTML = `
+    if (entrada && !salida) {
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'mt-3';
+        btnContainer.innerHTML = `
                 <button class="btn btn-danger btn-lg w-100" onclick="iniciarRegistro('SALIDA')" style="font-size: clamp(14px, 4.2vw, 16px); padding: clamp(12px, 3.5vw, 14px);">
                     <i class="fas fa-sign-out-alt"></i> REGISTRAR SALIDA
                 </button>
             `;
-                document.querySelector('.glass-card:first-child')?.appendChild(btnContainer);
-            }
+        document.querySelector('.glass-card:first-child')?.appendChild(btnContainer);
+    }
 
-            ajustarLayout();
-        }
+    ajustarLayout();
+}
 
-        // ========== HELPER PARA ACCESO SEGURO A DATOS ==========
-        function getVal(reg, key, idx) {
-            if (!reg) return null;
-            return (typeof reg === 'object' && key in reg) ? reg[key] : (Array.isArray(reg) ? reg[idx] : null);
-        }
+// ========== HELPER PARA ACCESO SEGURO A DATOS ==========
+function getVal(reg, key, idx) {
+    if (!reg) return null;
+    return (typeof reg === 'object' && key in reg) ? reg[key] : (Array.isArray(reg) ? reg[idx] : null);
+}
 
-        /**
-         * Parsea una fecha de forma segura soportando múltiples formatos
-         * (ISO, D/M/YYYY HH:mm:ss, strings con AM/PM, etc.)
-         */
-        function parseDateSafe(ts) {
-            if (!ts) return null;
-            if (ts instanceof Date) return ts;
+/**
+ * Parsea una fecha de forma segura soportando múltiples formatos
+ * (ISO, D/M/YYYY HH:mm:ss, strings con AM/PM, etc.)
+ */
+function parseDateSafe(ts) {
+    if (!ts) return null;
+    if (ts instanceof Date) return ts;
 
-            // Si es un objeto de Firebase (seconds/nanoseconds)
-            if (ts && typeof ts.toDate === 'function') return ts.toDate();
-            if (ts && ts.seconds) return new Date(ts.seconds * 1000);
+    // Si es un objeto de Firebase (seconds/nanoseconds)
+    if (ts && typeof ts.toDate === 'function') return ts.toDate();
+    if (ts && ts.seconds) return new Date(ts.seconds * 1000);
 
-            let d = new Date(ts);
-            if (!isNaN(d.getTime())) return d;
+    let d = new Date(ts);
+    if (!isNaN(d.getTime())) return d;
 
-            // Intentar parsear formatos manuales (ej: 14/5/2026 16:20:25 o con p. m.)
-            try {
-                let s = String(ts).replace(',', '').trim();
-                // Normalizar p. m. / a. m. a PM/AM para que el motor de JS lo entienda mejor si es posible
-                s = s.replace(/p\.\s*m\./i, 'PM').replace(/a\.\s*m\./i, 'AM');
+    // Intentar parsear formatos manuales (ej: 14/5/2026 16:20:25 o con p. m.)
+    try {
+        let s = String(ts).replace(',', '').trim();
+        // Normalizar p. m. / a. m. a PM/AM para que el motor de JS lo entienda mejor si es posible
+        s = s.replace(/p\.\s*m\./i, 'PM').replace(/a\.\s*m\./i, 'AM');
 
-                const parts = s.split(' ');
-                if (parts.length >= 1) {
-                    const dateParts = parts[0].split('/');
-                    if (dateParts.length === 3) {
-                        const day = parseInt(dateParts[0]);
-                        const month = parseInt(dateParts[1]) - 1;
-                        const year = parseInt(dateParts[2]);
+        const parts = s.split(' ');
+        if (parts.length >= 1) {
+            const dateParts = parts[0].split('/');
+            if (dateParts.length === 3) {
+                const day = parseInt(dateParts[0]);
+                const month = parseInt(dateParts[1]) - 1;
+                const year = parseInt(dateParts[2]);
 
-                        let hour = 0, min = 0, sec = 0;
-                        if (parts[1]) {
-                            const timeParts = parts[1].split(':');
-                            hour = parseInt(timeParts[0]) || 0;
-                            min = parseInt(timeParts[1]) || 0;
-                            sec = parseInt(timeParts[2]) || 0;
+                let hour = 0, min = 0, sec = 0;
+                if (parts[1]) {
+                    const timeParts = parts[1].split(':');
+                    hour = parseInt(timeParts[0]) || 0;
+                    min = parseInt(timeParts[1]) || 0;
+                    sec = parseInt(timeParts[2]) || 0;
 
-                            // Ajuste manual de PM/AM
-                            if (s.toUpperCase().includes('PM')) {
-                                if (hour < 12) hour += 12;
-                            } else if (s.toUpperCase().includes('AM')) {
-                                if (hour === 12) hour = 0;
-                            }
-                        }
-
-                        d = new Date(year, month, day, hour, min, sec);
-                        if (!isNaN(d.getTime())) return d;
+                    // Ajuste manual de PM/AM
+                    if (s.toUpperCase().includes('PM')) {
+                        if (hour < 12) hour += 12;
+                    } else if (s.toUpperCase().includes('AM')) {
+                        if (hour === 12) hour = 0;
                     }
                 }
-            } catch (e) { console.error("Error parseando fecha manual:", ts, e); }
 
+                d = new Date(year, month, day, hour, min, sec);
+                if (!isNaN(d.getTime())) return d;
+            }
+        }
+    } catch (e) { console.error("Error parseando fecha manual:", ts, e); }
+
+    return null;
+}
+
+// Calcular minutos de atraso respecto a HORA_INICIO_ESPERADA (desde configuración)
+function calcularMinutosAtraso(horaEntrada, fechaEntrada) {
+    try {
+        if (!horaEntrada) return 0;
+
+        // Convertir a Date
+        const d = new Date(horaEntrada);
+        if (isNaN(d.getTime())) return 0;
+
+        // Obtener hora en minutos desde medianoche
+        const horaReal = d.getHours() * 60 + d.getMinutes();
+
+        // Hora esperada desde configuración (ej: "08:00")
+        const [horaEsp, minEsp] = HORA_INICIO_ESPERADA.split(':').map(x => parseInt(x));
+        const horaEsperada = (horaEsp * 60) + (minEsp || 0);
+
+        // Calcular diferencia (solo positiva para atrasos con tolerancia de 5 minutos)
+        const diferencia = horaReal - horaEsperada;
+        return diferencia > 5 ? diferencia : 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
+// ========== CALCULAR ESTADÍSTICAS ==========
+function calcularEstadisticas() {
+    // Obtener periodo fiscal (26 al 25)
+    const hoy = new Date();
+    const dia = hoy.getDate();
+    let inicioPeriodo, finPeriodo;
+
+    if (dia >= 26) {
+        inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
+        finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 25);
+    } else {
+        inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
+        finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 25);
+    }
+
+    function formatearFechaLocal(d) {
+        let y = d.getFullYear();
+        let m = String(d.getMonth() + 1).padStart(2, '0');
+        let day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function normalizarFechaYYYYMMDD(fVal) {
+        if (!fVal) return '';
+        if (typeof fVal === 'string') {
+            let s = fVal.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+            let mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+            if (mIso) {
+                return `${mIso[1]}-${mIso[2].padStart(2, '0')}-${mIso[3].padStart(2, '0')}`;
+            }
+            let mDmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+            if (mDmy) {
+                return `${mDmy[3]}-${mDmy[2].padStart(2, '0')}-${mDmy[1].padStart(2, '0')}`;
+            }
+        }
+        let d = (fVal instanceof Date) ? fVal : new Date(fVal);
+        if (!isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        return '';
+    }
+
+    const iniStr = formatearFechaLocal(inicioPeriodo);
+    const finStr = formatearFechaLocal(finPeriodo);
+
+    // Filtrar registros por el periodo actual con normalización segura de fechas
+    const registrosFiltrados = registrosCompletos.filter(r => {
+        const fVal = getVal(r, 'fecha', 0) || r[0];
+        const fNorm = normalizarFechaYYYYMMDD(fVal);
+        return fNorm && fNorm >= iniStr && fNorm <= finStr;
+    });
+
+    if (!registrosFiltrados || registrosFiltrados.length === 0) {
+        return {
+            diasTrabajados: 0,
+            atrasos: 0,
+            almuerzos: 0,
+            salidas_tempranas: 0,
+            horas_extras_50: '0h 0m',
+            horas_extras_100: '0h 0m',
+            horas_campo: '0h 0m',
+            minutosAtrasoTotal: 0,
+            minutosExtras50: 0,
+            minutosExtras100: 0,
+            minutosCampo: 0,
+            horas_trabajadas: '0h 0m',
+            minutosPermisoPersonal: 0,
+            minutosPermisoMedico: 0,
+            vacacionesEnPeriodo: 0
+        };
+    }
+
+    // Agrupar por día para cálculos más precisos
+    const grupos = {};
+    registrosFiltrados.forEach(reg => {
+        const fVal = getVal(reg, 'fecha', 0) || reg[0];
+        const fNorm = normalizarFechaYYYYMMDD(fVal);
+        if (fNorm) {
+            if (!grupos[fNorm]) {
+                grupos[fNorm] = [];
+            }
+            grupos[fNorm].push(reg);
+        }
+    });
+
+    // Días trabajados (contar días únicos)
+    const diasTrabajados = Object.keys(grupos).length;
+
+    let totalExtras50 = 0;
+    let totalExtras100 = 0;
+    let totalHorasCampo = 0;
+    let totalNetWorked = 0;
+    let minutosPermisoPersonal = 0;
+    let minutosPermisoMedico = 0;
+    let minutosTiempoJustificado = 0;
+
+    let horasExtra50 = 0;
+    let horasExtra100 = 0;
+    let horasCampoNormales = 0;
+    let horasCampo50 = 0;
+    let horasCampo100 = 0;
+
+    let atrasos = 0;
+    let minutosAtrasoTotal = 0;
+    let almuerzos = 0;
+    let salidas_tempranas = 0;
+
+    // Aligned references from supervisor (strictly 450 = 7:30 and 975 = 16:15)
+    const H_INI_REF = 450;
+    const H_FIN_REF = 975;
+
+    function esFeriadoODomingo(fechaStr) {
+        if (!fechaStr) return false;
+        const d = new Date(fechaStr + 'T12:00:00');
+        if (d.getDay() === 0) return true;
+        return esFeriado(fechaStr);
+    }
+
+    function obtenerMinutos(valor) {
+        if (!valor) return null;
+        if (typeof valor === 'object') {
+            if (typeof valor.toDate === 'function') {
+                let d = valor.toDate();
+                return d.getHours() * 60 + d.getMinutes();
+            }
+            if (typeof valor.seconds === 'number') {
+                let d = new Date(valor.seconds * 1000);
+                return d.getHours() * 60 + d.getMinutes();
+            }
+            if (typeof valor._seconds === 'number') {
+                let d = new Date(valor._seconds * 1000);
+                return d.getHours() * 60 + d.getMinutes();
+            }
+            if (valor instanceof Date) return valor.getHours() * 60 + valor.getMinutes();
+        }
+        if (typeof valor === 'number') {
+            if (valor > 0 && valor < 1) {
+                let s = Math.round(valor * 86400);
+                return Math.floor(s / 3600) * 60 + Math.floor((s % 3600) / 60);
+            }
+            if (valor > 1e12) {
+                let d = new Date(valor);
+                if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+            }
             return null;
         }
+        if (typeof valor === 'string') {
+            let m = valor.match(/(\d{1,2}):(\d{2})/);
+            if (m) return parseInt(m[1]) * 60 + parseInt(m[2]);
+            let d = new Date(valor);
+            if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+        }
+        return null;
+    }
 
-        // Calcular minutos de atraso respecto a HORA_INICIO_ESPERADA (desde configuración)
-        function calcularMinutosAtraso(horaEntrada, fechaEntrada) {
-            try {
-                if (!horaEntrada) return 0;
+    Object.entries(grupos).forEach(([fechaKey, registrosDia]) => {
+        const entrada = registrosDia.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
+        const salida = registrosDia.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
+        const esFestivo = esFeriadoODomingo(fechaKey) || (new Date(fechaKey + 'T12:00:00').getDay() === 6);
 
-                // Convertir a Date
-                const d = new Date(horaEntrada);
-                if (isNaN(d.getTime())) return 0;
-
-                // Obtener hora en minutos desde medianoche
-                const horaReal = d.getHours() * 60 + d.getMinutes();
-
-                // Hora esperada desde configuración (ej: "08:00")
-                const [horaEsp, minEsp] = HORA_INICIO_ESPERADA.split(':').map(x => parseInt(x));
-                const horaEsperada = (horaEsp * 60) + (minEsp || 0);
-
-                // Calcular diferencia (solo positiva para atrasos con tolerancia de 5 minutos)
-                const diferencia = horaReal - horaEsperada;
-                return diferencia > 5 ? diferencia : 0;
-            } catch (e) {
-                return 0;
+        // Calcular atraso automáticamente basado en hora local real (nunca usar timestamp por desfase UTC)
+        if (entrada) {
+            const horaEntrada = getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5];
+            const mEntrada = obtenerMinutos(horaEntrada);
+            if (mEntrada !== null) {
+                const refEntrada = esFestivo ? 420 : H_INI_REF;
+                if (mEntrada > refEntrada + 5) {
+                    atrasos++;
+                    minutosAtrasoTotal += (mEntrada - refEntrada);
+                }
             }
         }
 
-        // ========== CALCULAR ESTADÍSTICAS ==========
-        function calcularEstadisticas() {
-            // Obtener periodo fiscal (26 al 25)
-            const hoy = new Date();
-            const dia = hoy.getDate();
-            let inicioPeriodo, finPeriodo;
+        // Contar almuerzos por día (si hay entrada con almuerzo=SI o PLANTA)
+        if (entrada && ((getVal(entrada, 'almuerzo', 4) || entrada[4]) === 'SI' || (getVal(entrada, 'almuerzo', 4) || entrada[4]) === 'PLANTA')) {
+            almuerzos++;
+        }
 
-            if (dia >= 26) {
-                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
-                finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 25);
-            } else {
-                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
-                finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 25);
-            }
+        // Contar salidas tempranas por día
+        if (registrosDia.some(r => {
+            const val = getVal(r, 'tipo_salida', 21) || r[21];
+            return val && val.toString().includes('SALIDA_TEMPRANA');
+        })) {
+            salidas_tempranas++;
+        }
 
-            function formatearFechaLocal(d) {
-                let y = d.getFullYear();
-                let m = String(d.getMonth() + 1).padStart(2, '0');
-                let day = String(d.getDate()).padStart(2, '0');
-                return `${y}-${m}-${day}`;
-            }
+        // Procesar periodos del día para horas de trabajo
+        let periodosDia = [];
+        let entradaPendiente = null;
 
-            function normalizarFechaYYYYMMDD(fVal) {
-                if (!fVal) return '';
-                if (typeof fVal === 'string') {
-                    let s = fVal.trim();
-                    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-                    let mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-                    if (mIso) {
-                        return `${mIso[1]}-${mIso[2].padStart(2, '0')}-${mIso[3].padStart(2, '0')}`;
-                    }
-                    let mDmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
-                    if (mDmy) {
-                        return `${mDmy[3]}-${mDmy[2].padStart(2, '0')}-${mDmy[1].padStart(2, '0')}`;
-                    }
-                }
-                let d = (fVal instanceof Date) ? fVal : new Date(fVal);
-                if (!isNaN(d.getTime())) {
-                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                }
-                return '';
-            }
+        let sortedRegs = [...registrosDia].sort((a, b) => {
+            const tsA = getVal(a, 'timestamp', 2) || a.timestamp || a[2];
+            const tsB = getVal(b, 'timestamp', 2) || b.timestamp || b[2];
+            if (tsA && tsB) return String(tsA).localeCompare(String(tsB));
+            const timeA = getVal(a, 'hora', 5) || a.hora || a[5];
+            const timeB = getVal(b, 'hora', 5) || b.hora || b[5];
+            return String(timeA).localeCompare(String(timeB));
+        });
 
-            const iniStr = formatearFechaLocal(inicioPeriodo);
-            const finStr = formatearFechaLocal(finPeriodo);
-
-            // Filtrar registros por el periodo actual con normalización segura de fechas
-            const registrosFiltrados = registrosCompletos.filter(r => {
-                const fVal = getVal(r, 'fecha', 0) || r[0];
-                const fNorm = normalizarFechaYYYYMMDD(fVal);
-                return fNorm && fNorm >= iniStr && fNorm <= finStr;
-            });
-
-            if (!registrosFiltrados || registrosFiltrados.length === 0) {
-                return {
-                    diasTrabajados: 0,
-                    atrasos: 0,
-                    almuerzos: 0,
-                    salidas_tempranas: 0,
-                    horas_extras_50: '0h 0m',
-                    horas_extras_100: '0h 0m',
-                    horas_campo: '0h 0m',
-                    minutosAtrasoTotal: 0,
-                    minutosExtras50: 0,
-                    minutosExtras100: 0,
-                    minutosCampo: 0,
-                    horas_trabajadas: '0h 0m',
-                    minutosPermisoPersonal: 0,
-                    minutosPermisoMedico: 0,
-                    vacacionesEnPeriodo: 0
-                };
-            }
-
-            // Agrupar por día para cálculos más precisos
-            const grupos = {};
-            registrosFiltrados.forEach(reg => {
-                const fVal = getVal(reg, 'fecha', 0) || reg[0];
-                const fNorm = normalizarFechaYYYYMMDD(fVal);
-                if (fNorm) {
-                    if (!grupos[fNorm]) {
-                        grupos[fNorm] = [];
-                    }
-                    grupos[fNorm].push(reg);
-                }
-            });
-
-            // Días trabajados (contar días únicos)
-            const diasTrabajados = Object.keys(grupos).length;
-
-            let totalExtras50 = 0;
-            let totalExtras100 = 0;
-            let totalHorasCampo = 0;
-            let totalNetWorked = 0;
-            let minutosPermisoPersonal = 0;
-            let minutosPermisoMedico = 0;
-            let minutosTiempoJustificado = 0;
-
-            let horasExtra50 = 0;
-            let horasExtra100 = 0;
-            let horasCampoNormales = 0;
-            let horasCampo50 = 0;
-            let horasCampo100 = 0;
-
-            let atrasos = 0;
-            let minutosAtrasoTotal = 0;
-            let almuerzos = 0;
-            let salidas_tempranas = 0;
-
-            // Aligned references from supervisor (strictly 450 = 7:30 and 975 = 16:15)
-            const H_INI_REF = 450;
-            const H_FIN_REF = 975;
-
-            function esFeriadoODomingo(fechaStr) {
-                if (!fechaStr) return false;
-                const d = new Date(fechaStr + 'T12:00:00');
-                if (d.getDay() === 0) return true;
-                return esFeriado(fechaStr);
-            }
-
-            function obtenerMinutos(valor) {
-                if (!valor) return null;
-                if (typeof valor === 'object') {
-                    if (typeof valor.toDate === 'function') {
-                        let d = valor.toDate();
-                        return d.getHours() * 60 + d.getMinutes();
-                    }
-                    if (typeof valor.seconds === 'number') {
-                        let d = new Date(valor.seconds * 1000);
-                        return d.getHours() * 60 + d.getMinutes();
-                    }
-                    if (typeof valor._seconds === 'number') {
-                        let d = new Date(valor._seconds * 1000);
-                        return d.getHours() * 60 + d.getMinutes();
-                    }
-                    if (valor instanceof Date) return valor.getHours() * 60 + valor.getMinutes();
-                }
-                if (typeof valor === 'number') {
-                    if (valor > 0 && valor < 1) {
-                        let s = Math.round(valor * 86400);
-                        return Math.floor(s / 3600) * 60 + Math.floor((s % 3600) / 60);
-                    }
-                    if (valor > 1e12) {
-                        let d = new Date(valor);
-                        if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
-                    }
-                    return null;
-                }
-                if (typeof valor === 'string') {
-                    let m = valor.match(/(\d{1,2}):(\d{2})/);
-                    if (m) return parseInt(m[1]) * 60 + parseInt(m[2]);
-                    let d = new Date(valor);
-                    if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
-                }
-                return null;
-            }
-
-            Object.entries(grupos).forEach(([fechaKey, registrosDia]) => {
-                const entrada = registrosDia.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
-                const salida = registrosDia.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
-                const esFestivo = esFeriadoODomingo(fechaKey) || (new Date(fechaKey + 'T12:00:00').getDay() === 6);
-
-                // Calcular atraso automáticamente basado en hora local real (nunca usar timestamp por desfase UTC)
-                if (entrada) {
-                    const horaEntrada = getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5];
-                    const mEntrada = obtenerMinutos(horaEntrada);
-                    if (mEntrada !== null) {
-                        const refEntrada = esFestivo ? 420 : H_INI_REF;
-                        if (mEntrada > refEntrada + 5) {
-                            atrasos++;
-                            minutosAtrasoTotal += (mEntrada - refEntrada);
-                        }
-                    }
-                }
-
-                // Contar almuerzos por día (si hay entrada con almuerzo=SI o PLANTA)
-                if (entrada && ((getVal(entrada, 'almuerzo', 4) || entrada[4]) === 'SI' || (getVal(entrada, 'almuerzo', 4) || entrada[4]) === 'PLANTA')) {
-                    almuerzos++;
-                }
-
-                // Contar salidas tempranas por día
-                if (registrosDia.some(r => {
-                    const val = getVal(r, 'tipo_salida', 21) || r[21];
-                    return val && val.toString().includes('SALIDA_TEMPRANA');
-                })) {
-                    salidas_tempranas++;
-                }
-
-                // Procesar periodos del día para horas de trabajo
-                let periodosDia = [];
-                let entradaPendiente = null;
-
-                let sortedRegs = [...registrosDia].sort((a, b) => {
-                    const tsA = getVal(a, 'timestamp', 2) || a.timestamp || a[2];
-                    const tsB = getVal(b, 'timestamp', 2) || b.timestamp || b[2];
-                    if (tsA && tsB) return String(tsA).localeCompare(String(tsB));
-                    const timeA = getVal(a, 'hora', 5) || a.hora || a[5];
-                    const timeB = getVal(b, 'hora', 5) || b.hora || b[5];
-                    return String(timeA).localeCompare(String(timeB));
-                });
-
-                sortedRegs.forEach(r => {
-                    const tipo = String(getVal(r, 'tipo', 3) || r.tipo || r[3]).toUpperCase();
-                    if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
-                        entradaPendiente = r;
-                    } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
-                        if (entradaPendiente) {
-                            periodosDia.push({ entrada: entradaPendiente, salida: r });
-                            entradaPendiente = null;
-                        } else {
-                            periodosDia.push({ entrada: null, salida: r });
-                        }
-                    }
-                });
-                if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
-
-                let minutosTrabajadosHoy = 0;
-                periodosDia.forEach(p => {
-                    if (!p.entrada || !p.salida) return;
-                    let valE = getVal(p.entrada, 'hora', 5) || getVal(p.entrada, 'timestamp', 2) || p.entrada.hora || p.entrada.timestamp || p.entrada[5];
-                    let valS = getVal(p.salida, 'hora', 5) || getVal(p.salida, 'timestamp', 2) || p.salida.hora || p.salida.timestamp || p.salida[5];
-                    let mE = obtenerMinutos(valE);
-                    let mS = obtenerMinutos(valS);
-                    if (mE === null || mS === null || mS <= mE) return;
-                    minutosTrabajadosHoy += (mS - mE);
-                });
-
-                let netWorked = minutosTrabajadosHoy;
-                if (!esFestivo && netWorked > 240) netWorked -= 45; // Restar descanso
-
-                // Auto-autorización de horas extras
-                let autorizado = registrosDia.some(r => getVal(r, 'horasExtra', 13) === 'SI' || r.horasExtra === 'SI' || r[13] === 'SI');
-                if (esFestivo) {
-                    if (netWorked > 60) autorizado = true;
-                    if (netWorked <= 60) autorizado = false;
+        sortedRegs.forEach(r => {
+            const tipo = String(getVal(r, 'tipo', 3) || r.tipo || r[3]).toUpperCase();
+            if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
+                entradaPendiente = r;
+            } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+                if (entradaPendiente) {
+                    periodosDia.push({ entrada: entradaPendiente, salida: r });
+                    entradaPendiente = null;
                 } else {
-                    if (netWorked >= 600) autorizado = true;
-                    if (netWorked - 480 <= 60) autorizado = false;
+                    periodosDia.push({ entrada: null, salida: r });
                 }
+            }
+        });
+        if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
 
-                let extraMins50Acum = 0;
+        let minutosTrabajadosHoy = 0;
+        periodosDia.forEach(p => {
+            if (!p.entrada || !p.salida) return;
+            let valE = getVal(p.entrada, 'hora', 5) || getVal(p.entrada, 'timestamp', 2) || p.entrada.hora || p.entrada.timestamp || p.entrada[5];
+            let valS = getVal(p.salida, 'hora', 5) || getVal(p.salida, 'timestamp', 2) || p.salida.hora || p.salida.timestamp || p.salida[5];
+            let mE = obtenerMinutos(valE);
+            let mS = obtenerMinutos(valS);
+            if (mE === null || mS === null || mS <= mE) return;
+            minutosTrabajadosHoy += (mS - mE);
+        });
 
-                periodosDia.forEach(p => {
-                    if (!p.entrada || !p.salida) return;
-                    let valE = getVal(p.entrada, 'hora', 5) || getVal(p.entrada, 'timestamp', 2) || p.entrada.hora || p.entrada.timestamp || p.entrada[5];
-                    let valS = getVal(p.salida, 'hora', 5) || getVal(p.salida, 'timestamp', 2) || p.salida.hora || p.salida.timestamp || p.salida[5];
-                    let mE = obtenerMinutos(valE);
-                    let mS = obtenerMinutos(valS);
-                    if (mE === null || mS === null || mS <= mE) return;
-                    let duracion = mS - mE;
+        let netWorked = minutosTrabajadosHoy;
+        if (!esFestivo && netWorked > 240) netWorked -= 45; // Restar descanso
 
-                    const modoEntrada = getVal(p.entrada, 'modo', 10) || p.entrada[10];
-                    const modoSalida = getVal(p.salida, 'modo', 10) || p.salida[10];
-                    let enCampo = modoEntrada === 'CAMPO' || modoSalida === 'CAMPO';
-
-                    if (esFestivo) {
-                        if (enCampo) {
-                            if (autorizado) horasCampo100 += duracion;
-                        } else {
-                            if (autorizado) horasExtra100 += duracion;
-                        }
-                    } else {
-                        let H_INI = H_INI_REF, H_FIN = H_FIN_REF;
-                        if (enCampo) {
-                            if (mS <= H_INI || mE >= H_FIN) {
-                                horasCampo50 += duracion;
-                            } else {
-                                let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-                                let mExtra = duracion - mNormal;
-                                horasCampoNormales += mNormal;
-                                horasCampo50 += mExtra;
-                            }
-                        } else {
-                            if (autorizado && mS > H_FIN) {
-                                extraMins50Acum += (mS - Math.max(mE, H_FIN));
-                            }
-                        }
-                    }
-                });
-
-                if (!esFestivo) {
-                    horasExtra50 += extraMins50Acum;
-                }
-
-                // Acumular tiempo trabajado
-                totalNetWorked += netWorked;
-
-                // Acumular permisos
-                registrosDia.forEach(r => {
-                    const pers = Number(getVal(r, 'permiso_personal_mins', 22) || r[22] || 0);
-                    const med = Number(getVal(r, 'permiso_medico_mins', 23) || r[23] || 0);
-                    const just = Number(getVal(r, 'tiempo_justificado_mins', 24) || r[24] || 0);
-                    minutosPermisoPersonal += pers;
-                    minutosPermisoMedico += med;
-                    minutosTiempoJustificado += just;
-                });
-            });
-
-            const vacacionesEnPeriodo = (vacacionesCompletas || []).filter(v => {
-                return v.fecha && v.fecha >= iniStr && v.fecha <= finStr;
-            }).length;
-
-            totalExtras50 = horasExtra50 + horasCampo50;
-            totalExtras100 = horasExtra100 + horasCampo100;
-            totalHorasCampo = horasCampoNormales + horasCampo50 + horasCampo100;
-
-            const formatMins = (mins) => {
-                const h = Math.floor(mins / 60);
-                const m = Math.floor(mins % 60);
-                return `${h}h ${m}m`;
-            };
-
-            return {
-                diasTrabajados: diasTrabajados,
-                atrasos: atrasos,
-                almuerzos: almuerzos,
-                salidas_tempranas: salidas_tempranas,
-                horas_extras_50: formatMins(totalExtras50),
-                horas_extras_100: formatMins(totalExtras100),
-                horas_campo: formatMins(totalHorasCampo),
-                minutosAtrasoTotal: minutosAtrasoTotal,
-                minutosExtras50: totalExtras50,
-                minutosExtras100: totalExtras100,
-                minutosCampo: totalHorasCampo,
-                horas_trabajadas: formatMins(totalNetWorked),
-                minutosPermisoPersonal: minutosPermisoPersonal,
-                minutosPermisoMedico: minutosPermisoMedico,
-                minutosTiempoJustificado: minutosTiempoJustificado,
-                vacacionesEnPeriodo: vacacionesEnPeriodo
-            };
+        // Auto-autorización de horas extras
+        let autorizado = registrosDia.some(r => getVal(r, 'horasExtra', 13) === 'SI' || r.horasExtra === 'SI' || r[13] === 'SI');
+        if (esFestivo) {
+            if (netWorked > 60) autorizado = true;
+            if (netWorked <= 60) autorizado = false;
+        } else {
+            if (netWorked >= 600) autorizado = true;
+            if (netWorked - 480 <= 60) autorizado = false;
         }
 
-        function generarInsigniasHTMLCompacto(stats) {
-            if (!stats) return '';
-            const formatMins = (mins) => {
-                const h = Math.floor(mins / 60);
-                const m = Math.floor(mins % 60);
-                return `${h}h ${m}m`;
-            };
-            let html = '';
+        let extraMins50Acum = 0;
 
-            // 1. Asistencia
-            let asisIcon = '🥉';
-            let asisTitle = 'Sin Asistencia';
-            let asisBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
-            let asisBorder = 'rgba(203, 213, 225, 0.4)';
-            let asisDesc = 'Aún no registras días de asistencia en este período fiscal.';
-            if (stats.diasTrabajados >= 15) {
-                asisIcon = '🏆';
-                asisTitle = `Asistencia de Platino: ${stats.diasTrabajados} días`;
-                asisBg = 'linear-gradient(135deg, #e2e8f0, #cbd5e1)';
-                asisBorder = '#94a3b8';
-                asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia en la empresa. ¡Rendimiento excepcional de nivel Platino!`;
-            } else if (stats.diasTrabajados >= 8) {
-                asisIcon = '🥇';
-                asisTitle = `Asistencia de Oro: ${stats.diasTrabajados} días`;
-                asisBg = 'linear-gradient(135deg, #fef3c7, #fde68a)';
-                asisBorder = '#fbbf24';
-                asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia. ¡Excelente constancia de nivel Oro!`;
-            } else if (stats.diasTrabajados >= 1) {
-                asisIcon = '🥈';
-                asisTitle = `Asistencia de Plata: ${stats.diasTrabajados} días`;
-                asisBg = 'linear-gradient(135deg, #ffedd5, #fed7aa)';
-                asisBorder = '#fb923c';
-                asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia. Nivel Plata, sigue manteniendo la constancia de tus registros.`;
+        periodosDia.forEach(p => {
+            if (!p.entrada || !p.salida) return;
+            let valE = getVal(p.entrada, 'hora', 5) || getVal(p.entrada, 'timestamp', 2) || p.entrada.hora || p.entrada.timestamp || p.entrada[5];
+            let valS = getVal(p.salida, 'hora', 5) || getVal(p.salida, 'timestamp', 2) || p.salida.hora || p.salida.timestamp || p.salida[5];
+            let mE = obtenerMinutos(valE);
+            let mS = obtenerMinutos(valS);
+            if (mE === null || mS === null || mS <= mE) return;
+            let duracion = mS - mE;
+
+            const modoEntrada = getVal(p.entrada, 'modo', 10) || p.entrada[10];
+            const modoSalida = getVal(p.salida, 'modo', 10) || p.salida[10];
+            let enCampo = modoEntrada === 'CAMPO' || modoSalida === 'CAMPO';
+
+            if (esFestivo) {
+                if (enCampo) {
+                    if (autorizado) horasCampo100 += duracion;
+                } else {
+                    if (autorizado) horasExtra100 += duracion;
+                }
+            } else {
+                let H_INI = H_INI_REF, H_FIN = H_FIN_REF;
+                if (enCampo) {
+                    if (mS <= H_INI || mE >= H_FIN) {
+                        horasCampo50 += duracion;
+                    } else {
+                        let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
+                        let mExtra = duracion - mNormal;
+                        horasCampoNormales += mNormal;
+                        horasCampo50 += mExtra;
+                    }
+                } else {
+                    if (autorizado && mS > H_FIN) {
+                        extraMins50Acum += (mS - Math.max(mE, H_FIN));
+                    }
+                }
             }
+        });
 
-            html += `
+        if (!esFestivo) {
+            horasExtra50 += extraMins50Acum;
+        }
+
+        // Acumular tiempo trabajado
+        totalNetWorked += netWorked;
+
+        // Acumular permisos
+        registrosDia.forEach(r => {
+            const pers = Number(getVal(r, 'permiso_personal_mins', 22) || r[22] || 0);
+            const med = Number(getVal(r, 'permiso_medico_mins', 23) || r[23] || 0);
+            const just = Number(getVal(r, 'tiempo_justificado_mins', 24) || r[24] || 0);
+            minutosPermisoPersonal += pers;
+            minutosPermisoMedico += med;
+            minutosTiempoJustificado += just;
+        });
+    });
+
+    const vacacionesEnPeriodo = (vacacionesCompletas || []).filter(v => {
+        const fNorm = normalizarFechaYYYYMMDD(v.fecha || v.fecha_inicio || v[0] || v);
+        return fNorm && fNorm >= iniStr && fNorm <= finStr;
+    }).length;
+
+    totalExtras50 = horasExtra50 + horasCampo50;
+    totalExtras100 = horasExtra100 + horasCampo100;
+    totalHorasCampo = horasCampoNormales + horasCampo50 + horasCampo100;
+
+    const formatMins = (mins) => {
+        const h = Math.floor(mins / 60);
+        const m = Math.floor(mins % 60);
+        return `${h}h ${m}m`;
+    };
+
+    return {
+        diasTrabajados: diasTrabajados,
+        atrasos: atrasos,
+        almuerzos: almuerzos,
+        salidas_tempranas: salidas_tempranas,
+        horas_extras_50: formatMins(totalExtras50),
+        horas_extras_100: formatMins(totalExtras100),
+        horas_campo: formatMins(totalHorasCampo),
+        minutosAtrasoTotal: minutosAtrasoTotal,
+        minutosExtras50: totalExtras50,
+        minutosExtras100: totalExtras100,
+        minutosCampo: totalHorasCampo,
+        horas_trabajadas: formatMins(totalNetWorked),
+        minutosPermisoPersonal: minutosPermisoPersonal,
+        minutosPermisoMedico: minutosPermisoMedico,
+        minutosTiempoJustificado: minutosTiempoJustificado,
+        vacacionesEnPeriodo: vacacionesEnPeriodo
+    };
+}
+
+function generarInsigniasHTMLCompacto(stats) {
+    if (!stats) return '';
+    const formatMins = (mins) => {
+        const h = Math.floor(mins / 60);
+        const m = Math.floor(mins % 60);
+        return `${h}h ${m}m`;
+    };
+    let html = '';
+
+    // 1. Asistencia
+    let asisIcon = '🥉';
+    let asisTitle = 'Sin Asistencia';
+    let asisBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+    let asisBorder = 'rgba(203, 213, 225, 0.4)';
+    let asisDesc = 'Aún no registras días de asistencia en este período fiscal.';
+    if (stats.diasTrabajados >= 15) {
+        asisIcon = '🏆';
+        asisTitle = `Asistencia de Platino: ${stats.diasTrabajados} días`;
+        asisBg = 'linear-gradient(135deg, #e2e8f0, #cbd5e1)';
+        asisBorder = '#94a3b8';
+        asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia en la empresa. ¡Rendimiento excepcional de nivel Platino!`;
+    } else if (stats.diasTrabajados >= 8) {
+        asisIcon = '🥇';
+        asisTitle = `Asistencia de Oro: ${stats.diasTrabajados} días`;
+        asisBg = 'linear-gradient(135deg, #fef3c7, #fde68a)';
+        asisBorder = '#fbbf24';
+        asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia. ¡Excelente constancia de nivel Oro!`;
+    } else if (stats.diasTrabajados >= 1) {
+        asisIcon = '🥈';
+        asisTitle = `Asistencia de Plata: ${stats.diasTrabajados} días`;
+        asisBg = 'linear-gradient(135deg, #ffedd5, #fed7aa)';
+        asisBorder = '#fb923c';
+        asisDesc = `Has completado ${stats.diasTrabajados} días de asistencia. Nivel Plata, sigue manteniendo la constancia de tus registros.`;
+    }
+
+    html += `
                 <div class="compact-badge" title="${asisTitle}" onclick="mostrarDetalleInsignia('${asisTitle.replace(/'/g, "\\'")}', '${asisDesc.replace(/'/g, "\\'")}', '${asisIcon}', '${asisBg}', '${asisBorder}')" style="background: ${asisBg}; border: 2.5px solid ${asisBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                     ${asisIcon}
                 </div>
             `;
 
-            // 2. Puntualidad
-            const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
-            let puntIcon = '⏱️';
-            let puntTitle = 'Puntualidad por Evaluar';
-            let puntBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
-            let puntBorder = 'rgba(203, 213, 225, 0.4)';
-            let puntDesc = 'Aún no hay suficientes días laborados en este período fiscal para evaluar tu puntualidad de entrada.';
-            if (stats.diasTrabajados > 0) {
-                if (puntualidadPct === 100) {
-                    puntIcon = '🌟';
-                    puntTitle = 'Puntualidad Impecable (100%)';
-                    puntBg = 'linear-gradient(135deg, #ecfdf5, #a7f3d0)';
-                    puntBorder = '#34d399';
-                    puntDesc = '¡Espectacular! Tienes una puntualidad perfecta. No registras ningún atraso en este período de trabajo.';
-                } else if (puntualidadPct >= 90) {
-                    puntIcon = '🎖️';
-                    puntTitle = `Puntualidad de Élite (${puntualidadPct}%)`;
-                    puntBg = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
-                    puntBorder = '#6ee7b7';
-                    puntDesc = `Excelente puntualidad del ${puntualidadPct}% en tus registros. Sigue manteniendo esta gran disciplina de entrada.`;
-                } else if (puntualidadPct >= 75) {
-                    puntIcon = '👍';
-                    puntTitle = `Buen Ritmo de Entrada (${puntualidadPct}%)`;
-                    puntBg = 'linear-gradient(135deg, #eff6ff, #dbeafe)';
-                    puntBorder = '#60a5fa';
-                    puntDesc = `Buen ritmo de entrada. Mantienes una puntualidad del ${puntualidadPct}% en este período. ¡Sigue así!`;
-                } else {
-                    puntIcon = '⚠️';
-                    puntTitle = `Puntualidad por Mejorar (${puntualidadPct}% - ${stats.atrasos} atrasos)`;
-                    puntBg = 'linear-gradient(135deg, #fff5f5, #fed7d7)';
-                    puntBorder = '#f87171';
-                    puntDesc = `Puntualidad por mejorar del ${puntualidadPct}% con ${stats.atrasos} atraso(s). ¡Llegar a tiempo es clave para tu récord!`;
-                }
-            }
+    // 2. Puntualidad
+    const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
+    let puntIcon = '⏱️';
+    let puntTitle = 'Puntualidad por Evaluar';
+    let puntBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+    let puntBorder = 'rgba(203, 213, 225, 0.4)';
+    let puntDesc = 'Aún no hay suficientes días laborados en este período fiscal para evaluar tu puntualidad de entrada.';
+    if (stats.diasTrabajados > 0) {
+        if (puntualidadPct === 100) {
+            puntIcon = '🌟';
+            puntTitle = 'Puntualidad Impecable (100%)';
+            puntBg = 'linear-gradient(135deg, #ecfdf5, #a7f3d0)';
+            puntBorder = '#34d399';
+            puntDesc = '¡Espectacular! Tienes una puntualidad perfecta. No registras ningún atraso en este período de trabajo.';
+        } else if (puntualidadPct >= 90) {
+            puntIcon = '🎖️';
+            puntTitle = `Puntualidad de Élite (${puntualidadPct}%)`;
+            puntBg = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
+            puntBorder = '#6ee7b7';
+            puntDesc = `Excelente puntualidad del ${puntualidadPct}% en tus registros. Sigue manteniendo esta gran disciplina de entrada.`;
+        } else if (puntualidadPct >= 75) {
+            puntIcon = '👍';
+            puntTitle = `Buen Ritmo de Entrada (${puntualidadPct}%)`;
+            puntBg = 'linear-gradient(135deg, #eff6ff, #dbeafe)';
+            puntBorder = '#60a5fa';
+            puntDesc = `Buen ritmo de entrada. Mantienes una puntualidad del ${puntualidadPct}% en este período. ¡Sigue así!`;
+        } else {
+            puntIcon = '⚠️';
+            puntTitle = `Puntualidad por Mejorar (${puntualidadPct}% - ${stats.atrasos} atrasos)`;
+            puntBg = 'linear-gradient(135deg, #fff5f5, #fed7d7)';
+            puntBorder = '#f87171';
+            puntDesc = `Puntualidad por mejorar del ${puntualidadPct}% con ${stats.atrasos} atraso(s). ¡Llegar a tiempo es clave para tu récord!`;
+        }
+    }
 
-            html += `
+    html += `
                 <div class="compact-badge" title="${puntTitle}" onclick="mostrarDetalleInsignia('${puntTitle.replace(/'/g, "\\'")}', '${puntDesc.replace(/'/g, "\\'")}', '${puntIcon}', '${puntBg}', '${puntBorder}')" style="background: ${puntBg}; border: 2.5px solid ${puntBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                     ${puntIcon}
                 </div>
             `;
 
-            // 3. Almuerzo
-            let almIcon = '🍽️';
-            let almTitle = 'Sin almuerzos en planta';
-            let almBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
-            let almBorder = 'rgba(203, 213, 225, 0.4)';
-            let almDesc = 'Aún no has registrado almuerzos dentro de la empresa en este período de trabajo.';
-            if (stats.almuerzos >= 15) {
-                almIcon = '👑';
-                almTitle = `Almuerzo Platinum: ${stats.almuerzos} en planta`;
-                almBg = 'linear-gradient(135deg, #f0fdf4, #bbf7d0)';
-                almBorder = '#4ade80';
-                almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. ¡Excelente constancia Platinum de permanencia y bienestar!`;
-            } else if (stats.almuerzos >= 8) {
-                almIcon = '🥗';
-                almTitle = `Almuerzo de Oro: ${stats.almuerzos} en planta`;
-                almBg = 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
-                almBorder = '#86efac';
-                almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. ¡Buen nivel Oro de alimentación dentro de la empresa!`;
-            } else if (stats.almuerzos >= 1) {
-                almIcon = '🥪';
-                almTitle = `Almuerzo de Plata: ${stats.almuerzos} en planta`;
-                almBg = 'linear-gradient(135deg, #fdf8f6, #fee2e2)';
-                almBorder = '#fca5a5';
-                almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. Nivel Plata, sigue participando del almuerzo en comedor.`;
-            }
+    // 3. Almuerzo
+    let almIcon = '🍽️';
+    let almTitle = 'Sin almuerzos en planta';
+    let almBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
+    let almBorder = 'rgba(203, 213, 225, 0.4)';
+    let almDesc = 'Aún no has registrado almuerzos dentro de la empresa en este período de trabajo.';
+    if (stats.almuerzos >= 15) {
+        almIcon = '👑';
+        almTitle = `Almuerzo Platinum: ${stats.almuerzos} en planta`;
+        almBg = 'linear-gradient(135deg, #f0fdf4, #bbf7d0)';
+        almBorder = '#4ade80';
+        almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. ¡Excelente constancia Platinum de permanencia y bienestar!`;
+    } else if (stats.almuerzos >= 8) {
+        almIcon = '🥗';
+        almTitle = `Almuerzo de Oro: ${stats.almuerzos} en planta`;
+        almBg = 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
+        almBorder = '#86efac';
+        almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. ¡Buen nivel Oro de alimentación dentro de la empresa!`;
+    } else if (stats.almuerzos >= 1) {
+        almIcon = '🥪';
+        almTitle = `Almuerzo de Plata: ${stats.almuerzos} en planta`;
+        almBg = 'linear-gradient(135deg, #fdf8f6, #fee2e2)';
+        almBorder = '#fca5a5';
+        almDesc = `Has registrado ${stats.almuerzos} almuerzos en planta. Nivel Plata, sigue participando del almuerzo en comedor.`;
+    }
 
-            html += `
+    html += `
                 <div class="compact-badge" title="${almTitle}" onclick="mostrarDetalleInsignia('${almTitle.replace(/'/g, "\\'")}', '${almDesc.replace(/'/g, "\\'")}', '${almIcon}', '${almBg}', '${almBorder}')" style="background: ${almBg}; border: 2.5px solid ${almBorder}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                     ${almIcon}
                 </div>
             `;
 
-            // 4. Labores de Campo
-            if (stats.minutosCampo > 0) {
-                const campoMinsStr = formatMins(stats.minutosCampo);
-                const campoTitle = `Héroe de Campo`;
-                const campoDesc = `Has acumulado un total de ${campoMinsStr} laborando fuera de la oficina en labores de campo. ¡Felicitaciones por tu gran dedicación en exteriores!`;
-                const campoIcon = '🏗️';
-                const campoBg = 'linear-gradient(135deg, #f0f9ff, #e0f2fe)';
-                const campoBorder = '#38bdf8';
-                html += `
+    // 4. Labores de Campo
+    if (stats.minutosCampo > 0) {
+        const campoMinsStr = formatMins(stats.minutosCampo);
+        const campoTitle = `Héroe de Campo`;
+        const campoDesc = `Has acumulado un total de ${campoMinsStr} laborando fuera de la oficina en labores de campo. ¡Felicitaciones por tu gran dedicación en exteriores!`;
+        const campoIcon = '🏗️';
+        const campoBg = 'linear-gradient(135deg, #f0f9ff, #e0f2fe)';
+        const campoBorder = '#38bdf8';
+        html += `
                     <div class="compact-badge" title="Héroe de Campo: ${campoMinsStr} laboradas" onclick="mostrarDetalleInsignia('${campoTitle}', '${campoDesc.replace(/'/g, "\\'")}', '${campoIcon}', '${campoBg}', '${campoBorder}')" style="background: linear-gradient(135deg, #f0f9ff, #e0f2fe); border: 2.5px solid #38bdf8; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 6px rgba(0,0,0,0.08)';">
                         🏗️
                     </div>
                 `;
-            }
+    }
 
-            return html;
-        }
+    return html;
+}
 
-        function actualizarHistorialAgrupado() {
-            const container = document.getElementById('historialAgrupado');
-            if (!container) return;
+function actualizarHistorialAgrupado() {
+    const container = document.getElementById('historialAgrupado');
+    if (!container) return;
 
-            if (cargandoRegistros) {
-                container.innerHTML = `
+    if (cargandoRegistros) {
+        container.innerHTML = `
                     <div class="text-center py-4">
                         <div class="spinner-border text-primary spinner-border-sm" role="status" style="width: 24px; height: 24px; border-width: 2.5px;"></div>
                         <p class="text-muted mt-2" style="font-size: 13px; font-weight: 500;">Cargando historial de marcaciones...</p>
                     </div>
                 `;
-                return;
-            }
+        return;
+    }
 
-            const tieneVacaciones = vacacionesCompletas && vacacionesCompletas.length > 0;
-            const tieneRegs = registrosCompletos && registrosCompletos.length > 0;
-            if (!tieneRegs && !tieneVacaciones) {
-                container.innerHTML = '<p class="text-muted text-center py-3" style="font-size: clamp(12px, 3.8vw, 14px);">No hay registros disponibles</p>';
-                return;
-            }
+    const tieneVacaciones = vacacionesCompletas && vacacionesCompletas.length > 0;
+    const tieneRegs = registrosCompletos && registrosCompletos.length > 0;
+    if (!tieneRegs && !tieneVacaciones) {
+        container.innerHTML = '<p class="text-muted text-center py-3" style="font-size: clamp(12px, 3.8vw, 14px);">No hay registros disponibles</p>';
+        return;
+    }
 
-            // Helper interno para obtener detalles de permisos
-            function obtenerDetallesPermiso(r) {
-                const persMins = Number(getVal(r, 'permiso_personal_mins', 22) || r[22] || 0);
-                const medMins = Number(getVal(r, 'permiso_medico_mins', 23) || r[23] || 0);
-                const justMins = Number(getVal(r, 'tiempo_justificado_mins', 24) || r[24] || 0);
-                const razonPerm = getVal(r, 'razon_permiso', 19) || r[19] || '';
-                let parts = [];
-                if (persMins > 0) parts.push(`🔑 Permiso Personal: ${persMins} min`);
-                if (medMins > 0) parts.push(`🩺 Permiso Médico: ${medMins} min`);
-                if (justMins > 0) parts.push(`✅ Tiempo Justificado: ${justMins} min`);
-                if (razonPerm) {
-                    if (parts.length > 0) parts.push(`(${razonPerm})`);
-                    else parts.push(`🔑 Permiso: ${razonPerm}`);
-                }
-                return parts.join(' ');
-            }
+    // Helper interno para obtener detalles de permisos
+    function obtenerDetallesPermiso(r) {
+        const persMins = Number(getVal(r, 'permiso_personal_mins', 22) || r[22] || 0);
+        const medMins = Number(getVal(r, 'permiso_medico_mins', 23) || r[23] || 0);
+        const justMins = Number(getVal(r, 'tiempo_justificado_mins', 24) || r[24] || 0);
+        const razonPerm = getVal(r, 'razon_permiso', 19) || r[19] || '';
+        let parts = [];
+        if (persMins > 0) parts.push(`🔑 Permiso Personal: ${persMins} min`);
+        if (medMins > 0) parts.push(`🩺 Permiso Médico: ${medMins} min`);
+        if (justMins > 0) parts.push(`✅ Tiempo Justificado: ${justMins} min`);
+        if (razonPerm) {
+            if (parts.length > 0) parts.push(`(${razonPerm})`);
+            else parts.push(`🔑 Permiso: ${razonPerm}`);
+        }
+        return parts.join(' ');
+    }
 
-            // Agrupar por semana
-            const registrosPorSemana = {};
-            const todosLosRegs = [...registrosCompletos];
+    // Agrupar por semana
+    const registrosPorSemana = {};
+    const todosLosRegs = [...registrosCompletos];
 
-            // Inyectar vacaciones cargadas en segundo plano
-            if (vacacionesCompletas && vacacionesCompletas.length > 0) {
-                vacacionesCompletas.forEach(v => {
-                    const yaExiste = todosLosRegs.some(r => {
-                        const rFecha = getVal(r, 'fecha', 0) || r[0];
-                        const rTipo = String(getVal(r, 'tipo', 3) || r[3] || '').toUpperCase();
-                        return rFecha === v.fecha && (rTipo === 'VACACIONES' || rTipo === 'VACACION');
-                    });
-                    if (!yaExiste) {
-                        todosLosRegs.push({
-                            id: `${empleado.id}_VACACIONES_${v.fecha}_000000`,
-                            empleadoId: empleado.id,
-                            tipo: 'VACACIONES',
-                            fecha: v.fecha,
-                            razon_ausencia: 'Vacación',
-                            justificado: 'SI'
-                        });
-                    }
-                });
-            }
-
-            todosLosRegs.forEach(reg => {
-                const fecha = getVal(reg, 'fecha', 0) || reg[0];
-                if (!fecha) return;
-
-                const d = new Date(fecha);
-                // Corrige la zona horaria para parseos de YYYY-MM-DD cerrados (evitando que ayer = hoy)
-                if (typeof fecha === 'string' && fecha.length <= 10) {
-                    d.setMinutes(d.getMinutes() + d.getTimezoneOffset());
-                }
-                const inicio = new Date(d);
-                inicio.setDate(d.getDate() - d.getDay()); // Domingo
-                const semanaKey = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}-${String(inicio.getDate()).padStart(2, '0')}`;
-
-                if (!registrosPorSemana[semanaKey]) {
-                    registrosPorSemana[semanaKey] = { registros: {}, stats: { dias: 0, atrasos: 0, horas: 0, permisos: 0, justificaciones: 0 } };
-                }
-
-                if (!registrosPorSemana[semanaKey].registros[fecha]) {
-                    registrosPorSemana[semanaKey].registros[fecha] = [];
-                }
-                registrosPorSemana[semanaKey].registros[fecha].push(reg);
+    // Inyectar vacaciones cargadas en segundo plano
+    if (vacacionesCompletas && vacacionesCompletas.length > 0) {
+        vacacionesCompletas.forEach(v => {
+            const vNorm = normalizarFechaYYYYMMDD(v.fecha || v.fecha_inicio || v[0] || v);
+            if (!vNorm) return;
+            const yaExiste = todosLosRegs.some(r => {
+                const rFechaNorm = normalizarFechaYYYYMMDD(getVal(r, 'fecha', 0) || r[0]);
+                const rTipo = String(getVal(r, 'tipo', 3) || r[3] || '').toUpperCase();
+                return rFechaNorm === vNorm && (rTipo === 'VACACIONES' || rTipo === 'VACACION');
             });
-
-            // Calcular estadísticas por semana
-            Object.entries(registrosPorSemana).forEach(([semana, data]) => {
-                Object.entries(data.registros).forEach(([fecha, regs]) => {
-                    const diaRegs = regs || [];
-                    const entrada = diaRegs.find(r => { const t = getVal(r, 'tipo', 3) || r[3]; return t === 'ENTRADA' || t === 'SOLO_ALMUERZO'; });
-                    const salida = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
-
-                    if (entrada || salida) data.stats.dias++;
-                    if (diaRegs.some(r => getVal(r, 'razon_entrada_tardia', 16) || r[16])) data.stats.atrasos++;
-
-                    // Separar Permisos de Justificaciones Pasadas
-                    const hasPermiso = diaRegs.some(r => !!obtenerDetallesPermiso(r));
-                    if (hasPermiso) data.stats.permisos++;
-
-                    const hasFalta = diaRegs.some(r => {
-                        const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
-                        return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO';
-                    });
-                    if (hasFalta) data.stats.justificaciones++;
-
-                    if (entrada && salida) {
-                        try {
-                            const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
-                            const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
-
-                            const dEntrada = parseDateSafe(entradaTs);
-                            const dSalida = parseDateSafe(salidaTs);
-
-                            if (dEntrada && dSalida) {
-                                let horasBrutas = (dSalida - dEntrada) / (1000 * 60 * 60);
-                                // Restar 45 min (0.75 h)
-                                let horasNetas = Math.max(0, horasBrutas - 0.75);
-                                data.stats.horas += horasNetas;
-                            }
-                        } catch (e) { }
-                    }
+            if (!yaExiste) {
+                todosLosRegs.push({
+                    id: `${empleado.id}_VACACIONES_${vNorm}_000000`,
+                    empleadoId: empleado.id,
+                    tipo: 'VACACIONES',
+                    fecha: vNorm,
+                    razon_ausencia: 'Vacación',
+                    justificado: 'SI'
                 });
+            }
+        });
+    }
+
+    todosLosRegs.forEach(reg => {
+        const fecha = getVal(reg, 'fecha', 0) || reg[0];
+        if (!fecha) return;
+
+        const d = new Date(fecha);
+        // Corrige la zona horaria para parseos de YYYY-MM-DD cerrados (evitando que ayer = hoy)
+        if (typeof fecha === 'string' && fecha.length <= 10) {
+            d.setMinutes(d.getMinutes() + d.getTimezoneOffset());
+        }
+        const inicio = new Date(d);
+        inicio.setDate(d.getDate() - d.getDay()); // Domingo
+        const semanaKey = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}-${String(inicio.getDate()).padStart(2, '0')}`;
+
+        if (!registrosPorSemana[semanaKey]) {
+            registrosPorSemana[semanaKey] = { registros: {}, stats: { dias: 0, atrasos: 0, horas: 0, permisos: 0, justificaciones: 0 } };
+        }
+
+        if (!registrosPorSemana[semanaKey].registros[fecha]) {
+            registrosPorSemana[semanaKey].registros[fecha] = [];
+        }
+        registrosPorSemana[semanaKey].registros[fecha].push(reg);
+    });
+
+    // Calcular estadísticas por semana
+    Object.entries(registrosPorSemana).forEach(([semana, data]) => {
+        Object.entries(data.registros).forEach(([fecha, regs]) => {
+            const diaRegs = regs || [];
+            const entrada = diaRegs.find(r => { const t = getVal(r, 'tipo', 3) || r[3]; return t === 'ENTRADA' || t === 'SOLO_ALMUERZO'; });
+            const salida = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
+
+            if (entrada || salida) data.stats.dias++;
+            if (diaRegs.some(r => getVal(r, 'razon_entrada_tardia', 16) || r[16])) data.stats.atrasos++;
+
+            // Separar Permisos de Justificaciones Pasadas
+            const hasPermiso = diaRegs.some(r => !!obtenerDetallesPermiso(r));
+            if (hasPermiso) data.stats.permisos++;
+
+            const hasFalta = diaRegs.some(r => {
+                const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
+                return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO';
             });
+            if (hasFalta) data.stats.justificaciones++;
 
-            // Calcular periodo fiscal (26 al 25) para filtrar
-            const hoy = new Date();
-            const dia = hoy.getDate();
-            let inicioPeriodo;
-            if (dia >= 26) {
-                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
-            } else {
-                inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
-            }
-            function formatearFechaLocal(d) {
-                let y = d.getFullYear();
-                let m = String(d.getMonth() + 1).padStart(2, '0');
-                let day = String(d.getDate()).padStart(2, '0');
-                return `${y}-${m}-${day}`;
-            }
-            const iniStr = formatearFechaLocal(inicioPeriodo);
-
-            const semanasOrdenadas = Object.keys(registrosPorSemana).sort((a, b) => new Date(b) - new Date(a));
-
-            // Filtrar semanas anteriores si no se ha accionado la descarga manual
-            let semanasAMostrar = semanasOrdenadas;
-            if (!window.descargarPeriodosAnterioresAccionado) {
-                semanasAMostrar = semanasOrdenadas.filter(semanaKey => {
-                    const semanaData = registrosPorSemana[semanaKey];
-                    const fechasEnSemana = Object.keys(semanaData.registros);
-                    return fechasEnSemana.some(f => f >= iniStr);
-                });
-            }
-
-            let html = `<div style="display: flex; flex-direction: column; gap: 12px;">`;
-
-            semanasAMostrar.forEach(semanaKey => {
-                const semanaData = registrosPorSemana[semanaKey];
-                const fechasEnSemana = Object.keys(semanaData.registros).sort((a, b) => new Date(b) - new Date(a));
-
-                let semanaLabel = 'Semana sin fecha';
+            if (entrada && salida) {
                 try {
-                    const inicioDia = new Date(semanaKey);
-                    inicioDia.setMinutes(inicioDia.getMinutes() + inicioDia.getTimezoneOffset());
-                    const finDia = new Date(inicioDia);
-                    finDia.setDate(finDia.getDate() + 6);
+                    const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
+                    const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
 
-                    if (!isNaN(inicioDia.getTime()) && !isNaN(finDia.getTime())) {
-                        semanaLabel = `${inicioDia.toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit' })} al ${finDia.toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit' })}`;
+                    const dEntrada = parseDateSafe(entradaTs);
+                    const dSalida = parseDateSafe(salidaTs);
+
+                    if (dEntrada && dSalida) {
+                        let horasBrutas = (dSalida - dEntrada) / (1000 * 60 * 60);
+                        // Restar 45 min (0.75 h)
+                        let horasNetas = Math.max(0, horasBrutas - 0.75);
+                        data.stats.horas += horasNetas;
                     }
-                } catch (e) {
-                    console.error('Error parsing week date:', semanaKey, e);
+                } catch (e) { }
+            }
+        });
+    });
+
+    // Calcular periodo fiscal (26 al 25) para filtrar
+    const hoy = new Date();
+    const dia = hoy.getDate();
+    let inicioPeriodo;
+    if (dia >= 26) {
+        inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
+    } else {
+        inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
+    }
+    function formatearFechaLocal(d) {
+        let y = d.getFullYear();
+        let m = String(d.getMonth() + 1).padStart(2, '0');
+        let day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+    const iniStr = formatearFechaLocal(inicioPeriodo);
+
+    const semanasOrdenadas = Object.keys(registrosPorSemana).sort((a, b) => new Date(b) - new Date(a));
+
+    // Filtrar semanas anteriores si no se ha accionado la descarga manual
+    let semanasAMostrar = semanasOrdenadas;
+    if (!window.descargarPeriodosAnterioresAccionado) {
+        semanasAMostrar = semanasOrdenadas.filter(semanaKey => {
+            const semanaData = registrosPorSemana[semanaKey];
+            const fechasEnSemana = Object.keys(semanaData.registros);
+            return fechasEnSemana.some(f => f >= iniStr);
+        });
+    }
+
+    let html = `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+
+    semanasAMostrar.forEach(semanaKey => {
+        const semanaData = registrosPorSemana[semanaKey];
+        const fechasEnSemana = Object.keys(semanaData.registros).sort((a, b) => new Date(b) - new Date(a));
+
+        let semanaLabel = 'Semana sin fecha';
+        try {
+            const inicioDia = new Date(semanaKey);
+            inicioDia.setMinutes(inicioDia.getMinutes() + inicioDia.getTimezoneOffset());
+            const finDia = new Date(inicioDia);
+            finDia.setDate(finDia.getDate() + 6);
+
+            if (!isNaN(inicioDia.getTime()) && !isNaN(finDia.getTime())) {
+                semanaLabel = `${inicioDia.toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit' })} al ${finDia.toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit' })}`;
+            }
+        } catch (e) {
+            console.error('Error parsing week date:', semanaKey, e);
+        }
+
+        // Build dias HTML outside template string
+        let diasHTML = '';
+        fechasEnSemana.forEach(fecha => {
+            const diaRegs = semanaData.registros[fecha];
+            const entrada = diaRegs.find(r => { const t = getVal(r, 'tipo', 3) || r[3]; return t === 'ENTRADA' || t === 'SOLO_ALMUERZO'; });
+            const salida = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
+
+            // Calcular atraso automáticamente si hay entrada
+            let minutosAtrasoDelDia = 0;
+            if (entrada) {
+                const horaEntrada = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
+                minutosAtrasoDelDia = calcularMinutosAtraso(horaEntrada, fecha);
+            }
+
+            const hasAtraso = minutosAtrasoDelDia > 0;
+            const hasPermiso = diaRegs.some(r => !!obtenerDetallesPermiso(r));
+            const hasSalidaTemprana = diaRegs.some(r => {
+                const val = getVal(r, 'tipo_salida', 18) || r[18];
+                return val && val.toString().includes('SALIDA_TEMPRANA');
+            });
+
+            let duracion = '--';
+            if (entrada && salida) {
+                try {
+                    const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
+                    const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
+
+                    const dE = parseDateSafe(entradaTs);
+                    const dS = parseDateSafe(salidaTs);
+
+                    if (dE && dS) {
+                        let msBrutos = dS - dE;
+                        // Restar 45 min = 45 * 60 * 1000 ms
+                        let msNetos = Math.max(0, msBrutos - (45 * 60 * 1000));
+
+                        if (msNetos > 0) {
+                            const h = Math.floor(msNetos / (1000 * 60 * 60));
+                            const m = Math.floor((msNetos % (1000 * 60 * 60)) / (1000 * 60));
+                            duracion = h + 'h ' + m + 'm';
+                        } else {
+                            duracion = '0h 0m';
+                        }
+                    }
+                } catch (e) { }
+            }
+
+            const esFaltaJustificada = diaRegs.some(r => {
+                const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
+                return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO';
+            });
+            const esVacacion = diaRegs.some(r => {
+                const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
+                return t === 'VACACIONES' || t === 'VACACION';
+            });
+            const statusIcon = esVacacion ? '🏖️' : (esFaltaJustificada ? '📁' : (entrada && salida ? '✅' : entrada ? '⚠️' : '❌'));
+            let fechaFormato = 'Fecha inválida';
+            try {
+                const fechaObj = new Date(fecha);
+                if (typeof fecha === 'string' && fecha.length <= 10) {
+                    fechaObj.setMinutes(fechaObj.getMinutes() + fechaObj.getTimezoneOffset());
+                }
+                if (!isNaN(fechaObj.getTime())) {
+                    fechaFormato = fechaObj.toLocaleDateString('es-EC', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase();
+                }
+            } catch (e) { }
+
+            const entradaHora = esFaltaJustificada ? 'JUSTIFICADO' : (entrada ? formatearHora(getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5]) : '--:--');
+            const salidaHora = esFaltaJustificada ? 'N/A' : (salida ? formatearHora(getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5]) : '--:--');
+            const almuerzoVal = entrada ? (getVal(entrada, 'almuerzo', 4) || entrada[4]) : '';
+            const almuerzoIcon = (almuerzoVal === 'SI' || almuerzoVal === 'PLANTA') ? '🏢' : (almuerzoVal === 'NO' || almuerzoVal === 'FUERA') ? '🏠' : '-';
+
+            const detallesRazones = diaRegs.map(reg => {
+                const razonAtraso = getVal(reg, 'razon_entrada_tardia', 16) || reg[16];
+                const razonSalida = getVal(reg, 'razon_salida', 14) || reg[14];
+                const razonAusencia = getVal(reg, 'razon_ausencia', 21) || reg[21];
+                const tipoReg = String(getVal(reg, 'tipo', 3) || reg[3] || '').toUpperCase();
+
+                if (tipoReg === 'VACACIONES' || tipoReg === 'VACACION') {
+                    return '<div style="padding: 6px 10px; background: rgba(33,150,243,0.1); border-left: 3px solid #2196f3; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #1565c0; margin-bottom: 4px;"><strong>🏖️ Vacación:</strong> Tomada</div>';
                 }
 
-                // Build dias HTML outside template string
-                let diasHTML = '';
-                fechasEnSemana.forEach(fecha => {
-                    const diaRegs = semanaData.registros[fecha];
-                    const entrada = diaRegs.find(r => { const t = getVal(r, 'tipo', 3) || r[3]; return t === 'ENTRADA' || t === 'SOLO_ALMUERZO'; });
-                    const salida = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
+                if (tipoReg !== 'ENTRADA' && tipoReg !== 'SALIDA' && tipoReg !== 'ESTADO' && tipoReg !== 'SOLO_ALMUERZO') {
+                    return '<div style="padding: 6px 10px; background: rgba(255,152,0,0.1); border-left: 3px solid #ff9800; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #e65100; margin-bottom: 4px;"><strong>📌 Justificación:</strong> ' + (razonAusencia || 'Falta') + '</div>';
+                }
 
-                    // Calcular atraso automáticamente si hay entrada
-                    let minutosAtrasoDelDia = 0;
-                    if (entrada) {
-                        const horaEntrada = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
-                        minutosAtrasoDelDia = calcularMinutosAtraso(horaEntrada, fecha);
-                    }
+                let htmlInfo = '';
+                if (razonAtraso) {
+                    const minutosTexto = minutosAtrasoDelDia > 0 ? ` <strong style="color: #d32f2f;">+${minutosAtrasoDelDia}m</strong>` : '';
+                    htmlInfo += '<div style="padding: 6px 10px; background: rgba(244,67,54,0.1); border-left: 3px solid #f44336; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #c62828; margin-bottom: 4px;"><strong>🔴 Atraso:</strong> ' + razonAtraso + minutosTexto + '</div>';
+                }
+                if (razonSalida) {
+                    htmlInfo += '<div style="padding: 6px 10px; background: rgba(255,152,0,0.05); border-left: 3px solid #e91e63; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #ad1457; margin-bottom: 4px;"><strong>⏱️ Salida temp:</strong> ' + razonSalida + '</div>';
+                }
 
-                    const hasAtraso = minutosAtrasoDelDia > 0;
-                    const hasPermiso = diaRegs.some(r => !!obtenerDetallesPermiso(r));
-                    const hasSalidaTemprana = diaRegs.some(r => {
-                        const val = getVal(r, 'tipo_salida', 18) || r[18];
-                        return val && val.toString().includes('SALIDA_TEMPRANA');
-                    });
+                const permDetails = obtenerDetallesPermiso(reg);
+                if (permDetails) {
+                    htmlInfo += '<div style="padding: 6px 10px; background: rgba(76,175,80,0.1); border-left: 3px solid #4caf50; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #2e7d32; margin-bottom: 4px;">' + permDetails + '</div>';
+                }
+                return htmlInfo;
+            }).filter(x => x).join('');
 
-                    let duracion = '--';
-                    if (entrada && salida) {
-                        try {
-                            const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
-                            const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
-
-                            const dE = parseDateSafe(entradaTs);
-                            const dS = parseDateSafe(salidaTs);
-
-                            if (dE && dS) {
-                                let msBrutos = dS - dE;
-                                // Restar 45 min = 45 * 60 * 1000 ms
-                                let msNetos = Math.max(0, msBrutos - (45 * 60 * 1000));
-
-                                if (msNetos > 0) {
-                                    const h = Math.floor(msNetos / (1000 * 60 * 60));
-                                    const m = Math.floor((msNetos % (1000 * 60 * 60)) / (1000 * 60));
-                                    duracion = h + 'h ' + m + 'm';
-                                } else {
-                                    duracion = '0h 0m';
-                                }
-                            }
-                        } catch (e) { }
-                    }
-
-                    const esFaltaJustificada = diaRegs.some(r => {
-                        const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
-                        return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO';
-                    });
-                    const esVacacion = diaRegs.some(r => {
-                        const t = String(getVal(r, 'tipo', 3) || r[3]).toUpperCase();
-                        return t === 'VACACIONES' || t === 'VACACION';
-                    });
-                    const statusIcon = esVacacion ? '🏖️' : (esFaltaJustificada ? '📁' : (entrada && salida ? '✅' : entrada ? '⚠️' : '❌'));
-                    let fechaFormato = 'Fecha inválida';
-                    try {
-                        const fechaObj = new Date(fecha);
-                        if (typeof fecha === 'string' && fecha.length <= 10) {
-                            fechaObj.setMinutes(fechaObj.getMinutes() + fechaObj.getTimezoneOffset());
-                        }
-                        if (!isNaN(fechaObj.getTime())) {
-                            fechaFormato = fechaObj.toLocaleDateString('es-EC', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase();
-                        }
-                    } catch (e) { }
-
-                    const entradaHora = esFaltaJustificada ? 'JUSTIFICADO' : (entrada ? formatearHora(getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5]) : '--:--');
-                    const salidaHora = esFaltaJustificada ? 'N/A' : (salida ? formatearHora(getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5]) : '--:--');
-                    const almuerzoVal = entrada ? (getVal(entrada, 'almuerzo', 4) || entrada[4]) : '';
-                    const almuerzoIcon = (almuerzoVal === 'SI' || almuerzoVal === 'PLANTA') ? '🏢' : (almuerzoVal === 'NO' || almuerzoVal === 'FUERA') ? '🏠' : '-';
-
-                    const detallesRazones = diaRegs.map(reg => {
-                        const razonAtraso = getVal(reg, 'razon_entrada_tardia', 16) || reg[16];
-                        const razonSalida = getVal(reg, 'razon_salida', 14) || reg[14];
-                        const razonAusencia = getVal(reg, 'razon_ausencia', 21) || reg[21];
-                        const tipoReg = String(getVal(reg, 'tipo', 3) || reg[3] || '').toUpperCase();
-
-                        if (tipoReg === 'VACACIONES' || tipoReg === 'VACACION') {
-                            return '<div style="padding: 6px 10px; background: rgba(33,150,243,0.1); border-left: 3px solid #2196f3; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #1565c0; margin-bottom: 4px;"><strong>🏖️ Vacación:</strong> Tomada</div>';
-                        }
-
-                        if (tipoReg !== 'ENTRADA' && tipoReg !== 'SALIDA' && tipoReg !== 'ESTADO' && tipoReg !== 'SOLO_ALMUERZO') {
-                            return '<div style="padding: 6px 10px; background: rgba(255,152,0,0.1); border-left: 3px solid #ff9800; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #e65100; margin-bottom: 4px;"><strong>📌 Justificación:</strong> ' + (razonAusencia || 'Falta') + '</div>';
-                        }
-
-                        let htmlInfo = '';
-                        if (razonAtraso) {
-                            const minutosTexto = minutosAtrasoDelDia > 0 ? ` <strong style="color: #d32f2f;">+${minutosAtrasoDelDia}m</strong>` : '';
-                            htmlInfo += '<div style="padding: 6px 10px; background: rgba(244,67,54,0.1); border-left: 3px solid #f44336; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #c62828; margin-bottom: 4px;"><strong>🔴 Atraso:</strong> ' + razonAtraso + minutosTexto + '</div>';
-                        }
-                        if (razonSalida) {
-                            htmlInfo += '<div style="padding: 6px 10px; background: rgba(255,152,0,0.05); border-left: 3px solid #e91e63; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #ad1457; margin-bottom: 4px;"><strong>⏱️ Salida temp:</strong> ' + razonSalida + '</div>';
-                        }
-                        
-                        const permDetails = obtenerDetallesPermiso(reg);
-                        if (permDetails) {
-                            htmlInfo += '<div style="padding: 6px 10px; background: rgba(76,175,80,0.1); border-left: 3px solid #4caf50; border-radius: 4px; font-size: clamp(9px, 2.8vw, 11px); color: #2e7d32; margin-bottom: 4px;">' + permDetails + '</div>';
-                        }
-                        return htmlInfo;
-                    }).filter(x => x).join('');
-
-                    diasHTML += `
+            diasHTML += `
                     <div class="dia-item" style="padding: clamp(12px, 3.5vw, 14px); border-bottom: 1px solid #f0f0f0; background: ${hasAtraso || hasSalidaTemprana ? 'rgba(255,193,7,0.05)' : 'white'};">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px;">
                             <div style="flex: 1;">
@@ -3835,9 +4731,9 @@
                         ${detallesRazones ? `<div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">${detallesRazones}</div>` : ''}
                     </div>
                 `;
-                });
+        });
 
-                html += `
+        html += `
                 <div class="semana-container" style="border-radius: clamp(12px, 4vw, 16px); border: 1px solid #e0e0e0; overflow: hidden;">
                     <div class="semana-header" onclick="toggleSemana(this)" style="padding: clamp(12px, 3.5vw, 14px); background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
                         <div>
@@ -3854,85 +4750,85 @@
                     </div>
                 </div>
             `;
-            });
+    });
 
-            html += `</div>`;
+    html += `</div>`;
 
-            // Si no se han descargado periodos anteriores, mostrar el botón
-            if (!window.descargarPeriodosAnterioresAccionado) {
-                html += `
+    // Si no se han descargado periodos anteriores, mostrar el botón
+    if (!window.descargarPeriodosAnterioresAccionado) {
+        html += `
                 <div class="text-center mt-3" id="btnDescargarAnterioresContainer">
                     <button id="btnDescargarAnteriores" class="btn btn-outline-primary btn-sm w-100" onclick="descargarPeriodosAnteriores()" style="font-weight: 700; border-radius: 12px; padding: 12px; border: 2px solid var(--primary); background: transparent; color: var(--primary); cursor: pointer; transition: all 0.2s;">
                         <i class="fas fa-download"></i> Descargar periodos anteriores
                     </button>
                 </div>
                 `;
-            }
+    }
 
-            container.innerHTML = html;
+    container.innerHTML = html;
+}
+
+window.descargarPeriodosAnteriores = async function () {
+    window.descargarPeriodosAnterioresAccionado = true;
+    const btn = document.getElementById('btnDescargarAnteriores');
+    if (btn) {
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Descargando...`;
+        btn.disabled = true;
+    }
+    try {
+        await obtenerRegistrosEmpleado(true);
+        mostrarToast('✅ Historial completo descargado', 'success');
+    } catch (error) {
+        mostrarToast('Error al descargar historial: ' + error.message, 'error');
+        if (btn) {
+            btn.innerHTML = `<i class="fas fa-download"></i> Descargar periodos anteriores`;
+            btn.disabled = false;
         }
+    }
+};
 
-        window.descargarPeriodosAnteriores = async function() {
-            window.descargarPeriodosAnterioresAccionado = true;
-            const btn = document.getElementById('btnDescargarAnteriores');
-            if (btn) {
-                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Descargando...`;
-                btn.disabled = true;
-            }
-            try {
-                await obtenerRegistrosEmpleado(true);
-                mostrarToast('✅ Historial completo descargado', 'success');
-            } catch (error) {
-                mostrarToast('Error al descargar historial: ' + error.message, 'error');
-                if (btn) {
-                    btn.innerHTML = `<i class="fas fa-download"></i> Descargar periodos anteriores`;
-                    btn.disabled = false;
-                }
-            }
-        };
+function toggleSemana(element) {
+    const content = element.nextElementSibling;
+    const icon = element.querySelector('i');
 
-        function toggleSemana(element) {
-            const content = element.nextElementSibling;
-            const icon = element.querySelector('i');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        content.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
 
-            if (content.style.display === 'none') {
-                content.style.display = 'block';
-                icon.style.transform = 'rotate(180deg)';
-            } else {
-                content.style.display = 'none';
-                icon.style.transform = 'rotate(0deg)';
-            }
-        }
+function calcularDuracion(entrada, salida) {
+    try {
+        const entradaDate = new Date(entrada);
+        const salidaDate = new Date(salida);
+        if (isNaN(entradaDate) || isNaN(salidaDate)) return '--';
+        const diffMs = salidaDate - entradaDate;
+        const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMinutos = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        return `${diffHoras}h ${diffMinutos}min`;
+    } catch {
+        return '--';
+    }
+}
+async function renderProfilePage() {
+    const mainContent = document.getElementById('mainContent');
+    const totalDias = cargandoRegistros ? '...' : new Set(registrosCompletos.map(r => r.fecha)).size;
+    const totalEntradas = cargandoRegistros ? '...' : registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
+    const totalSalidas = cargandoRegistros ? '...' : registrosCompletos.filter(r => r.tipo === 'SALIDA').length;
 
-        function calcularDuracion(entrada, salida) {
-            try {
-                const entradaDate = new Date(entrada);
-                const salidaDate = new Date(salida);
-                if (isNaN(entradaDate) || isNaN(salidaDate)) return '--';
-                const diffMs = salidaDate - entradaDate;
-                const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
-                const diffMinutos = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                return `${diffHoras}h ${diffMinutos}min`;
-            } catch {
-                return '--';
-            }
-        }
-        async function renderProfilePage() {
-            const mainContent = document.getElementById('mainContent');
-            const totalDias = cargandoRegistros ? '...' : new Set(registrosCompletos.map(r => r.fecha)).size;
-            const totalEntradas = cargandoRegistros ? '...' : registrosCompletos.filter(r => r.tipo === 'ENTRADA').length;
-            const totalSalidas = cargandoRegistros ? '...' : registrosCompletos.filter(r => r.tipo === 'SALIDA').length;
+    const mesActual = new Date().getMonth();
+    const añoActual = new Date().getFullYear();
+    const registrosMes = registrosCompletos.filter(r => {
+        if (!r.fecha) return false;
+        const fecha = new Date(r.fecha);
+        return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+    });
+    const diasTrabajadosMes = cargandoRegistros ? '...' : new Set(registrosMes.map(r => r.fecha)).size;
 
-            const mesActual = new Date().getMonth();
-            const añoActual = new Date().getFullYear();
-            const registrosMes = registrosCompletos.filter(r => {
-                if (!r.fecha) return false;
-                const fecha = new Date(r.fecha);
-                return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
-            });
-            const diasTrabajadosMes = cargandoRegistros ? '...' : new Set(registrosMes.map(r => r.fecha)).size;
-
-            mainContent.innerHTML = `
+    mainContent.innerHTML = `
             <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
                 <!-- Tarjeta Principal de Perfil Premium -->
                 <div class="glass-card text-center" style="background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.85) 100%); border-radius: 24px; padding: 30px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); border: 1px solid rgba(255, 255, 255, 0.7); position: relative; overflow: hidden;">
@@ -3941,9 +4837,9 @@
                     
                     <div class="photo-container-premium d-inline-block profile-photo-container" onclick="triggerProfilePhotoUpload(event)" style="position: relative; border-radius: 50%; padding: 4px; background: linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%); box-shadow: 0 10px 28px rgba(37,99,235,0.2); cursor: pointer; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); display: inline-block;">
                         ${empleado.foto_url && empleado.foto_url.trim() ?
-                            `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto" style="border-radius: 50%; width: 110px; height: 110px; object-fit: cover; border: 4px solid white;">` :
-                            `<div class="employee-photo-placeholder-profesional" style="border-radius: 50%; width: 110px; height: 110px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%); font-size: 40px; border: 4px solid white; color: #475569;">👤</div>`
-                        }
+            `<img class="employee-photo-profesional" src="${empleado.foto_url}" alt="Foto" style="border-radius: 50%; width: 110px; height: 110px; object-fit: cover; border: 4px solid white;">` :
+            `<div class="employee-photo-placeholder-profesional" style="border-radius: 50%; width: 110px; height: 110px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%); font-size: 40px; border: 4px solid white; color: #475569;">👤</div>`
+        }
                         <div class="photo-upload-overlay" style="position: absolute; top: 4px; left: 4px; right: 4px; bottom: 4px; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; opacity: 0; transition: opacity 0.25s ease; border-radius: 50%;"><i class="fas fa-camera"></i></div>
                     </div>
                     
@@ -3981,6 +4877,60 @@
                     </div>
                     <div id="badge-vacaciones-disponibles" style="background: #0284c7; color: white; width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; box-shadow: 0 4px 10px rgba(2,132,199,0.3);">
                         <div class="spinner-border text-light" role="status" style="width:16px; height:16px; border-width:2px;"></div>
+                    </div>
+                </div>
+
+                <!-- Tarjeta de Edición de Perfil y Contraseña -->
+                <div class="glass-card mt-3" style="padding: 22px 18px; border-radius: 20px; background: rgba(255,255,255,0.9); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(255,255,255,0.8); text-align: left;">
+                    <h5 class="fw-bold mb-3" style="font-size: 14.5px; color: #1e293b; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-user-gear" style="color: #2563eb;"></i> Actualizar Mis Datos y Contraseña</h5>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div>
+                            <label class="form-label small fw-bold text-secondary mb-1">Nombre Completo</label>
+                            <input type="text" id="profNombre" class="form-control" value="${escapeHtml(empleado.nombre || '')}" placeholder="Tu nombre">
+                        </div>
+
+                        <div>
+                            <label class="form-label small fw-bold text-secondary mb-1">URL de Foto de Perfil</label>
+                            <div class="input-group">
+                                <input type="url" id="profFotoUrl" class="form-control" value="${escapeHtml(empleado.foto_url || '')}" placeholder="https://drive.google.com/...">
+                                <button class="btn btn-outline-primary" type="button" onclick="triggerProfilePhotoUpload(event)"><i class="fas fa-camera"></i></button>
+                            </div>
+                        </div>
+
+                        <hr style="margin: 8px 0; border-color: #e2e8f0;">
+
+                        <div style="font-size: 12px; font-weight: 700; color: #3b82f6; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-key"></i> Cambiar Contraseña (Opcional)
+                        </div>
+
+                        <div>
+                            <label class="form-label small text-secondary mb-1" style="font-size:11px;">Contraseña Actual</label>
+                            <div class="input-group">
+                                <input type="password" id="profPassActual" class="form-control" placeholder="Requerida para cambiar clave">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('profPassActual', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label small text-secondary mb-1" style="font-size:11px;">Nueva Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="profPassNueva" class="form-control" placeholder="Mínimo 4 caracteres">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('profPassNueva', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label small text-secondary mb-1" style="font-size:11px;">Confirmar Nueva Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" id="profPassConfirm" class="form-control" placeholder="Repite la nueva clave">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('profPassConfirm', this)"><i class="fas fa-eye"></i></button>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary w-100 mt-2" onclick="guardarPerfilEmpleado()" style="border-radius: 12px; font-weight: 700; padding: 10px; background: var(--primary); border: none;">
+                            <i class="fas fa-floppy-disk me-1"></i> Guardar Cambios en Perfil
+                        </button>
                     </div>
                 </div>
                 
@@ -4028,69 +4978,161 @@
             </div>
             `;
 
-            // Ponytail: Cargar saldo de vacaciones en segundo plano para no demorar la visualización del perfil
-            jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id }).then(function(vacRes) {
-                let vacacionesTomadas = 0;
-                let totalVacacionesDisponibles = '--';
-                if (vacRes && !vacRes.error) {
-                    if (vacRes.vacacionesTomadasHoy !== null && vacRes.vacacionesTomadasHoy !== undefined) {
-                        vacacionesTomadas = vacRes.vacacionesTomadasHoy;
-                    } else {
-                        vacacionesTomadas = (vacRes.vacaciones || []).length;
-                    }
-                    if (vacRes.vacacionesRestantesHoy !== null && vacRes.vacacionesRestantesHoy !== undefined) {
-                        totalVacacionesDisponibles = vacRes.vacacionesRestantesHoy;
-                    } else {
-                        const limiteVacaciones = parseInt(empleado.vacaciones_totales || empleado.vacaciones_disponibles) || 15;
-                        const vTomadasNum = typeof vacacionesTomadas === 'number' ? vacacionesTomadas : parseFloat(vacacionesTomadas) || 0;
-                        totalVacacionesDisponibles = Math.max(0, limiteVacaciones - vTomadasNum);
-                    }
-                }
-                
-                const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
-                const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
-                if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong>${vacacionesTomadas}</strong> día(s)`;
-                if (badgeDisponibles) badgeDisponibles.innerHTML = totalVacacionesDisponibles;
-            }).catch(function(e) {
-                console.error("Error al obtener vacaciones del empleado:", e);
-                const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
-                const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
-                if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong class="text-danger">error</strong>`;
-                if (badgeDisponibles) badgeDisponibles.innerHTML = '--';
-            });
-
-            ajustarLayout();
+    // Ponytail: Cargar saldo de vacaciones en segundo plano para no demorar la visualización del perfil
+    jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id }).then(function (vacRes) {
+        let vacacionesTomadas = 0;
+        let totalVacacionesDisponibles = '--';
+        if (vacRes && !vacRes.error) {
+            if (vacRes.vacacionesTomadasHoy !== null && vacRes.vacacionesTomadasHoy !== undefined) {
+                vacacionesTomadas = vacRes.vacacionesTomadasHoy;
+            } else {
+                vacacionesTomadas = (vacRes.vacaciones || []).length;
+            }
+            if (vacRes.vacacionesRestantesHoy !== null && vacRes.vacacionesRestantesHoy !== undefined) {
+                totalVacacionesDisponibles = vacRes.vacacionesRestantesHoy;
+            } else {
+                const limiteVacaciones = parseInt(empleado.vacaciones_totales || empleado.vacaciones_disponibles) || 15;
+                const vTomadasNum = typeof vacacionesTomadas === 'number' ? vacacionesTomadas : parseFloat(vacacionesTomadas) || 0;
+                totalVacacionesDisponibles = Math.max(0, limiteVacaciones - vTomadasNum);
+            }
         }
 
-        function renderAlmuerzoPage() {
-            const mainContent = document.getElementById('mainContent');
-            const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
-            const almuerzo = empleado.almuerzo || estado.almuerzo;
+        const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
+        const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
+        if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong>${vacacionesTomadas}</strong> día(s)`;
+        if (badgeDisponibles) badgeDisponibles.innerHTML = totalVacacionesDisponibles;
+    }).catch(function (e) {
+        console.error("Error al obtener vacaciones del empleado:", e);
+        const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
+        const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
+        if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong class="text-danger">error</strong>`;
+        if (badgeDisponibles) badgeDisponibles.innerHTML = '--';
+    });
 
-            const ahora = new Date();
-            const minDia = ahora.getHours() * 60 + ahora.getMinutes();
-            const esDespuesDeAlmuerzo = minDia > 840; // Después de las 14:00
+    ajustarLayout();
+}
 
-            const diasSemanaNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-            const diasSemanaKeys = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
-            const hoyIdx = ahora.getDay();
-            const hoyNombre = diasSemanaNombres[hoyIdx];
-            const hoyKey = diasSemanaKeys[hoyIdx];
+async function guardarPerfilEmpleado() {
+    const nombre = document.getElementById('profNombre')?.value.trim();
+    const fotoUrl = document.getElementById('profFotoUrl')?.value.trim();
+    const passActual = document.getElementById('profPassActual')?.value.trim();
+    const passNueva = document.getElementById('profPassNueva')?.value.trim();
+    const passConfirm = document.getElementById('profPassConfirm')?.value.trim();
 
-            // Cargar menú semanal si no existe
-            if (!menuSemanal) {
-                mainContent.innerHTML = `
+    if (!nombre) {
+        mostrarToast('El nombre no puede estar vacío', 'warning');
+        return;
+    }
+
+    const params = {
+        accion: 'actualizarPerfilEmpleado',
+        empleadoId: empleado.id,
+        nombre: nombre,
+        foto_url: fotoUrl
+    };
+
+    if (passNueva) {
+        if (!passActual) {
+            mostrarToast('Ingresa tu contraseña actual para confirmar el cambio', 'warning');
+            document.getElementById('profPassActual')?.focus();
+            return;
+        }
+        if (passNueva.length < 4) {
+            mostrarToast('La nueva contraseña debe tener al menos 4 caracteres', 'warning');
+            document.getElementById('profPassNueva')?.focus();
+            return;
+        }
+        if (passNueva !== passConfirm) {
+            mostrarToast('La nueva contraseña y su confirmación no coinciden', 'warning');
+            document.getElementById('profPassConfirm')?.focus();
+            return;
+        }
+
+        const oldHash = await hashPassword(passActual);
+        const newHash = await hashPassword(passNueva);
+        params.oldPasswordHash = oldHash;
+        params.oldPin = passActual;
+        params.passwordHash = newHash;
+    }
+
+    showLoading(true);
+    try {
+        let res = null;
+        if (window.FirebaseBackend && window.USE_FIREBASE) {
+            res = await window.FirebaseBackend.actualizarPerfilEmpleado(params);
+        } else {
+            res = await jsonpRequest(params);
+        }
+
+        showLoading(false);
+
+        if (res && (res.ok || res.mensaje)) {
+            empleado.nombre = nombre;
+            empleado.foto_url = fotoUrl;
+
+            const elActual = document.getElementById('profPassActual');
+            const elNueva = document.getElementById('profPassNueva');
+            const elConfirm = document.getElementById('profPassConfirm');
+            if (elActual) elActual.value = '';
+            if (elNueva) elNueva.value = '';
+            if (elConfirm) elConfirm.value = '';
+
+            await mostrarSplashTransicion({
+                titulo: "¡Perfil Actualizado!",
+                nombreEmpleado: empleado.nombre,
+                subtitulo: passNueva ? "Tu información y tu contraseña fueron actualizadas exitosamente." : "Tu información personal fue guardada exitosamente.",
+                icono: "check",
+                detalles: [
+                    "Datos corporativos sincronizados",
+                    passNueva ? "Nueva contraseña guardada" : "Credencial actualizada"
+                ],
+                duracion: 1500
+            });
+
+            if (currentPage === 'home') {
+                renderHomePage();
+            } else if (currentPage === 'profile') {
+                await renderProfilePage();
+            }
+        } else {
+            mostrarToast(res?.error || 'Error al actualizar perfil', 'error');
+        }
+    } catch (e) {
+        showLoading(false);
+        mostrarToast('Error de conexión: ' + e.message, 'error');
+    }
+}
+window.guardarPerfilEmpleado = guardarPerfilEmpleado;
+
+function renderAlmuerzoPage() {
+    const mainContent = document.getElementById('mainContent');
+    const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
+    const almuerzo = empleado.almuerzo || estado.almuerzo;
+
+    const ahora = new Date();
+    const minDia = ahora.getHours() * 60 + ahora.getMinutes();
+    const esDespuesDeAlmuerzo = minDia > 840; // Después de las 14:00
+
+    const diasSemanaNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const diasSemanaKeys = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+    const hoyIdx = ahora.getDay();
+    const hoyNombre = diasSemanaNombres[hoyIdx];
+    const hoyKey = diasSemanaKeys[hoyIdx];
+
+    // Cargar menú semanal si no existe
+    if (!menuSemanal) {
+        mainContent.innerHTML = `
                 <div class="page" style="padding-bottom: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px;">
                     <div class="spinner-border text-primary mb-2" role="status" style="width: 28px; height: 28px; border-width: 3px;"></div>
                     <p class="text-muted small" style="font-weight: 500;">Cargando planificación de menú...</p>
                 </div>
                 `;
-                jsonpRequest({ accion: 'obtenerMenuSemanal' }).then(res => {
-                    if (res && !res.error) {
-                        menuSemanal = res;
-                        renderAlmuerzoPage();
-                    } else {
-                        mainContent.innerHTML = `
+        jsonpRequest({ accion: 'obtenerMenuSemanal' }).then(res => {
+            if (res && !res.error) {
+                menuSemanal = res;
+                renderAlmuerzoPage();
+            } else {
+                mainContent.innerHTML = `
                         <div class="page" style="padding-bottom: 30px;">
                             <div class="glass-card text-center p-4">
                                 <div style="font-size: 32px; margin-bottom: 10px;">⚠️</div>
@@ -4100,35 +5142,35 @@
                             </div>
                         </div>
                         `;
-                    }
-                }).catch(e => {
-                    console.error("Error al cargar menú:", e);
-                });
-                return;
             }
+        }).catch(e => {
+            console.error("Error al cargar menú:", e);
+        });
+        return;
+    }
 
-            const hoyMenu = menuSemanal[hoyKey] || { sopa: '', plato: '', jugo: '', postre: '' };
+    const hoyMenu = menuSemanal[hoyKey] || { sopa: '', plato: '', jugo: '', postre: '' };
 
-            // Renderizar la tarjeta del estado de almuerzo del usuario con el estilo exacto anterior
-            const cardEstadoAlmuerzoHTML = `
+    // Renderizar la tarjeta del estado de almuerzo del usuario con el estilo exacto anterior
+    const cardEstadoAlmuerzoHTML = `
                 <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') || esCumpleanosHoy ? 'lunch-animated-no' : ''}" 
                      style="position: relative; overflow: hidden; display: flex; flex-direction: row; align-items: center; min-height: 170px; border-radius: 20px; margin-bottom: 15px; padding: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.04); ${esCumpleanosHoy ? 'opacity: 0.85; background: linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%); border: 2px solid #db2777;' : ''}">
                      
                     <!-- Left Half: Image / Icon -->
                     <div class="status-icon" style="width: 55%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; margin-bottom: 0; overflow: visible;">
                         ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy
-                            ? `
+            ? `
                             <div style="position: absolute; width: 160px; height: 160px; background: radial-gradient(circle, rgba(16,185,129,0.25) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
                             <img src="almuerzo.gif" alt="Almuerzo" style="width: 200px; max-width: 100%; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.15)); animation: float-img 3s ease-in-out infinite;">
                             `
-                            : esCumpleanosHoy
-                            ? `
+            : esCumpleanosHoy
+                ? `
                             <i class="fas fa-birthday-cake" style="font-size: 80px; color: #db2777; filter: drop-shadow(0 2px 4px rgba(219,39,119,0.2));"></i>
                             `
-                            : `
+                : `
                             <i class="fas fa-utensils" style="font-size: 75px; color: var(--warning);"></i>
                             `
-                        }
+        }
                     </div>
 
                     <!-- Right Half: Details -->
@@ -4154,11 +5196,11 @@
                 </div>
             `;
 
-            // Botones de acción / edición
-            let accionesAlmuerzoHTML = '';
-            if (!esCumpleanosHoy) {
-                if (!horaLimiteAlmuerzoPasada()) {
-                    accionesAlmuerzoHTML = `
+    // Botones de acción / edición
+    let accionesAlmuerzoHTML = '';
+    if (!esCumpleanosHoy) {
+        if (!horaLimiteAlmuerzoPasada()) {
+            accionesAlmuerzoHTML = `
                     <div class="glass-card text-center mb-3" style="border-radius: 16px; padding: 15px; background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
                         <p class="text-muted small mb-2" style="font-weight: 600;">¿Dónde vas a almorzar hoy?</p>
                         <div style="display: flex; gap: 10px; justify-content: center; max-width: 320px; margin: 0 auto;">
@@ -4171,16 +5213,16 @@
                         </div>
                     </div>
                     `;
-                } else {
-                    accionesAlmuerzoHTML = `
+        } else {
+            accionesAlmuerzoHTML = `
                     <div style="font-size: 11px; text-align: center; color: #64748b; font-weight: 600; margin-bottom: 15px; background: #f8fafc; padding: 8px; border-radius: 10px; border: 1px solid #e2e8f0;">
                         <i class="fas fa-lock"></i> El tiempo límite para cambios (09:30) ha expirado
                     </div>
                     `;
-                }
-            }
+        }
+    }
 
-            mainContent.innerHTML = `
+    mainContent.innerHTML = `
             <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
                 <!-- Encabezado de Página -->
                 <div class="glass-card d-flex justify-content-between align-items-center" style="padding: 12px 16px; border-radius: 16px; background: rgba(255,255,255,0.9); box-shadow: 0 2px 10px rgba(0,0,0,0.02); border: 1px solid rgba(255,255,255,0.7); flex-shrink: 0; margin-bottom: 12px;">
@@ -4232,11 +5274,11 @@
                     </h6>
                     <div style="display:flex; flex-direction:column; gap:8px;">
                         ${diasSemanaNombres.map((name, idx) => {
-                            if (idx === 0) return ''; // Omitir domingo
-                            const key = diasSemanaKeys[idx];
-                            const dMenu = menuSemanal[key] || {};
-                            const isToday = idx === hoyIdx;
-                            return `
+        if (idx === 0) return ''; // Omitir domingo
+        const key = diasSemanaKeys[idx];
+        const dMenu = menuSemanal[key] || {};
+        const isToday = idx === hoyIdx;
+        return `
                                 <div style="padding: 8px 10px; border-radius: 10px; background: ${isToday ? '#f0f9ff' : '#f8fafc'}; border: 1px solid ${isToday ? '#bae6fd' : '#e2e8f0'};">
                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                                         <span style="font-size:12.5px; font-weight:700; color:${isToday ? '#0284c7' : '#334155'};">${name}</span>
@@ -4248,43 +5290,43 @@
                                     </div>
                                 </div>
                             `;
-                        }).join('')}
+    }).join('')}
                     </div>
                 </div>
             </div>
             `;
-            ajustarLayout();
+    ajustarLayout();
+}
+
+window.registrarAlmuerzoTab = async function (opcion) {
+    showLoading(true);
+    try {
+        const res = await jsonpRequest({
+            accion: 'actualizarAlmuerzoSupervisor',
+            empleadoId: empleado.id,
+            almuerzo: opcion
+        });
+        if (res && res.ok !== false) {
+            mostrarToast("Opción de almuerzo guardada", "success");
+            empleado.almuerzo = opcion;
+            estado.almuerzo = opcion;
+            renderAlmuerzoPage();
+        } else {
+            mostrarToast("Error al guardar: " + (res?.error || "Desconocido"), "error");
         }
+    } catch (error) {
+        console.error("Error registrando almuerzo:", error);
+        mostrarToast("Error de conexión", "error");
+    } finally {
+        showLoading(false);
+    }
+};
 
-        window.registrarAlmuerzoTab = async function (opcion) {
-            showLoading(true);
-            try {
-                const res = await jsonpRequest({
-                    accion: 'actualizarAlmuerzoSupervisor',
-                    empleadoId: empleado.id,
-                    almuerzo: opcion
-                });
-                if (res && res.ok !== false) {
-                    mostrarToast("Opción de almuerzo guardada", "success");
-                    empleado.almuerzo = opcion;
-                    estado.almuerzo = opcion;
-                    renderAlmuerzoPage();
-                } else {
-                    mostrarToast("Error al guardar: " + (res?.error || "Desconocido"), "error");
-                }
-            } catch (error) {
-                console.error("Error registrando almuerzo:", error);
-                mostrarToast("Error de conexión", "error");
-            } finally {
-                showLoading(false);
-            }
-        };
+function renderPagosPage() {
+    const mainContent = document.getElementById('mainContent');
 
-        function renderPagosPage() {
-            const mainContent = document.getElementById('mainContent');
-            
-            if (!empleado.pagos_url || empleado.pagos_url.trim() === '') {
-                mainContent.innerHTML = `
+    if (!empleado.pagos_url || empleado.pagos_url.trim() === '') {
+        mainContent.innerHTML = `
                 <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
                     <div class="glass-card text-center" style="background: white; border-radius: 24px; padding: 40px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); border: 1px solid rgba(255, 255, 255, 0.7);">
                         <div style="font-size: 60px; margin-bottom: 20px;">📄</div>
@@ -4296,18 +5338,18 @@
                     </div>
                 </div>
                 `;
-                return;
-            }
+        return;
+    }
 
-            const urlLower = empleado.pagos_url.toLowerCase();
-            const blocksIframe = urlLower.includes('sharepoint.com') || 
-                                 urlLower.includes('onedrive.live.com') || 
-                                 urlLower.includes('microsoft') || 
-                                 urlLower.includes('office.com') || 
-                                 urlLower.includes('login.microsoftonline.com');
+    const urlLower = empleado.pagos_url.toLowerCase();
+    const blocksIframe = urlLower.includes('sharepoint.com') ||
+        urlLower.includes('onedrive.live.com') ||
+        urlLower.includes('microsoft') ||
+        urlLower.includes('office.com') ||
+        urlLower.includes('login.microsoftonline.com');
 
-            if (blocksIframe) {
-                mainContent.innerHTML = `
+    if (blocksIframe) {
+        mainContent.innerHTML = `
                 <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
                     <div class="glass-card text-center" style="background: white; border-radius: 24px; padding: 40px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); border: 1px solid rgba(255, 255, 255, 0.7);">
                         <div style="font-size: 60px; margin-bottom: 20px;">🔒</div>
@@ -4324,10 +5366,10 @@
                     </div>
                 </div>
                 `;
-                return;
-            }
+        return;
+    }
 
-            mainContent.innerHTML = `
+    mainContent.innerHTML = `
             <div class="page" style="height: calc(100vh - 140px); display: flex; flex-direction: column; animation: fadeIn 0.35s ease; padding-bottom: 10px;">
                 <!-- Header interno -->
                 <div class="glass-card mb-2 d-flex justify-content-between align-items-center" style="padding: 12px 16px; border-radius: 16px; background: rgba(255,255,255,0.9); box-shadow: 0 2px 10px rgba(0,0,0,0.02); border: 1px solid rgba(255,255,255,0.7); flex-shrink: 0;">
@@ -4353,74 +5395,88 @@
                 </div>
             </div>
             `;
+}
+
+// ========== CERRAR SESIÓN ==========
+async function cerrarSesion() {
+    if (confirm('¿Cerrar sesión? Se eliminará el acceso de este dispositivo.')) {
+        showLoading(true);
+        if (empleado.id && deviceToken) {
+            try {
+                await desvincularDispositivoAPI(empleado.id, deviceToken);
+            } catch (e) { }
         }
+        localStorage.clear();
+        sessionStorage.removeItem('justificar_popup_saltado');
+        isAuthenticated = false;
+        showLoading(false);
+        location.reload();
+    }
+}
 
-        // ========== CERRAR SESIÓN ==========
-        async function cerrarSesion() {
-            if (confirm('¿Cerrar sesión? Se eliminará el acceso de este dispositivo.')) {
-                showLoading(true);
-                if (empleado.id && deviceToken) {
-                    try {
-                        await desvincularDispositivoAPI(empleado.id, deviceToken);
-                    } catch (e) { }
-                }
-                localStorage.clear();
-                sessionStorage.removeItem('justificar_popup_saltado');
-                isAuthenticated = false;
-                showLoading(false);
-                location.reload();
-            }
+// ========== NAVEGACIÓN ==========
+async function navigateTo(page) {
+    currentPage = page;
+
+    document.querySelectorAll('.nav-item').forEach(item => {
+        if (item.dataset.page === page) {
+            item.classList.add('active');
+            try { item.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (e) { }
+        } else {
+            item.classList.remove('active');
         }
+    });
 
-        // ========== NAVEGACIÓN ==========
-        async function navigateTo(page) {
-            currentPage = page;
+    const fabWhatsApp = document.getElementById('fabWhatsApp');
+    if (fabWhatsApp) {
+        fabWhatsApp.style.display = (page === 'home' && isAuthenticated) ? 'flex' : 'none';
+    }
 
-            document.querySelectorAll('.nav-item').forEach(item => {
-                if (item.dataset.page === page) {
-                    item.classList.add('active');
-                    try { item.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (e) {}
-                } else {
-                    item.classList.remove('active');
-                }
-            });
+    const fabEmergencia = document.getElementById('fabEmergencia');
+    if (fabEmergencia) {
+        const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
+        fabEmergencia.style.display = (page === 'home' && isAuthenticated && em.activa) ? 'flex' : 'none';
+    }
 
-            const fabWhatsApp = document.getElementById('fabWhatsApp');
-            if (fabWhatsApp) {
-                fabWhatsApp.style.display = (page === 'home' && isAuthenticated) ? 'flex' : 'none';
-            }
+    // ── Transición orgánica ──
+    const mainContent = document.getElementById('mainContent');
+    const currentPageEl = mainContent ? mainContent.querySelector('.page') : null;
 
-            const fabEmergencia = document.getElementById('fabEmergencia');
-            if (fabEmergencia) {
-                const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
-                fabEmergencia.style.display = (page === 'home' && isAuthenticated && em.activa) ? 'flex' : 'none';
-            }
-
-            if (page === 'home') {
-                renderHomePage();
-            } else if (page === 'history') {
-                renderHistoryPage();
-            } else if (page === 'extras') {
-                renderHorasExtrasPage();
-            } else if (page === 'almuerzo') {
-                renderAlmuerzoPage();
-            } else if (page === 'profile') {
-                await renderProfilePage();
-            } else if (page === 'pagos') {
-                renderPagosPage();
-            } else if (page === 'estado') {
-                renderEstadoPage();
-            } else if (page === 'admin') {
-                renderAdminPage();
-            }
-
-            ajustarLayout();
+    const doRender = async () => {
+        if (page === 'home') {
+            renderHomePage();
+        } else if (page === 'history') {
+            renderHistoryPage();
+        } else if (page === 'extras') {
+            renderHorasExtrasPage();
+        } else if (page === 'almuerzo') {
+            renderAlmuerzoPage();
+        } else if (page === 'profile') {
+            await renderProfilePage();
+        } else if (page === 'pagos') {
+            renderPagosPage();
+        } else if (page === 'estado') {
+            renderEstadoPage();
+        } else if (page === 'admin') {
+            renderAdminPage();
         }
-        window.navigateTo = navigateTo;
+        ajustarLayout();
+    };
 
-        function renderAdminPage() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+    if (currentPageEl) {
+        currentPageEl.classList.add('page-exiting');
+        // Esperar la duración de la animación de salida (200ms) antes de renderizar
+        await new Promise(r => setTimeout(r, 180));
+        await doRender();
+    } else {
+        await doRender();
+    }
+}
+window.navigateTo = navigateTo;
+
+function renderAdminPage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page">
                 <div class="glass-card mb-4 text-center">
                     <div class="admin-icon mb-2">
@@ -4474,170 +5530,180 @@
                 </div>
             </div>
             `;
-        }
+}
 
-        // ========== VERIFICACIÓN INICIAL (OPTIMIZADA - CARGA EN PARALELO) ==========
-        async function verificarEstadoInicial() {
-            // Ocultar splash rápido: no esperar peticiones de red
-            setTimeout(hideSplash, 800);
+// ========== VERIFICACIÓN INICIAL (OPTIMIZADA - CARGA EN PARALELO) ==========
+async function verificarEstadoInicial() {
+    // Ocultar splash tras dar tiempo a visualizar la pantalla de carga (+1 segundo adicional)
+    setTimeout(hideSplash, 2800);
 
-            // Inicializar token y GPS inmediatamente (no bloquean)
-            deviceToken = generarDeviceToken();
-            iniciarGPS();
+    // Inicializar token y GPS inmediatamente (no bloquean)
+    deviceToken = generarDeviceToken();
+    iniciarGPS();
 
-            const distanceIndicator = document.createElement('div');
-            distanceIndicator.id = 'distanceIndicator';
-            distanceIndicator.className = 'distance-indicator hidden';
-            document.body.appendChild(distanceIndicator);
+    const distanceIndicator = document.createElement('div');
+    distanceIndicator.id = 'distanceIndicator';
+    distanceIndicator.className = 'distance-indicator hidden';
+    document.body.appendChild(distanceIndicator);
 
-            const sessionData = localStorage.getItem('SESSION_DATA');
-            if (sessionData) {
-                try {
-                    const data = JSON.parse(sessionData);
-                    if (data.empleadoId && data.token === deviceToken) {
-                        showLoading(true);
+    const sessionData = localStorage.getItem('SESSION_DATA');
+    if (sessionData) {
+        try {
+            const data = JSON.parse(sessionData);
+            if (data.empleadoId && data.token === deviceToken) {
+                showLoading(true);
 
-                        // ✨ PARALELO: config + estado al mismo tiempo
-                        const [configRes, estadoRes] = await Promise.all([
-                            cargarConfiguracionesSistema().catch(() => null),
-                            obtenerEstado(data.empleadoId, null).catch(e => ({ error: e.message }))
-                        ]);
+                // ✨ PARALELO: config + estado + verificación de PIN activo al mismo tiempo
+                const [configRes, estadoRes, checkPinRes] = await Promise.all([
+                    cargarConfiguracionesSistema().catch(() => null),
+                    obtenerEstado(data.empleadoId, null).catch(e => ({ error: e.message })),
+                    jsonpRequest({ accion: 'verificarEmpleadoTienePin', empleadoId: data.empleadoId }).catch(() => null)
+                ]);
 
-                        showLoading(false);
+                showLoading(false);
 
-                        if (estadoRes && !estadoRes.error) {
-                            estado = {
-                                tieneEntrada: estadoRes.tieneEntrada || false,
-                                tieneSalida: estadoRes.tieneSalida || false,
-                                horaEntrada: estadoRes.horaEntrada || null,
-                                horaSalida: estadoRes.horaSalida || null,
-                                almuerzo: estadoRes.almuerzo || null,
-                                esSupervisor: estadoRes.esSupervisor || false
-                            };
+                // Si el usuario no tiene contraseña registrada en la base de datos, invalidar sesión de inmediato
+                if (checkPinRes && checkPinRes.ok && !checkPinRes.tienePin) {
+                    console.warn("⚠️ Usuario sin contraseña registrada. Se invalida la sesión activa.");
+                    localStorage.removeItem('SESSION_DATA');
+                    isAuthenticated = false;
+                    renderAuthScreen();
+                    return;
+                }
 
-                            empleado = {
-                                id: estadoRes.id,
-                                nombre: estadoRes.nombre,
-                                area: estadoRes.area,
-                                foto_url: estadoRes.foto_url,
-                                cargo: estadoRes.cargo || '',
-                                fechaNacimiento: estadoRes.fechaNacimiento || '',
-                                baseLat: estadoRes.baseLat || null,
-                                baseLng: estadoRes.baseLng || null,
-                                authExtras: estadoRes.authExtras || 'NO',
-                                pagos_url: estadoRes.pagos_url || '',
-                                tipoRegistro: '',
-                                almuerzo: ''
-                            };
+                if (estadoRes && !estadoRes.error) {
+                    estado = {
+                        tieneEntrada: estadoRes.tieneEntrada || false,
+                        tieneSalida: estadoRes.tieneSalida || false,
+                        horaEntrada: estadoRes.horaEntrada || null,
+                        horaSalida: estadoRes.horaSalida || null,
+                        almuerzo: estadoRes.almuerzo || null,
+                        esSupervisor: estadoRes.esSupervisor || false
+                    };
 
-                            actualizarInterfazSegunCargo();
-                            isAuthenticated = true;
+                    empleado = {
+                        id: estadoRes.id,
+                        nombre: estadoRes.nombre,
+                        area: estadoRes.area,
+                        foto_url: estadoRes.foto_url,
+                        cargo: estadoRes.cargo || '',
+                        fechaNacimiento: estadoRes.fechaNacimiento || '',
+                        baseLat: estadoRes.baseLat || null,
+                        baseLng: estadoRes.baseLng || null,
+                        authExtras: estadoRes.authExtras || 'NO',
+                        pagos_url: estadoRes.pagos_url || '',
+                        tipoRegistro: '',
+                        almuerzo: ''
+                    };
 
-                            // Cargar registros históricos en segundo plano
-                            obtenerRegistrosEmpleado();
+                    actualizarInterfazSegunCargo();
+                    isAuthenticated = true;
 
-                            if (esCumpleanos(empleado.fechaNacimiento)) {
-                                setTimeout(celebrarCumpleanos, 1000);
-                            }
+                    // Cargar registros históricos en segundo plano
+                    obtenerRegistrosEmpleado();
 
-                            renderHomePage();
-
-                            // Cargar configuraciones en segundo plano si fallaron
-                            if (!configRes) {
-                                cargarConfiguracionesSistema().catch(() => { });
-                            }
-                            return;
-                        }
+                    if (esCumpleanos(empleado.fechaNacimiento)) {
+                        setTimeout(celebrarCumpleanos, 1000);
                     }
-                } catch (e) {
-                    console.error('Error cargando sesión:', e);
-                    showLoading(false);
-                }
-            } else {
-                // Sin sesión: cargar configuración en segundo plano
-                cargarConfiguracionesSistema().catch(() => { });
-            }
 
-            isAuthenticated = false;
-            renderAuthScreen();
-        }
+                    renderHomePage();
 
-        // ========== INICIALIZACIÓN ==========
-        // ========== CÁLCULOS Y FUNCIONES COODINADOR ==========
-
-        function actualizarInterfazSegunCargo() {
-            const navItemExtras = document.getElementById('navItemExtras');
-            const navItemAdmin = document.getElementById('navItemAdmin');
-            if (!navItemExtras) return;
-
-            const cargoActual = empleado.cargo || '';
-            console.log('Verificando cargo:', cargoActual);
-
-            // Normalizar: quitar tildes, pasar a minúsculas y quitar espacios extra
-            const cargoNormalizado = cargoActual.toLowerCase()
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "")
-                .trim();
-
-            console.log('Cargo normalizado:', cargoNormalizado);
-
-            // Búsqueda más flexible: Coordinador/Jefe/Supervisor de Producción/Taller o Asistente de Producción
-            const esCoordinador = (
-                (
-                    cargoNormalizado.includes('produccion') ||
-                    cargoNormalizado.includes('taller')
-                ) && (
-                    cargoNormalizado.includes('coordinador') ||
-                    cargoNormalizado.includes('coodinador') ||
-                    cargoNormalizado.includes('jefe') ||
-                    cargoNormalizado.includes('supervisor')
-                )
-            ) || (
-                cargoNormalizado.includes('asistente') && cargoNormalizado.includes('produccion')
-            );
-
-            console.log('¿Acceso a pestaña Extras?:', esCoordinador);
-
-            if (esCoordinador) {
-                navItemExtras.style.display = 'flex';
-            } else {
-                navItemExtras.style.display = 'none';
-            }
-
-            // Lógica para el botón Admin (Solo para el ADMIN_ID)
-            if (navItemAdmin) {
-                const esAdmin = empleado.id === ADMIN_ID;
-                navItemAdmin.style.display = esAdmin ? 'flex' : 'none';
-            }
-
-            // Lógica para la pestaña de Estado de Emergencias / Simulacros (OCULTADO SIEMPRE)
-            const navItemEstado = document.getElementById('navItemEstado');
-            if (navItemEstado) {
-                navItemEstado.style.display = 'none';
-            }
-
-            // Lógica para el botón flotante de Emergencia (solo visible en Home si está activa)
-            const fabEmergencia = document.getElementById('fabEmergencia');
-            if (fabEmergencia) {
-                const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
-                if (em.activa && currentPage === 'home' && isAuthenticated) {
-                    fabEmergencia.style.display = 'flex';
-                } else {
-                    fabEmergencia.style.display = 'none';
+                    // Cargar configuraciones en segundo plano si fallaron
+                    if (!configRes) {
+                        cargarConfiguracionesSistema().catch(() => { });
+                    }
+                    return;
                 }
             }
-
-            // Forzar ajuste de layout si cambió la visibilidad
-            ajustarLayout();
+        } catch (e) {
+            console.error('Error cargando sesión:', e);
+            showLoading(false);
         }
+    } else {
+        // Sin sesión: cargar configuración en segundo plano
+        cargarConfiguracionesSistema().catch(() => { });
+    }
+
+    isAuthenticated = false;
+    renderAuthScreen();
+}
+
+// ========== INICIALIZACIÓN ==========
+// ========== CÁLCULOS Y FUNCIONES COODINADOR ==========
+
+function actualizarInterfazSegunCargo() {
+    const navItemExtras = document.getElementById('navItemExtras');
+    const navItemAdmin = document.getElementById('navItemAdmin');
+    if (!navItemExtras) return;
+
+    const cargoActual = empleado.cargo || '';
+    console.log('Verificando cargo:', cargoActual);
+
+    // Normalizar: quitar tildes, pasar a minúsculas y quitar espacios extra
+    const cargoNormalizado = cargoActual.toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+
+    console.log('Cargo normalizado:', cargoNormalizado);
+
+    // Búsqueda más flexible: Coordinador/Jefe/Supervisor de Producción/Taller o Asistente de Producción
+    const esCoordinador = (
+        (
+            cargoNormalizado.includes('produccion') ||
+            cargoNormalizado.includes('taller')
+        ) && (
+            cargoNormalizado.includes('coordinador') ||
+            cargoNormalizado.includes('coodinador') ||
+            cargoNormalizado.includes('jefe') ||
+            cargoNormalizado.includes('supervisor')
+        )
+    ) || (
+            cargoNormalizado.includes('asistente') && cargoNormalizado.includes('produccion')
+        );
+
+    console.log('¿Acceso a pestaña Extras?:', esCoordinador);
+
+    if (esCoordinador) {
+        navItemExtras.style.display = 'flex';
+    } else {
+        navItemExtras.style.display = 'none';
+    }
+
+    // Lógica para el botón Admin (Solo para el ADMIN_ID)
+    if (navItemAdmin) {
+        const esAdmin = empleado.id === ADMIN_ID;
+        navItemAdmin.style.display = esAdmin ? 'flex' : 'none';
+    }
+
+    // Lógica para la pestaña de Estado de Emergencias / Simulacros (OCULTADO SIEMPRE)
+    const navItemEstado = document.getElementById('navItemEstado');
+    if (navItemEstado) {
+        navItemEstado.style.display = 'none';
+    }
+
+    // Lógica para el botón flotante de Emergencia (solo visible en Home si está activa)
+    const fabEmergencia = document.getElementById('fabEmergencia');
+    if (fabEmergencia) {
+        const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
+        if (em.activa && currentPage === 'home' && isAuthenticated) {
+            fabEmergencia.style.display = 'flex';
+        } else {
+            fabEmergencia.style.display = 'none';
+        }
+    }
+
+    // Forzar ajuste de layout si cambió la visibilidad
+    ajustarLayout();
+}
 
 
 
-        let tallerEmpleadosCache = [];
+let tallerEmpleadosCache = [];
 
-        async function renderHorasExtrasPage() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
+async function renderHorasExtrasPage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `
             <div class="page" style="padding-top: 0;">
                 <div class="glass-card" style="position: sticky; top: -16px; z-index: 100; margin-bottom: 16px; padding: 16px; border-radius: 0 0 16px 16px; border-top: none; margin-left: -16px; margin-right: -16px; margin-top: -16px; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 32px rgba(0,0,0,0.06); border-bottom: 1px solid rgba(226, 232, 240, 0.8);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
@@ -4675,79 +5741,79 @@
             </div>
         `;
 
-            await cargarEmpleadosTaller();
-            ajustarLayout();
+    await cargarEmpleadosTaller();
+    ajustarLayout();
+}
+
+async function cargarEmpleadosTaller() {
+    try {
+        const res = await jsonpRequest({ accion: 'obtenerEmpleadosTaller' });
+        const container = document.getElementById('listaTaller');
+
+        if (res.error) {
+            container.innerHTML = `<div class="alert alert-danger">${res.error}</div>`;
+            return;
         }
 
-        async function cargarEmpleadosTaller() {
-            try {
-                const res = await jsonpRequest({ accion: 'obtenerEmpleadosTaller' });
-                const container = document.getElementById('listaTaller');
-
-                if (res.error) {
-                    container.innerHTML = `<div class="alert alert-danger">${res.error}</div>`;
-                    return;
-                }
-
-                if (!res.empleados || res.empleados.length === 0) {
-                    container.innerHTML = `<div class="text-center py-5 text-muted"><i class="fas fa-users-slash fs-1 d-block mb-3"></i>No hay personal activo en Taller</div>`;
-                    return;
-                }
-
-                tallerEmpleadosCache = res.empleados.sort((a, b) => a.nombre.localeCompare(b.nombre));
-
-                // Populate filter select
-                const selectCargo = document.getElementById('filtroCargoExtras');
-                if (selectCargo) {
-                    const cargos = [...new Set(tallerEmpleadosCache.map(p => p.cargo || 'OPERARIO'))].sort();
-                    selectCargo.innerHTML = `<option value="TODOS">-- Todos los Cargos (${tallerEmpleadosCache.length}) --</option>` +
-                        cargos.map(c => `<option value="${c}">${c} (${tallerEmpleadosCache.filter(p => (p.cargo || 'OPERARIO') === c).length})</option>`).join('');
-                }
-
-                dibujarEmpleadosTaller(tallerEmpleadosCache);
-            } catch (e) {
-                mostrarToast('Error al cargar personal: ' + e.message, 'error');
-            }
+        if (!res.empleados || res.empleados.length === 0) {
+            container.innerHTML = `<div class="text-center py-5 text-muted"><i class="fas fa-users-slash fs-1 d-block mb-3"></i>No hay personal activo en Taller</div>`;
+            return;
         }
 
-        window.dibujarEmpleadosTaller = function(lista) {
-            const container = document.getElementById('listaTaller');
-            const selectCargo = document.getElementById('filtroCargoExtras');
-            const cargoFiltro = selectCargo ? selectCargo.value : 'TODOS';
-            const buscador = document.getElementById('buscarExtras');
-            const busqueda = buscador ? buscador.value.toLowerCase().trim() : '';
+        tallerEmpleadosCache = res.empleados.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-            const filtrados = lista.filter(per => {
-                const cumpleCargo = (cargoFiltro === 'TODOS') || ((per.cargo || 'OPERARIO') === cargoFiltro);
-                const cumpleBusqueda = !busqueda || 
-                                       (per.nombre || '').toLowerCase().includes(busqueda) || 
-                                       (per.id || '').toString().includes(busqueda);
-                return cumpleCargo && cumpleBusqueda;
-            });
+        // Populate filter select
+        const selectCargo = document.getElementById('filtroCargoExtras');
+        if (selectCargo) {
+            const cargos = [...new Set(tallerEmpleadosCache.map(p => p.cargo || 'OPERARIO'))].sort();
+            selectCargo.innerHTML = `<option value="TODOS">-- Todos los Cargos (${tallerEmpleadosCache.length}) --</option>` +
+                cargos.map(c => `<option value="${c}">${c} (${tallerEmpleadosCache.filter(p => (p.cargo || 'OPERARIO') === c).length})</option>`).join('');
+        }
 
-            if (filtrados.length === 0) {
-                container.innerHTML = `<div class="text-center py-4 text-muted"><i class="fas fa-user-slash d-block mb-2"></i>No hay personal que coincida</div>`;
-                return;
-            }
+        dibujarEmpleadosTaller(tallerEmpleadosCache);
+    } catch (e) {
+        mostrarToast('Error al cargar personal: ' + e.message, 'error');
+    }
+}
 
-            let html = '';
-            filtrados.forEach(per => {
-                const isChecked = per.authExtras === 'SI';
-                const isCampo = per.ubicacion === 'CAMPO';
-                
-                // Normalizar URL en frontend por seguridad si viniera sin normalizar
-                const fotoUrlNormalizada = (per.foto_url && per.foto_url.trim()) ? 
-                    (per.foto_url.includes('drive.google.com') && !per.foto_url.includes('thumbnail') ? 
-                        `https://drive.google.com/thumbnail?id=${per.foto_url.includes('/file/d/') ? per.foto_url.split('/file/d/')[1].split('/')[0] : per.foto_url.split('id=')[1].split('&')[0]}&sz=w200` : 
-                        per.foto_url) : 
-                    '';
+window.dibujarEmpleadosTaller = function (lista) {
+    const container = document.getElementById('listaTaller');
+    const selectCargo = document.getElementById('filtroCargoExtras');
+    const cargoFiltro = selectCargo ? selectCargo.value : 'TODOS';
+    const buscador = document.getElementById('buscarExtras');
+    const busqueda = buscador ? buscador.value.toLowerCase().trim() : '';
 
-                const photoHTML = fotoUrlNormalizada ?
-                    `<img class="taller-photo" src="${fotoUrlNormalizada}" alt="Foto" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` :
-                    `<div class="taller-photo-placeholder" style="width: 44px; height: 44px; border-radius: 50%; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 2px solid #e2e8f0; color: #94a3b8;">👤</div>`;
+    const filtrados = lista.filter(per => {
+        const cumpleCargo = (cargoFiltro === 'TODOS') || ((per.cargo || 'OPERARIO') === cargoFiltro);
+        const cumpleBusqueda = !busqueda ||
+            (per.nombre || '').toLowerCase().includes(busqueda) ||
+            (per.id || '').toString().includes(busqueda);
+        return cumpleCargo && cumpleBusqueda;
+    });
 
-                // Toda la tarjeta es clickeable para activar/desactivar de manera simplificada
-                html += `
+    if (filtrados.length === 0) {
+        container.innerHTML = `<div class="text-center py-4 text-muted"><i class="fas fa-user-slash d-block mb-2"></i>No hay personal que coincida</div>`;
+        return;
+    }
+
+    let html = '';
+    filtrados.forEach(per => {
+        const isChecked = per.authExtras === 'SI';
+        const isCampo = per.ubicacion === 'CAMPO';
+
+        // Normalizar URL en frontend por seguridad si viniera sin normalizar
+        const fotoUrlNormalizada = (per.foto_url && per.foto_url.trim()) ?
+            (per.foto_url.includes('drive.google.com') && !per.foto_url.includes('thumbnail') ?
+                `https://drive.google.com/thumbnail?id=${per.foto_url.includes('/file/d/') ? per.foto_url.split('/file/d/')[1].split('/')[0] : per.foto_url.split('id=')[1].split('&')[0]}&sz=w200` :
+                per.foto_url) :
+            '';
+
+        const photoHTML = fotoUrlNormalizada ?
+            `<img class="taller-photo" src="${fotoUrlNormalizada}" alt="Foto" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` :
+            `<div class="taller-photo-placeholder" style="width: 44px; height: 44px; border-radius: 50%; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 2px solid #e2e8f0; color: #94a3b8;">👤</div>`;
+
+        // Toda la tarjeta es clickeable para activar/desactivar de manera simplificada
+        html += `
                 <div class="taller-item glass-card" 
                      onclick="${isCampo ? '' : `toggleCardAutorizacion(this, '${per.id}')`}" 
                      style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 4px 6px rgba(0,0,0,0.02); transition: all 0.2s; cursor: ${isCampo ? 'default' : 'pointer'}; ${isCampo ? 'border-left: 4px solid #3b82f6; background: rgba(59, 130, 246, 0.04);' : ''}">
@@ -4769,597 +5835,607 @@
                     </label>
                 </div>
             `;
+    });
+    container.innerHTML = html;
+};
+
+window.toggleCardAutorizacion = function (element, empleadoId) {
+    const chk = document.getElementById(`chk-${empleadoId}`);
+    if (chk && !chk.disabled) {
+        chk.checked = !chk.checked;
+        toggleAutorizacionExtraLocal(empleadoId, chk.checked);
+    }
+};
+
+window.aplicarFiltrosExtras = function () {
+    dibujarEmpleadosTaller(tallerEmpleadosCache);
+};
+
+window.toggleAutorizacionExtraLocal = async function (empleadoId, autorizado) {
+    const emp = tallerEmpleadosCache.find(p => p.id === empleadoId);
+    if (emp) {
+        emp.authExtras = autorizado ? 'SI' : 'NO';
+    }
+    await toggleAutorizacionExtra(empleadoId, autorizado);
+};
+
+window.toggleTodosFiltrados = async function (autorizado) {
+    const selectCargo = document.getElementById('filtroCargoExtras');
+    const cargo = selectCargo ? selectCargo.value : 'TODOS';
+    const buscador = document.getElementById('buscarExtras');
+    const busqueda = buscador ? buscador.value.toLowerCase().trim() : '';
+
+    const filtrados = tallerEmpleadosCache.filter(per => {
+        if (per.ubicacion === 'CAMPO') return false;
+        const cumpleCargo = (cargo === 'TODOS') || ((per.cargo || 'OPERARIO') === cargo);
+        const cumpleBusqueda = !busqueda ||
+            (per.nombre || '').toLowerCase().includes(busqueda) ||
+            (per.id || '').toString().includes(busqueda);
+        return cumpleCargo && cumpleBusqueda;
+    });
+
+    if (filtrados.length === 0) {
+        mostrarToast('No hay empleados modificables en este filtro', 'info');
+        return;
+    }
+
+    const confirmacion = confirm(`¿Deseas ${autorizado ? 'AUTORIZAR' : 'DESAUTORIZAR'} horas extras a los ${filtrados.length} empleados de la lista actual?`);
+    if (!confirmacion) return;
+
+    showLoading(true);
+    let exitos = 0;
+    let fallidos = 0;
+
+    for (let per of filtrados) {
+        try {
+            const res = await jsonpRequest({
+                accion: 'actualizarAutorizacionExtras',
+                empleadoId: per.id,
+                autorizado: autorizado ? 'SI' : 'NO',
+                autorizaNombre: empleado.nombre
             });
-            container.innerHTML = html;
-        };
-
-        window.toggleCardAutorizacion = function(element, empleadoId) {
-            const chk = document.getElementById(`chk-${empleadoId}`);
-            if (chk && !chk.disabled) {
-                chk.checked = !chk.checked;
-                toggleAutorizacionExtraLocal(empleadoId, chk.checked);
+            if (res.ok) {
+                per.authExtras = autorizado ? 'SI' : 'NO';
+                exitos++;
+            } else {
+                fallidos++;
             }
-        };
+        } catch (e) {
+            fallidos++;
+        }
+    }
 
-        window.aplicarFiltrosExtras = function() {
-            dibujarEmpleadosTaller(tallerEmpleadosCache);
-        };
+    showLoading(false);
+    mostrarToast(`Proceso completo. Éxito: ${exitos}, Fallidos: ${fallidos}`, exitos > 0 ? 'success' : 'error');
+    dibujarEmpleadosTaller(tallerEmpleadosCache);
+};
 
-        window.toggleAutorizacionExtraLocal = async function(empleadoId, autorizado) {
-            const emp = tallerEmpleadosCache.find(p => p.id === empleadoId);
-            if (emp) {
-                emp.authExtras = autorizado ? 'SI' : 'NO';
-            }
-            await toggleAutorizacionExtra(empleadoId, autorizado);
-        };
+async function toggleAutorizacionExtra(empleadoId, autorizado) {
+    const valor = autorizado ? 'SI' : 'NO';
+    try {
+        const res = await jsonpRequest({
+            accion: 'actualizarAutorizacionExtras',
+            empleadoId: empleadoId,
+            autorizado: valor,
+            autorizaNombre: empleado.nombre
+        });
 
-        window.toggleTodosFiltrados = async function(autorizado) {
-            const selectCargo = document.getElementById('filtroCargoExtras');
-            const cargo = selectCargo ? selectCargo.value : 'TODOS';
-            const buscador = document.getElementById('buscarExtras');
-            const busqueda = buscador ? buscador.value.toLowerCase().trim() : '';
+        if (res.ok) {
+            mostrarToast(`✅ Estado actualizado: ${valor}`, 'success');
+        } else {
+            mostrarToast('❌ Error: ' + res.error, 'error');
+        }
+    } catch (e) {
+        mostrarToast('Error de red', 'error');
+    }
+}
 
-            const filtrados = tallerEmpleadosCache.filter(per => {
-                if (per.ubicacion === 'CAMPO') return false;
-                const cumpleCargo = (cargo === 'TODOS') || ((per.cargo || 'OPERARIO') === cargo);
-                const cumpleBusqueda = !busqueda || 
-                                       (per.nombre || '').toLowerCase().includes(busqueda) || 
-                                       (per.id || '').toString().includes(busqueda);
-                return cumpleCargo && cumpleBusqueda;
-            });
+function esCumpleanos(fechaNac) {
+    if (!fechaNac) return false;
+    console.log('🔍 Analizando fecha:', fechaNac);
 
-            if (filtrados.length === 0) {
-                mostrarToast('No hay empleados modificables en este filtro', 'info');
-                return;
-            }
+    let dia, mes;
+    const hoy = new Date();
 
-            const confirmacion = confirm(`¿Deseas ${autorizado ? 'AUTORIZAR' : 'DESAUTORIZAR'} horas extras a los ${filtrados.length} empleados de la lista actual?`);
-            if (!confirmacion) return;
+    // 1. Si es un objeto Timestamp de Firestore o un objeto serializado con seconds
+    if (fechaNac && typeof fechaNac.toDate === 'function') {
+        fechaNac = fechaNac.toDate();
+    } else if (fechaNac && typeof fechaNac === 'object' && fechaNac.seconds !== undefined) {
+        fechaNac = new Date(fechaNac.seconds * 1000);
+    }
 
-            showLoading(true);
-            let exitos = 0;
-            let fallidos = 0;
+    // 2. Si es una cadena de texto (ej: "1990-06-18", "18/06/1990")
+    if (typeof fechaNac === 'string') {
+        const fechaLimpia = fechaNac.split('T')[0].trim();
 
-            for (let per of filtrados) {
-                try {
-                    const res = await jsonpRequest({
-                        accion: 'actualizarAutorizacionExtras',
-                        empleadoId: per.id,
-                        autorizado: autorizado ? 'SI' : 'NO',
-                        autorizaNombre: empleado.nombre
-                    });
-                    if (res.ok) {
-                        per.authExtras = autorizado ? 'SI' : 'NO';
-                        exitos++;
-                    } else {
-                        fallidos++;
-                    }
-                } catch (e) {
-                    fallidos++;
-                }
-            }
-
-            showLoading(false);
-            mostrarToast(`Proceso completo. Éxito: ${exitos}, Fallidos: ${fallidos}`, exitos > 0 ? 'success' : 'error');
-            dibujarEmpleadosTaller(tallerEmpleadosCache);
-        };
-
-        async function toggleAutorizacionExtra(empleadoId, autorizado) {
-            const valor = autorizado ? 'SI' : 'NO';
-            try {
-                const res = await jsonpRequest({
-                    accion: 'actualizarAutorizacionExtras',
-                    empleadoId: empleadoId,
-                    autorizado: valor,
-                    autorizaNombre: empleado.nombre
-                });
-
-                if (res.ok) {
-                    mostrarToast(`✅ Estado actualizado: ${valor}`, 'success');
+        if (fechaLimpia.includes('-')) {
+            const partes = fechaLimpia.split('-');
+            if (partes.length >= 3) {
+                let tempDia, tempMes;
+                if (partes[0].length === 4) {
+                    // YYYY-MM-DD
+                    tempDia = parseInt(partes[2], 10);
+                    tempMes = parseInt(partes[1], 10);
                 } else {
-                    mostrarToast('❌ Error: ' + res.error, 'error');
+                    // DD-MM-YYYY
+                    tempDia = parseInt(partes[0], 10);
+                    tempMes = parseInt(partes[1], 10);
                 }
-            } catch (e) {
-                mostrarToast('Error de red', 'error');
+                if (!isNaN(tempDia) && !isNaN(tempMes)) {
+                    dia = tempDia;
+                    mes = tempMes;
+                }
+            }
+        } else if (fechaLimpia.includes('/')) {
+            const partes = fechaLimpia.split('/');
+            if (partes.length >= 2) {
+                let tempDia, tempMes;
+                if (partes.length >= 3 && partes[0].length === 4) {
+                    // YYYY/MM/DD
+                    tempDia = parseInt(partes[2], 10);
+                    tempMes = parseInt(partes[1], 10);
+                } else {
+                    // DD/MM o DD/MM/YYYY
+                    tempDia = parseInt(partes[0], 10);
+                    tempMes = parseInt(partes[1], 10);
+                }
+                if (!isNaN(tempDia) && !isNaN(tempMes)) {
+                    dia = tempDia;
+                    mes = tempMes;
+                }
             }
         }
+    }
 
-        function esCumpleanos(fechaNac) {
-            if (!fechaNac) return false;
-            console.log('🔍 Analizando fecha:', fechaNac);
+    // 3. Si es un objeto Date (o se convirtió a Date desde un Timestamp)
+    if (fechaNac instanceof Date || Object.prototype.toString.call(fechaNac) === '[object Date]') {
+        if (!isNaN(fechaNac.getTime())) {
+            // Para evitar desfaces: comparamos tanto el valor UTC como el valor Local.
+            // Si cualquiera de los dos coincide con hoy, se considera cumpleaños.
+            const diaUTC = fechaNac.getUTCDate();
+            const mesUTC = fechaNac.getUTCMonth() + 1;
 
-            let dia, mes;
-            const hoy = new Date();
+            const diaLocal = fechaNac.getDate();
+            const mesLocal = fechaNac.getMonth() + 1;
 
-            // 1. Si es un objeto Timestamp de Firestore o un objeto serializado con seconds
-            if (fechaNac && typeof fechaNac.toDate === 'function') {
-                fechaNac = fechaNac.toDate();
-            } else if (fechaNac && typeof fechaNac === 'object' && fechaNac.seconds !== undefined) {
-                fechaNac = new Date(fechaNac.seconds * 1000);
-            }
+            const matchUTC = hoy.getDate() === diaUTC && (hoy.getMonth() + 1) === mesUTC;
+            const matchLocal = hoy.getDate() === diaLocal && (hoy.getMonth() + 1) === mesLocal;
 
-            // 2. Si es una cadena de texto (ej: "1990-06-18", "18/06/1990")
-            if (typeof fechaNac === 'string') {
-                const fechaLimpia = fechaNac.split('T')[0].trim();
-                
-                if (fechaLimpia.includes('-')) {
-                    const partes = fechaLimpia.split('-');
-                    if (partes.length >= 3) {
-                        let tempDia, tempMes;
-                        if (partes[0].length === 4) {
-                            // YYYY-MM-DD
-                            tempDia = parseInt(partes[2], 10);
-                            tempMes = parseInt(partes[1], 10);
-                        } else {
-                            // DD-MM-YYYY
-                            tempDia = parseInt(partes[0], 10);
-                            tempMes = parseInt(partes[1], 10);
-                        }
-                        if (!isNaN(tempDia) && !isNaN(tempMes)) {
-                            dia = tempDia;
-                            mes = tempMes;
-                        }
-                    }
-                } else if (fechaLimpia.includes('/')) {
-                    const partes = fechaLimpia.split('/');
-                    if (partes.length >= 2) {
-                        let tempDia, tempMes;
-                        if (partes.length >= 3 && partes[0].length === 4) {
-                            // YYYY/MM/DD
-                            tempDia = parseInt(partes[2], 10);
-                            tempMes = parseInt(partes[1], 10);
-                        } else {
-                            // DD/MM o DD/MM/YYYY
-                            tempDia = parseInt(partes[0], 10);
-                            tempMes = parseInt(partes[1], 10);
-                        }
-                        if (!isNaN(tempDia) && !isNaN(tempMes)) {
-                            dia = tempDia;
-                            mes = tempMes;
-                        }
-                    }
-                }
-            }
-
-            // 3. Si es un objeto Date (o se convirtió a Date desde un Timestamp)
-            if (fechaNac instanceof Date || Object.prototype.toString.call(fechaNac) === '[object Date]') {
-                if (!isNaN(fechaNac.getTime())) {
-                    // Para evitar desfaces: comparamos tanto el valor UTC como el valor Local.
-                    // Si cualquiera de los dos coincide con hoy, se considera cumpleaños.
-                    const diaUTC = fechaNac.getUTCDate();
-                    const mesUTC = fechaNac.getUTCMonth() + 1;
-                    
-                    const diaLocal = fechaNac.getDate();
-                    const mesLocal = fechaNac.getMonth() + 1;
-
-                    const matchUTC = hoy.getDate() === diaUTC && (hoy.getMonth() + 1) === mesUTC;
-                    const matchLocal = hoy.getDate() === diaLocal && (hoy.getMonth() + 1) === mesLocal;
-
-                    const matched = matchUTC || matchLocal;
-                    if (matched) console.log('🎯 ¡Coincidencia de cumpleaños detectada (Date)!');
-                    return matched;
-                }
-            }
-
-            // Fallback: Si no se pudo procesar pero es parseable por Date
-            if (dia === undefined || mes === undefined) {
-                const d = new Date(fechaNac);
-                if (!isNaN(d.getTime())) {
-                    const diaUTC = d.getUTCDate();
-                    const mesUTC = d.getUTCMonth() + 1;
-                    
-                    const diaLocal = d.getDate();
-                    const mesLocal = d.getMonth() + 1;
-
-                    return (hoy.getDate() === diaUTC && (hoy.getMonth() + 1) === mesUTC) ||
-                           (hoy.getDate() === diaLocal && (hoy.getMonth() + 1) === mesLocal);
-                }
-            }
-
-            if (dia === undefined || mes === undefined) {
-                console.warn('⚠️ No se pudo procesar la fecha:', fechaNac);
-                return false;
-            }
-
-            const matched = hoy.getDate() === dia && (hoy.getMonth() + 1) === mes;
-            if (matched) console.log('🎯 ¡Coincidencia de cumpleaños detectada!');
+            const matched = matchUTC || matchLocal;
+            if (matched) console.log('🎯 ¡Coincidencia de cumpleaños detectada (Date)!');
             return matched;
         }
+    }
 
-        function celebrarCumpleanos() {
-            const container = document.body;
-            const colors = ['#f472b6', '#fbbf24', '#3b82f6', '#22c55e', '#ef4444'];
+    // Fallback: Si no se pudo procesar pero es parseable por Date
+    if (dia === undefined || mes === undefined) {
+        const d = new Date(fechaNac);
+        if (!isNaN(d.getTime())) {
+            const diaUTC = d.getUTCDate();
+            const mesUTC = d.getUTCMonth() + 1;
 
-            // Globos flotantes
-            for (let i = 0; i < 15; i++) {
-                const b = document.createElement('div');
-                b.className = 'balloon';
-                b.style.left = (Math.random() * 90 + 5) + 'vw';
-                b.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-                b.style.animationDuration = (Math.random() * 3 + 4) + 's';
-                b.style.animationDelay = (Math.random() * 2) + 's';
-                container.appendChild(b);
-                setTimeout(() => b.remove(), 7000);
-            }
+            const diaLocal = d.getDate();
+            const mesLocal = d.getMonth() + 1;
 
-            // Confeti
-            for (let i = 0; i < 50; i++) {
-                const c = document.createElement('div');
-                c.className = 'confetti';
-                c.style.left = (Math.random() * 100) + 'vw';
-                c.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-                c.style.width = (Math.random() * 8 + 4) + 'px';
-                c.style.height = (Math.random() * 8 + 4) + 'px';
-                c.style.animationDuration = (Math.random() * 2 + 2) + 's';
-                c.style.animationDelay = (Math.random() * 3) + 's';
-                container.appendChild(c);
-                setTimeout(() => c.remove(), 5000);
-            }
-
-            const photo = document.querySelector('.employee-photo-profesional');
-            if (photo) photo.classList.add('birthday-glow');
+            return (hoy.getDate() === diaUTC && (hoy.getMonth() + 1) === mesUTC) ||
+                (hoy.getDate() === diaLocal && (hoy.getMonth() + 1) === mesLocal);
         }
+    }
 
-        // Inicialización final
-        document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    if (isAuthenticated) {
-                        navigateTo(item.dataset.page);
-                    }
-                });
-            });
+    if (dia === undefined || mes === undefined) {
+        console.warn('⚠️ No se pudo procesar la fecha:', fechaNac);
+        return false;
+    }
 
-            const fabWhatsApp = document.getElementById('fabWhatsApp');
-            if (fabWhatsApp) {
-                fabWhatsApp.addEventListener('click', abrirWhatsAppSoporte);
-            }
+    const matched = hoy.getDate() === dia && (hoy.getMonth() + 1) === mes;
+    if (matched) console.log('🎯 ¡Coincidencia de cumpleaños detectada!');
+    return matched;
+}
 
-            verificarEstadoInicial();
+function celebrarCumpleanos() {
+    const container = document.body;
+    const colors = ['#f472b6', '#fbbf24', '#3b82f6', '#22c55e', '#ef4444'];
 
-            // Actualización en segundo plano cada 60 segundos (no cada 30s para reducir carga)
-            // Se difiere 10s para no competir con la carga inicial
-            setTimeout(() => {
-                setInterval(() => {
-                    if (isAuthenticated && empleado.id) {
-                        obtenerRegistrosEmpleado();
-                        cargarConfiguracionesSistema().then(() => {
-                            actualizarInterfazSegunCargo();
-                            if (currentPage === 'home') {
-                                renderHomePage();
-                            }
-                        }).catch(() => null);
-                    }
-                }, 60000);
-            }, 10000);
+    // Globos flotantes
+    for (let i = 0; i < 15; i++) {
+        const b = document.createElement('div');
+        b.className = 'balloon';
+        b.style.left = (Math.random() * 90 + 5) + 'vw';
+        b.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        b.style.animationDuration = (Math.random() * 3 + 4) + 's';
+        b.style.animationDelay = (Math.random() * 2) + 's';
+        container.appendChild(b);
+        setTimeout(() => b.remove(), 7000);
+    }
 
-            // Polling rápido de emergencia cada 10 segundos
-            setInterval(() => {
-                if (isAuthenticated && empleado.id) {
-                    cargarConfiguracionesSistema().then(() => {
-                        const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
-                        if (em.activa !== _lastEmActiva) {
-                            _lastEmActiva = em.activa;
-                            actualizarInterfazSegunCargo();
-                            
-                            // Actualizar tooltip del FAB de emergencias
-                            const tooltip = document.querySelector('.emergencia-tooltip');
-                            if (tooltip) {
-                                tooltip.textContent = em.activa ? `🚨 ${em.nombre || 'Emergencia'}` : '🚨 Reportar mi Estado';
-                            }
-                            
-                            if (currentPage === 'home') {
-                                renderHomePage();
-                            } else if (currentPage === 'estado') {
-                                renderEstadoPage();
-                            }
-                        }
-                    }).catch(() => null);
-                }
-            }, 10000);
-        });
+    // Confeti
+    for (let i = 0; i < 50; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti';
+        c.style.left = (Math.random() * 100) + 'vw';
+        c.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        c.style.width = (Math.random() * 8 + 4) + 'px';
+        c.style.height = (Math.random() * 8 + 4) + 'px';
+        c.style.animationDuration = (Math.random() * 2 + 2) + 's';
+        c.style.animationDelay = (Math.random() * 3) + 's';
+        container.appendChild(c);
+        setTimeout(() => c.remove(), 5000);
+    }
 
-        // ========== TOGGLE FIREBASE ==========
-        function toggleFirebase() {
-            const current = localStorage.getItem('tcontrol_use_firebase') !== 'false';
-            if (current) {
-                localStorage.setItem('tcontrol_use_firebase', 'false');
-                window.location.reload();
-            } else {
-                if (confirm("¿Estás seguro de activar Firebase? Asegúrate de haber migrado la base de datos primero.")) {
-                    localStorage.setItem('tcontrol_use_firebase', 'true');
-                    window.location.reload();
-                }
-            }
-        }
+    const photo = document.querySelector('.employee-photo-profesional');
+    if (photo) photo.classList.add('birthday-glow');
+}
 
-        // ========================================================
-        // PWA: REGISTRO DEL SERVICE WORKER + BOTÓN DE INSTALACIÓN
-        // ========================================================
-        (function initPWA() {
-            // 1. Registrar Service Worker
-            if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    navigator.serviceWorker.register('./sw.js')
-                        .then(reg => {
-                            console.log('[PWA] Service Worker registrado:', reg.scope);
-
-                            // Detectar actualizaciones disponibles
-                            reg.addEventListener('updatefound', () => {
-                                const newSW = reg.installing;
-                                newSW.addEventListener('statechange', () => {
-                                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                                        // Hay nueva versión — notificar al usuario
-                                        console.log('[PWA] Nueva versión disponible');
-                                        if (typeof mostrarToast === 'function') {
-                                            mostrarToast('🔄 Nueva versión disponible. Recarga para actualizar.', 'info');
-                                        }
-                                    }
-                                });
-                            });
-                        })
-                        .catch(err => console.warn('[PWA] Error registrando SW:', err));
-                });
-            }
-
-            // 2. Botón de instalación (beforeinstallprompt)
-            let deferredPrompt = null;
-            const banner = document.getElementById('pwaInstallBanner');
-            const closeBtn = document.getElementById('pwaInstallClose');
-
-            window.addEventListener('beforeinstallprompt', e => {
-                e.preventDefault();
-                deferredPrompt = e;
-                // Mostrar solo si el usuario no lo descartó antes
-                if (!localStorage.getItem('pwa_install_dismissed')) {
-                    setTimeout(() => {
-                        if (banner) banner.classList.add('show');
-                    }, 3000); // Esperar 3s para no interrumpir la carga
-                }
-            });
-
-            // Clic en el banner → lanzar prompt de instalación
-            if (banner) {
-                banner.addEventListener('click', async e => {
-                    if (e.target === closeBtn || closeBtn.contains(e.target)) return;
-                    if (!deferredPrompt) return;
-                    banner.classList.remove('show');
-                    deferredPrompt.prompt();
-                    const { outcome } = await deferredPrompt.userChoice;
-                    console.log('[PWA] Resultado instalación:', outcome);
-                    deferredPrompt = null;
-                    if (outcome === 'dismissed') {
-                        localStorage.setItem('pwa_install_dismissed', '1');
-                    }
-                });
-            }
-
-            // Cerrar banner
-            if (closeBtn) {
-                closeBtn.addEventListener('click', e => {
-                    e.stopPropagation();
-                    banner.classList.remove('show');
-                    localStorage.setItem('pwa_install_dismissed', '1');
-                });
-            }
-
-            // 3. Detectar si ya está instalada como PWA
-            window.addEventListener('appinstalled', () => {
-                console.log('[PWA] App instalada exitosamente');
-                if (banner) banner.classList.remove('show');
-                if (typeof mostrarToast === 'function') {
-                    mostrarToast('✅ TCONTROL instalada en tu dispositivo', 'success');
-                }
-            });
-        })();
-
-        // Escuchar actualización de archivados en segundo plano (actualización silenciosa)
-        window.addEventListener('archivadosActualizados', async () => {
-            if (typeof isAuthenticated !== 'undefined' && isAuthenticated) {
-                console.log("🔄 Sincronizando registros históricos en segundo plano...");
-                await obtenerRegistrosEmpleado();
-                if (currentPage === 'home') {
-                    renderHomePage();
-                    if (typeof obtenerDiasFaltantes === 'function') {
-                        let faltas = obtenerDiasFaltantes();
-                        if (faltas.length > 0 && sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
-                            mostrarModalFaltasPasadas(faltas);
-                        }
-                    }
-                }
+// Inicialización final
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            if (isAuthenticated) {
+                navigateTo(item.dataset.page);
             }
         });
+    });
 
-        // ========================================================
-        // SUBIDA DE FOTO DE PERFIL DEL USUARIO
-        // ========================================================
-        window.triggerProfilePhotoUpload = function(event) {
-            if (event) event.stopPropagation();
-            
-            let fileInput = document.getElementById('hiddenProfilePhotoInput');
-            if (!fileInput) {
-                fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.id = 'hiddenProfilePhotoInput';
-                fileInput.accept = 'image/*';
-                fileInput.style.display = 'none';
-                document.body.appendChild(fileInput);
-                
-                fileInput.addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    
-                    showLoading(true);
-                    
-                    try {
-                        const reader = new FileReader();
-                        reader.onload = function(evt) {
-                            const img = new Image();
-                            img.onload = async function() {
-                                const canvas = document.createElement('canvas');
-                                const ctx = canvas.getContext('2d');
-                                
-                                const maxSize = 160;
-                                let w = img.width;
-                                let h = img.height;
-                                
-                                if (w > h) {
-                                    if (w > maxSize) {
-                                        h = Math.round((h * maxSize) / w);
-                                        w = maxSize;
-                                    }
-                                } else {
-                                    if (h > maxSize) {
-                                        w = Math.round((w * maxSize) / h);
-                                        h = maxSize;
-                                    }
-                                }
-                                
-                                canvas.width = w;
-                                canvas.height = h;
-                                ctx.drawImage(img, 0, 0, w, h);
-                                
-                                const base64Str = canvas.toDataURL('image/jpeg', 0.75);
-                                
-                                try {
-                                    const res = await jsonpRequest({
-                                        accion: 'actualizarEmpleado',
-                                        empleadoId: empleado.id,
-                                        campo: 'foto_url',
-                                        valor: base64Str
-                                    });
-                                    
-                                    if (res.ok) {
-                                        mostrarToast('Foto de perfil actualizada correctamente', 'success');
-                                        empleado.foto_url = base64Str;
-                                        
-                                        // Refrescar la página actual
-                                        if (currentPage === 'home') {
-                                            renderHomePage();
-                                        } else if (currentPage === 'profile') {
-                                            await renderProfilePage();
-                                        }
-                                    } else {
-                                        mostrarToast(res.error || 'Error al guardar la foto', 'error');
-                                    }
-                                } catch (err) {
-                                    mostrarToast('Error de red al guardar la foto', 'error');
-                                } finally {
-                                    showLoading(false);
-                                }
-                            };
-                            img.src = evt.target.result;
-                        };
-                        reader.readAsDataURL(file);
-                    } catch (err) {
-                        mostrarToast('Error procesando imagen', 'error');
-                        showLoading(false);
-                    }
-                });
-            }
-            
-            fileInput.click();
-        };
+    const fabWhatsApp = document.getElementById('fabWhatsApp');
+    if (fabWhatsApp) {
+        fabWhatsApp.addEventListener('click', abrirWhatsAppSoporte);
+    }
 
-        // ========================================================
-        // ponytail: emergencias y simulacros
-        // ========================================================
-        let selectedStatusVal = "";
-        window.selectEmStatus = function(status) {
-            selectedStatusVal = status;
-            const btnSalvo = document.getElementById('btnEstSalvo');
-            const btnAyuda = document.getElementById('btnEstAyuda');
-            if (!btnSalvo || !btnAyuda) return;
-            
-            if (status === 'A salvo') {
-                btnSalvo.style.borderColor = '#10b981';
-                btnSalvo.style.background = '#ecfdf5';
-                btnAyuda.style.borderColor = '#e2e8f0';
-                btnAyuda.style.background = '#f8fafc';
-            } else {
-                btnAyuda.style.borderColor = '#ef4444';
-                btnAyuda.style.background = '#fef2f2';
-                btnSalvo.style.borderColor = '#e2e8f0';
-                btnSalvo.style.background = '#f8fafc';
-            }
-        };
+    verificarEstadoInicial();
 
-        window.enviarReporteEmergencia = async function() {
-            if (!selectedStatusVal) {
-                mostrarToast('Por favor, selecciona tu estado actual', 'warning');
-                return;
-            }
-            const comentarios = document.getElementById('emComments')?.value || '';
-            const statusMsg = comentarios ? `${selectedStatusVal} - ${comentarios}` : selectedStatusVal;
-            
-            showLoading(true);
-            try {
-                const res = await jsonpRequest({
-                    accion: 'guardarRegistro',
-                    id: empleado.id,
-                    nombre: empleado.nombre,
-                    tipo: 'ESTADO',
-                    razon_ausencia: statusMsg, // se guarda en columna U (RAZON_AUSENCIA)
-                    lat: posicion.lat || '',
-                    lng: posicion.lng || '',
-                    dispositivo: deviceToken
-                });
-                
-                if (res.ok) {
-                    mostrarToast('Reporte de estado enviado correctamente', 'success');
-                    await obtenerRegistrosEmpleado(true);
-                    renderEstadoPage();
-                } else {
-                    mostrarToast(res.error || 'Error al enviar reporte', 'error');
-                }
-            } catch(e) {
-                mostrarToast('Error al procesar el reporte', 'error');
-            } finally {
-                showLoading(false);
-            }
-        };
-
-        window.toggleAlertaEmergencia = async function(activa) {
-            const nombre = document.getElementById('emEventName')?.value || '';
-            if (activa && !nombre.trim()) {
-                mostrarToast('Por favor, ingresa el nombre de la emergencia o simulacro', 'warning');
-                return;
-            }
-            
-            showLoading(true);
-            try {
-                const res = await jsonpRequest({
-                    accion: 'toggleEmergencia',
-                    activa: activa,
-                    nombre: nombre,
-                    empleadoId: empleado.id
-                });
-                if (res.ok) {
-                    mostrarToast(activa ? 'Alerta de emergencia INICIADA' : 'Alerta de emergencia FINALIZADA', 'success');
-                    await cargarConfiguracionesSistema();
+    // Actualización en segundo plano cada 60 segundos (no cada 30s para reducir carga)
+    // Se difiere 10s para no competir con la carga inicial
+    setTimeout(() => {
+        setInterval(() => {
+            if (isAuthenticated && empleado.id) {
+                obtenerRegistrosEmpleado();
+                cargarConfiguracionesSistema().then(() => {
                     actualizarInterfazSegunCargo();
-                    renderEstadoPage();
-                } else {
-                    mostrarToast(res.error || 'Error al actualizar alerta', 'error');
-                }
-            } catch(e) {
-                mostrarToast('Error de conexión', 'error');
-            } finally {
-                showLoading(false);
+                    if (currentPage === 'home') {
+                        renderHomePage();
+                    }
+                }).catch(() => null);
             }
-        };
+        }, 60000);
+    }, 10000);
 
-        async function renderEstadoPage() {
-            const mainContent = document.getElementById('mainContent');
-            if (!mainContent) return;
+    // Polling rápido de emergencia cada 10 segundos
+    setInterval(() => {
+        if (isAuthenticated && empleado.id) {
+            cargarConfiguracionesSistema().then(() => {
+                const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
+                if (em.activa !== _lastEmActiva) {
+                    _lastEmActiva = em.activa;
+                    actualizarInterfazSegunCargo();
+
+                    // Actualizar tooltip del FAB de emergencias
+                    const tooltip = document.querySelector('.emergencia-tooltip');
+                    if (tooltip) {
+                        tooltip.textContent = em.activa ? `🚨 ${em.nombre || 'Emergencia'}` : '🚨 Reportar mi Estado';
+                    }
+
+                    if (currentPage === 'home') {
+                        renderHomePage();
+                    } else if (currentPage === 'estado') {
+                        renderEstadoPage();
+                    }
+                }
+            }).catch(() => null);
+        }
+    }, 10000);
+});
+
+// ========== TOGGLE FIREBASE ==========
+function toggleFirebase() {
+    const current = localStorage.getItem('tcontrol_use_firebase') !== 'false';
+    if (current) {
+        localStorage.setItem('tcontrol_use_firebase', 'false');
+        window.location.reload();
+    } else {
+        if (confirm("¿Estás seguro de activar Firebase? Asegúrate de haber migrado la base de datos primero.")) {
+            localStorage.setItem('tcontrol_use_firebase', 'true');
+            window.location.reload();
+        }
+    }
+}
+
+// ========================================================
+// PWA: REGISTRO DEL SERVICE WORKER + BOTÓN DE INSTALACIÓN
+// ========================================================
+(function initPWA() {
+    // 1. Registrar Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => {
+                    console.log('[PWA] Service Worker registrado:', reg.scope);
+
+                    // Detectar actualizaciones disponibles
+                    reg.addEventListener('updatefound', () => {
+                        const newSW = reg.installing;
+                        newSW.addEventListener('statechange', () => {
+                            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                                // Hay nueva versión — notificar al usuario
+                                console.log('[PWA] Nueva versión disponible');
+                                if (typeof mostrarToast === 'function') {
+                                    mostrarToast('🔄 Nueva versión disponible. Recarga para actualizar.', 'info');
+                                }
+                            }
+                        });
+                    });
+                })
+                .catch(err => console.warn('[PWA] Error registrando SW:', err));
+        });
+    }
+
+    // 2. Botón de instalación (beforeinstallprompt)
+    let deferredPrompt = null;
+    const banner = document.getElementById('pwaInstallBanner');
+    const closeBtn = document.getElementById('pwaInstallClose');
+
+    window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // Mostrar solo si el usuario no lo descartó antes
+        if (!localStorage.getItem('pwa_install_dismissed')) {
+            setTimeout(() => {
+                if (banner) banner.classList.add('show');
+            }, 3000); // Esperar 3s para no interrumpir la carga
+        }
+    });
+
+    // Clic en el banner → lanzar prompt de instalación
+    if (banner) {
+        banner.addEventListener('click', async e => {
+            if (e.target === closeBtn || closeBtn.contains(e.target)) return;
+            if (!deferredPrompt) return;
+            banner.classList.remove('show');
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('[PWA] Resultado instalación:', outcome);
+            deferredPrompt = null;
+            if (outcome === 'dismissed') {
+                localStorage.setItem('pwa_install_dismissed', '1');
+            }
+        });
+    }
+
+    // Cerrar banner
+    if (closeBtn) {
+        closeBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            banner.classList.remove('show');
+            localStorage.setItem('pwa_install_dismissed', '1');
+        });
+    }
+
+    // 3. Detectar si ya está instalada como PWA
+    window.addEventListener('appinstalled', () => {
+        console.log('[PWA] App instalada exitosamente');
+        if (banner) banner.classList.remove('show');
+        if (typeof mostrarToast === 'function') {
+            mostrarToast('✅ TCONTROL instalada en tu dispositivo', 'success');
+        }
+    });
+})();
+
+// Escuchar actualización de archivados en segundo plano (actualización silenciosa)
+window.addEventListener('archivadosActualizados', async () => {
+    if (typeof isAuthenticated !== 'undefined' && isAuthenticated) {
+        console.log("🔄 Sincronizando registros históricos en segundo plano...");
+        await obtenerRegistrosEmpleado();
+        if (currentPage === 'home') {
+            renderHomePage();
+            if (typeof obtenerDiasFaltantes === 'function') {
+                let faltas = obtenerDiasFaltantes();
+                if (faltas.length > 0 && sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
+                    mostrarModalFaltasPasadas(faltas);
+                }
+            }
+        }
+    }
+});
+
+// ========================================================
+// SUBIDA DE FOTO DE PERFIL DEL USUARIO
+// ========================================================
+window.triggerProfilePhotoUpload = function (event) {
+    if (event) event.stopPropagation();
+
+    let fileInput = document.getElementById('hiddenProfilePhotoInput');
+    if (!fileInput) {
+        fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.id = 'hiddenProfilePhotoInput';
+        fileInput.accept = 'image/*';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showLoading(true);
 
             try {
-                await cargarConfiguracionesSistema();
-            } catch(e){}
+                const reader = new FileReader();
+                reader.onload = function (evt) {
+                    const img = new Image();
+                    img.onload = async function () {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
 
-            const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
+                        const maxSize = 160;
+                        let w = img.width;
+                        let h = img.height;
 
-            let html = `
+                        if (w > h) {
+                            if (w > maxSize) {
+                                h = Math.round((h * maxSize) / w);
+                                w = maxSize;
+                            }
+                        } else {
+                            if (h > maxSize) {
+                                w = Math.round((w * maxSize) / h);
+                                h = maxSize;
+                            }
+                        }
+
+                        canvas.width = w;
+                        canvas.height = h;
+                        ctx.drawImage(img, 0, 0, w, h);
+
+                        const base64Str = canvas.toDataURL('image/jpeg', 0.75);
+
+                        try {
+                            const res = await jsonpRequest({
+                                accion: 'actualizarEmpleado',
+                                empleadoId: empleado.id,
+                                campo: 'foto_url',
+                                valor: base64Str
+                            });
+
+                            if (res.ok) {
+                                empleado.foto_url = base64Str;
+                                await mostrarSplashTransicion({
+                                    titulo: "¡Foto Actualizada!",
+                                    nombreEmpleado: empleado.nombre,
+                                    subtitulo: "Tu nueva fotografía de perfil ya está activa en tu credencial digital.",
+                                    icono: "badge",
+                                    detalles: [
+                                        "Imagen optimizada y procesada",
+                                        "Credencial corporativa sincronizada"
+                                    ],
+                                    duracion: 1400
+                                });
+
+                                // Refrescar la página actual
+                                if (currentPage === 'home') {
+                                    renderHomePage();
+                                } else if (currentPage === 'profile') {
+                                    await renderProfilePage();
+                                }
+                            } else {
+                                mostrarToast(res.error || 'Error al guardar la foto', 'error');
+                            }
+                        } catch (err) {
+                            mostrarToast('Error de red al guardar la foto', 'error');
+                        } finally {
+                            showLoading(false);
+                        }
+                    };
+                    img.src = evt.target.result;
+                };
+                reader.readAsDataURL(file);
+            } catch (err) {
+                mostrarToast('Error procesando imagen', 'error');
+                showLoading(false);
+            }
+        });
+    }
+
+    fileInput.click();
+};
+
+// ========================================================
+// ponytail: emergencias y simulacros
+// ========================================================
+let selectedStatusVal = "";
+window.selectEmStatus = function (status) {
+    selectedStatusVal = status;
+    const btnSalvo = document.getElementById('btnEstSalvo');
+    const btnAyuda = document.getElementById('btnEstAyuda');
+    if (!btnSalvo || !btnAyuda) return;
+
+    if (status === 'A salvo') {
+        btnSalvo.style.borderColor = '#10b981';
+        btnSalvo.style.background = '#ecfdf5';
+        btnAyuda.style.borderColor = '#e2e8f0';
+        btnAyuda.style.background = '#f8fafc';
+    } else {
+        btnAyuda.style.borderColor = '#ef4444';
+        btnAyuda.style.background = '#fef2f2';
+        btnSalvo.style.borderColor = '#e2e8f0';
+        btnSalvo.style.background = '#f8fafc';
+    }
+};
+
+window.enviarReporteEmergencia = async function () {
+    if (!selectedStatusVal) {
+        mostrarToast('Por favor, selecciona tu estado actual', 'warning');
+        return;
+    }
+    const comentarios = document.getElementById('emComments')?.value || '';
+    const statusMsg = comentarios ? `${selectedStatusVal} - ${comentarios}` : selectedStatusVal;
+
+    showLoading(true);
+    try {
+        const res = await jsonpRequest({
+            accion: 'guardarRegistro',
+            id: empleado.id,
+            nombre: empleado.nombre,
+            tipo: 'ESTADO',
+            razon_ausencia: statusMsg, // se guarda en columna U (RAZON_AUSENCIA)
+            lat: posicion.lat || '',
+            lng: posicion.lng || '',
+            dispositivo: deviceToken
+        });
+
+        if (res.ok) {
+            mostrarToast('Reporte de estado enviado correctamente', 'success');
+            await obtenerRegistrosEmpleado(true);
+            renderEstadoPage();
+        } else {
+            mostrarToast(res.error || 'Error al enviar reporte', 'error');
+        }
+    } catch (e) {
+        mostrarToast('Error al procesar el reporte', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
+window.toggleAlertaEmergencia = async function (activa) {
+    const nombre = document.getElementById('emEventName')?.value || '';
+    if (activa && !nombre.trim()) {
+        mostrarToast('Por favor, ingresa el nombre de la emergencia o simulacro', 'warning');
+        return;
+    }
+
+    showLoading(true);
+    try {
+        const res = await jsonpRequest({
+            accion: 'toggleEmergencia',
+            activa: activa,
+            nombre: nombre,
+            empleadoId: empleado.id
+        });
+        if (res.ok) {
+            mostrarToast(activa ? 'Alerta de emergencia INICIADA' : 'Alerta de emergencia FINALIZADA', 'success');
+            await cargarConfiguracionesSistema();
+            actualizarInterfazSegunCargo();
+            renderEstadoPage();
+        } else {
+            mostrarToast(res.error || 'Error al actualizar alerta', 'error');
+        }
+    } catch (e) {
+        mostrarToast('Error de conexión', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
+async function renderEstadoPage() {
+    const mainContent = document.getElementById('mainContent');
+    if (!mainContent) return;
+
+    try {
+        await cargarConfiguracionesSistema();
+    } catch (e) { }
+
+    const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
+
+    let html = `
             <div class="page">
                 <div class="glass-card mb-4 text-center">
                     <div style="font-size: 40px; color: ${em.activa ? '#ef4444' : '#10b981'}; margin-bottom: 12px; animation: ${em.activa ? 'pulseGlowRed 2.5s infinite' : 'none'};">
@@ -5370,8 +6446,8 @@
                 </div>
             `;
 
-            if (estado.esSupervisor) {
-                html += `
+    if (estado.esSupervisor) {
+        html += `
                 <div class="glass-card mb-4">
                     <h4 class="fw-bold mb-3" style="color: #0f172a; margin:0 0 12px 0;"><i class="fas fa-tools me-2 text-primary"></i>Panel de Control de Emergencias</h4>
                     <div class="form-group mb-3">
@@ -5388,19 +6464,19 @@
                     </div>
                 </div>
                 `;
-            }
+    }
 
-            if (em.activa) {
-                const hoyStrLocal = getLocalHoyStr(new Date());
-                const yaReportado = registrosCompletos.some(r => {
-                    const rFecha = getVal(r, 'fecha', 0);
-                    const rTipo = getVal(r, 'tipo', 3);
-                    const rEstado = r.estado; // propiedad estado en ENTRADA
-                    return rTipo === 'ENTRADA' && rFecha === hoyStrLocal && rEstado;
-                });
+    if (em.activa) {
+        const hoyStrLocal = getLocalHoyStr(new Date());
+        const yaReportado = registrosCompletos.some(r => {
+            const rFecha = getVal(r, 'fecha', 0);
+            const rTipo = getVal(r, 'tipo', 3);
+            const rEstado = r.estado; // propiedad estado en ENTRADA
+            return rTipo === 'ENTRADA' && rFecha === hoyStrLocal && rEstado;
+        });
 
-                if (yaReportado) {
-                    html += `
+        if (yaReportado) {
+            html += `
                     <div class="glass-card text-center p-4">
                         <div class="text-success mb-2" style="font-size:32px;"><i class="fas fa-check-double" style="color:#10b981;"></i></div>
                         <h4 class="fw-bold text-success" style="color:#16a34a; margin:0 0 8px 0;">Reporte Enviado</h4>
@@ -5408,8 +6484,8 @@
                         <button onclick="renderHomePage()" class="btn btn-secondary w-100 mt-2" style="border-radius:12px; width:100%; padding:12px; background:#e2e8f0; border:none; font-weight:700; cursor:pointer; color:#475569;">Ir al Inicio</button>
                     </div>
                     `;
-                } else {
-                    html += `
+        } else {
+            html += `
                     <div class="glass-card">
                         <h4 class="fw-bold mb-3 text-center" style="color: #0f172a; margin:0 0 15px 0;">¿Cuál es tu estado actual?</h4>
                         <div style="display:flex; gap:12px; margin-bottom:15px;">
@@ -5437,18 +6513,18 @@
                         </button>
                     </div>
                     `;
-                }
-            } else if (!estado.esSupervisor) {
-                html += `
+        }
+    } else if (!estado.esSupervisor) {
+        html += `
                 <div class="glass-card text-center p-4">
                     <div class="text-muted mb-2" style="font-size:32px;"><i class="fas fa-shield-alt" style="color:#64748b;"></i></div>
                     <h4 class="fw-bold text-muted" style="color:#475569; margin:0 0 6px 0;">Todo en Orden</h4>
                     <p class="text-muted small" style="margin:0;">No hay alertas de simulacro ni emergencias vigentes en este momento.</p>
                 </div>
                 `;
-            }
+    }
 
-            html += `</div>`;
-            mainContent.innerHTML = html;
-        }
-        // ========================================================
+    html += `</div>`;
+    mainContent.innerHTML = html;
+}
+// ========================================================

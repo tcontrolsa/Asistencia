@@ -16,8 +16,8 @@
     <!-- FIREBASE SDKS -->
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-    <script src="./JS/firebase_backend.js?v=20260716_01"></script>
-    <script src="./JS/firebase_migration.js?v=20260611_1"></script>
+    <script src="./JS/firebase_backend.js?v=20260825_10"></script>
+    <script src="./JS/firebase_migration.js?v=20260825_10"></script>
     <script>window.USE_FIREBASE = true;</script>
 </head>
 
@@ -245,12 +245,16 @@
                         <button id="btnToggleFirebaseAdmin" class="btn btn-outline-primary w-100 fw-bold justify-content-center mb-2" onclick="toggleFirebaseAdmin()">
                             <i class="fas fa-database"></i> <span id="toggleFirebaseText">Activar/Desactivar Firebase Local</span>
                         </button>
-                        <button class="btn btn-warning w-100 text-dark fw-bold justify-content-center" onclick="ejecutarMigracionAFirebase()">
+                        <button class="btn btn-warning w-100 text-dark fw-bold justify-content-center mb-2" onclick="ejecutarMigracionAFirebase()">
                             <i class="fas fa-cloud-upload-alt"></i> Iniciar Migración a Firebase
                         </button>
+                        <hr>
+                        <button class="btn btn-danger w-100 fw-bold justify-content-center shadow-sm" onclick="ejecutarReseteoPinesAdmin()">
+                            <i class="fas fa-key"></i> Restablecer Contraseñas de Todos
+                        </button>
                         <div class="help-text mt-2 text-center">
-                            Permite conmutar la conexión directa (fallback a Sheets).<br>
-                            <span class="text-danger fw-bold"><i class="fas fa-exclamation-triangle"></i> La migración se usa solo para pasar datos de Sheets a Firestore.</span>
+                            Borra los PINs de todos los empleados para que cada uno establezca su propia contraseña al entrar.<br>
+                            <span class="text-danger fw-bold"><i class="fas fa-shield-alt"></i> Requiere confirmación de seguridad.</span>
                         </div>
                     </div>
                 </div>
@@ -281,8 +285,8 @@
         <div class="loading-spinner"></div>
     </div>
 
-    <script src="./JS/tcontrol_core.js?v=20260716_01"></script>
-    <script src="./JS/admin_config_core.js?v=20260716_01"></script>
+    <script src="./JS/tcontrol_core.js?v=20260825_10"></script>
+    <script src="./JS/admin_config_core.js?v=20260825_10"></script>
 
 </body>
 

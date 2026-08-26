@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.31';
+const CACHE_NAME = 'tcontrol-v1.33';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -14,6 +14,7 @@ const PRECACHE_URLS = [
   './icon-192.png',
   './icon-512.png',
   './CSS/index.css',
+  './JS/tcontrol_core.js',
   './JS/index_core.js',
   './JS/firebase_backend.js',
   // CDNs críticos (Bootstrap, FontAwesome, Firebase SDKs)
@@ -37,6 +38,7 @@ self.addEventListener('install', event => {
         './icon-192.png',
         './icon-512.png',
         './CSS/index.css',
+        './JS/tcontrol_core.js',
         './JS/index_core.js',
         './JS/firebase_backend.js'
       ]).then(() => {

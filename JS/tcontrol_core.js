@@ -19,6 +19,53 @@ window.TCONTROL_CONFIG = {
     WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
 };
 
+window.fixFotoUrl = function(url) {
+    if (!url || typeof url !== 'string') return '';
+    url = url.trim();
+    if (!url) return '';
+    if (url.startsWith('data:image') || url.startsWith('blob:')) return url;
+
+    // Si es un link de Google Drive (formato /file/d/ID/view o ?id=ID o /d/ID)
+    if (url.includes('drive.google.com') || url.includes('docs.google.com') || url.includes('googleusercontent.com')) {
+        let fileId = '';
+        if (url.includes('/file/d/')) {
+            const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+            if (m) fileId = m[1];
+        } else if (url.includes('id=')) {
+            const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (m) fileId = m[1];
+        } else if (url.includes('/d/')) {
+            const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+            if (m) fileId = m[1];
+        }
+        if (fileId) {
+            return `https://lh3.googleusercontent.com/d/${fileId}`;
+        }
+    }
+    return url;
+};
+
+// ========== CRIPTOGRAFÍA Y SEGURIDAD ==========
+async function hashPassword(str) {
+    if (!str) return '';
+    try {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(str.toString().trim());
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+        console.warn("Fallback hash:", e);
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return 'h_' + Math.abs(hash).toString(16);
+    }
+}
+window.hashPassword = hashPassword;
+
 // ========== COMUNICACIÓN API (SIMPLIFICADA / FALLBACK GLOBAL) ==========
 async function jsonpRequest(params) {
     if (window.USE_FIREBASE && window.FirebaseBackend) {

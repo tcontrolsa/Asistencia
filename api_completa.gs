@@ -368,6 +368,9 @@ function procesarAccion(params) {
     case 'verificarPIN':
       return verificarPIN(params.pin, params.deviceToken, params.empleadoId);
       
+    case 'actualizarPerfilEmpleado':
+      return actualizarPerfilEmpleado(params);
+      
     case 'obtenerEstado':
       return obtenerEstadoPorIdODevice(params.id, params.deviceToken);
       
@@ -428,6 +431,9 @@ function procesarAccion(params) {
     case 'exportarBaseDatosParaFirebase':
       return exportarBaseDatosParaFirebase();
     // AdministraciÃ³n
+    case 'resetearPinesEmpleados':
+      return resetearPinesEmpleados(params);
+      
     case 'obtenerConfiguraciones':
       return obtenerConfiguraciones();
       
@@ -789,6 +795,26 @@ function crearReporteGoogleSheets(params) {
   }
 }
 
+function resetearPinesEmpleados(params) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(HOJA_EMPLEADOS);
+    if (!sheet) return { error: "Hoja de empleados no encontrada" };
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { ok: true, mensaje: "No hay empleados registrados" };
+
+    // Limpiar columna de PIN (columna G / índice 7)
+    const pinCol = COLUMNAS_EMPLEADOS.PIN + 1;
+    const range = sheet.getRange(2, pinCol, lastRow - 1, 1);
+    range.clearContent();
+
+    return { ok: true, mensaje: `PINs reseteados para ${lastRow - 1} empleados en Google Sheets` };
+  } catch (e) {
+    return { error: e.toString() };
+  }
+}
+
 function servirHtmlOriginal(e) {
   let pagina = e.parameter.pagina;
   
@@ -893,26 +919,39 @@ function verificarDispositivoTienePIN(deviceToken) {
     const data = sheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       const tokenGuardado = data[i][COLUMNAS_EMPLEADOS.DEVICE_TOKEN]?.toString().trim();
-      if (tokenGuardado === deviceToken) return { tienePin: true };
+      const pinGuardado = data[i][COLUMNAS_EMPLEADOS.PIN]?.toString().trim();
+      const activo = esEmpleadoActivo(data[i][COLUMNAS_EMPLEADOS.ACTIVO]);
+      if (tokenGuardado === deviceToken && activo) {
+        const tienePin = (pinGuardado !== "");
+        return { 
+          registrado: true,
+          tienePin: tienePin,
+          empleado: {
+            id: data[i][COLUMNAS_EMPLEADOS.ID]?.toString().trim(),
+            nombre: data[i][COLUMNAS_EMPLEADOS.NOMBRE]
+          }
+        };
+      }
     }
-    return { tienePin: false };
+    return { registrado: false, tienePin: false };
   } catch (error) {
     console.error("Error en verificarDispositivoTienePIN:", error);
-    return { error: error.toString() };
+    return { error: error.toString(), registrado: false, tienePin: false };
   }
 }
 
-function registrarDispositivoConPIN(empleadoId, pin, deviceToken) {
+function registrarDispositivoConPIN(empleadoId, pin, deviceToken, rawPin) {
   // getDocumentLock: varios usuarios pueden registrar dispositivos al mismo tiempo
   // pero necesitamos evitar que el mismo empleado se registre dos veces en paralelo
   const lock = LockService.getDocumentLock();
   try {
     lock.waitLock(15000);
-    const empleadoLimpio = empleadoId.toString().trim();
-    const pinLimpio = pin.toString().trim();
+    const empleadoLimpio = empleadoId ? empleadoId.toString().trim() : "";
+    const pinLimpio = pin ? pin.toString().trim() : "";
+    const rawPinLimpio = rawPin ? rawPin.toString().trim() : "";
     
-    if (!empleadoLimpio) return { error: "ID de empleado no vÃ¡lido" };
-    if (!pinLimpio || pinLimpio.length !== 4) return { error: "PIN no vÃ¡lido" };
+    if (!empleadoLimpio) return { error: "ID de empleado no válido" };
+    if (!pinLimpio) return { error: "Contraseña/PIN no válido" };
     
     const infoEmpleado = obtenerInfoEmpleado(empleadoLimpio);
     if (!infoEmpleado.encontrado) return { error: "Empleado no encontrado" };
@@ -925,9 +964,24 @@ function registrarDispositivoConPIN(empleadoId, pin, deviceToken) {
       const idActual = data[i][COLUMNAS_EMPLEADOS.ID].toString().trim();
       if (idActual === empleadoLimpio) { filaEmpleado = i + 1; break; }
     }
-    if (filaEmpleado === -1) return { error: "No se encontrÃ³ al empleado en la hoja" };
+    if (filaEmpleado === -1) return { error: "No se encontró al empleado en la hoja" };
     
-    sheetEmpleados.getRange(filaEmpleado, COLUMNAS_EMPLEADOS.PIN + 1).setValue(pinLimpio);
+    const pinExistente = data[filaEmpleado - 1][COLUMNAS_EMPLEADOS.PIN]?.toString().trim() || "";
+    
+    if (pinExistente === "") {
+      if ((rawPinLimpio && rawPinLimpio.length < 4) || (!rawPinLimpio && pinLimpio.length < 4)) {
+        return { error: "Por seguridad, la contraseña debe contener al menos 4 caracteres." };
+      }
+    } else {
+      const coincide = (pinExistente === pinLimpio) || (rawPinLimpio && pinExistente === rawPinLimpio);
+      if (!coincide) {
+        return { error: "Contraseña incorrecta. Si la olvidaste, solicita a Recursos Humanos / Administrador el restablecimiento." };
+      }
+    }
+    
+    if (pinExistente === "" || pinExistente.length < 20) {
+      sheetEmpleados.getRange(filaEmpleado, COLUMNAS_EMPLEADOS.PIN + 1).setValue(pinLimpio);
+    }
     sheetEmpleados.getRange(filaEmpleado, COLUMNAS_EMPLEADOS.DEVICE_TOKEN + 1).setValue(deviceToken);
     
     const sheetDispositivos = SpreadsheetApp.getActive().getSheetByName(HOJA_DISPOSITIVOS);
@@ -935,7 +989,7 @@ function registrarDispositivoConPIN(empleadoId, pin, deviceToken) {
       const ahora = new Date();
       sheetDispositivos.appendRow([deviceToken, empleadoLimpio, ahora, ahora, "SI"]);
     }
-    return { ok: true };
+    return { ok: true, esVinculacionExistente: pinExistente !== "" };
   } catch (error) {
     console.error("Error en registrarDispositivoConPIN:", error);
     return { error: error.toString() };
@@ -947,15 +1001,41 @@ function verificarPIN(pin, deviceToken, empleadoId) {
     const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
     const data = sheet.getDataRange().getValues();
     
-    // 1. CASO MAESTRO: Si es la clave maestra
-    if (pin === "TCONTROL2026") {
-      // Intentar cargar el administrador 1058
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][COLUMNAS_EMPLEADOS.ID].toString().trim() === "1058") {
-          const idEmpleado = "1058";
+    // Verificación estricta por ID y contraseña de cada empleado
+    for (let i = 1; i < data.length; i++) {
+      const idGuardado = data[i][COLUMNAS_EMPLEADOS.ID]?.toString().trim();
+      const pinGuardado = data[i][COLUMNAS_EMPLEADOS.PIN]?.toString().trim();
+      const activo = esEmpleadoActivo(data[i][COLUMNAS_EMPLEADOS.ACTIVO]);
+      
+      const idCoincide = !empleadoId || (idGuardado === empleadoId.toString().trim());
+      
+      if (idCoincide) {
+        if (!pinGuardado || pinGuardado === "") {
+          return {
+            error: "Tu cuenta aún no tiene contraseña configurada. Por favor, haz clic en 'Vincular Dispositivo' para establecerla.",
+            valido: false,
+            debeRegistrarPin: true
+          };
+        }
+        if (pinGuardado === pin && activo) {
+          const tokenGuardado = data[i][COLUMNAS_EMPLEADOS.DEVICE_TOKEN]?.toString().trim();
+          if (tokenGuardado !== deviceToken) {
+            sheet.getRange(i + 1, COLUMNAS_EMPLEADOS.DEVICE_TOKEN + 1).setValue(deviceToken);
+            const sheetDispositivos = SpreadsheetApp.getActive().getSheetByName(HOJA_DISPOSITIVOS);
+            if (sheetDispositivos) {
+              const ahora = new Date();
+              sheetDispositivos.appendRow([deviceToken, data[i][COLUMNAS_EMPLEADOS.ID].toString().trim(), ahora, ahora, "SI"]);
+            }
+          }
+          const idEmpleado = data[i][COLUMNAS_EMPLEADOS.ID].toString().trim();
           const info = obtenerEstadoPorIdODevice(idEmpleado, null);
+          const rawSup = (data[i][COLUMNAS_EMPLEADOS.SUPERVISOR] || '').toString().trim().toUpperCase();
+          const esSupervisor = (rawSup === 'SI' || rawSup === 'SUPERVISOR' || rawSup === 'SUPERVISOR ADMIN' || rawSup === 'SUPERVISOR_ADMIN' || rawSup === 'ADMIN');
+          // Si el PIN tiene menos de 20 caracteres, es un PIN antiguo (no es SHA-256)
+          const debeActualizarPassword = pinGuardado.length < 20;
           return {
             valido: true,
+            debeActualizarPassword: debeActualizarPassword,
             empleado: {
               id: idEmpleado,
               nombre: data[i][COLUMNAS_EMPLEADOS.NOMBRE],
@@ -968,57 +1048,57 @@ function verificarPIN(pin, deviceToken, empleadoId) {
               horaEntrada: info.horaEntrada || null,
               horaSalida: info.horaSalida || null,
               almuerzo: info.almuerzo || null,
-              esSupervisor: true
+              supervisor: data[i][COLUMNAS_EMPLEADOS.SUPERVISOR] || (esSupervisor ? 'SI' : 'NO'),
+              esSupervisor: esSupervisor
             }
           };
+        } else if (empleadoId) {
+          return { error: "Contraseña incorrecta", valido: false };
         }
       }
     }
-
-    // 2. CASO GENERAL
-    for (let i = 1; i < data.length; i++) {
-      const idGuardado = data[i][COLUMNAS_EMPLEADOS.ID]?.toString().trim();
-      const pinGuardado = data[i][COLUMNAS_EMPLEADOS.PIN]?.toString().trim();
-      const activo = esEmpleadoActivo(data[i][COLUMNAS_EMPLEADOS.ACTIVO]);
-      
-      const idCoincide = !empleadoId || (idGuardado === empleadoId.toString().trim());
-      
-      if (idCoincide && pinGuardado === pin && activo) {
-        const tokenGuardado = data[i][COLUMNAS_EMPLEADOS.DEVICE_TOKEN]?.toString().trim();
-        if (tokenGuardado !== deviceToken) {
-          sheet.getRange(i + 1, COLUMNAS_EMPLEADOS.DEVICE_TOKEN + 1).setValue(deviceToken);
-          const sheetDispositivos = SpreadsheetApp.getActive().getSheetByName(HOJA_DISPOSITIVOS);
-          if (sheetDispositivos) {
-            const ahora = new Date();
-            sheetDispositivos.appendRow([deviceToken, data[i][COLUMNAS_EMPLEADOS.ID].toString().trim(), ahora, ahora, "SI"]);
-          }
-        }
-        const idEmpleado = data[i][COLUMNAS_EMPLEADOS.ID].toString().trim();
-        const info = obtenerEstadoPorIdODevice(idEmpleado, null);
-        const esSupervisor = data[i][COLUMNAS_EMPLEADOS.SUPERVISOR]?.toString().trim().toLowerCase() === 'si';
-        return {
-          valido: true,
-          empleado: {
-            id: idEmpleado,
-            nombre: data[i][COLUMNAS_EMPLEADOS.NOMBRE],
-            area: data[i][COLUMNAS_EMPLEADOS.AREA],
-            cargo: data[i][COLUMNAS_EMPLEADOS.CARGO] || "",
-            fechaNacimiento: data[i][COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO] || "",
-            foto_url: convertirUrlDrive(data[i][COLUMNAS_EMPLEADOS.FOTO_URL] || ''),
-            tieneEntrada: info.tieneEntrada || false,
-            tieneSalida: info.tieneSalida || false,
-            horaEntrada: info.horaEntrada || null,
-            horaSalida: info.horaSalida || null,
-            almuerzo: info.almuerzo || null,
-            esSupervisor: esSupervisor
-          }
-        };
-      }
-    }
-    return { valido: false };
+    return { error: "Acceso denegado: ID o Contraseña incorrecta.", valido: false };
   } catch (error) {
     console.error("Error en verificarPIN:", error);
     return { error: error.toString() };
+  }
+}
+
+function actualizarPerfilEmpleado(params) {
+  const lock = LockService.getDocumentLock();
+  try {
+    lock.waitLock(15000);
+    const empleadoId = String(params.empleadoId || params.id || '').trim();
+    if (!empleadoId) return { error: "ID de empleado no especificado" };
+
+    const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
+    if (!sheet) return { error: "Hoja EMPLEADOS no encontrada" };
+
+    const data = sheet.getDataRange().getValues();
+    let filaIdx = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][COLUMNAS_EMPLEADOS.ID]).trim() === empleadoId) {
+        filaIdx = i + 1;
+        break;
+      }
+    }
+    if (filaIdx === -1) return { error: "Empleado no encontrado" };
+
+    if (params.nombre) {
+      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.NOMBRE + 1).setValue(String(params.nombre).trim());
+    }
+    if (params.foto_url !== undefined) {
+      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.FOTO_URL + 1).setValue(String(params.foto_url).trim());
+    }
+    if (params.passwordHash || params.pin) {
+      const pHash = String(params.passwordHash || params.pin).trim();
+      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.PIN + 1).setValue(pHash);
+    }
+    return { ok: true, mensaje: "Perfil actualizado exitosamente" };
+  } catch(e) {
+    return { error: e.toString() };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -1724,8 +1804,38 @@ function obtenerDatosSupervisorConTimestamp() {
         registros: registrosEmpleado
       });
     }
+
+    // Procesar empleados eliminados / inactivos con registros históricos
+    const activeEmpIds = new Set(empleados.map(e => String(e.id).trim()));
+    const regEmpIdsMap = {};
+    registros.forEach(r => {
+      const rId = String(r.id || r.empleadoId || '').trim();
+      if (!rId) return;
+      if (!activeEmpIds.has(rId)) {
+        if (!regEmpIdsMap[rId]) {
+          let empNombre = r.nombre || `Colaborador (${rId})`;
+          for (let i = 1; i < empleadosData.length; i++) {
+            const rowId = String(empleadosData[i][COLUMNAS_EMPLEADOS.ID] || '').trim();
+            if (rowId === rId) {
+              empNombre = String(empleadosData[i][COLUMNAS_EMPLEADOS.NOMBRE] || '').trim() || empNombre;
+              break;
+            }
+          }
+          regEmpIdsMap[rId] = {
+            id: rId,
+            nombre: empNombre,
+            area: 'Eliminado',
+            cargo: 'Eliminado',
+            esEliminado: true,
+            activo: false,
+            registros: []
+          };
+        }
+        regEmpIdsMap[rId].registros.push(r);
+      }
+    });
     
-    return { empleados: empleados, registros: registros };
+    return { empleados: empleados, empleadosEliminados: Object.values(regEmpIdsMap), registros: registros };
     
   } catch (error) {
     console.error("Error en obtenerDatosSupervisor:", error);

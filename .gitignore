@@ -1,0 +1,85 @@
+# ==========================================
+# .gitignore - TCONTROL Asistencia
+# ==========================================
+
+# Archivos de pruebas y temporales locales
+scratch/
+.tempmediaStorage/
+.user_uploaded/
+*.tmp
+*.bak
+*.swp
+*.orig
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencias y construcciones
+node_modules/
+dist/
+build/
+.npm/
+
+# Entornos y Credenciales Locales
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+*.crt
+
+# Python & Entornos Virtuales
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+env/
+venv/
+ENV/
+
+# Configuraciones de Editores e IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.agents/
+.gemini/
+
+# Archivos del Sistema Operativo
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# Linux
+*~
+.directory
+.Trash-*

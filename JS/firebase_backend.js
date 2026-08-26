@@ -30,10 +30,14 @@ window.FirebaseBackend = {
             switch (accion) {
                 case 'verificarDispositivo':
                     return await this.verificarDispositivo(params);
+                case 'verificarEmpleadoTienePin':
+                    return await this.verificarEmpleadoTienePin(params);
                 case 'registrarDispositivo':
                     return await this.registrarDispositivoConPIN(params);
                 case 'verificarPIN':
                     return await this.verificarPIN(params);
+                case 'actualizarPerfilEmpleado':
+                    return await this.actualizarPerfilEmpleado(params);
                 case 'obtenerEstado':
                     return await this.obtenerEstado(params);
                 case 'guardarRegistro':
@@ -92,6 +96,9 @@ window.FirebaseBackend = {
                     return await this.eliminarRegistro(params);
                 case 'eliminarEmpleadoDefinitivo':
                     return await this.eliminarEmpleadoDefinitivo(params);
+                case 'resetearPinesTodosLosEmpleados':
+                case 'resetearPinesEmpleados':
+                    return await this.resetearPinesTodosLosEmpleados(params);
 
                 case 'desvincularDispositivo':
                     return await this.desvincularDispositivo(params);
@@ -135,19 +142,26 @@ window.FirebaseBackend = {
         }
 
         const empleadoId = dispDoc.data().id_empleado;
-        const empDoc = await db.collection('empleados').doc(empleadoId).get();
+        let empDoc = await db.collection('empleados').doc(empleadoId.toString()).get();
+        if (!empDoc.exists) {
+            const snapStr = await db.collection('empleados').where('id', '==', empleadoId.toString()).limit(1).get();
+            if (!snapStr.empty) empDoc = snapStr.docs[0];
+        }
 
-        if (!empDoc.exists || empDoc.data().activo !== 'SI') {
+        if (!empDoc || !empDoc.exists || (empDoc.data().activo !== 'SI' && empDoc.data().activo !== 'si' && empDoc.data().activo !== true)) {
             return { registrado: false };
         }
 
         const empData = empDoc.data();
+        const pinExistente = empData.pin ? empData.pin.toString().trim() : '';
+        const tienePin = (pinExistente !== '');
 
         // Actualizar último uso sin esperar (no bloquea)
         dispRef.update({ ultimo_uso: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => { });
 
         return {
             registrado: true,
+            tienePin: tienePin,
             empleado: {
                 id: empleadoId,
                 nombre: empData.nombre,
@@ -161,48 +175,61 @@ window.FirebaseBackend = {
         };
     },
     async verificarPIN(params) {
-        const pin = params.pin;
+        const pin = params.pin ? params.pin.toString().trim() : '';
         const token = params.deviceToken;
-        const idRequerido = params.empleadoId; 
+        const idRequerido = params.empleadoId ? params.empleadoId.toString().trim() : ''; 
         
-        console.log("🔐 Verificando PIN...", { pin: pin, token: token, idRequerido: idRequerido });
+        console.log("🔐 Verificando PIN...", { pin: pin ? '***' : '', token: token, idRequerido: idRequerido });
 
-        if (!pin || !token) return { error: "PIN o Token ausente" };
+        if (!pin || !token) return { error: "PIN o Token ausente", valido: false };
 
         let empDoc = null;
         let empData = null;
 
-        // 1. CASO MAESTRO: Si es la clave maestra, intentar cargar el administrador 1058
-        if (pin === "TCONTROL2026") {
-            console.log("👑 Clave Maestra detectada.");
-            const doc = await db.collection('empleados').doc("1058").get();
-            if (doc.exists) {
-                empDoc = doc;
-                empData = doc.data();
-            }
-        }
-
-        // 2. CASO ESPECÍFICO: Si se pasó un ID (Login Supervisor con ID + PIN)
-        if (!empDoc && idRequerido) {
+        // 1. CASO PRINCIPAL: Si se pasó un ID (Login con ID + Contraseña)
+        if (idRequerido) {
             console.log("🔍 Buscando empleado por ID específico:", idRequerido);
-            const doc = await db.collection('empleados').doc(idRequerido.toString()).get();
-            if (doc.exists) {
-                const data = doc.data();
-                // Validar PIN (puede ser string o number en Firestore)
-                if (data.pin?.toString() === pin.toString()) {
-                    empDoc = doc;
-                    empData = data;
+            let doc = await db.collection('empleados').doc(idRequerido).get();
+            if (!doc.exists) {
+                const snapStr = await db.collection('empleados').where('id', '==', idRequerido).limit(1).get();
+                if (!snapStr.empty) {
+                    doc = snapStr.docs[0];
+                } else {
+                    const num = parseInt(idRequerido, 10);
+                    if (!isNaN(num)) {
+                        const snapNum = await db.collection('empleados').where('id', '==', num).limit(1).get();
+                        if (!snapNum.empty) doc = snapNum.docs[0];
+                    }
                 }
             }
-        }
+            if (doc && doc.exists) {
+                const data = doc.data();
+                const pinEnBd = data.pin ? data.pin.toString().trim() : '';
 
-        // 3. CASO GENERAL: Búsqueda por PIN único (Login Empleado)
-        if (!empDoc) {
-            console.log("🔎 Búsqueda general por PIN en toda la colección.");
-            const pinStr = pin.toString();
-            const pinNum = parseInt(pin);
-            const queries = [db.collection('empleados').where('pin', '==', pinStr).get()];
-            if (!isNaN(pinNum)) {
+                // Si no tiene contraseña establecida, se deniega y se redirige a vincular
+                if (!pinEnBd) {
+                    return { 
+                        error: "Tu cuenta aún no tiene contraseña configurada. Por favor, haz clic en 'Vincular Dispositivo' para establecerla.", 
+                        valido: false, 
+                        debeRegistrarPin: true 
+                    };
+                }
+
+                if (pinEnBd === pin) {
+                    empDoc = doc;
+                    empData = data;
+                } else {
+                    return { error: "Contraseña incorrecta", valido: false };
+                }
+            } else {
+                return { error: "Usuario no encontrado", valido: false };
+            }
+        } else {
+            // 2. CASO FALLBACK: Búsqueda por PIN único sólo si no se proporcionó ID
+            console.log("🔎 Búsqueda por PIN único en colección.");
+            const pinNum = parseInt(pin, 10);
+            const queries = [db.collection('empleados').where('pin', '==', pin).get()];
+            if (!isNaN(pinNum) && pinNum.toString() === pin) {
                 queries.push(db.collection('empleados').where('pin', '==', pinNum).get());
             }
             const snaps = await Promise.all(queries);
@@ -214,12 +241,12 @@ window.FirebaseBackend = {
         }
 
         if (!empDoc) {
-            console.warn("❌ PIN no encontrado en ninguna búsqueda.");
-            return { error: "Acceso denegado: PIN/Contraseña incorrecta o usuario no encontrado", valido: false };
+            console.warn("❌ Contraseña no encontrada.");
+            return { error: "Acceso denegado: ID o Contraseña incorrecta.", valido: false };
         }
 
         console.log("✅ Empleado encontrado:", empData.nombre);
-        if (empData.activo !== 'SI') {
+        if (empData.activo !== 'SI' && empData.activo !== 'si' && empData.activo !== true) {
             return { error: "El empleado no se encuentra activo", valido: false };
         }
 
@@ -243,9 +270,16 @@ window.FirebaseBackend = {
             deviceToken: token
         });
 
+        // Si el PIN tiene menos de 20 caracteres, es un PIN antiguo (no es SHA-256)
+        const debeActualizarPassword = (empData.pin?.toString().length || 0) < 20;
+
+        const supRaw = (empData.supervisor || empData.rol || '').toString().trim().toUpperCase();
+        const esSupervisor = (empData.supervisor === 'SI' || supRaw === 'SUPERVISOR ADMIN' || supRaw === 'SUPERVISOR_ADMIN' || supRaw === 'ADMIN' || supRaw === 'SUPERVISOR');
+
         return {
             ok: true,
             valido: true,
+            debeActualizarPassword: debeActualizarPassword,
             empleado: {
                 id: empDoc.id,
                 nombre: empData.nombre,
@@ -255,25 +289,129 @@ window.FirebaseBackend = {
                 fechaNacimiento: empData.fechaNacimiento,
                 baseLat: empData.baseLat,
                 baseLng: empData.baseLng,
-                esSupervisor: empData.supervisor === 'SI',
+                supervisor: empData.supervisor || (esSupervisor ? 'SI' : 'NO'),
+                esSupervisor: esSupervisor,
                 pagos_url: empData.id_dispositivo || ""
             }
         };
     },
 
+    async verificarEmpleadoTienePin(params) {
+        const empleadoId = (params.empleadoId || params.id || "").toString().trim();
+        if (!empleadoId) return { error: "ID de empleado no proporcionado" };
+
+        let empDoc = await db.collection('empleados').doc(empleadoId).get();
+        if (!empDoc.exists) {
+            const snapStr = await db.collection('empleados').where('id', '==', empleadoId).limit(1).get();
+            if (!snapStr.empty) {
+                empDoc = snapStr.docs[0];
+            } else {
+                const num = parseInt(empleadoId, 10);
+                if (!isNaN(num)) {
+                    const snapNum = await db.collection('empleados').where('id', '==', num).limit(1).get();
+                    if (!snapNum.empty) {
+                        empDoc = snapNum.docs[0];
+                    }
+                }
+            }
+        }
+
+        if (!empDoc || !empDoc.exists) return { error: "Empleado no encontrado en el sistema" };
+
+        const empData = empDoc.data();
+        if (empData.activo !== 'SI' && empData.activo !== 'si' && empData.activo !== true) return { error: "El empleado no se encuentra activo" };
+
+        const pinExistente = empData.pin ? empData.pin.toString().trim() : '';
+        const tienePin = (pinExistente !== '');
+
+        const fotoRaw = empData.foto_url || empData.fotoUrl || empData.foto || empData.url_foto || empData.URL_FOTO || '';
+        const fotoFinal = this._normalizarUrlFoto(fotoRaw);
+
+        return {
+            ok: true,
+            tienePin: tienePin,
+            nombre: empData.nombre || 'Empleado',
+            foto_url: fotoFinal,
+            area: empData.area || '',
+            cargo: empData.cargo || ''
+        };
+    },
+
     async registrarDispositivoConPIN(params) {
-        const empleadoId = params.empleadoId?.toString();
-        const pin = params.pin?.toString();
+        const empleadoId = params.empleadoId?.toString().trim();
+        const pin = params.pin?.toString().trim();
         const token = params.deviceToken;
+        const rawPin = params.rawPin?.toString().trim();
 
-        const empDoc = await db.collection('empleados').doc(empleadoId).get();
-        if (!empDoc.exists) return { error: "Empleado no encontrado" };
+        if (!empleadoId) return { error: "Ingresa tu ID / Cédula de empleado" };
+        if (!pin) return { error: "Ingresa tu contraseña" };
+        if (!token) return { error: "Token de dispositivo ausente" };
 
-        await db.collection('empleados').doc(empleadoId).update({
-            pin: pin,
-            deviceToken: token
-        });
+        let empRef = db.collection('empleados').doc(empleadoId);
+        let empDoc = await empRef.get();
+        if (!empDoc.exists) {
+            const snapStr = await db.collection('empleados').where('id', '==', empleadoId).limit(1).get();
+            if (!snapStr.empty) {
+                empDoc = snapStr.docs[0];
+                empRef = empDoc.ref;
+            } else {
+                const num = parseInt(empleadoId, 10);
+                if (!isNaN(num)) {
+                    const snapNum = await db.collection('empleados').where('id', '==', num).limit(1).get();
+                    if (!snapNum.empty) {
+                        empDoc = snapNum.docs[0];
+                        empRef = empDoc.ref;
+                    }
+                }
+            }
+        }
+        if (!empDoc || !empDoc.exists) return { error: "Empleado no encontrado en el sistema" };
 
+        const empData = empDoc.data();
+        if (empData.activo !== 'SI' && empData.activo !== 'si' && empData.activo !== true) return { error: "El empleado no se encuentra activo" };
+
+        const pinExistente = empData.pin ? empData.pin.toString().trim() : '';
+
+        // 🛡️ CASO 1: Si es la primera vez (no tiene PIN), es OBLIGATORIO establecer una contraseña de al menos 4 caracteres
+        if (pinExistente === '') {
+            if ((rawPin && rawPin.length < 4) || (!rawPin && pin.length < 4)) {
+                return { error: "Por seguridad, la contraseña debe contener al menos 4 caracteres." };
+            }
+        } else {
+            // 🛡️ CASO 2: Si el empleado YA TIENE contraseña registrada, DEBE coincidir obligatoriamente
+            const coincide = (pinExistente === pin) || (rawPin && pinExistente === rawPin);
+            if (!coincide) {
+                return { error: "Contraseña incorrecta. Si la olvidaste, solicita a Recursos Humanos / Administrador el restablecimiento." };
+            }
+        }
+
+        // 1. Actualizar empleado con el nuevo token (y la contraseña si era la primera vez o si se actualiza a hash SHA-256)
+        const updateData = { deviceToken: token };
+        if (pinExistente === '' || pinExistente.length < 20) {
+            updateData.pin = pin;
+        }
+        await empRef.update(updateData);
+
+        // 📱 OPCIÓN 2: Desactivar/reemplazar cualquier dispositivo anterior registrado para este empleado
+        try {
+            const dispPrevios = await db.collection('dispositivos')
+                .where('id_empleado', '==', empleadoId)
+                .get();
+
+            if (!dispPrevios.empty) {
+                const batch = db.batch();
+                dispPrevios.forEach(doc => {
+                    if (doc.id !== token) {
+                        batch.delete(doc.ref);
+                    }
+                });
+                await batch.commit();
+            }
+        } catch (e) {
+            console.warn("Aviso al desvincular equipos anteriores:", e);
+        }
+
+        // 3. Registrar el dispositivo actual como el único activo
         await db.collection('dispositivos').doc(token).set({
             id_dispositivo: token,
             id_empleado: empleadoId,
@@ -282,7 +420,47 @@ window.FirebaseBackend = {
             activo: true
         });
 
-        return { ok: true };
+        return { ok: true, esVinculacionExistente: pinExistente !== '' };
+    },
+
+    async actualizarPerfilEmpleado(params) {
+        const empleadoId = params.empleadoId?.toString() || params.id?.toString();
+        if (!empleadoId) return { error: "ID no proporcionado" };
+
+        const empRef = db.collection('empleados').doc(empleadoId);
+        const empDoc = await empRef.get();
+        if (!empDoc.exists) return { error: "Empleado no encontrado" };
+
+        const empData = empDoc.data();
+
+        // Si se va a cambiar la contraseña, validar la contraseña actual si fue enviada
+        if (params.passwordHash) {
+            const pinActual = empData.pin ? empData.pin.toString().trim() : '';
+            if (pinActual !== '') {
+                const oldHash = params.oldPasswordHash?.toString().trim();
+                const oldPin = params.oldPin?.toString().trim();
+                const coincide = (pinActual === oldHash) || (oldPin && pinActual === oldPin);
+                if (!coincide) {
+                    return { error: "La contraseña actual es incorrecta." };
+                }
+            }
+        }
+
+        const updateData = {};
+        if (params.nombre) updateData.nombre = params.nombre.toString().trim();
+        if (params.foto_url !== undefined) updateData.foto_url = params.foto_url.toString().trim();
+        if (params.passwordHash || params.pin) updateData.pin = (params.passwordHash || params.pin).toString().trim();
+
+        if (Object.keys(updateData).length > 0) {
+            await empRef.update(updateData);
+        }
+
+        // Dual-write to Sheets si corresponde
+        try {
+            this._jsonp({ accion: 'actualizarPerfilEmpleado', ...params });
+        } catch(e) {}
+
+        return { ok: true, mensaje: "Perfil actualizado exitosamente en Firebase" };
     },
 
     // ==========================================
@@ -1456,6 +1634,86 @@ window.FirebaseBackend = {
         }
     },
 
+    async resetearPinesTodosLosEmpleados(params = {}) {
+        try {
+            console.log("🔄 Iniciando restablecimiento de contraseñas/PINs de todos los empleados...");
+            const querySnap = await db.collection('empleados').get();
+            
+            if (querySnap.empty) {
+                return { ok: false, error: "No se encontraron empleados en la base de datos." };
+            }
+
+            let batch = db.batch();
+            let count = 0;
+            let totalActualizados = 0;
+
+            for (const doc of querySnap.docs) {
+                // Actualizar PIN a vacío para que el usuario deba registrar su nueva contraseña
+                const updateData = { pin: "" };
+                
+                // Si se solicita desvincular dispositivos también (opcional)
+                if (params.desvincularDispositivos) {
+                    updateData.deviceToken = "";
+                }
+
+                batch.update(doc.ref, updateData);
+                count++;
+                totalActualizados++;
+
+                // Límite de lote Firestore de 500
+                if (count === 400) {
+                    await batch.commit();
+                    batch = db.batch();
+                    count = 0;
+                }
+            }
+
+            if (count > 0) {
+                await batch.commit();
+            }
+
+            // Si se solicitó desvincular dispositivos, limpiar colección de dispositivos
+            if (params.desvincularDispositivos) {
+                try {
+                    const dispSnap = await db.collection('dispositivos').get();
+                    let dispBatch = db.batch();
+                    let dispCount = 0;
+                    for (const doc of dispSnap.docs) {
+                        dispBatch.delete(doc.ref);
+                        dispCount++;
+                        if (dispCount === 400) {
+                            await dispBatch.commit();
+                            dispBatch = db.batch();
+                            dispCount = 0;
+                        }
+                    }
+                    if (dispCount > 0) {
+                        await dispBatch.commit();
+                    }
+                } catch(e) {
+                    console.warn("Aviso al limpiar dispositivos:", e);
+                }
+            }
+
+            // Sincronizar con Google Sheets (dual write)
+            try {
+                this._jsonp({ accion: 'resetearPinesEmpleados' });
+            } catch(e) {
+                console.warn("Aviso al sincronizar reseteo con Sheets:", e);
+            }
+
+            console.log(`✅ Contraseñas/PINs restablecidos para ${totalActualizados} empleados.`);
+            return {
+                ok: true,
+                mensaje: `Se restablecieron los PINs de ${totalActualizados} empleados exitosamente. Ahora cada empleado podrá registrar su nueva contraseña personal.`,
+                empleadosAfectados: totalActualizados
+            };
+        } catch (error) {
+            console.error("🔥 Error en resetearPinesTodosLosEmpleados:", error);
+            return { error: error.message || error.toString() };
+        }
+    },
+
     async obtenerListaCatering() {
         try {
             const hoy = new Date();
@@ -1690,43 +1948,62 @@ window.FirebaseBackend = {
             const registrosCompletos = registrosFirebase.concat(archivadosFiltrados);
 
             // 3. Procesar todos los registros combinados
+            const empleadosEliminadosMap = {};
             registrosCompletos.forEach(reg => {
-                const eid = reg.empleadoId;
-                if (!eid || !empleadosMap[eid]) return;
+                const eid = String(reg.empleadoId || reg.id_empleado || (reg.id && !String(reg.id).includes('_') ? reg.id : '')).trim();
+                if (!eid) return;
 
                 // Normalizar almuerzo: solo SI/NO si tiene valor, vacío si no
                 const vAlm = (reg.almuerzo || '').toString().trim().toUpperCase();
                 reg.almuerzo = (vAlm === 'SI' || vAlm === 'SÍ') ? 'SI' : (vAlm === 'NO' ? 'NO' : '');
 
-                empleadosMap[eid].registros.push(reg);
+                if (empleadosMap[eid]) {
+                    empleadosMap[eid].registros.push(reg);
 
-                if (reg.fecha === hoyStr) {
-                    if (reg.tipo === 'ENTRADA') {
-                        empleadosMap[eid].entradaHoy = true;
-                        empleadosMap[eid].horaEntrada = reg.hora;
-                        if (!empleadosMap[eid].almuerzoHoy) empleadosMap[eid].almuerzoHoy = reg.almuerzo;
+                    if (reg.fecha === hoyStr) {
+                        if (reg.tipo === 'ENTRADA') {
+                            empleadosMap[eid].entradaHoy = true;
+                            empleadosMap[eid].horaEntrada = reg.hora;
+                            if (!empleadosMap[eid].almuerzoHoy) empleadosMap[eid].almuerzoHoy = reg.almuerzo;
 
-                        if (reg.hora) {
-                            const [h, m, s] = reg.hora.split(':');
-                            const d = new Date();
-                            d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
-                            empleadosMap[eid].horaEntradaMs = d.getTime();
+                            if (reg.hora) {
+                                const [h, m, s] = reg.hora.split(':');
+                                const d = new Date();
+                                d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
+                                empleadosMap[eid].horaEntradaMs = d.getTime();
+                            }
+                        }
+                        if (reg.tipo === 'SOLO_ALMUERZO') {
+                            if (!empleadosMap[eid].almuerzoHoy) empleadosMap[eid].almuerzoHoy = reg.almuerzo;
+                        }
+                        if (reg.tipo === 'SALIDA') {
+                            empleadosMap[eid].salidaHoy = true;
+                            empleadosMap[eid].horaSalida = reg.hora;
+
+                            if (reg.hora) {
+                                const [h, m, s] = reg.hora.split(':');
+                                const d = new Date();
+                                d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
+                                empleadosMap[eid].horaSalidaMs = d.getTime();
+                            }
                         }
                     }
-                    if (reg.tipo === 'SOLO_ALMUERZO') {
-                        if (!empleadosMap[eid].almuerzoHoy) empleadosMap[eid].almuerzoHoy = reg.almuerzo;
+                } else {
+                    if (!empleadosEliminadosMap[eid]) {
+                        const nombreElim = reg.nombre || reg.empleadoNombre || `Colaborador (${eid})`;
+                        empleadosEliminadosMap[eid] = {
+                            id: String(eid),
+                            nombre: nombreElim,
+                            area: 'Eliminado',
+                            cargo: 'Eliminado',
+                            esEliminado: true,
+                            activo: false,
+                            registros: [],
+                            entradaHoy: false,
+                            salidaHoy: false
+                        };
                     }
-                    if (reg.tipo === 'SALIDA') {
-                        empleadosMap[eid].salidaHoy = true;
-                        empleadosMap[eid].horaSalida = reg.hora;
-
-                        if (reg.hora) {
-                            const [h, m, s] = reg.hora.split(':');
-                            const d = new Date();
-                            d.setHours(parseInt(h), parseInt(m), parseInt(s || 0));
-                            empleadosMap[eid].horaSalidaMs = d.getTime();
-                        }
-                    }
+                    empleadosEliminadosMap[eid].registros.push(reg);
                 }
             });
 
@@ -1750,6 +2027,19 @@ window.FirebaseBackend = {
                     }
                 }
             });
+
+            // Deduplicar registros de eliminados
+            Object.keys(empleadosEliminadosMap).forEach(eid => {
+                const emp = empleadosEliminadosMap[eid];
+                const seen = new Set();
+                emp.registros = emp.registros.filter(r => {
+                    const key = `${r.fecha}|${r.tipo}|${(r.hora || '').slice(0, 5)}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            });
+
             // Cargar y fusionar vacaciones desde Sheets
             let vacacionesList = [];
             try {
@@ -1797,6 +2087,7 @@ window.FirebaseBackend = {
 
             return {
                 empleados: Object.values(empleadosMap),
+                empleadosEliminados: Object.values(empleadosEliminadosMap),
                 almuerzosExtra: almuerzosExtraData.almuerzos || [],
                 emergencia: emergencia,
                 timestamp: new Date().toISOString()
@@ -1974,18 +2265,26 @@ window.FirebaseBackend = {
     },
 
     _normalizarUrlFoto(url) {
+        if (!url || typeof url !== 'string') return "";
+        url = url.trim();
         if (!url) return "";
-        // Si es un link de Google Drive (formato /file/d/ID/view o ?id=ID)
-        if (url.includes('drive.google.com')) {
+        if (url.startsWith('data:image') || url.startsWith('blob:')) return url;
+
+        // Si es un link de Google Drive (formato /file/d/ID/view o ?id=ID o /d/ID)
+        if (url.includes('drive.google.com') || url.includes('docs.google.com') || url.includes('googleusercontent.com')) {
             let id = "";
             if (url.includes('/file/d/')) {
-                id = url.split('/file/d/')[1].split('/')[0];
+                const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                if (m) id = m[1];
             } else if (url.includes('id=')) {
-                id = url.split('id=')[1].split('&')[0];
+                const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                if (m) id = m[1];
+            } else if (url.includes('/d/')) {
+                const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                if (m) id = m[1];
             }
             if (id) {
-                // El formato /thumbnail es más robusto contra errores 403 que /uc
-                return `https://drive.google.com/thumbnail?id=${id}&sz=w1000`;
+                return `https://lh3.googleusercontent.com/d/${id}`;
             }
         }
         return url;
@@ -2202,3 +2501,35 @@ function parsearTimestamp(tsString) {
 }
 
 console.log("🚀 Motor de Firebase inicializado y listo para usar.");
+
+window.resetearPinesTodosLosEmpleados = async function(desvincularDispositivos = false) {
+    if (!confirm("⚠️ ADVERTENCIA:\n\n¿Estás seguro de que deseas BORRAR los PINs/Contraseñas de TODOS los empleados?\n\nAl hacerlo, ningún empleado tendrá contraseña guardada y cada usuario deberá ingresar a la app para registrar y confirmar su nueva contraseña personal.")) {
+        return;
+    }
+    const confirmacion = prompt("Para confirmar la eliminación masiva de contraseñas, escribe exactamente la palabra: BORRAR");
+    if (confirmacion !== 'BORRAR') {
+        alert("Operación cancelada. El texto ingresado no coincide.");
+        return;
+    }
+
+    console.log("Iniciando reseteo masivo de PINs...");
+    try {
+        let res = null;
+        if (window.FirebaseBackend && window.USE_FIREBASE) {
+            res = await window.FirebaseBackend.resetearPinesTodosLosEmpleados({ desvincularDispositivos });
+        } else if (typeof jsonpRequest === 'function') {
+            res = await jsonpRequest({ accion: 'resetearPinesEmpleados', desvincularDispositivos });
+        } else if (window.FirebaseBackend) {
+            res = await window.FirebaseBackend.resetearPinesTodosLosEmpleados({ desvincularDispositivos });
+        }
+
+        if (res && res.ok) {
+            alert("✅ " + (res.mensaje || "PINs restablecidos correctamente."));
+        } else {
+            alert("❌ Error: " + (res?.error || "No se pudo completar la operación."));
+        }
+        return res;
+    } catch (e) {
+        alert("❌ Error: " + e.message);
+    }
+};

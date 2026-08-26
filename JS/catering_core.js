@@ -462,11 +462,19 @@ async function intentarLoginCatering() {
     
     try {
         const deviceToken = generarDeviceToken();
-        const res = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken, empleadoId: id });
+        const passHash = typeof hashPassword === 'function' ? await hashPassword(pin) : pin;
+        let res = await jsonpRequest({ accion: 'verificarPIN', pin: passHash, deviceToken: deviceToken, empleadoId: id });
         
-        if (res.error) {
+        if ((!res || !res.valido) && (!res?.error || res?.error === "Contraseña incorrecta")) {
+            const resPlain = await jsonpRequest({ accion: 'verificarPIN', pin: pin, deviceToken: deviceToken, empleadoId: id });
+            if (resPlain && resPlain.valido) {
+                res = resPlain;
+            }
+        }
+        
+        if (res && res.error) {
             mostrarError(res.error);
-        } else if (res.valido) {
+        } else if (res && res.valido) {
             if (res.empleado.esSupervisor) {
                 const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
                 localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));

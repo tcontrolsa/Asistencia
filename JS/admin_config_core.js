@@ -411,6 +411,42 @@
             }
         }
 
+        // ========== RESTABLECER PINES DE TODOS LOS EMPLEADOS ==========
+        window.ejecutarReseteoPinesAdmin = async function() {
+            if (!confirm("⚠️ ADVERTENCIA DE SEGURIDAD:\n\n¿Estás seguro de que deseas BORRAR los PINs/Contraseñas de TODOS los empleados?\n\nAl ejecutar esta acción, ninguna cuenta tendrá contraseña guardada y cada usuario deberá ingresar a la app para registrar su nueva contraseña personal.")) {
+                return;
+            }
+
+            const confirmacion = prompt("Para confirmar la eliminación masiva de contraseñas, escribe exactamente la palabra: BORRAR");
+            if (confirmacion !== 'BORRAR') {
+                alert("Operación cancelada. El texto ingresado no es correcto.");
+                return;
+            }
+
+            showLoading(true);
+            try {
+                let res = null;
+                if (window.USE_FIREBASE && window.FirebaseBackend) {
+                    res = await window.FirebaseBackend.resetearPinesTodosLosEmpleados();
+                } else {
+                    res = await jsonpRequest({ accion: 'resetearPinesEmpleados' });
+                }
+
+                showLoading(false);
+
+                if (res && res.ok) {
+                    alert("✅ " + (res.mensaje || "Contraseñas restablecidas exitosamente."));
+                    mostrarMensaje("Contraseñas restablecidas correctamente", "success");
+                } else {
+                    alert("❌ Error: " + (res?.error || "No se pudo restablecer las contraseñas."));
+                    mostrarMensaje("Error al restablecer contraseñas", "error");
+                }
+            } catch (e) {
+                showLoading(false);
+                alert("❌ Error de comunicación: " + e.message);
+            }
+        };
+
         // ========== INICIALIZACIÓN ==========
         document.addEventListener('DOMContentLoaded', () => {
             cargarConfiguraciones();

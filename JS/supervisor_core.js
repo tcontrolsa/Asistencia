@@ -12,6 +12,53 @@
     let periodos = [];
     let panelActual = 'asistencia';
     let filtroAsistenciaActual = 'todos';
+
+    // ============================================================
+    // GESTIÓN DE SESIÓN SUPERVISOR Y ROLES (GLOBAL HELPERS)
+    // ============================================================
+    function getSupervisorRole(idOrSession, supObj) {
+      let id = "";
+      let supData = supObj;
+      if (idOrSession && typeof idOrSession === 'object') {
+        id = String(idOrSession.id || '').trim();
+        if (!supData) supData = idOrSession;
+      } else {
+        id = String(idOrSession || '').trim();
+      }
+
+      if (id === "1058") return 'ADMIN_MASTER';
+
+      const emp = supData || (typeof empCache !== 'undefined' ? empCache.find(x => String(x.id).trim() === id) : null);
+      const supVal = String(emp?.supervisor || emp?.rol || '').trim().toUpperCase();
+
+      if (supVal === 'SUPERVISOR ADMIN' || supVal === 'SUPERVISOR_ADMIN' || supVal === 'ADMIN_SUPERVISOR' || supVal === 'ADMIN') {
+        return 'SUPERVISOR_ADMIN';
+      }
+      if (supVal === 'SI' || supVal === 'SUPERVISOR') {
+        return 'SUPERVISOR';
+      }
+      return 'EMPLEADO';
+    }
+    window.getSupervisorRole = getSupervisorRole;
+
+    function esAdminMaster(idOrSession) {
+      let sessionData = idOrSession;
+      if (!sessionData) {
+        try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      }
+      return getSupervisorRole(sessionData) === 'ADMIN_MASTER';
+    }
+    window.esAdminMaster = esAdminMaster;
+
+    function tienePermisoAdmin(idOrSession) {
+      let sessionData = idOrSession;
+      if (!sessionData) {
+        try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      }
+      const rol = getSupervisorRole(sessionData);
+      return rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN';
+    }
+    window.tienePermisoAdmin = tienePermisoAdmin;
     
     function getLocalHoyStr(date = new Date()) {
       const y = date.getFullYear();
@@ -140,10 +187,42 @@
       setTimeout(() => el.remove(), 5000);
     }
 
-    function mostrarLoader(show) {
+    function mostrarLoader(show, msg = 'Cargando datos...', subtext = 'Sincronizando información en tiempo real') {
       const loader = document.getElementById('loader');
-      if (loader) loader.classList.toggle('hidden', !show);
+      const txt = document.getElementById('loaderText') || (loader ? loader.querySelector('.loader-text, .loading-text') : null);
+      const sub = document.getElementById('loaderSubtext');
+      if (loader) {
+        if (show) {
+          if (txt && msg) txt.textContent = msg;
+          if (sub) {
+            sub.textContent = subtext;
+            sub.style.display = subtext ? 'block' : 'none';
+          }
+          loader.classList.remove('hidden');
+        } else {
+          loader.classList.add('hidden');
+        }
+      }
     }
+    window.mostrarLoader = mostrarLoader;
+
+    // ========== SPLASH SCREEN ==========
+    function hideSplash() {
+      const splash = document.getElementById('initialSplash');
+      if (splash) {
+        splash.classList.add('fade-out');
+        const appLayout = document.querySelector('.app-layout');
+        if (appLayout) {
+          appLayout.classList.remove('page-content-enter');
+          void appLayout.offsetWidth;
+          appLayout.classList.add('page-content-enter');
+        }
+        setTimeout(() => {
+          if (splash && splash.parentNode) splash.remove();
+        }, 650);
+      }
+    }
+    window.hideSplash = hideSplash;
 
     function formatearTimestampCompleto(ts) {
       if (!ts) return '';
@@ -368,6 +447,63 @@
       return url;
     }
 
+    function obtenerBadgeEstadoEmpleado(e) {
+      if (!e) return '';
+      if (e.isVisitante) {
+        return `<span class="status-indicator-badge status-visitante" title="Visitante / Extra"><i class="fas fa-id-badge"></i></span>`;
+      }
+      if (e.isSinAsistencia || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA') {
+        return `<span class="status-indicator-badge status-comedor" title="Sin Asistencia / Solo Comedor"><i class="fas fa-utensils"></i></span>`;
+      }
+
+      // Si ya salió al final del día
+      if (e._salidaHoy || e.salidaHoy) {
+        return `<span class="status-indicator-badge status-salio" title="Ya Salió (Jornada Concluida)"><i class="fas fa-door-open"></i></span>`;
+      }
+
+      // Detectar razones de ausencia / permiso
+      let razon = e.razon_ausencia || e.razon_permiso || e._razonAusenciaHoy || '';
+      if (!razon && Array.isArray(e.registros)) {
+        const hoy = typeof obtenerFechaHoyLocal === 'function' ? obtenerFechaHoyLocal() : new Date().toISOString().split('T')[0];
+        const fReg = e.registros.find(r => {
+          const t = String(r.tipo).toUpperCase();
+          return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
+        });
+        if (fReg) razon = fReg.razon_ausencia || fReg.razon_permiso || '';
+      }
+
+      const razonUpper = (razon || '').toUpperCase();
+
+      // Vacaciones
+      if (razonUpper.includes('VACACI') || (e.estado || '').toUpperCase() === 'VACACIONES') {
+        return `<span class="status-indicator-badge status-vacaciones" title="De Vacaciones"><i class="fas fa-umbrella-beach"></i></span>`;
+      }
+
+      // Permiso Médico
+      if (razonUpper.includes('MÉDICO') || razonUpper.includes('MEDICO') || razonUpper.includes('SALUD')) {
+        return `<span class="status-indicator-badge status-medico" title="Permiso Médico"><i class="fas fa-file-medical"></i></span>`;
+      }
+
+      // Permiso Personal o Calamidad o Cumpleaños
+      if (razonUpper.includes('PERSONAL') || razonUpper.includes('CALAMIDAD') || razonUpper.includes('CUMPLEAÑ') || razonUpper.includes('JUSTIFICAD') || razonUpper.includes('PERMISO')) {
+        return `<span class="status-indicator-badge status-personal" title="Con Permiso / Justificado"><i class="fas fa-user-clock"></i></span>`;
+      }
+
+      // Modo Campo / Salida a Campo
+      let modoStr = String(e._modo || e.modo || '').toUpperCase();
+      if (modoStr.includes('CAMPO') || razonUpper.includes('CAMPO')) {
+        return `<span class="status-indicator-badge status-campo" title="En Campo / Proyecto"><i class="fas fa-route"></i></span>`;
+      }
+
+      // En Empresa (Marcó entrada hoy y no ha salido)
+      if (e._entradaHoy || e.entradaHoy) {
+        return `<span class="status-indicator-badge status-empresa" title="En Empresa / Planta"><i class="fas fa-building"></i></span>`;
+      }
+
+      // Ausente (Sin registro de entrada ni justificación)
+      return `<span class="status-indicator-badge status-ausente" title="Ausente (Sin Registro)"><i class="fas fa-user-slash"></i></span>`;
+    }
+
     function photoCell(e, size) {
       let ini = (e.nombre?.charAt(0) || '?').toUpperCase();
       const src = fixFotoUrl(e.foto_url);
@@ -377,7 +513,10 @@
       if (size === 'card') {
         return src ? `<img class="employee-card-photo" src="${escapeHtml(src)}" crossorigin="anonymous" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="employee-card-photo-placeholder" style="display:none">${ini}</div>` : `<div class="employee-card-photo-placeholder">${ini}</div>`;
       }
-      return src ? `<img class="employee-photo" src="${escapeHtml(src)}" crossorigin="anonymous" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="employee-photo-placeholder" style="display:none">${ini}</div>` : `<div class="employee-photo-placeholder">${ini}</div>`;
+
+      const imgHtml = src ? `<img class="employee-photo" src="${escapeHtml(src)}" crossorigin="anonymous" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="employee-photo-placeholder" style="display:none">${ini}</div>` : `<div class="employee-photo-placeholder">${ini}</div>`;
+      const badgeHtml = obtenerBadgeEstadoEmpleado(e);
+      return `<div class="avatar-status-wrapper">${imgHtml}${badgeHtml}</div>`;
     }
 
     function generarPeriodos() {
@@ -1111,11 +1250,10 @@
       let totT = stats.reduce((s, r) => s + r.tardanzas, 0);
       let totM = stats.reduce((s, r) => s + r.minP, 0);
       let totX = stats.reduce((s, r) => s + r.extra, 0);
-      let punt = stats.filter(r => r.tardanzas === 0 && r.nE > 0).length;
-      $('tarTotal').textContent = totT;
-      $('tarMinutos').textContent = formatearMinutos(totM);
-      $('tarExtra').textContent = totX;
-      $('tarPuntuales').textContent = punt;
+      if ($('tarTotal')) $('tarTotal').textContent = totT;
+      if ($('tarMinutos')) $('tarMinutos').textContent = formatearMinutos(totM);
+      if ($('tarExtra')) $('tarExtra').textContent = totX;
+      if ($('tarPuntuales')) $('tarPuntuales').textContent = punt;
       let rank = stats.filter(r => r.tardanzas > 0).sort((a, b) => b.tardanzas - a.tardanzas);
       let maxT = rank[0]?.tardanzas || 1;
       $('rankingTardanzas').innerHTML = rank.length ? rank.slice(0, 10).map(r => `<div class="hbar-row" onclick="mostrarDetalle('${r.id}')"><div class="hbar-label" title="${escapeHtml(r.nombre)}">${escapeHtml(r.nombre.split(' ')[0])}</div><div class="hbar-track"><div class="hbar-fill" style="width:${calcularPct(r.tardanzas, maxT)}%;background:var(--amber);"></div></div><div class="hbar-number">${r.tardanzas} tard.</div></div>`).join('') : '<div class="empty-state">Sin tardanzas</div>';
@@ -1125,7 +1263,7 @@
     // ASISTENCIA - 7 CARDS
     function cargarAsistencia() {
       hoy = getLocalHoyStr();
-      const esAdminMaster = window.isMaster || false;
+      const canEditAttendance = tienePermisoAdmin();
       // Ordenar empleados alfabéticamente
       empCache.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
 
@@ -1152,15 +1290,63 @@
         return esPresenteOAlm && (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA');
       }).length;
 
-      $('asisTotal').textContent = total;
-      $('asisPresentes').textContent = pres - salieron;
-      $('asisAusentes').textContent = ausentes;
-      $('asisTardanzas').textContent = tards;
-      $('asisSalieron').textContent = salieron;
+      // Conteos para filtros específicos
+      let countSinMarcar = 0;
+      let countCampo = 0;
+      let countVacaciones = 0;
+      let countPermisos = 0;
+
+      empCache.forEach(e => {
+        let fReg = (e.registros || []).find(r => {
+          const t = String(r.tipo).toUpperCase();
+          return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
+        });
+        let rHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : '';
+        let rUpper = rHoy.toUpperCase();
+        let isSinAsis = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+        let modoStr = (e.modo || '').toUpperCase();
+        let regCampo = (e.registros || []).some(reg => reg.modo === 'CAMPO' && reg.fecha === hoy);
+
+        if (!isSinAsis) {
+          if (rUpper.includes('VACACI') || (e.estado || '').toUpperCase() === 'VACACIONES') {
+            countVacaciones++;
+          } else if (rUpper.includes('CAMPO') || modoStr.includes('CAMPO') || regCampo) {
+            countCampo++;
+          } else if (rUpper.length > 0) {
+            countPermisos++;
+          } else if (!e.entradaHoy) {
+            countSinMarcar++;
+          }
+        }
+      });
+
+      if ($('asisTotal')) $('asisTotal').textContent = total;
+      if ($('asisPresentes')) $('asisPresentes').textContent = pres - salieron;
+      if ($('asisAusentes')) $('asisAusentes').textContent = ausentes;
+      if ($('asisSinMarcar')) $('asisSinMarcar').textContent = countSinMarcar;
+      
+      const cardSinMarcar = document.querySelector('.kpi-card[data-filter="sin_marcar"]');
+      if (cardSinMarcar) {
+        if (countSinMarcar > 0) {
+          cardSinMarcar.classList.add('has-alerts');
+          if ($('asisSinMarcarDot')) $('asisSinMarcarDot').style.display = 'block';
+        } else {
+          cardSinMarcar.classList.remove('has-alerts');
+          if ($('asisSinMarcarDot')) $('asisSinMarcarDot').style.display = 'none';
+        }
+      }
+
+      if ($('asisCampo')) $('asisCampo').textContent = countCampo;
+      if ($('asisVacaciones')) $('asisVacaciones').textContent = countVacaciones;
+      if ($('asisPermisos')) $('asisPermisos').textContent = countPermisos;
+      if ($('searchTotalCount')) $('searchTotalCount').textContent = total;
+
+      if ($('asisTardanzas')) $('asisTardanzas').textContent = tards;
+      if ($('asisSalieron')) $('asisSalieron').textContent = salieron;
       if ($('asisSinSalida')) $('asisSinSalida').textContent = sinSalida;
       if ($('asisVisitantes')) $('asisVisitantes').textContent = totalExtrasHoy;
-      $('asisAlmuerzoPlanta').textContent = almPlanta;
-      $('asisAlmuerzoFuera').textContent = almFuera;
+      if ($('asisAlmuerzoPlanta')) $('asisAlmuerzoPlanta').textContent = almPlanta;
+      if ($('asisAlmuerzoFuera')) $('asisAlmuerzoFuera').textContent = almFuera;
       if ($('asisAlmuerzoPlantaSub')) {
         $('asisAlmuerzoPlantaSub').textContent = totalExtrasHoy > 0 ? `Incluye ${totalExtrasHoy} extras` : '';
       }
@@ -1169,12 +1355,12 @@
         let eReg = (e.registros || []).find(r => r.tipo === 'ENTRADA' && r.fecha === hoy);
         let sReg = (e.registros || []).find(r => r.tipo === 'SALIDA' && r.fecha === hoy);
 
-        // Preparar edición para el Admin
+        // Preparar edición para Admin y Sup Admin
         let horaEntradaRaw = e.horaEntrada || eReg?.hora || '-';
         let horaSalidaRaw = e.horaSalida || sReg?.hora || (e.entradaHoy ? 'Pendiente' : '-');
 
-        let clickEntrada = esAdminMaster ? `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'hora', '${horaEntradaRaw}')"` : "";
-        let clickSalida = esAdminMaster ? `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'SALIDA', '${sReg?.id || ''}', 'hora', '${horaSalidaRaw}')"` : "";
+        let clickEntrada = canEditAttendance ? `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'hora', '${horaEntradaRaw}')"` : "";
+        let clickSalida = canEditAttendance ? `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'SALIDA', '${sReg?.id || ''}', 'hora', '${horaSalidaRaw}')"` : "";
 
         let horaV = e.horaEntradaMs || eReg?.hora || eReg?.timestamp;
         let mEnt = e.entradaHoy ? obtenerMinutos(horaV) : null;
@@ -1242,10 +1428,10 @@
         let extras = (extrasVal === 'SI') ? '<span class="pill ok">AUTORIZADO</span>' : '<span class="pill dim">NO</span>';
         if ((eReg?.autoriza || '').includes('CAMPO')) extras = '<span class="pill ok" title="Auto-autorizado por Campo">CAMPO</span>';
 
-        // Hacer modo y extras editables para Admin
+        // Hacer modo y extras editables para Admin y Sup Admin
         let modoHtml = modo;
         let extrasHtml = extras;
-        if (esAdminMaster) {
+        if (canEditAttendance) {
           const clickModo = `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'modo', '${modo}')"`;
           const clickExtras = `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'horasExtra', '${extrasVal}')"`;
           modoHtml = `<span class="editable-pill" ${clickModo}>${modo}</span>`;
@@ -1253,7 +1439,7 @@
         }
 
         let toggle = '';
-        let puedeEditar = e.entradaHoy || esAdminMaster || isSinAsistencia;
+        let puedeEditar = e.entradaHoy || canEditAttendance || isSinAsistencia;
 
         if (!e.entradaHoy && !isSinAsistencia) {
              toggle = `<span class="pill dim" style="font-size:10px; opacity:0.5; background:transparent; border:none;">Ausente</span>`;
@@ -1261,7 +1447,7 @@
              toggle = `<div class="almuerzo-toggle"><button class="toggle-option ${(e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA') ? 'active-si' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-building"></i> Sí</button><button class="toggle-option ${(e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA') ? 'active-no' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-home"></i> No</button></div>`;
         }
 
-        return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, id: e.id, isSinAsistencia };
+        return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, _razonAusenciaHoy: razonAusenciaHoy, id: e.id, isSinAsistencia };
       });
       
       let extrasHoyTb = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy);
@@ -1296,6 +1482,15 @@
       filtrarAsistenciaTabla();
     }
 
+    window.limpiarBusquedaAsistencia = function() {
+      const input = $('searchAsistencia');
+      if (input) {
+        input.value = '';
+        filtrarAsistenciaTabla();
+        input.focus();
+      }
+    };
+
     function filtrarAsistenciaTabla() {
       document.querySelectorAll('.kpi-card[data-filter]').forEach(btn => {
         if (btn.getAttribute('data-filter') === filtroAsistenciaActual) {
@@ -1304,10 +1499,44 @@
           btn.classList.remove('active');
         }
       });
-      let q = ($('searchAsistencia')?.value || '').toLowerCase();
+      let searchInput = $('searchAsistencia');
+      let q = (searchInput?.value || '').toLowerCase().trim();
+      let clearBtn = $('btnClearSearchAsistencia');
+      if (clearBtn) {
+        clearBtn.style.display = q.length > 0 ? 'flex' : 'none';
+      }
+
       let data = (window._asisData || []).filter(e => {
-        if (q && !e.nombre.toLowerCase().includes(q) && !(e.area || '').toLowerCase().includes(q) && !(e.id || '').includes(q)) return false;
+        if (q && !e.nombre.toLowerCase().includes(q) && !(e.area || '').toLowerCase().includes(q) && !(e.id || '').includes(q) && !(e.cargo || '').toLowerCase().includes(q)) return false;
+        
+        let fReg = (e.registros || []).find(r => {
+          const t = String(r.tipo).toUpperCase();
+          return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
+        });
+        let rHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : (e._razonAusenciaHoy || e.razon_ausencia || e.razon_permiso || '');
+        let rUpper = String(rHoy || '').toUpperCase();
+        let modoStr = String(e._modo || e.modo || '').toUpperCase();
+        let regCampo = (e.registros || []).some(reg => reg.modo === 'CAMPO' && reg.fecha === hoy);
+
         if (filtroAsistenciaActual === 'presente' && (!e._entradaHoy || e._salidaHoy)) return false;
+        if (filtroAsistenciaActual === 'sin_marcar') {
+          if (e._entradaHoy || e.isVisitante || e.isSinAsistencia) return false;
+          if (rUpper.length > 0 || (e.estado || '').toUpperCase() === 'VACACIONES') return false;
+          return true;
+        }
+        if (filtroAsistenciaActual === 'en_campo') {
+          if (e.isVisitante) return false;
+          return modoStr.includes('CAMPO') || rUpper.includes('CAMPO') || regCampo;
+        }
+        if (filtroAsistenciaActual === 'vacaciones') {
+          if (e.isVisitante) return false;
+          return rUpper.includes('VACACI') || (e.estado || '').toUpperCase() === 'VACACIONES';
+        }
+        if (filtroAsistenciaActual === 'permisos') {
+          if (e.isVisitante) return false;
+          if (rUpper.includes('VACACI') || rUpper.includes('CAMPO')) return false;
+          return rUpper.length > 0;
+        }
         if (filtroAsistenciaActual === 'ausente' && (e._entradaHoy || e.isVisitante)) return false;
         if (filtroAsistenciaActual === 'tardanza' && !e._tard) return false;
         if (filtroAsistenciaActual === 'almuerzo_si') {
@@ -1326,6 +1555,14 @@
         if (filtroAsistenciaActual === 'sin_salida' && (!e._entradaHoy || e._salidaHoy)) return false;
         return true;
       });
+
+      if ($('searchResultCount')) {
+        $('searchResultCount').textContent = data.length;
+      }
+      if ($('searchTotalCount')) {
+        $('searchTotalCount').textContent = (window._asisData || []).length;
+      }
+
       // Mantener orden alfabético
       data.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
       if (!data.length) {
@@ -1340,7 +1577,7 @@
         const esPresenteOAlm = e._entradaHoy || e.isSinAsistencia;
         return esPresenteOAlm && (e._almuerzoHoy === 'SI' || e._almuerzoHoy === 'PLANTA');
       }).length;
-      let countCampo = data.filter(e => {
+      let countCampoVis = data.filter(e => {
         let modoStr = (e._modo || '').toUpperCase();
         return modoStr.includes('CAMPO') || (e.registros || []).some(r => r.modo === 'CAMPO' && r.fecha === hoy);
       }).length;
@@ -1352,7 +1589,7 @@
       const colDefs = {
         'Empleado': {
           header: `<th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th>`,
-          body: e => `<td><div class="employee-cell">${photoCell(e)}<strong>${escapeHtml(e.nombre)}</strong></div></td>`,
+          body: e => `<td><div class="employee-cell">${photoCell(e)}<div><strong>${escapeHtml(e.nombre)}</strong>${e.id && !e.isVisitante ? `<div style="font-size:10px; color:#64748b; font-weight:600;"><i class="fas fa-id-badge" style="font-size:9px; color:#6366f1;"></i> ID: ${escapeHtml(e.id)}</div>` : ''}</div></div></td>`,
           footer: `<td><strong>TOTALES (${totalVisible})</strong></td>`
         },
         'Área': {
@@ -1373,7 +1610,7 @@
         'Modo': {
           header: `<th>Modo</th>`,
           body: e => `<td>${e._modo}</td>`,
-          footer: `<td>${countCampo} Campo</td>`
+          footer: `<td>${countCampoVis} Campo</td>`
         },
         'Extras': {
           header: `<th>Extras</th>`,
@@ -1400,6 +1637,10 @@
       const activeColsMap = {
         'todos': ['Empleado', 'Área', 'Entrada', 'Salida', 'Modo', 'Extras', 'Estado', 'Razón Ausencia', 'Almuerzo'],
         'presente': ['Empleado', 'Área', 'Entrada', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
+        'sin_marcar': ['Empleado', 'Área', 'Estado', 'Razón Ausencia', 'Almuerzo'],
+        'en_campo': ['Empleado', 'Área', 'Entrada', 'Salida', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
+        'vacaciones': ['Empleado', 'Área', 'Estado', 'Razón Ausencia'],
+        'permisos': ['Empleado', 'Área', 'Estado', 'Razón Ausencia', 'Almuerzo'],
         'ausente': ['Empleado', 'Área', 'Estado', 'Razón Ausencia', 'Almuerzo'],
         'tardanza': ['Empleado', 'Área', 'Entrada', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
         'almuerzo_si': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
@@ -1709,7 +1950,7 @@
     // ============================================================
     function cargarReportes() {
       let periodo = periodos[parseInt($('periodoMensual')?.value || 0)];
-      if (!periodo || !empCache.length) return;
+      if (!periodo || (!empCache.length && !window.empEliminadosCache?.length)) return;
 
       const hoyRep = getLocalHoyStr();
       const fechaInicio = $('filtroFechaReportesInicio')?.value;
@@ -1717,7 +1958,13 @@
       const R_INI = fechaInicio ? fechaInicio : periodo.inicio;
       const R_FIN = fechaFin ? fechaFin : periodo.fin;
 
-      let stats = empCache.map(e => {
+      const incluirEliminados = $('chkIncluirEliminadosRep')?.checked || false;
+      let listaEmpleados = [...empCache];
+      if (incluirEliminados && window.empEliminadosCache && window.empEliminadosCache.length > 0) {
+        listaEmpleados = listaEmpleados.concat(window.empEliminadosCache);
+      }
+
+      let stats = listaEmpleados.map(e => {
         let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
         let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
         // Días laborables solo hasta hoy (no días futuros del período)
@@ -1948,6 +2195,9 @@
           id: e.id,
           nombre: e.nombre,
           area: e.area,
+          cargo: e.cargo || '',
+          esEliminado: !!e.esEliminado,
+          foto_url: e.foto_url,
           asistencias: diasAsistidos,
           faltas: faltas,
           permisoMedico: totalTiempoMedico,
@@ -2757,7 +3007,7 @@
           atrasoMins = 0;
           minsSalidaTemprana = 0;
         } else {
-          const permisosTotales = tiempoPersonal + tiempoMedico;
+          const permisosTotales = tiempoPersonal + tiempoMedico + tiempoJustificado;
           atrasoMins = Math.max(0, originalAtrasoMins - permisosTotales);
           const permisosRestantes = Math.max(0, permisosTotales - originalAtrasoMins);
           minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
@@ -2807,7 +3057,7 @@
         
         let btnGestionTiempos = '';
         if (esSuperPermiso && !esFalta) {
-          btnGestionTiempos = `<button type="button" onclick="editarCeldaTiempo('cel_gest_${e.id}_${f.replace(/-/g,'')}','${e.id}','${f}','justificado',${tiempoJustificado},'${comentarioEscapadoPermiso}',${tiempoPersonal},${tiempoMedico},${tiempoPorJustificar})" style="background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:2px 6px; font-size:10px; font-weight:700; color:#b45309; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; transition:all 0.15s;" onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'" title="Gestionar o Justificar tiempo">
+          btnGestionTiempos = `<button type="button" onclick="editarCeldaTiempo('cel_gest_${e.id}_${f.replace(/-/g,'')}','${e.id}','${f}','justificado',${tiempoJustificado},'${comentarioEscapadoPermiso}',${tiempoPersonal},${tiempoMedico},${tiempoPorJustificar},${originalAtrasoMins})" style="background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:2px 6px; font-size:10px; font-weight:700; color:#b45309; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; transition:all 0.15s;" onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'" title="Gestionar o Justificar tiempo">
             <i class="fas fa-plus-circle" style="color:#d97706; font-size:10px;"></i> + Tiempo
           </button>`;
         }
@@ -2985,6 +3235,7 @@
               <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')"` : ''}><i class="fas fa-id-card"></i> ${escapeHtml(e.id)}</span>
               <span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')"` : ''}><i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}</span>
               <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esAdminMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Editar enlace de Rol de Pagos"` : ''}><i class="fas fa-file-invoice-dollar"></i> ${e.id_dispositivo ? 'Con Rol' : 'Sin Rol'}</span>
+              <button onclick="window.resetearPasswordEmpleado('${e.id}', '${escapeHtml(e.nombre)}')" title="Resetear contraseña para permitir que el empleado vuelva a vincular su dispositivo" style="background:#fff1f2; color:#be123c; border:1px solid #fca5a5; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; cursor:pointer; transition:all 0.15s;"><i class="fas fa-key" style="font-size:10px;"></i> Resetear Contraseña</button>
               ${tardT > 0 ? 
                 `<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` : 
                 `<span style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check-circle"></i> Puntual</span>`
@@ -3109,7 +3360,7 @@
               <i class="fas fa-file-excel"></i> Exportar Excel
             </button>
             <button class="btn btn-primary" onclick="window.mostrarModalFuturos('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:var(--purple); border-color:var(--purple); color:white; cursor:pointer;">
-              <i class="fas fa-calendar-plus"></i> Registrar Evento Futuro
+              <i class="fas fa-calendar-plus"></i> Registrar Evento (jornada completa)
             </button>
             <button class="btn btn-primary" onclick="window.mostrarModalCampoSupervisor('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:#059669; border-color:#059669; color:white; cursor:pointer;">
               <i class="fas fa-hammer"></i> Trabajo en Campo
@@ -3379,7 +3630,7 @@
     };
 
     // editarCeldaTiempo: modal interactivo profesional para ingresar T.JUSTIFICADO, T.PERSONAL, T.MEDICO con confirmación
-    window.editarCeldaTiempo = function(uid, empId, fecha, tipoInicial = 'justificado', minsJustificado = 0, comentarioActual = '', minsPersonal = 0, minsMedico = 0, minsPorJustificar = 0) {
+    window.editarCeldaTiempo = function(uid, empId, fecha, tipoInicial = 'justificado', minsJustificado = 0, comentarioActual = '', minsPersonal = 0, minsMedico = 0, minsPorJustificar = 0, atrasoMins = 0) {
       // Eliminar modal anterior si existe
       const prev = document.getElementById('modalConversorTiempo');
       if (prev) prev.remove();
@@ -3405,8 +3656,9 @@
 
       let currentTipo = tipoInicial in mapTipos ? tipoInicial : 'justificado';
       let currentMins = mapTipos[currentTipo].defaultMins || 0;
-      if (currentMins === 0 && minsPorJustificar > 0) {
-        currentMins = minsPorJustificar;
+      if (currentMins === 0) {
+        if (minsPorJustificar > 0) currentMins = minsPorJustificar;
+        else if (atrasoMins > 0) currentMins = atrasoMins;
       }
       let currentHrs = Math.floor(currentMins / 60);
       let currentRemMins = currentMins % 60;
@@ -3476,6 +3728,7 @@
               <div style="margin-bottom: 16px;">
                 <span style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 8px;">Accesos Rápidos</span>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  ${atrasoMins > 0 ? `<button type="button" onclick="setConvVals(${Math.floor(atrasoMins/60)}, ${atrasoMins%60})" style="background: #fee2e2; border: 1px solid #fecdd3; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; color: #991b1b; cursor: pointer; transition: all 0.2s;" title="Cargar tiempo de atraso">⏰ Atraso (${minutosAHHMMSS(atrasoMins)})</button>` : ''}
                   ${minsPorJustificar > 0 ? `<button type="button" onclick="setConvVals(${Math.floor(minsPorJustificar/60)}, ${minsPorJustificar%60})" style="background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 700; color: #b45309; cursor: pointer; transition: all 0.2s;" title="Cargar el tiempo faltante de la jornada">⚡ Faltante (${minutosAHHMMSS(minsPorJustificar)})</button>` : ''}
                   <button type="button" onclick="setConvVals(0, 15)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">15m</button>
                   <button type="button" onclick="setConvVals(0, 30)" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: #475569; cursor: pointer; transition: all 0.2s;">30m</button>
@@ -3692,6 +3945,10 @@
         }
         else if (panel === 'menu') {
           cargarMenuSemanal();
+        }
+        else if (panel === 'opciones') {
+          if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
+          if (window.poblarTablaRolesActuales) window.poblarTablaRolesActuales();
         }
       }
     }
@@ -3958,7 +4215,7 @@
     }
 
     async function eliminarRegistroSupervisor(docId, empleadoId, fecha, tipo) {
-      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
+      if (!tienePermisoAdmin()) { mostrarToast('Solo Administradores y Supervisores Admin pueden realizar esta acción.', 'error'); return; }
       if (!confirm('¿Estás seguro de eliminar este registro permanentemente?')) return;
 
       mostrarLoader(true);
@@ -3992,7 +4249,7 @@
     // ARCHIVADO A GOOGLE SHEETS
     // ============================================================
     async function iniciarArchivadoFirebase() {
-      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
+      if (!esAdminMaster()) { mostrarToast('Solo el Administrador General (1058) puede realizar esta acción.', 'error'); return; }
       mostrarLoader(true);
       let infoDias = "No se pudo determinar el registro más antiguo.";
       let diasSugeridos = 60;
@@ -4253,7 +4510,7 @@
     }
 
     async function guardarRegistroManual() {
-      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
+      if (!tienePermisoAdmin()) { mostrarToast('Solo Administradores y Supervisores Admin pueden realizar esta acción.', 'error'); return; }
       const eid = $('manEmpleadoId').value;
       const fecha = $('manFecha').value;
       const tipo = $('manTipo').value;
@@ -4298,6 +4555,67 @@
         mostrarLoader(false);
       }
     }
+
+    window.resetearPasswordEmpleado = async function(empleadoId, nombreEmpleado) {
+      if (!empleadoId) return;
+
+      const mensaje = `🔑 RESETEAR CONTRASEÑA DE ACCESO\n\n` +
+                      `Empleado: ${nombreEmpleado}\n` +
+                      `ID / Cédula: ${empleadoId}\n\n` +
+                      `¿Deseas resetear la contraseña para que el colaborador pueda crear una nueva o vincular su teléfono de nuevo?`;
+
+      if (!confirm(mensaje)) return;
+
+      let nuevaClave = prompt(`(Opcional) Si deseas asignarle una contraseña manual a ${nombreEmpleado}, escríbela aquí:\n(Déjala vacía para que el empleado cree su propia clave al vincular)`);
+      if (nuevaClave === null) return; // Cancelado por el usuario
+
+      mostrarLoader(true);
+      try {
+        let passHash = '';
+        if (nuevaClave.trim() !== '') {
+          if (nuevaClave.trim().length < 4) {
+            mostrarToast('La contraseña debe tener al menos 4 caracteres', 'warning');
+            mostrarLoader(false);
+            return;
+          }
+          if (typeof hashPassword === 'function') {
+            passHash = await hashPassword(nuevaClave.trim());
+          } else {
+            passHash = nuevaClave.trim();
+          }
+        }
+
+        let res = null;
+        if (window.FirebaseBackend && window.USE_FIREBASE) {
+          res = await window.FirebaseBackend.actualizarPerfilEmpleado({
+            empleadoId: empleadoId,
+            passwordHash: passHash,
+            deviceToken: ''
+          });
+        } else {
+          res = await jsonpRequest({
+            accion: 'actualizarPerfilEmpleado',
+            empleadoId: empleadoId,
+            passwordHash: passHash,
+            deviceToken: ''
+          });
+        }
+
+        mostrarLoader(false);
+        if (res && (res.ok || res.mensaje)) {
+          const detalleMsg = passHash === ''
+            ? `Se eliminó la contraseña de ${nombreEmpleado}. Ahora puede vincular su teléfono y crear una contraseña nueva.`
+            : `Contraseña manual asignada correctamente a ${nombreEmpleado}.`;
+          mostrarToast(`✅ ${detalleMsg}`, 'success');
+          if (typeof mostrarDetalle === 'function') mostrarDetalle(empleadoId);
+        } else {
+          mostrarToast(res?.error || 'Error al resetear la contraseña', 'error');
+        }
+      } catch(e) {
+        mostrarLoader(false);
+        mostrarToast('Error de comunicación: ' + e.message, 'error');
+      }
+    };
 
     window.mostrarModalFuturos = function(preselectedEmpId = null) {
       const modal = $('eventoFuturoModal');
@@ -4387,8 +4705,8 @@
     }
 
     window.guardarEventoFuturo = async function() {
-      if (!window.esAdminMaster && !window.isMaster) {
-        mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error');
+      if (!tienePermisoAdmin()) {
+        mostrarToast('Solo Administradores y Supervisores Admin pueden realizar esta acción.', 'error');
         return;
       }
       const eid = $('futEmpleadoId').value;
@@ -4477,7 +4795,7 @@
 
     // --- FUNCIONES DE EDICIÓN ADMIN ---
     window.editarValorRegistro = async function(empleadoId, tipo, docId, campo, valorActual, fecha) {
-      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
+      if (!tienePermisoAdmin()) { mostrarToast('Solo Administradores y Supervisores Admin pueden realizar esta acción.', 'error'); return; }
       
       let nuevoValor = null;
       let targetFecha = fecha || hoy;
@@ -4641,7 +4959,7 @@
     }
 
     async function editarMetaEmpleado(empleadoId, campo, valorActual) {
-      if (!window.esAdminMaster && !window.isMaster) { mostrarToast('Solo el administrador (1058) puede realizar esta acción.', 'error'); return; }
+      if (!esAdminMaster()) { mostrarToast('Solo el Administrador General (1058) puede realizar esta acción.', 'error'); return; }
       let nuevo = prompt(`Editar ${campo} del empleado:`, valorActual);
       if (nuevo === null || nuevo === valorActual) return;
 
@@ -4843,6 +5161,31 @@
           return;
         }
         empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+        
+        let eliminadosList = res.empleadosEliminados || [];
+        if (!eliminadosList.length && res.registros && res.registros.length) {
+          const activeIds = new Set(empCache.map(e => String(e.id).trim()));
+          const elimMap = {};
+          res.registros.forEach(r => {
+            const rId = String(r.empleadoId || r.id_empleado || (r.id && !String(r.id).includes('_') ? r.id : '')).trim();
+            if (rId && !activeIds.has(rId)) {
+              if (!elimMap[rId]) {
+                elimMap[rId] = {
+                  id: rId,
+                  nombre: r.nombre || `Colaborador (${rId})`,
+                  area: 'Eliminado',
+                  cargo: 'Eliminado',
+                  esEliminado: true,
+                  activo: false,
+                  registros: []
+                };
+              }
+              elimMap[rId].registros.push(r);
+            }
+          });
+          eliminadosList = Object.values(elimMap);
+        }
+        window.empEliminadosCache = eliminadosList.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
         window.almuerzosExtra = res.almuerzosExtra || [];
         window.emergencia = res.emergencia || { activa: false, nombre: '' };
         periodos = generarPeriodos();
@@ -4852,10 +5195,10 @@
           try {
             const session = JSON.parse(sessionStr);
             const id = session.id;
-            const esMaster = String(id) === "1058" || window.isMaster || window.esAdminMaster;
-            const sup = empCache.find(x => x.id === id);
-            
-            if (!esMaster && (!sup || (sup.supervisor || '').trim().toUpperCase() !== 'SI')) {
+            const sup = empCache.find(x => String(x.id).trim() === String(id).trim());
+            const rol = getSupervisorRole(session, sup);
+
+            if (rol === 'EMPLEADO') {
               console.warn("⚠️ Intento de acceso no autorizado detectado. Cerrando sesión...");
               localStorage.removeItem('SUPERVISOR_SESSION');
               location.reload();
@@ -4863,14 +5206,11 @@
             }
 
             // Set global permissions
-            window.isMaster = esMaster;
-            if (esMaster) {
-              if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
-              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'flex';
-            } else {
-              if ($('navItemReportes')) $('navItemReportes').style.display = 'none';
-              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'none';
-            }
+            window.isMaster = (rol === 'ADMIN_MASTER');
+            window.isSupervisorAdmin = (rol === 'SUPERVISOR_ADMIN');
+
+            if ($('navItemReportes')) $('navItemReportes').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
+            if ($('navItemOpciones')) $('navItemOpciones').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
 
             mostrarInformacionSupervisor(session);
           } catch(e) {}
@@ -4911,12 +5251,62 @@
       else if (panelActual === 'emergencias') {
         cargarEmergenciasSupervisor(true);
       }
-      else if (panelActual === 'asistencia') cargarAsistencia();
+      else if (panelActual === 'asistencia') {
+        cargarAsistencia();
+      }
+      else if (panelActual === 'opciones') {
+        if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
+        if (window.poblarTablaRolesActuales) window.poblarTablaRolesActuales();
+      }
     }
 
     // ============================================================
-    // GESTIÓN DE SESIÓN SUPERVISOR
+    // GESTIÓN DE SESIÓN SUPERVISOR Y ROLES
     // ============================================================
+    function getSupervisorRole(idOrSession, supObj) {
+      let id = "";
+      let supData = supObj;
+      if (idOrSession && typeof idOrSession === 'object') {
+        id = String(idOrSession.id || '').trim();
+        if (!supData) supData = idOrSession;
+      } else {
+        id = String(idOrSession || '').trim();
+      }
+
+      if (id === "1058") return 'ADMIN_MASTER';
+
+      const emp = supData || (typeof empCache !== 'undefined' ? empCache.find(x => String(x.id).trim() === id) : null);
+      const supVal = String(emp?.supervisor || emp?.rol || '').trim().toUpperCase();
+
+      if (supVal === 'SUPERVISOR ADMIN' || supVal === 'SUPERVISOR_ADMIN' || supVal === 'ADMIN_SUPERVISOR' || supVal === 'ADMIN') {
+        return 'SUPERVISOR_ADMIN';
+      }
+      if (supVal === 'SI' || supVal === 'SUPERVISOR') {
+        return 'SUPERVISOR';
+      }
+      return 'EMPLEADO';
+    }
+    window.getSupervisorRole = getSupervisorRole;
+
+    function esAdminMaster(idOrSession) {
+      let sessionData = idOrSession;
+      if (!sessionData) {
+        try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      }
+      return getSupervisorRole(sessionData) === 'ADMIN_MASTER';
+    }
+    window.esAdminMaster = esAdminMaster;
+
+    function tienePermisoAdmin(idOrSession) {
+      let sessionData = idOrSession;
+      if (!sessionData) {
+        try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch(e) {}
+      }
+      const rol = getSupervisorRole(sessionData);
+      return rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN';
+    }
+    window.tienePermisoAdmin = tienePermisoAdmin;
+
     async function intentarLoginSupervisor() {
       const user = $('supUser').value.trim();
       const pin = $('supPin').value.trim();
@@ -4935,28 +5325,44 @@
 
       try {
         const deviceToken = generarDeviceToken();
-        // Búsqueda por Usuario (empleadoId) y PIN (contraseña)
-        const res = await jsonpRequest({ accion: 'verificarPIN', empleadoId: user, pin: pin, deviceToken: deviceToken });
+        const passHash = typeof hashPassword === 'function' ? await hashPassword(pin) : pin;
+        
+        // 1. Probar validación con Hash Criptográfico
+        let res = await jsonpRequest({ accion: 'verificarPIN', empleadoId: user, pin: passHash, deviceToken: deviceToken });
 
-        if (res.error) {
+        // 2. Fallback de compatibilidad si el usuario aún tiene contraseña en texto plano en la BD
+        if ((!res || !res.valido) && (!res?.error || res?.error === "Contraseña incorrecta")) {
+          const resPlain = await jsonpRequest({ accion: 'verificarPIN', empleadoId: user, pin: pin, deviceToken: deviceToken });
+          if (resPlain && resPlain.valido) {
+            res = resPlain;
+          }
+        }
+
+        if (res && res.error) {
           mostrarError(res.error);
-        } else if (res.valido) {
-          const esMaster = String(res.empleado.id) === "1058";
-          if (res.empleado.esSupervisor || esMaster) {
-            const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
+        } else if (res && res.valido) {
+          const rol = getSupervisorRole(res.empleado);
+          if (res.empleado.esSupervisor || rol !== 'EMPLEADO') {
+            const sessionData = { 
+              id: res.empleado.id, 
+              nombre: res.empleado.nombre || '',
+              foto_url: res.empleado.foto_url || '',
+              cargo: res.empleado.cargo || '',
+              supervisor: res.empleado.supervisor || '',
+              rol: rol,
+              token: deviceToken, 
+              timestamp: new Date().getTime() 
+            };
             localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
 
             // Estado global de permisos
-            window.isMaster = esMaster;
+            window.isMaster = (rol === 'ADMIN_MASTER');
+            window.isSupervisorAdmin = (rol === 'SUPERVISOR_ADMIN');
 
-            if (esMaster) {
-              if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
-              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'flex';
-            } else {
-              if ($('navItemReportes')) $('navItemReportes').style.display = 'none';
-              if ($('navItemOpciones')) $('navItemOpciones').style.display = 'none';
-            }
+            if ($('navItemReportes')) $('navItemReportes').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
+            if ($('navItemOpciones')) $('navItemOpciones').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
 
+            mostrarInformacionSupervisor(sessionData);
             $('login-supervisor').classList.add('hidden');
             cargarDatosCompletos();
           } else {
@@ -4968,7 +5374,7 @@
       } catch (e) {
         mostrarError('Error de conexión');
       } finally {
-        window.mostrarLoader(false); // Evitar error si no está bindeado, usando global
+        window.mostrarLoader(false);
       }
     }
 
@@ -4987,25 +5393,106 @@
       return token;
     }
 
+    function cerrarSesionSupervisor() {
+      if (confirm("¿Estás seguro de que deseas cerrar sesión del panel de supervisión?")) {
+        localStorage.removeItem('SUPERVISOR_SESSION');
+        location.reload();
+      }
+    }
+    window.cerrarSesionSupervisor = cerrarSesionSupervisor;
+
     function mostrarInformacionSupervisor(session) {
-      const el = $('sidebarSupervisorInfo');
-      if (!el) return;
+      if (!session) return;
       
-      let nombre = "Supervisor";
-      let id = session.id || "";
+      const id = session.id || "";
+      const sup = empCache.find(x => String(x.id).trim() === String(id).trim());
+      const rol = getSupervisorRole(session, sup);
       
-      if (String(id) === "1058") {
-        nombre = "Admin Master";
-      } else {
-        let sup = empCache.find(x => x.id === id);
-        if (sup) nombre = sup.nombre;
-        else nombre = "Supervisor ID " + id;
+      let nombre = session.nombre || "";
+      let foto_url = session.foto_url || "";
+      let cargo = session.cargo || (rol === 'ADMIN_MASTER' ? "Administrador General" : (rol === 'SUPERVISOR_ADMIN' ? "Supervisor Administrador" : "Supervisor"));
+      
+      if (sup) {
+        if (sup.nombre) nombre = sup.nombre;
+        if (sup.foto_url || sup.fotoUrl || sup.foto) foto_url = sup.foto_url || sup.fotoUrl || sup.foto;
+        if (sup.cargo) cargo = sup.cargo;
       }
       
-      el.innerHTML = `
-        <div style="font-weight:700; color:var(--g800); font-size:12.5px;">${escapeHtml(nombre)}</div>
-        <div style="font-size:10px; color:var(--g400); margin-top:2px;">ID: ${escapeHtml(id)}</div>
-      `;
+      if (!nombre) {
+        nombre = (rol === 'ADMIN_MASTER') ? "Fernando Sanmartin" : (rol === 'SUPERVISOR_ADMIN' ? `Supervisor Admin #${id}` : `Supervisor #${id}`);
+      }
+
+      if (foto_url && typeof fixFotoUrl === 'function') {
+        foto_url = fixFotoUrl(foto_url);
+      }
+
+      // Obtener inicial para fallback
+      const primerLetra = nombre.trim().charAt(0).toUpperCase() || 'S';
+      let rolBadge = '<span class="sup-badge-sup"><i class="fas fa-user-shield"></i> Supervisor</span>';
+      let rolLabelTopBar = 'Supervisor';
+
+      if (rol === 'ADMIN_MASTER') {
+        rolBadge = '<span class="sup-badge-admin"><i class="fas fa-crown"></i> Admin Master</span>';
+        rolLabelTopBar = 'Admin';
+      } else if (rol === 'SUPERVISOR_ADMIN') {
+        rolBadge = '<span class="sup-badge-sup-admin"><i class="fas fa-user-tie"></i> Sup. Admin</span>';
+        rolLabelTopBar = 'Sup. Admin';
+      }
+
+      // 1. Renderizar en Sidebar (#sidebarSupervisorInfo)
+      const elSidebar = $('sidebarSupervisorInfo');
+      if (elSidebar) {
+        const avatarImgHtml = foto_url 
+          ? `<img src="${foto_url}" alt="${escapeHtml(nombre)}" class="sup-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+             <div class="sup-avatar-fallback" style="display:none;">${primerLetra}</div>`
+          : `<div class="sup-avatar-fallback">${primerLetra}</div>`;
+
+        elSidebar.innerHTML = `
+          <div class="sup-card-container">
+            <div class="sup-avatar-wrapper">
+              ${avatarImgHtml}
+            </div>
+            <div class="sup-info-text">
+              <div class="sup-name" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>
+              <div class="sup-role-row">
+                ${rolBadge}
+                <span class="sup-id-badge">#${escapeHtml(id)}</span>
+              </div>
+            </div>
+            <button type="button" class="btn-logout-card" onclick="cerrarSesionSupervisor()" title="Cerrar Sesión">
+              <i class="fas fa-sign-out-alt"></i>
+            </button>
+          </div>
+        `;
+      }
+
+      // 2. Renderizar en TopBar (#topbarSupervisorProfile)
+      const elTopBar = $('topbarSupervisorProfile');
+      if (elTopBar) {
+        const topbarAvatarHtml = foto_url 
+          ? `<img src="${foto_url}" alt="${escapeHtml(nombre)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+             <div class="topbar-fallback" style="display:none;">${primerLetra}</div>`
+          : `<div class="topbar-fallback">${primerLetra}</div>`;
+
+        const partesNombre = nombre.trim().split(/\s+/);
+        const nombreCorto = partesNombre.length > 2 ? partesNombre[2] : partesNombre[0];
+
+        elTopBar.innerHTML = `
+          <div class="topbar-user-chip">
+            <div class="topbar-avatar">
+              ${topbarAvatarHtml}
+            </div>
+            <div class="topbar-user-meta">
+              <span class="topbar-user-name" title="${escapeHtml(nombre)}">${escapeHtml(nombreCorto)}</span>
+              <span class="topbar-user-role">${rolLabelTopBar}</span>
+            </div>
+            <button type="button" class="btn-logout-header" onclick="cerrarSesionSupervisor()" title="Cerrar Sesión">
+              <i class="fas fa-power-off"></i>
+              <span>Salir</span>
+            </button>
+          </div>
+        `;
+      }
     }
 
     function verificarEstadoSupervisor() {
@@ -5013,20 +5500,20 @@
       if (sessionStr) {
         try {
           const session = JSON.parse(sessionStr);
-          window.isMaster = (String(session.id) === "1058");
+          const rol = getSupervisorRole(session);
+          window.isMaster = (rol === 'ADMIN_MASTER');
+          window.isSupervisorAdmin = (rol === 'SUPERVISOR_ADMIN');
+
           mostrarInformacionSupervisor(session);
-          if (window.isMaster) {
-            if ($('navItemReportes')) $('navItemReportes').style.display = 'flex';
-            if ($('navItemOpciones')) $('navItemOpciones').style.display = 'flex';
-          } else {
-            if ($('navItemReportes')) $('navItemReportes').style.display = 'none';
-            if ($('navItemOpciones')) $('navItemOpciones').style.display = 'none';
-          }
+          
+          if ($('navItemReportes')) $('navItemReportes').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
+          if ($('navItemOpciones')) $('navItemOpciones').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
         } catch (e) { }
         $('login-supervisor').classList.add('hidden');
         cargarDatosCompletos();
       } else {
         window.isMaster = false;
+        window.isSupervisorAdmin = false;
         $('login-supervisor').classList.remove('hidden');
       }
     }
@@ -5151,6 +5638,7 @@
 
     // Inicio
     console.log("🛠️ Iniciando Panel Supervisor...");
+    setTimeout(hideSplash, 2800);
     if (!window.FirebaseBackend) {
       console.error("❌ FirebaseBackend no cargado. Reintentando...");
     }
@@ -5229,16 +5717,22 @@
       const selectPeriodo = $('periodoMensual');
       const idx = parseInt(selectPeriodo?.value || 0);
       let periodo = periodos[idx];
-      if (!periodo || !empCache.length) return;
+      if (!periodo || (!empCache.length && !window.empEliminadosCache?.length)) return;
 
       const fechaFiltro = $('filtroFechaReportes')?.value;
       const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
       const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
 
       const hoyRep = getLocalHoyStr();
+
+      const incluirEliminados = $('chkIncluirEliminadosRep')?.checked || false;
+      let listaEmpleados = [...empCache];
+      if (incluirEliminados && window.empEliminadosCache && window.empEliminadosCache.length > 0) {
+        listaEmpleados = listaEmpleados.concat(window.empEliminadosCache);
+      }
       
       // Calcular estadísticas de manera idéntica a cargarReportes()
-      _reportesCustomData = empCache.map(e => {
+      _reportesCustomData = listaEmpleados.map(e => {
         let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
         let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
         let diasLaborablesTotal = obtenerDiasHabiles(R_INI, R_FIN);
@@ -5569,6 +6063,12 @@
     };
 
     window.setFiltroRapidoReporte = function(cargoVal, btnElement) {
+      if (cargoVal === 'eliminados') {
+        const chk = $('chkIncluirEliminadosRep');
+        if (chk && !chk.checked) {
+          chk.checked = true;
+        }
+      }
       if ($('filtroCargoReporte')) {
         $('filtroCargoReporte').value = cargoVal;
       }
@@ -5582,10 +6082,13 @@
           b.style.color = 'var(--g600)';
           b.style.borderColor = 'var(--g200)';
         });
-        btnElement.style.background = 'var(--blue)';
+        const isElim = cargoVal === 'eliminados';
+        btnElement.style.background = isElim ? '#e11d48' : 'var(--blue)';
         btnElement.style.color = '#fff';
-        btnElement.style.borderColor = 'var(--blue)';
+        btnElement.style.borderColor = isElim ? '#e11d48' : 'var(--blue)';
       }
+      if (typeof cargarReportes === 'function') cargarReportes();
+      if (typeof actualizarReporteInteractivo === 'function') actualizarReporteInteractivo();
       filtrarReporteInteractivo();
     };
 
@@ -5691,7 +6194,12 @@
 
       let data = (_reportesCustomData || []).filter(e => {
           let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-          let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
+          let matchCargo = !fCargo;
+          if (fCargo === 'eliminados') {
+            matchCargo = !!e.esEliminado || e.activo === false || (e.area || '').toLowerCase() === 'eliminado' || (e.cargo || '').toLowerCase() === 'eliminado';
+          } else if (fCargo) {
+            matchCargo = (e.cargo || '').toLowerCase() === fCargo;
+          }
           return matchQ && matchCargo;
       });
 
@@ -5725,7 +6233,11 @@
       }
 
       bodyT.innerHTML = data.map(e => {
-        let rowHtml = `<tr onclick="mostrarDetalle('${e.id}')" style="cursor:pointer"><td><div class="employee-cell">${photoCell(e)}<span>${escapeHtml(e.nombre)}</span></div></td>`;
+        let nombreEmpDisplay = escapeHtml(e.nombre);
+        if (e.esEliminado) {
+          nombreEmpDisplay += ` <span class="pill" style="font-size:9px; padding:1px 6px; background:#ffe4e6; color:#e11d48; font-weight:700; border:1px solid #fecdd3;" title="Colaborador eliminado con registros históricos">🗑️ Eliminado</span>`;
+        }
+        let rowHtml = `<tr onclick="mostrarDetalle('${e.id}')" style="cursor:pointer"><td><div class="employee-cell">${photoCell(e)}<span>${nombreEmpDisplay}</span></div></td>`;
 
         COLUMNAS_DISPONIBLES.forEach(col => {
           if (columnasCustomActivas.includes(col.id)) {
@@ -6111,7 +6623,7 @@
           atrasoMins = 0;
           minsSalidaTemprana = 0;
         } else {
-          const permisosTotales = tiempoPersonal + tiempoMedico;
+          const permisosTotales = tiempoPersonal + tiempoMedico + tiempoJustificado;
           atrasoMins = Math.max(0, originalAtrasoMins - permisosTotales);
           const permisosRestantes = Math.max(0, permisosTotales - originalAtrasoMins);
           minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
@@ -6747,6 +7259,43 @@
     // ============================================================
     let _vistaPreviaMasivaCache = [];
 
+    window.actualizarKPIsOpciones = function() {
+      const kpiEmp = $('kpiOpcTotalEmp');
+      const kpiSup = $('kpiOpcTotalSupervisores');
+      if (!kpiEmp && !kpiSup) return;
+
+      const total = (empCache || []).length;
+      const conRoles = (empCache || []).filter(e => {
+        const id = String(e.id).trim();
+        const rol = getSupervisorRole(e);
+        return id === "1058" || rol !== 'EMPLEADO';
+      }).length;
+
+      if (kpiEmp) kpiEmp.textContent = total;
+      if (kpiSup) kpiSup.textContent = conRoles;
+    };
+
+    window.cambiarSeccionOpciones = function(seccion) {
+      const secPersonal = $('secOpcPersonal');
+      const secRoles = $('secOpcRoles');
+      const secSistema = $('secOpcSistema');
+
+      if (secPersonal) secPersonal.style.display = (seccion === 'personal') ? 'block' : 'none';
+      if (secRoles) {
+        secRoles.style.display = (seccion === 'roles') ? 'block' : 'none';
+        if (seccion === 'roles') {
+          window.renderGestionRolesEmpleados();
+        }
+      }
+      if (secSistema) secSistema.style.display = (seccion === 'sistema') ? 'block' : 'none';
+
+      document.querySelectorAll('.btn-sec-opc').forEach(btn => btn.classList.remove('active'));
+      const btnActive = $('btnSec' + seccion.charAt(0).toUpperCase() + seccion.slice(1));
+      if (btnActive) btnActive.classList.add('active');
+
+      window.actualizarKPIsOpciones();
+    };
+
     window.cambiarModoGestion = function(modo) {
       const contSheets = $('contModoSheets');
       const contManual = $('contModoManual');
@@ -6763,8 +7312,8 @@
         }
       }
       
-      // Actualizar estilos activos de los botones de pestaña
-      document.querySelectorAll('.tab-gestion').forEach(btn => {
+      // Actualizar estilos activos de los botones de pestaña dentro de la sección de personal
+      document.querySelectorAll('#secOpcPersonal .tab-gestion').forEach(btn => {
         btn.style.background = 'transparent';
         btn.style.color = 'var(--g500)';
         btn.style.boxShadow = 'none';
@@ -6777,6 +7326,178 @@
         activeBtn.style.color = modo === 'eliminar' ? '#e11d48' : 'var(--g800)';
         activeBtn.style.boxShadow = 'var(--sh)';
       }
+    };
+
+    // ============================================================
+    // GESTIÓN Y ASIGNACIÓN DE ROLES DE SEGURIDAD (ADMIN 1058)
+    // ============================================================
+    window.renderGestionRolesEmpleados = function() {
+      const sel = document.getElementById('selRolEmpleado');
+      if (!sel) return;
+
+      const ordenados = (empCache || []).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+      
+      let html = '<option value="">-- Selecciona un colaborador --</option>';
+      ordenados.forEach(emp => {
+        const id = String(emp.id).trim();
+        const rol = getSupervisorRole(emp);
+        let rolLabel = 'Empleado';
+        if (rol === 'ADMIN_MASTER') rolLabel = '👑 Admin Master';
+        else if (rol === 'SUPERVISOR_ADMIN') rolLabel = '👔 Sup. Admin';
+        else if (rol === 'SUPERVISOR') rolLabel = '🛡️ Supervisor';
+
+        html += `<option value="${escapeHtml(id)}">${escapeHtml(emp.nombre || id)} (ID: ${escapeHtml(id)}) - [${rolLabel}]</option>`;
+      });
+
+      sel.innerHTML = html;
+      window.actualizarInfoRolSeleccionado();
+      window.poblarTablaRolesActuales();
+    };
+
+    window.actualizarInfoRolSeleccionado = function() {
+      const sel = document.getElementById('selRolEmpleado');
+      if (!sel || !sel.value) return;
+
+      const empId = String(sel.value).trim();
+      const emp = empCache.find(e => String(e.id).trim() === empId);
+      if (!emp) return;
+
+      const rol = getSupervisorRole(emp);
+      const radios = document.getElementsByName('rbNuevoRol');
+
+      if (rol === 'ADMIN_MASTER') {
+        radios.forEach(r => r.checked = false);
+      } else if (rol === 'SUPERVISOR_ADMIN') {
+        radios.forEach(r => { if (r.value === 'SUPERVISOR ADMIN') r.checked = true; });
+      } else if (rol === 'SUPERVISOR') {
+        radios.forEach(r => { if (r.value === 'SI') r.checked = true; });
+      } else {
+        radios.forEach(r => { if (r.value === 'NO') r.checked = true; });
+      }
+    };
+
+    window.guardarAsignacionRol = async function(targetId = null, targetRol = null) {
+      if (!esAdminMaster()) {
+        mostrarToast('Solo el Administrador General (1058) puede asignar roles.', 'error');
+        return;
+      }
+
+      const sel = document.getElementById('selRolEmpleado');
+      const empId = targetId || (sel ? sel.value : null);
+      
+      if (!empId) {
+        mostrarToast('Por favor, selecciona un colaborador para asignar rol.', 'warning');
+        return;
+      }
+
+      if (String(empId).trim() === "1058") {
+        mostrarToast('El Administrador General (1058) es permanente y su rol no se puede modificar.', 'warning');
+        return;
+      }
+
+      let nuevoRol = targetRol;
+      if (!nuevoRol) {
+        const checkedRadio = document.querySelector('input[name="rbNuevoRol"]:checked');
+        nuevoRol = checkedRadio ? checkedRadio.value : 'NO';
+      }
+
+      const emp = empCache.find(e => String(e.id).trim() === String(empId).trim());
+      const nombreEmp = emp ? emp.nombre : `ID ${empId}`;
+
+      let rolTexto = 'Empleado regular (sin permisos especiales)';
+      if (nuevoRol === 'SUPERVISOR ADMIN') rolTexto = 'SUPERVISOR ADMIN (Acceso a Reportes, edición y registros manuales)';
+      else if (nuevoRol === 'SI') rolTexto = 'SUPERVISOR (Turno y Operación)';
+
+      if (!confirm(`¿Confirmas asignar el rol "${nuevoRol}" a "${nombreEmp}" (ID: ${empId})?\n\nNuevo Rol: ${rolTexto}`)) {
+        return;
+      }
+
+      mostrarLoader(true);
+      try {
+        const res = await jsonpRequest({
+          accion: 'actualizarEmpleado',
+          empleadoId: empId,
+          campo: 'supervisor',
+          valor: nuevoRol
+        });
+
+        mostrarLoader(false);
+
+        if (res && res.ok) {
+          mostrarToast(`✅ Rol asignado exitosamente a "${nombreEmp}"`, 'success');
+          if (emp) {
+            emp.supervisor = nuevoRol;
+          }
+          window.renderGestionRolesEmpleados();
+          if (typeof cargarDatosCompletos === 'function') {
+            await cargarDatosCompletos(true, true);
+          }
+        } else {
+          mostrarToast(res?.error || 'Error al guardar el rol en el servidor.', 'error');
+        }
+      } catch (err) {
+        mostrarLoader(false);
+        console.error("Error al guardar rol de empleado:", err);
+        mostrarToast('Error de conexión al asignar el rol.', 'error');
+      }
+    };
+
+    window.poblarTablaRolesActuales = function() {
+      const tbody = document.getElementById('tbodyUsuariosConRoles');
+      const cntEl = document.getElementById('cntUsuariosConRoles');
+      if (!tbody) return;
+
+      const conPrivilegios = (empCache || []).filter(e => {
+        const id = String(e.id).trim();
+        const rol = getSupervisorRole(e);
+        return id === "1058" || rol !== 'EMPLEADO';
+      });
+
+      if (cntEl) cntEl.textContent = conPrivilegios.length;
+
+      if (!conPrivilegios.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:8px;">No hay usuarios con privilegios registrados.</td></tr>';
+        return;
+      }
+
+      let html = '';
+      conPrivilegios.forEach(emp => {
+        const id = String(emp.id).trim();
+        const rol = getSupervisorRole(emp);
+        const is1058 = (id === "1058");
+
+        let badge = '<span class="sup-badge-sup"><i class="fas fa-user-shield"></i> Supervisor</span>';
+        if (rol === 'ADMIN_MASTER') {
+          badge = '<span class="sup-badge-admin"><i class="fas fa-crown"></i> Admin Master</span>';
+        } else if (rol === 'SUPERVISOR_ADMIN') {
+          badge = '<span class="sup-badge-sup-admin"><i class="fas fa-user-tie"></i> Sup. Admin</span>';
+        }
+
+        let accionesHtml = '';
+        if (is1058) {
+          accionesHtml = '<span style="font-size:10px; color:#94a3b8; font-weight:600;">Permanente</span>';
+        } else {
+          accionesHtml = `
+            <div style="display:flex; gap:4px; justify-content:center;">
+              ${rol !== 'SUPERVISOR_ADMIN' ? `<button onclick="window.guardarAsignacionRol('${escapeHtml(id)}', 'SUPERVISOR ADMIN')" class="btn-delete-tiny" style="padding:2px 5px; font-size:9.5px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:4px; cursor:pointer;" title="Hacer Supervisor Admin">Hacer Sup. Admin</button>` : ''}
+              ${rol !== 'SUPERVISOR' ? `<button onclick="window.guardarAsignacionRol('${escapeHtml(id)}', 'SI')" class="btn-delete-tiny" style="padding:2px 5px; font-size:9.5px; background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; border-radius:4px; cursor:pointer;" title="Cambiar a Supervisor Regular">Hacer Supervisor</button>` : ''}
+              <button onclick="window.guardarAsignacionRol('${escapeHtml(id)}', 'NO')" class="btn-delete-tiny" style="padding:2px 5px; font-size:9.5px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:4px; cursor:pointer;" title="Quitar todos los permisos">Quitar Rol</button>
+            </div>
+          `;
+        }
+
+        html += `
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="font-weight:700; color:#334155;">#${escapeHtml(id)}</td>
+            <td style="font-weight:600; color:#1e293b;">${escapeHtml(emp.nombre || '-')}</td>
+            <td style="color:#64748b; font-size:10.5px;">${escapeHtml(emp.area || '-')}</td>
+            <td>${badge}</td>
+            <td style="text-align:center;">${accionesHtml}</td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
     };
 
     function normalizarHeaderAKeyJS(header) {
@@ -7655,24 +8376,19 @@
         const hoyStr = `${hoyObj.getFullYear()}-${String(hoyObj.getMonth() + 1).padStart(2, '0')}-${String(hoyObj.getDate()).padStart(2, '0')}`;
 
         const yaExiste = regsFecha.length > 0;
-        const esPasado = fStr < hoyStr;
+        const hEntrada = regEntrada && regEntrada.hora ? regEntrada.hora.substring(0, 5) : '';
+        const hSalida = regSalida && regSalida.hora ? regSalida.hora.substring(0, 5) : '';
 
-        // Omitir fechas pasadas que no correspondan a Trabajo en Campo previo
-        if (!esPasado || yaExiste) {
-          const hEntrada = regEntrada && regEntrada.hora ? regEntrada.hora.substring(0, 5) : '';
-          const hSalida = regSalida && regSalida.hora ? regSalida.hora.substring(0, 5) : '';
-
-          fechas.push({
-            fecha: fStr,
-            diaNombre: diaNombre,
-            isFestivo: (typeof esFeriado === 'function' && esFeriado(fStr)) || curr.getDay() === 0 || curr.getDay() === 6,
-            hE: hEntrada,
-            hS: hSalida,
-            yaExiste: yaExiste,
-            docEntradaId: regEntrada ? regEntrada.id : null,
-            docSalidaId: regSalida ? regSalida.id : null
-          });
-        }
+        fechas.push({
+          fecha: fStr,
+          diaNombre: diaNombre,
+          isFestivo: (typeof esFeriado === 'function' && esFeriado(fStr)) || curr.getDay() === 0 || curr.getDay() === 6,
+          hE: hEntrada,
+          hS: hSalida,
+          yaExiste: yaExiste,
+          docEntradaId: regEntrada ? regEntrada.id : null,
+          docSalidaId: regSalida ? regSalida.id : null
+        });
 
         curr.setDate(curr.getDate() + 1);
       }
@@ -7720,8 +8436,12 @@
         return parseInt(parts[0]) * 60 + parseInt(parts[1]);
       }
       const mE = toMins(hEStr);
-      const mS = toMins(hSStr);
-      if (mE === null || mS === null || mS <= mE) return { t50: '0h 0m', t100: '0h 0m' };
+      let mS = toMins(hSStr);
+      if (mE === null || mS === null) return { t50: '0h 0m', t100: '0h 0m' };
+      if (mS < mE) {
+        mS += 24 * 60;
+      }
+      if (mS <= mE) return { t50: '0h 0m', t100: '0h 0m' };
 
       const minutosBrutos = mS - mE;
       const minutosNetos = Math.max(0, minutosBrutos - 30);
@@ -7751,7 +8471,7 @@
       if (!container) return;
 
       if (_supDiasCampoState.length === 0) {
-        container.innerHTML = `<div style="background:#f1f5f9; padding:8px; border-radius:6px; font-size:12px; text-align:center; color:#64748b;">No hay fechas válidas disponibles en el rango seleccionado (las fechas pasadas que no sean Trabajo en Campo no están disponibles).</div>`;
+        container.innerHTML = `<div style="background:#f1f5f9; padding:8px; border-radius:6px; font-size:12px; text-align:center; color:#64748b;">No hay fechas seleccionadas en el rango.</div>`;
         return;
       }
 
@@ -7842,7 +8562,7 @@
       const listaFinal = Array.from(unicosMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
 
       if (listaFinal.length > 0) {
-        select.innerHTML = '<option value="">-- Seleccionar Autorizador (Ingeniería) --</option>' +
+        select.innerHTML = '<option value="">-- Seleccionar Autorizador (Ingeniería) [Opcional] --</option>' +
           listaFinal.map(i => `<option value="${i.nombre}">${i.nombre} (${i.area || 'INGENIERIA'})</option>`).join('');
       } else {
         select.innerHTML = '<option value="">-- Sin personal del área de Ingeniería encontrado --</option>';
@@ -7853,12 +8573,10 @@
       const empId = document.getElementById('supCampoEmpId')?.value;
       const proyecto = document.getElementById('supCampoProyectoInput')?.value.trim();
       const obs = document.getElementById('supCampoObservacionesInput')?.value.trim();
-      const autoriza = document.getElementById('supCampoAutorizadoPorSelect')?.value;
+      const autoriza = document.getElementById('supCampoAutorizadoPorSelect')?.value || '';
 
       if (!empId) { mostrarToast('ID de empleado no especificado', 'error'); return; }
-      if (!proyecto) { mostrarToast('Ingresa el nombre del proyecto', 'error'); return; }
-      if (!_supDiasCampoState || _supDiasCampoState.length === 0) { mostrarToast('No hay fechas válidas disponibles en el rango seleccionado.', 'error'); return; }
-      if (!autoriza) { mostrarToast('Selecciona quién autoriza la actividad', 'error'); return; }
+      if (!_supDiasCampoState || _supDiasCampoState.length === 0) { mostrarToast('No hay fechas seleccionadas en el rango.', 'error'); return; }
 
       const diasExistentes = _supDiasCampoState.filter(d => d.yaExiste);
       if (diasExistentes.length > 0) {
@@ -7869,18 +8587,18 @@
 
       const emp = empCache.find(e => e.id === empId);
       const empNombre = emp ? emp.nombre : empId;
-      const obsFinal = obs ? `[Proyecto: ${proyecto}] ${obs}` : `[Proyecto: ${proyecto}] Trabajo en Campo`;
+
+      let obsFinal = 'Trabajo en Campo';
+      if (proyecto && obs) {
+        obsFinal = `[Proyecto: ${proyecto}] ${obs}`;
+      } else if (proyecto) {
+        obsFinal = `[Proyecto: ${proyecto}] Trabajo en Campo`;
+      } else if (obs) {
+        obsFinal = obs;
+      }
 
       const btn = document.getElementById('btnGuardarCampoSup');
       if (btn) btn.disabled = true;
-
-      for (const item of _supDiasCampoState) {
-        if (!item.hE || !item.hS) {
-          mostrarToast(`Por favor ingresa la hora de entrada y salida para la fecha ${item.fecha}`, 'error');
-          if (btn) btn.disabled = false;
-          return;
-        }
-      }
 
       try {
         const firestoreDb = (typeof db !== 'undefined' ? db : (window.db || null));
@@ -7892,51 +8610,77 @@
 
         let guardadosCount = 0;
         for (const item of _supDiasCampoState) {
-          const hE = item.hE.length === 5 ? item.hE + ':00' : item.hE;
-          const hS = item.hS.length === 5 ? item.hS + ':00' : item.hS;
-          const hEClean = hE.replace(/:/g, '');
-          const hSClean = hS.replace(/:/g, '');
+          const hE = item.hE ? (item.hE.length === 5 ? item.hE + ':00' : item.hE) : '';
+          const hS = item.hS ? (item.hS.length === 5 ? item.hS + ':00' : item.hS) : '';
 
-          const targetEntradaId = item.docEntradaId || `${empId}_Entrada_campo_${item.fecha}_${hEClean}`;
-          const targetSalidaId = item.docSalidaId || `${empId}_SALIDA_CAMPO_${item.fecha}_${hSClean}`;
+          if (hE) {
+            const hEClean = hE.replace(/:/g, '');
+            const targetEntradaId = item.docEntradaId || `${empId}_Entrada_campo_${item.fecha}_${hEClean}`;
+            const tsEntrada = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hE}`));
 
-          const tsEntrada = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hE}`));
-          const tsSalida = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hS}`));
+            const dataEntrada = {
+              empleadoId: empId,
+              nombre: empNombre,
+              fecha: item.fecha,
+              hora: hE,
+              tipo: 'Entrada_campo',
+              almuerzo: '',
+              dispositivo: 'FORM_CAMPO_SUPERVISOR',
+              timestamp: tsEntrada,
+              modo: 'CAMPO',
+              horasExtra: 'SI',
+              autoriza: autoriza,
+              observaciones: obsFinal,
+              razon_ausencia: obsFinal
+            };
+            await firestoreDb.collection('registros').doc(targetEntradaId).set(dataEntrada, { merge: true });
+          }
 
-          const dataEntrada = {
-            empleadoId: empId,
-            nombre: empNombre,
-            fecha: item.fecha,
-            hora: hE,
-            tipo: 'Entrada_campo',
-            almuerzo: '',
-            dispositivo: 'FORM_CAMPO_SUPERVISOR',
-            timestamp: tsEntrada,
-            modo: 'CAMPO',
-            horasExtra: 'SI',
-            autoriza: autoriza,
-            observaciones: obsFinal,
-            razon_ausencia: obsFinal
-          };
+          if (hS) {
+            const hSClean = hS.replace(/:/g, '');
+            const targetSalidaId = item.docSalidaId || `${empId}_SALIDA_CAMPO_${item.fecha}_${hSClean}`;
+            const tsSalida = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hS}`));
 
-          const dataSalida = {
-            empleadoId: empId,
-            nombre: empNombre,
-            fecha: item.fecha,
-            hora: hS,
-            tipo: 'SALIDA_CAMPO',
-            almuerzo: '',
-            dispositivo: 'FORM_CAMPO_SUPERVISOR',
-            timestamp: tsSalida,
-            modo: 'CAMPO',
-            horasExtra: 'SI',
-            autoriza: autoriza,
-            observaciones: obsFinal,
-            razon_ausencia: obsFinal
-          };
+            const dataSalida = {
+              empleadoId: empId,
+              nombre: empNombre,
+              fecha: item.fecha,
+              hora: hS,
+              tipo: 'SALIDA_CAMPO',
+              almuerzo: '',
+              dispositivo: 'FORM_CAMPO_SUPERVISOR',
+              timestamp: tsSalida,
+              modo: 'CAMPO',
+              horasExtra: 'SI',
+              autoriza: autoriza,
+              observaciones: obsFinal,
+              razon_ausencia: obsFinal
+            };
+            await firestoreDb.collection('registros').doc(targetSalidaId).set(dataSalida, { merge: true });
+          }
 
-          await firestoreDb.collection('registros').doc(targetEntradaId).set(dataEntrada, { merge: true });
-          await firestoreDb.collection('registros').doc(targetSalidaId).set(dataSalida, { merge: true });
+          if (!hE && !hS) {
+            const targetEntradaId = item.docEntradaId || `${empId}_Entrada_campo_${item.fecha}_080000`;
+            const tsEntrada = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T08:00:00`));
+
+            const dataEntrada = {
+              empleadoId: empId,
+              nombre: empNombre,
+              fecha: item.fecha,
+              hora: '',
+              tipo: 'Entrada_campo',
+              almuerzo: '',
+              dispositivo: 'FORM_CAMPO_SUPERVISOR',
+              timestamp: tsEntrada,
+              modo: 'CAMPO',
+              horasExtra: 'SI',
+              autoriza: autoriza,
+              observaciones: obsFinal,
+              razon_ausencia: obsFinal
+            };
+            await firestoreDb.collection('registros').doc(targetEntradaId).set(dataEntrada, { merge: true });
+          }
+
           guardadosCount++;
         }
 

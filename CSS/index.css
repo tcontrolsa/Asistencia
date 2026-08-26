@@ -1,20 +1,26 @@
-/* CRITICAL SPLASH STYLES */
+/* CRITICAL SPLASH STYLES - CORPORATE RED */
         .splash-screen {
             position: fixed;
             inset: 0;
-            background: linear-gradient(135deg, #1e40af 0%, #0f172a 100%);
+            background: linear-gradient(165deg, #dc2626 0%, #b91c1c 50%, #881337 100%);
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
+            padding: calc(env(safe-area-inset-top, 20px) + 50px) 24px calc(env(safe-area-inset-bottom, 20px) + 40px);
             z-index: 9999;
-            color: white;
-            transition: opacity 0.5s ease, visibility 0.5s;
+            color: #ffffff;
+            transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1), filter 0.65s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.65s;
+            box-sizing: border-box;
+            will-change: opacity, transform, filter;
         }
 
         .splash-screen.fade-out {
             opacity: 0;
+            transform: scale(1.04);
+            filter: blur(10px);
             visibility: hidden;
+            pointer-events: none;
         }
 
         /* ===== PWA INSTALL BANNER ===== */
@@ -27,11 +33,11 @@
             display: none;
             align-items: center;
             gap: 12px;
-            background: linear-gradient(135deg, #1e40af, #1d4ed8);
+            background: linear-gradient(135deg, #dc2626, #111827);
             color: white;
             padding: 12px 20px;
             border-radius: 50px;
-            box-shadow: 0 8px 32px rgba(30, 64, 175, 0.4);
+            box-shadow: 0 8px 32px rgba(220, 38, 38, 0.35);
             font-family: 'Inter', sans-serif;
             font-size: 14px;
             font-weight: 600;
@@ -82,24 +88,629 @@
         }
 
         /* =============================== */
-        .splash-logo {
-            font-size: 80px;
-            margin-bottom: 20px;
-            animation: pulse 2s infinite;
+        .splash-body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            width: 100%;
+            max-width: 320px;
+            text-align: center;
+            margin-top: 30px;
         }
 
-        .splash-title {
-            font-size: 28px;
-            font-weight: 800;
-            letter-spacing: 2px;
-            margin-bottom: 5px;
+        /* ===== ESCENARIO INDUSTRIAL: GRÚA + BANDA + LOGO + RAYO ===== */
+        .splash-industrial-stage {
+            position: relative;
+            width: 100%;
+            max-width: 320px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            min-height: 205px;
+        }
+
+        /* 1. GRÚA INDUSTRIAL */
+        .crane-rig {
+            position: absolute;
+            top: -45px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 110px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 30;
+            pointer-events: none;
+            animation: craneSequence 3.8s ease-in-out infinite;
+        }
+
+        .crane-trolley {
+            width: 38px;
+            height: 7px;
+            background: #ffffff;
+            border-radius: 3px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .crane-cable-line {
+            width: 2px;
+            height: 52px;
+            background: repeating-linear-gradient(to bottom, #ffffff, #ffffff 4px, #111827 4px, #111827 8px);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .crane-hook-assembly {
+            width: 44px;
+            height: 32px;
+            margin-top: -2px;
+        }
+
+        .crane-hook-svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.4));
+        }
+
+        @keyframes craneSequence {
+            0% {
+                transform: translate(-50%, -100px);
+                opacity: 1;
+            }
+            22% {
+                transform: translate(-50%, -10px); /* Baja el logo hasta la banda */
+                opacity: 1;
+            }
+            30% {
+                transform: translate(-50%, -10px); /* Suelta el logo */
+                opacity: 1;
+            }
+            42% {
+                transform: translate(-50%, -130px); /* Sube y sale */
+                opacity: 0;
+            }
+            100% {
+                transform: translate(-50%, -130px);
+                opacity: 0;
+            }
+        }
+
+        /* 2. CONTENEDOR DEL LOGO Y ANIMACIÓN DE COLOCACIÓN */
+        .splash-logo-container {
+            position: relative;
+            width: clamp(235px, 75vw, 295px);
+            height: clamp(96px, 28vw, 106px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 15;
+            animation: logoPlacementOnBelt 3.8s ease-in-out infinite;
+        }
+
+        @keyframes logoPlacementOnBelt {
+            0% {
+                transform: translateY(-85px) scale(0.95);
+                opacity: 0;
+            }
+            8% {
+                opacity: 1;
+            }
+            22% {
+                transform: translateY(0) scale(1); /* Toca la banda */
+            }
+            32% {
+                transform: translateY(0) scale(1);
+            }
+            50% {
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* LOGO INICIAL (GRIS / METÁLICO) */
+        .splash-logo-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            position: absolute;
+            inset: 0;
+            filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.35));
+            transition: opacity 0.2s ease;
+        }
+
+        .logo-state-initial {
+            opacity: 1;
+            animation: logoInitialState 3.8s ease-in-out infinite;
+        }
+
+        @keyframes logoInitialState {
+            0%, 46% {
+                opacity: 1;
+                filter: grayscale(1) brightness(1.2) contrast(1.1) drop-shadow(0 8px 18px rgba(0, 0, 0, 0.35));
+            }
+            48% {
+                opacity: 0;
+                filter: brightness(2.5) drop-shadow(0 0 25px #ffffff);
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+
+        /* LOGO TRANSFORMADO (ELECTRIFICADO / ROJO Y BLANCO TRAS EL RAYO) */
+        .logo-state-transformed {
+            opacity: 0;
+            animation: logoTransformedState 3.8s ease-in-out infinite;
+        }
+
+        @keyframes logoTransformedState {
+            0%, 46% {
+                opacity: 0;
+                transform: scale(1);
+            }
+            48% {
+                opacity: 1;
+                transform: scale(1.06);
+                filter: brightness(2.2) drop-shadow(0 0 30px #ffffff) drop-shadow(0 0 45px #fde047);
+            }
+            54% {
+                opacity: 1;
+                transform: scale(1);
+                filter: brightness(1) drop-shadow(0 10px 25px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 15px rgba(255, 255, 255, 0.6));
+            }
+            68% {
+                opacity: 1;
+                transform: scale(1);
+                filter: brightness(1.1) drop-shadow(0 10px 25px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 22px rgba(255, 255, 255, 0.8));
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+                filter: brightness(1) drop-shadow(0 10px 25px rgba(0, 0, 0, 0.4));
+            }
+        }
+
+        /* ===== EFECTO DE ONDA EXPANSIVA ELÉCTRICA Y AURA NEÓN DESDE LA 'N' ===== */
+        .logo-shockwave-container {
+            position: absolute;
+            top: 48%;
+            left: 54.5%;
+            transform: translate(-50%, -50%);
+            width: 70px;
+            height: 70px;
+            pointer-events: none;
+            z-index: 22;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .shockwave-ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 2.5px solid #ffffff;
+            box-shadow: 0 0 18px 5px #ffffff, 0 0 35px 10px #fde047, 0 0 55px 16px rgba(220, 38, 38, 0.9);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .shockwave-ring.ring-1 {
+            animation: shockwaveRingAnim 3.8s cubic-bezier(0.12, 0.8, 0.28, 1) infinite;
+        }
+
+        .shockwave-ring.ring-2 {
+            animation: shockwaveRingAnim 3.8s cubic-bezier(0.12, 0.8, 0.28, 1) 0.14s infinite;
+        }
+
+        .shockwave-pulse-beam {
+            position: absolute;
+            width: 0;
+            height: 4px;
+            background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.95) 20%, #ffffff 50%, rgba(253, 224, 71, 0.95) 80%, transparent 100%);
+            box-shadow: 0 0 16px 5px #ffffff, 0 0 32px 10px #fde047;
+            border-radius: 4px;
+            opacity: 0;
+            animation: shockwaveBeamAnim 3.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+        }
+
+        @keyframes shockwaveRingAnim {
+            0%, 47% {
+                opacity: 0;
+                transform: scale(0.1);
+            }
+            48% {
+                opacity: 1;
+                transform: scale(0.3);
+            }
+            56% {
+                opacity: 0.9;
+                transform: scale(2.8, 1.4);
+            }
+            68% {
+                opacity: 0;
+                transform: scale(4.8, 2.2);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(4.8, 2.2);
+            }
+        }
+
+        @keyframes shockwaveBeamAnim {
+            0%, 47% {
+                width: 0;
+                opacity: 0;
+            }
+            48% {
+                width: 40px;
+                opacity: 1;
+            }
+            58% {
+                width: 290px;
+                opacity: 1;
+            }
+            70% {
+                width: 330px;
+                opacity: 0;
+            }
+            100% {
+                width: 330px;
+                opacity: 0;
+            }
+        }
+
+        /* 3. BANDA TRANSPORTADORA INDUSTRIAL (MÁS LENTA Y MÁS ABAJO) */
+        .conveyor-belt-assembly {
+            position: relative;
+            width: clamp(255px, 82vw, 315px);
+            margin-top: 14px; /* Separación amplia para no tapar el texto inferior del logo */
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .conveyor-track {
+            width: 100%;
+            height: 16px;
+            background: #111827;
+            border: 1.5px solid rgba(255, 255, 255, 0.4);
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35), inset 0 2px 4px rgba(0, 0, 0, 0.6);
+        }
+
+        .conveyor-treads {
+            width: 200%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                90deg,
+                #1f2937,
+                #1f2937 10px,
+                #374151 10px,
+                #374151 12px,
+                #ffffff 12px,
+                #ffffff 14px,
+                #1f2937 14px,
+                #1f2937 24px
+            );
+            animation: conveyorMove 3.0s linear infinite; /* Movimiento más pausado y realista */
+        }
+
+        @keyframes conveyorMove {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .conveyor-rollers {
+            width: 92%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: -8px;
+            padding: 0 8px;
+        }
+
+        .roller-wheel {
+            width: 18px;
+            height: 18px;
+            background: #ffffff;
+            border: 2px solid #111827;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+            animation: rollerSpin 3.0s linear infinite; /* Giro suave y sincronizado */
+        }
+
+        .wheel-spoke {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 2px;
+            background: #111827;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes rollerSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .conveyor-legs {
+            width: 84%;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2px;
+        }
+
+        .conveyor-leg {
+            width: 6px;
+            height: 14px;
+            background: linear-gradient(to bottom, #ffffff, #111827);
+            border-radius: 2px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* 4. RAYO - IMPACTO SOBRE LA LETRA N */
+        .lightning-strike-container {
+            position: absolute;
+            top: -65px;
+            left: 54.5%;
+            width: 44px;
+            height: 130px;
+            transform: translateX(-50%);
+            pointer-events: none;
+            z-index: 25;
+        }
+
+        .lightning-bolt-svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            opacity: 0;
+            animation: lightningStrikeAnim 3.8s infinite;
+        }
+
+        .lightning-path {
+            fill: none;
+            stroke: url(#boltGrad);
+            stroke-width: 4.5px;
+            stroke-linecap: round;
+            stroke-linejoin: miter;
+            stroke-dasharray: 450;
+            stroke-dashoffset: 450;
+            animation: lightningDraw 3.8s infinite;
+        }
+
+        .lightning-branch {
+            fill: none;
+            stroke: #ffffff;
+            stroke-width: 2.2px;
+            stroke-linecap: round;
+            stroke-dasharray: 120;
+            stroke-dashoffset: 120;
+            animation: lightningDraw 3.8s infinite;
+        }
+
+        .lightning-impact-glow {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 40px;
+            background: radial-gradient(circle, #ffffff 15%, rgba(254, 240, 138, 0.95) 45%, rgba(220, 38, 38, 0) 75%);
+            border-radius: 50%;
+            opacity: 0;
+            animation: lightningImpactFlash 3.8s infinite;
+        }
+
+        .lightning-impact-spark {
+            position: absolute;
+            bottom: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 8px;
+            height: 8px;
+            background: #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 18px 8px #ffffff, 0 0 35px 12px #fde047;
+            opacity: 0;
+            animation: lightningSparkPulse 3.8s infinite;
+        }
+
+        /* Resplandor eléctrico reflejado en el logo */
+        .splash-logo-container::after {
+            content: '';
+            position: absolute;
+            inset: -15px;
+            background: radial-gradient(circle at 54.5% 50%, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 65%);
+            border-radius: 20px;
+            opacity: 0;
+            pointer-events: none;
+            animation: logoElectricFlash 3.8s infinite;
+        }
+
+        @keyframes lightningStrikeAnim {
+            0%, 45% { opacity: 0; }
+            46% { opacity: 1; }
+            52% { opacity: 1; }
+            54% { opacity: 0.3; }
+            56% { opacity: 0.95; }
+            60% { opacity: 0; }
+            100% { opacity: 0; }
+        }
+
+        @keyframes lightningDraw {
+            0%, 45% {
+                stroke-dashoffset: 450;
+                opacity: 0;
+            }
+            46% {
+                stroke-dashoffset: 0;
+                opacity: 1;
+            }
+            54% {
+                stroke-dashoffset: 0;
+                opacity: 1;
+            }
+            60% {
+                stroke-dashoffset: 0;
+                opacity: 0;
+            }
+            100% {
+                stroke-dashoffset: 450;
+                opacity: 0;
+            }
+        }
+
+        @keyframes lightningImpactFlash {
+            0%, 45% {
+                opacity: 0;
+                transform: translateX(-50%) scale(0.2);
+            }
+            48% {
+                opacity: 1;
+                transform: translateX(-50%) scale(2.2);
+            }
+            52% {
+                opacity: 0.8;
+                transform: translateX(-50%) scale(1.6);
+            }
+            56% {
+                opacity: 1;
+                transform: translateX(-50%) scale(2.4);
+            }
+            62% {
+                opacity: 0;
+                transform: translateX(-50%) scale(0.4);
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes lightningSparkPulse {
+            0%, 45% {
+                opacity: 0;
+                transform: translateX(-50%) scale(0.2);
+            }
+            48%, 56% {
+                opacity: 1;
+                transform: translateX(-50%) scale(1.8);
+            }
+            62% {
+                opacity: 0;
+                transform: translateX(-50%) scale(0.2);
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes logoElectricFlash {
+            0%, 45% { opacity: 0; }
+            48% { opacity: 1; }
+            52% { opacity: 0.4; }
+            56% { opacity: 0.9; }
+            62% { opacity: 0; }
+            100% { opacity: 0; }
+        }
+
+        .splash-logo {
+            font-size: 64px;
+            margin-bottom: 18px;
+            animation: splashLogoIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+
+        .splash-badge-year {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            color: #111827;
+            font-size: 14px;
+            font-weight: 900;
+            letter-spacing: 3px;
+            padding: 5px 22px;
+            border-radius: 50px;
+            margin-bottom: 14px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            animation: splashTextIn 0.7s ease 0.2s both;
         }
 
         .splash-subtitle {
-            font-size: 14px;
-            opacity: 0.9;
+            font-size: 13px;
+            font-weight: 700;
+            color: #ffffff;
+            opacity: 0.95;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            animation: splashTextIn 0.7s ease 0.35s both;
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        .splash-footer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            max-width: 220px;
+            animation: splashTextIn 0.7s ease 0.45s both;
+        }
+
+        .splash-loader-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        .splash-loader-progress {
+            height: 100%;
+            width: 0%;
+            background: #ffffff;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.85);
+            border-radius: 8px;
+            animation: splashLoaderAnim 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        .splash-version-text {
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+
+        @keyframes splashLoaderAnim {
+            0% { width: 0%; transform: translateX(0); }
+            50% { width: 80%; transform: translateX(20%); }
+            100% { width: 100%; transform: translateX(100%); }
+        }
+
+        @keyframes splashLogoIn {
+            from { opacity: 0; transform: scale(0.7) translateY(20px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes splashTextIn {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 0.9; transform: translateY(0); }
         }
 
         @keyframes pulse {
@@ -1791,11 +2402,17 @@
         }
 
         .loading-text {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--gray-600);
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e293b;
         }
 
+        .loading-subtext {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 4px;
+            font-weight: 500;
+        }
 
         @keyframes spin {
             to {
@@ -1803,6 +2420,572 @@
             }
         }
 
+        /* ===== SPLASH SCREEN DE TRANSICIÓN Y ÉXITO - CORPORATE RED ===== */
+        .transition-splash-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(185, 28, 28, 0.86);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            padding: 20px;
+            opacity: 1;
+            transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.5s cubic-bezier(0.16, 1, 0.3, 1), -webkit-backdrop-filter 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.5s;
+            animation: transFadeIn 0.3s ease forwards;
+            will-change: opacity, backdrop-filter;
+        }
+
+        .transition-splash-overlay.fade-out {
+            opacity: 0;
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .transition-splash-card {
+            background: #ffffff;
+            border: 1.5px solid #fee2e2;
+            border-radius: 28px;
+            padding: 28px 24px 24px;
+            max-width: 360px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 50px -10px rgba(220, 38, 38, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+            animation: transCardPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), filter 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+            will-change: transform, opacity;
+        }
+
+        .transition-splash-overlay.fade-out .transition-splash-card {
+            transform: scale(0.92) translateY(18px);
+            opacity: 0;
+            filter: blur(4px);
+        }
+
+        /* Revelación suave del contenido de la app al disolver el splash */
+        .page-content-enter {
+            animation: pageGlideIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            will-change: transform, opacity;
+        }
+
+        @keyframes pageGlideIn {
+            0% {
+                opacity: 0.6;
+                transform: scale(0.985) translateY(10px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .trans-badge-top {
+            width: 78px;
+            height: 78px;
+            margin: 0 auto 14px;
+            object-fit: contain;
+            filter: drop-shadow(0 8px 18px rgba(220, 38, 38, 0.22));
+            border-radius: 18px;
+        }
+
+        .trans-icon-circle {
+            width: 68px;
+            height: 68px;
+            border-radius: 50%;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            position: relative;
+        }
+
+        .trans-icon-circle.success-pulse,
+        .trans-icon-circle.primary-pulse {
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            color: #ffffff;
+            box-shadow: 0 10px 25px rgba(220, 38, 38, 0.35);
+            animation: pulseRingRed 1.8s infinite;
+        }
+
+        .trans-icon-circle.sync-pulse {
+            background: linear-gradient(135deg, #111827 0%, #374151 100%);
+            color: #ffffff;
+            box-shadow: 0 10px 25px rgba(17, 24, 39, 0.3);
+        }
+
+        .trans-icon-circle.sync-pulse i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes pulseRingRed {
+            0% {
+                box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5), 0 10px 25px rgba(220, 38, 38, 0.35);
+            }
+            70% {
+                box-shadow: 0 0 0 16px rgba(220, 38, 38, 0), 0 10px 25px rgba(220, 38, 38, 0.35);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(220, 38, 38, 0), 0 10px 25px rgba(220, 38, 38, 0.35);
+            }
+        }
+
+        .trans-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #111827;
+            margin: 0 0 4px 0;
+            letter-spacing: -0.3px;
+        }
+
+        .trans-employee-name {
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #dc2626;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .trans-subtitle {
+            font-size: 12.5px;
+            color: #4b5563;
+            margin: 0 0 16px 0;
+            line-height: 1.45;
+            font-weight: 500;
+        }
+
+        .trans-steps-container {
+            background: #fafafa;
+            border: 1px solid #f3f4f6;
+            border-radius: 14px;
+            padding: 10px 14px;
+            margin-bottom: 18px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .trans-step-item {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #111827;
+            display: flex;
+            align-items: center;
+            animation: fadeInStep 0.3s ease forwards;
+        }
+
+        .trans-step-item i {
+            color: #dc2626;
+        }
+
+        .trans-progress-bar {
+            width: 100%;
+            height: 5px;
+            background: #f3f4f6;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .trans-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #dc2626 0%, #111827 100%);
+            border-radius: 10px;
+            width: 0%;
+            animation: progressFill 2.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        @keyframes progressFill {
+            0% { width: 0%; }
+            40% { width: 65%; }
+            100% { width: 100%; }
+        }
+
+        /* ===== WIDGETS ANIMADOS DE JORNADA DE TRABAJO (ENTRADA Y SALIDA) ===== */
+        .trans-action-stage {
+            position: relative;
+            width: 100%;
+            max-width: 280px;
+            margin: 0 auto 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .workday-scene-box {
+            position: relative;
+            width: 130px;
+            height: 94px;
+            background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px 6px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3), inset 0 0 15px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        /* 1. ENTRADA: INICIO DE JORNADA LABORAL */
+        .start-work-box {
+            border: 2px solid rgba(220, 38, 38, 0.55);
+            box-shadow: 0 10px 25px rgba(220, 38, 38, 0.22), inset 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .workday-gears-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 0 6px;
+            font-size: 13px;
+            color: #94a3b8;
+            z-index: 5;
+        }
+
+        .gear-left {
+            animation: gearRotateClockwise 4s linear infinite;
+        }
+
+        .gear-right {
+            animation: gearRotateCounter 4s linear infinite;
+            color: #f59e0b;
+        }
+
+        @keyframes gearRotateClockwise {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes gearRotateCounter {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(-360deg); }
+        }
+
+        .workday-hero-zone {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 48px;
+        }
+
+        .workday-helmet-icon {
+            font-size: 35px;
+            color: #facc15;
+            filter: drop-shadow(0 0 12px rgba(250, 204, 21, 0.9)) drop-shadow(0 0 20px rgba(220, 38, 38, 0.6));
+            animation: helmetPowerUp 2.8s ease-in-out infinite;
+            z-index: 6;
+        }
+
+        @keyframes helmetPowerUp {
+            0%, 20% { transform: scale(0.88) translateY(2px); opacity: 0.8; }
+            45%, 85% { transform: scale(1.12) translateY(-2px); opacity: 1; }
+            100% { transform: scale(0.88) translateY(2px); opacity: 0.8; }
+        }
+
+        .workday-status-pulse {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 2px solid #22c55e;
+            box-shadow: 0 0 14px #22c55e;
+            transform: translate(-50%, -50%) scale(0.3);
+            opacity: 0;
+            animation: workdayPulseRing 2.8s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+        }
+
+        @keyframes workdayPulseRing {
+            0%, 25% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+            40% { opacity: 1; transform: translate(-50%, -50%) scale(1.4); }
+            70%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); }
+        }
+
+        .workday-sparkle-dots {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .workday-sparkle-dots span {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 6px #ffffff;
+            opacity: 0;
+            animation: sparkleDotsAnim 2.8s ease-in-out infinite;
+        }
+
+        .workday-sparkle-dots span:nth-child(1) { top: 12%; left: 24%; animation-delay: 0.2s; }
+        .workday-sparkle-dots span:nth-child(2) { top: 20%; right: 22%; animation-delay: 0.4s; }
+        .workday-sparkle-dots span:nth-child(3) { bottom: 10%; left: 32%; animation-delay: 0.6s; }
+
+        @keyframes sparkleDotsAnim {
+            0%, 25% { opacity: 0; transform: scale(0.2); }
+            45%, 75% { opacity: 1; transform: scale(1.5); }
+            95%, 100% { opacity: 0; transform: scale(0.2); }
+        }
+
+        .workday-active-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            z-index: 5;
+        }
+
+        .active-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #dc2626, #22c55e);
+            border-radius: 3px;
+            animation: activeBarFillAnim 2.8s ease-in-out infinite;
+        }
+
+        @keyframes activeBarFillAnim {
+            0%, 15% { width: 0%; }
+            50%, 85% { width: 100%; box-shadow: 0 0 10px #22c55e; }
+            100% { width: 0%; }
+        }
+
+        .shift-start-pill {
+            background: linear-gradient(135deg, #fef2f2, #fee2e2);
+            color: #dc2626;
+            border: 1.5px solid #fca5a5;
+        }
+
+        /* 2. SALIDA: FIN DE JORNADA LABORAL */
+        .end-work-box {
+            border: 2px solid rgba(34, 197, 94, 0.55);
+            box-shadow: 0 10px 25px rgba(34, 197, 94, 0.22), inset 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .workday-stamp-header {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            width: 100%;
+            padding: 0 6px;
+            font-size: 14px;
+            color: #fde047;
+            z-index: 5;
+        }
+
+        .clock-tick {
+            animation: clockTickAnim 2.8s ease-in-out infinite;
+        }
+
+        @keyframes clockTickAnim {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15) rotate(15deg); }
+        }
+
+        .workday-clipboard-icon {
+            font-size: 35px;
+            color: #ffffff;
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 20px rgba(34, 197, 94, 0.6));
+            animation: clipboardPopAnim 2.8s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+            z-index: 6;
+        }
+
+        @keyframes clipboardPopAnim {
+            0%, 20% { transform: translateY(8px) scale(0.85); opacity: 0.7; }
+            45%, 85% { transform: translateY(-1px) scale(1.08); opacity: 1; }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        .workday-complete-seal {
+            position: absolute;
+            bottom: 2px;
+            right: 28px;
+            width: 22px;
+            height: 22px;
+            background: linear-gradient(135deg, #22c55e, #15803d);
+            color: #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 10px #22c55e;
+            opacity: 0;
+            z-index: 8;
+            animation: sealStampAnim 2.8s ease-in-out infinite;
+        }
+
+        @keyframes sealStampAnim {
+            0%, 35% { opacity: 0; transform: scale(0.2) rotate(-30deg); }
+            45% { opacity: 1; transform: scale(1.3) rotate(0deg); }
+            55%, 85% { opacity: 1; transform: scale(1) rotate(0deg); }
+            100% { opacity: 0; transform: scale(0.5); }
+        }
+
+        .workday-stars-row {
+            position: absolute;
+            top: 2px;
+            width: 65px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #fde047;
+            z-index: 7;
+        }
+
+        .workday-stars-row .s1 { animation: starsShineAnim 2.8s infinite 0.1s; }
+        .workday-stars-row .s2 { font-size: 14px; margin-top: -4px; animation: starsShineAnim 2.8s infinite 0.25s; }
+        .workday-stars-row .s3 { animation: starsShineAnim 2.8s infinite 0.4s; }
+
+        @keyframes starsShineAnim {
+            0%, 30% { opacity: 0; transform: scale(0.3); }
+            45%, 80% { opacity: 1; transform: scale(1.2); filter: drop-shadow(0 0 6px #fde047); }
+            95%, 100% { opacity: 0; transform: scale(0.5); }
+        }
+
+        .completed-bar-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #22c55e 0%, #15803d 100%);
+            border-radius: 3px;
+            box-shadow: 0 0 8px #22c55e;
+        }
+
+        .shift-end-pill {
+            background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+            color: #166534;
+            border: 1.5px solid #86efac;
+            box-shadow: 0 4px 14px rgba(34, 197, 94, 0.2);
+        }
+
+        .campo-pill {
+            background: #fffbeb;
+            color: #b45309;
+            border: 1px solid #fde68a;
+        }
+
+        .permiso-pill {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+
+        /* 4. MODO CAMPO Y PERMISO */
+        .trans-radar-circle {
+            position: relative;
+            width: 76px;
+            height: 76px;
+            background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+            border: 2px solid #d97706;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 30px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(217, 119, 6, 0.25);
+        }
+
+        .radar-sweep-beam {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: conic-gradient(from 0deg, transparent 0deg, rgba(251, 191, 36, 0.4) 60deg, transparent 70deg);
+            border-radius: 50%;
+            animation: radarSpin 2.4s linear infinite;
+        }
+
+        @keyframes radarSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .radar-ping-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 1.5px solid #fbbf24;
+            animation: radarPing 2.4s ease-out infinite;
+        }
+
+        @keyframes radarPing {
+            0% { transform: scale(0.3); opacity: 1; }
+            100% { transform: scale(1.4); opacity: 0; }
+        }
+
+        .trans-document-stamp {
+            position: relative;
+            width: 76px;
+            height: 76px;
+            background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+            border: 2px solid #2563eb;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 32px;
+            box-shadow: 0 8px 24px rgba(37, 99, 235, 0.25);
+        }
+
+        .permiso-approved-badge {
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            width: 22px;
+            height: 22px;
+            background: #2563eb;
+            color: #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        }
+
+        @keyframes transFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes transCardPop {
+            from {
+                transform: scale(0.85) translateY(10px);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeInStep {
+            from { opacity: 0; transform: translateX(-6px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
 
         @keyframes slideUp {
             from {
@@ -1844,18 +3027,35 @@
 
         /* ===== TRANSICIONES DE PÁGINA ===== */
         .page {
-            animation: pageEnter 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: pageEnter 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+            will-change: opacity, transform;
+        }
+
+        /* Clase temporal para salida suave */
+        .page-exiting {
+            animation: pageExit 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+            pointer-events: none;
         }
 
         @keyframes pageEnter {
             from {
                 opacity: 0;
-                transform: translateY(12px);
+                transform: translateY(16px) scale(0.985);
             }
-
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes pageExit {
+            from {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-8px) scale(0.99);
             }
         }
 
