@@ -34,5 +34,25 @@ service cloud.firestore {
     match /auditoria_almuerzos/{auditoriaId} {
       allow read, write: if true;
     }
+
+    // Colección 'logs_whatsapp' (Auditoría de envíos de WhatsApp)
+    match /logs_whatsapp/{logId} {
+      allow read, write: if true;
+    }
+
+    // Colección 'empleados_desvinculados' (Historial de personal desvinculado)
+    match /empleados_desvinculados/{desvinculadoId} {
+      allow read, write: if true;
+    }
+
+    // Colección 'logs' (Auditoría general de eventos del sistema)
+    match /logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Colección 'solicitudes_invitados' (Almuerzos extra y refrigerios para invitados)
+    match /solicitudes_invitados/{solicitudId} {
+      allow read, write: if true;
+    }
   }
 }

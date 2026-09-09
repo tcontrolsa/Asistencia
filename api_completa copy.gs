@@ -1,20 +1,16 @@
-// =================== CONFIGURACIÓN ===================
-var HOJA_EMPLEADOS = "EMPLEADOS";
-var HOJA_REGISTROS = "REGISTROS";
-var HOJA_VACACIONES = "VACACIONES";
-var HOJA_CALCULAR_VACACIONES = "CALCULAR_vacaciones";
-var HOJA_DESVINCULADOS = "DESVINCULADOS";
-var HOJA_DISPOSITIVOS = "DISPOSITIVOS";
-var HOJA_ALMUERZOS_EXTRA = "ALMUERZOS_EXTRA";
-var HOJA_CONFIGURACION = "CONFIGURACION";
-var HOJA_LOGS_WHATSAPP = "LOGS_WHATSAPP";
-var LAT_EMPRESA = -0.1288771313385675;
-var LNG_EMPRESA = -78.47896772889067;
-var RADIO_METROS = 250;
-var CLAVE_GUARDIA = "TCONTROL2026";
+// =================== CONFIGURACIÃ“N ===================
+const HOJA_EMPLEADOS = "EMPLEADOS";
+const HOJA_REGISTROS = "REGISTROS";
+const HOJA_DISPOSITIVOS = "DISPOSITIVOS";
+const HOJA_ALMUERZOS_EXTRA = "ALMUERZOS_EXTRA";
+const HOJA_CONFIGURACION = "CONFIGURACION";
+const LAT_EMPRESA = -0.1288771313385675;
+const LNG_EMPRESA = -78.47896772889067;
+const RADIO_METROS = 250;
+const CLAVE_GUARDIA = "TCONTROL2026";
 
 // Nombres de columnas para registros (A-R)
-var COLUMNAS = {
+const COLUMNAS = {
   FECHA: 0,                   // A
   ID: 1,                      // B
   NOMBRE: 2,                  // C
@@ -45,7 +41,7 @@ var COLUMNAS = {
 };
 
 // Columnas de la hoja EMPLEADOS
-var COLUMNAS_EMPLEADOS = {
+const COLUMNAS_EMPLEADOS = {
   ID: 0,        // A
   NOMBRE: 1,    // B
   AREA: 2,      // C
@@ -55,7 +51,6 @@ var COLUMNAS_EMPLEADOS = {
   PIN: 6,       // G
   DEVICE_TOKEN: 7, // H
   SUPERVISOR: 8, // I
-  TELEFONO: 12,  // M
   CARGO: 13,    // N
   FECHA_NACIMIENTO: 17, // R
   BASE_LAT: 18,   // S
@@ -63,7 +58,7 @@ var COLUMNAS_EMPLEADOS = {
 };
 
 // Columnas de la hoja DISPOSITIVOS
-var COLUMNAS_DISPOSITIVOS = {
+const COLUMNAS_DISPOSITIVOS = {
   ID_DISPOSITIVO: 0,
   ID_EMPLEADO: 1,
   FECHA_REGISTRO: 2,
@@ -280,17 +275,12 @@ function doPost(e) {
             if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
               fechaStr = s.slice(0, 10);
             } else {
-              var mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-              if (mYMD) {
-                fechaStr = mYMD[1] + '-' + mYMD[2].padStart(2,'0') + '-' + mYMD[3].padStart(2,'0');
+              var m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+              if (m1) {
+                fechaStr = m1[3] + '-' + m1[2].padStart(2,'0') + '-' + m1[1].padStart(2,'0');
               } else {
-                var m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-                if (m1) {
-                  fechaStr = m1[3] + '-' + m1[2].padStart(2,'0') + '-' + m1[1].padStart(2,'0');
-                } else {
-                  var d = new Date(s);
-                  fechaStr = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-                }
+                var d = new Date(s);
+                fechaStr = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, 'yyyy-MM-dd');
               }
             }
           }
@@ -416,9 +406,6 @@ function procesarAccion(params) {
       
     case 'obtenerAlmuerzosExtra':
       return obtenerAlmuerzosExtra();
-      
-    case 'eliminarAlmuerzoExtra':
-      return eliminarAlmuerzoExtra(params);
     
     // Terminal Guardia
     case 'verificarClaveGuardia':
@@ -439,9 +426,6 @@ function procesarAccion(params) {
 
     case 'actualizarAlmuerzoSupervisor':
       return actualizarAlmuerzoSupervisor(params);
-
-    case 'obtenerDescargoLegal':
-      return obtenerDescargoLegalDatosPersonales();
 
     // MIGRACIÓN FIREBASE
     case 'exportarBaseDatosParaFirebase':
@@ -470,18 +454,6 @@ function procesarAccion(params) {
 
     case 'guardarPreguntasCultura':
       return guardarPreguntasCultura(params);
-
-    case 'toggleCulturaTcontrol':
-      return { ok: true, habilitado: params.habilitado };
-
-    case 'toggleCulturaEmpleado':
-      return actualizarEmpleado(params.empleadoId || params.id, 'cultura_habilitada', params.habilitado);
-
-    case 'obtenerConfiguracionWhatsApp':
-      return obtenerConfiguracionWhatsApp();
-
-    case 'guardarConfiguracionWhatsApp':
-      return guardarConfiguracionWhatsApp(params);
       
     case 'obtenerRegistrosArchivados':
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
@@ -490,53 +462,14 @@ function procesarAccion(params) {
       if (dataRange.length <= 1) return { ok: true, registros: [] };
       var registros = [];
       var empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
-      var tz = Session.getScriptTimeZone() || 'America/Guayaquil';
       for (var i = 1; i < dataRange.length; i++) {
         var r = dataRange[i];
         var rEmpId = r[1]?String(r[1]).trim():'';
         // Si se pide un empleado especifico, saltar los demas
         if (empIdReq && rEmpId !== empIdReq) continue;
         
-        var fechaVal = r[0];
-        var fechaStr = '';
-        if (fechaVal instanceof Date) {
-          fechaStr = Utilities.formatDate(fechaVal, tz, 'yyyy-MM-dd');
-        } else if (fechaVal) {
-          var s = String(fechaVal).trim();
-          if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-            fechaStr = s.slice(0, 10);
-          } else {
-            var mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-            if (mYMD) {
-              fechaStr = mYMD[1] + '-' + mYMD[2].padStart(2, '0') + '-' + mYMD[3].padStart(2, '0');
-            } else {
-              var mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-              if (mDMY) {
-                fechaStr = mDMY[3] + '-' + mDMY[2].padStart(2, '0') + '-' + mDMY[1].padStart(2, '0');
-              } else {
-                var d = new Date(s);
-                fechaStr = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-              }
-            }
-          }
-        }
-
-        var horaVal = r[5];
-        var horaStr = '';
-        if (horaVal instanceof Date) {
-          horaStr = Utilities.formatDate(horaVal, tz, 'HH:mm:ss');
-        } else if (horaVal) {
-          var h = String(horaVal).trim();
-          if (/^\d{4}-\d{2}-\d{2}T/.test(h)) {
-            horaStr = h.split('T')[1].split('.')[0].substring(0, 8);
-          } else {
-            var mTime = h.match(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/);
-            horaStr = mTime ? mTime[1] : h;
-          }
-        }
-
         registros.push({
-          fecha: fechaStr, empleadoId: rEmpId, nombre: r[2]?String(r[2]):'', tipo: r[3]?String(r[3]):'', almuerzo: r[4]?String(r[4]):'', hora: horaStr, lat: r[6]?String(r[6]):'', lng: r[7]?String(r[7]):'', dispositivo: r[8]?String(r[8]):'', timestamp: r[9]?String(r[9]):'', dia: r[10]?String(r[10]):'', modo: r[11]?String(r[11]):'', horasExtra: r[12]?String(r[12]):'', autoriza: r[13]?String(r[13]):'', razonSalidaTemprana: r[14]?String(r[14]):'', quienJustifica: r[15]?String(r[15]):'', razonEntradaTardia: r[16]?String(r[16]):'', quienJustificaEntrada: r[17]?String(r[17]):'', tipoSalida: r[18]?String(r[18]):'', razonPermiso: r[19]?String(r[19]):'', justificado: r[20]?String(r[20]):'', razon_justificac: r[21]?String(r[21]):'',
+          fecha: r[0]?String(r[0]):'', empleadoId: rEmpId, nombre: r[2]?String(r[2]):'', tipo: r[3]?String(r[3]):'', almuerzo: r[4]?String(r[4]):'', hora: r[5]?String(r[5]):'', lat: r[6]?String(r[6]):'', lng: r[7]?String(r[7]):'', dispositivo: r[8]?String(r[8]):'', timestamp: r[9]?String(r[9]):'', dia: r[10]?String(r[10]):'', modo: r[11]?String(r[11]):'', horasExtra: r[12]?String(r[12]):'', autoriza: r[13]?String(r[13]):'', razonSalidaTemprana: r[14]?String(r[14]):'', quienJustifica: r[15]?String(r[15]):'', razonEntradaTardia: r[16]?String(r[16]):'', quienJustificaEntrada: r[17]?String(r[17]):'', tipoSalida: r[18]?String(r[18]):'', razonPermiso: r[19]?String(r[19]):'', justificado: r[20]?String(r[20]):'', razon_justificac: r[21]?String(r[21]):'',
           permiso_personal_mins: r[22] !== undefined && r[22] !== '' ? Number(r[22]) : 0,
           permiso_medico_mins:   r[23] !== undefined && r[23] !== '' ? Number(r[23]) : 0,
           tiempo_justificado_mins: r[24] !== undefined && r[24] !== '' ? Number(r[24]) : 0
@@ -559,26 +492,11 @@ function procesarAccion(params) {
     case 'eliminarEmpleadoDefinitivo':
       return eliminarEmpleadoDefinitivo(params);
       
-    case 'desvincularColaborador':
-      return desvincularColaborador(params);
-
-    case 'listarDesvinculados':
-      return listarDesvinculados();
-
-    case 'registrarLogWhatsApp':
-      return registrarLogWhatsApp(params);
-
-    case 'obtenerLogsWhatsApp':
-      return obtenerLogsWhatsApp(params);
-      
     case 'listarSupervisores':
       return listarSupervisores();
       
     case 'registrarAlmuerzoExtra':
       return registrarAlmuerzoExtra(params);
-      
-    case 'eliminarAlmuerzoExtra':
-      return eliminarAlmuerzoExtra(params);
       
     case 'obtenerEmpleadosTaller':
       return obtenerEmpleadosTaller();
@@ -688,8 +606,8 @@ function escribirHojaActualizar(params) {
     
     // Fallback en caso de que no se envíen columnas o encabezados
     if (columnas.length === 0) {
-      columnas = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento', 'telefono'];
-      encabezados = ['ID/Cédula', 'Nombre completo', 'Área', 'Cargo', 'PIN', 'Supervisor (SI/NO)', 'Activo (SI/NO)', 'URL Foto', 'Latitud Base', 'Longitud Base', 'Fecha Nacimiento', 'Teléfono'];
+      columnas = ['id', 'nombre', 'area', 'cargo', 'pin', 'supervisor', 'activo', 'foto_url', 'baseLat', 'baseLng', 'fechaNacimiento'];
+      encabezados = ['ID/Cédula', 'Nombre completo', 'Área', 'Cargo', 'PIN', 'Supervisor (SI/NO)', 'Activo (SI/NO)', 'URL Foto', 'Latitud Base', 'Longitud Base', 'Fecha Nacimiento'];
     }
     
     // Escribir cabecera
@@ -1130,7 +1048,6 @@ function verificarPIN(pin, deviceToken, empleadoId) {
               area: data[i][COLUMNAS_EMPLEADOS.AREA],
               cargo: data[i][COLUMNAS_EMPLEADOS.CARGO] || "",
               fechaNacimiento: data[i][COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO] || "",
-              telefono: data[i][COLUMNAS_EMPLEADOS.TELEFONO] ? String(data[i][COLUMNAS_EMPLEADOS.TELEFONO]) : "",
               foto_url: convertirUrlDrive(data[i][COLUMNAS_EMPLEADOS.FOTO_URL] || ''),
               tieneEntrada: info.tieneEntrada || false,
               tieneSalida: info.tieneSalida || false,
@@ -1186,12 +1103,6 @@ function actualizarPerfilEmpleado(params) {
     if (params.deviceToken !== undefined) {
       sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.DEVICE_TOKEN + 1).setValue(String(params.deviceToken).trim());
     }
-    if (params.telefono !== undefined && params.telefono !== null) {
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.TELEFONO + 1).setValue(String(params.telefono).trim());
-    }
-    if (params.fechaNacimiento !== undefined && params.fechaNacimiento !== null) {
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO + 1).setValue(String(params.fechaNacimiento).trim());
-    }
     return { ok: true, mensaje: "Perfil actualizado exitosamente" };
   } catch(e) {
     return { error: e.toString() };
@@ -1224,7 +1135,6 @@ function obtenerInfoEmpleado(id) {
           area: data[i][COLUMNAS_EMPLEADOS.AREA],
           cargo: data[i][COLUMNAS_EMPLEADOS.CARGO] || "",
           fechaNacimiento: data[i][COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO] || "",
-          telefono: data[i][COLUMNAS_EMPLEADOS.TELEFONO] || "",
           activo: true,
           foto_url: fotoUrl,
           id_dispositivo: idDispositivo.toString().trim(),
@@ -1330,7 +1240,6 @@ function obtenerEstadoPorIdODevice(id, deviceId) {
         area: infoEmpleado.area,
         cargo: infoEmpleado.cargo,
         fechaNacimiento: infoEmpleado.fechaNacimiento,
-        telefono: infoEmpleado.telefono ? String(infoEmpleado.telefono) : "",
         foto_url: infoEmpleado.foto_url,
         tieneEntrada: tieneEntrada,
         tieneSalida: tieneSalida,
@@ -1900,7 +1809,6 @@ function obtenerDatosSupervisorConTimestamp() {
         authExtras: horasExtraAutorizadas,
         ubicacionHoy: ubicacionHoy,
         cargo: fila[COLUMNAS_EMPLEADOS.CARGO] || "",
-        telefono: fila[COLUMNAS_EMPLEADOS.TELEFONO] || "",
         fechaNacimiento: fila[COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO] || "",
         registros: registrosEmpleado
       });
@@ -1935,48 +1843,6 @@ function obtenerDatosSupervisorConTimestamp() {
         regEmpIdsMap[rId].registros.push(r);
       }
     });
-    
-    // También incluir cualquier colaborador de la hoja EMPLEADOS que esté marcado como inactivo
-    for (let i = 1; i < empleadosData.length; i++) {
-      const rowId = String(empleadosData[i][COLUMNAS_EMPLEADOS.ID] || '').trim();
-      if (!rowId || activeEmpIds.has(rowId)) continue;
-      if (!regEmpIdsMap[rowId]) {
-        regEmpIdsMap[rowId] = {
-          id: rowId,
-          nombre: String(empleadosData[i][COLUMNAS_EMPLEADOS.NOMBRE] || '').trim() || `Colaborador (${rowId})`,
-          area: String(empleadosData[i][COLUMNAS_EMPLEADOS.AREA] || '').trim() || 'Inactivo',
-          cargo: String(empleadosData[i][COLUMNAS_EMPLEADOS.CARGO] || '').trim() || 'Inactivo',
-          esEliminado: true,
-          activo: false,
-          registros: registros.filter(r => String(r.id || r.empleadoId || '').trim() === rowId)
-        };
-      }
-    }
-
-    // También incluir cualquier colaborador de la hoja DESVINCULADOS
-    const sheetDesv = ss.getSheetByName(HOJA_DESVINCULADOS);
-    if (sheetDesv) {
-      const dataDesv = sheetDesv.getDataRange().getValues();
-      for (let d = 1; d < dataDesv.length; d++) {
-        const dId = String(dataDesv[d][2] || '').trim();
-        const dNombre = String(dataDesv[d][3] || '').trim();
-        if (dId && !activeEmpIds.has(dId) && !regEmpIdsMap[dId]) {
-          regEmpIdsMap[dId] = {
-            id: dId,
-            nombre: dNombre || `Colaborador (${dId})`,
-            area: 'Desvinculado',
-            cargo: 'Desvinculado',
-            esEliminado: true,
-            esDesvinculado: true,
-            fecha_salida: String(dataDesv[d][0] || ''),
-            motivo_salida: String(dataDesv[d][4] || ''),
-            desvinculadoPor: String(dataDesv[d][5] || ''),
-            activo: false,
-            registros: []
-          };
-        }
-      }
-    }
     
     return { empleados: empleados, empleadosEliminados: Object.values(regEmpIdsMap), registros: registros };
     
@@ -2253,416 +2119,6 @@ function eliminarEmpleadoDefinitivo(params) {
   }
 }
 
-/**
- * Módulo de Desvinculación de Personal:
- * Mueve y traslada íntegramente los registros del colaborador desde:
- * - EMPLEADOS
- * - REGISTROS
- * - VACACIONES
- * - CALCULAR_vacaciones
- * hacia la hoja de auditoría y respaldo "DESVINCULADOS".
- */
-function desvincularColaborador(params) {
-  const lock = LockService.getDocumentLock();
-  try {
-    lock.waitLock(30000);
-    
-    const empId = params.empleadoId ? String(params.empleadoId).trim() : '';
-    const empCedula = params.cedula ? String(params.cedula).trim() : '';
-    let empNombre = params.nombre ? String(params.nombre).trim() : '';
-    const motivo = params.motivo ? String(params.motivo).trim() : 'Desvinculación laboral';
-    const fechaDesv = params.fechaDesvinculacion ? String(params.fechaDesvinculacion).trim() : Utilities.formatDate(new Date(), "America/Guayaquil", "yyyy-MM-dd");
-    const supervisor = params.supervisor ? String(params.supervisor).trim() : 'Sistema';
-    const observaciones = params.observaciones ? String(params.observaciones).trim() : '';
-    const timestampDesv = new Date().toISOString();
-
-    if (!empId && !empCedula) {
-      return { error: "Debe especificar el ID o Cédula del colaborador a desvincular." };
-    }
-
-    const ss = SpreadsheetApp.getActive();
-    
-    // 1. Asegurar la existencia de la hoja DESVINCULADOS
-    let sheetDesv = ss.getSheetByName(HOJA_DESVINCULADOS);
-    const headersDesv = [
-      'FECHA_DESVINCULACION', 'HOJA_ORIGEN', 'ID_EMPLEADO', 'NOMBRE_EMPLEADO', 
-      'MOTIVO', 'SUPERVISOR', 'OBSERVACIONES', 'TIMESTAMP_DESV',
-      'COL_A', 'COL_B', 'COL_C', 'COL_D', 'COL_E', 'COL_F', 'COL_G', 'COL_H', 
-      'COL_I', 'COL_J', 'COL_K', 'COL_L', 'COL_M', 'COL_N', 'COL_O', 'COL_P', 
-      'COL_Q', 'COL_R', 'COL_S', 'COL_T', 'COL_U', 'COL_V', 'COL_W', 'COL_X', 
-      'COL_Y', 'COL_Z', 'DATOS_JSON'
-    ];
-    
-    if (!sheetDesv) {
-      sheetDesv = ss.insertSheet(HOJA_DESVINCULADOS);
-      sheetDesv.appendRow(headersDesv);
-      const headerRange = sheetDesv.getRange(1, 1, 1, headersDesv.length);
-      headerRange.setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
-      sheetDesv.setFrozenRows(1);
-    }
-
-    const idsBusqueda = new Set();
-    if (empId) idsBusqueda.add(empId);
-    if (empCedula) idsBusqueda.add(empCedula);
-
-    let filasParaArchivar = [];
-    let contadorPorHoja = {
-      empleados: 0,
-      registros: 0,
-      vacaciones: 0,
-      calcular_vacaciones: 0
-    };
-
-    // Empaquetador estándar de filas hacia DESVINCULADOS
-    function empaquetarFila(hojaOrigen, rowData, idEmp, nomEmp) {
-      const filaFormat = [
-        fechaDesv,
-        hojaOrigen,
-        idEmp || empId,
-        nomEmp || empNombre,
-        motivo,
-        supervisor,
-        observaciones,
-        timestampDesv
-      ];
-      // Añadir hasta 26 columnas individuales (COL_A a COL_Z)
-      for (let c = 0; c < 26; c++) {
-        filaFormat.push(c < rowData.length && rowData[c] !== undefined && rowData[c] !== null ? String(rowData[c]) : "");
-      }
-      // Última columna: JSON completo del registro
-      filaFormat.push(JSON.stringify(rowData));
-      return filaFormat;
-    }
-
-    // 2. Procesar hoja EMPLEADOS por lotes
-    const sheetEmp = ss.getSheetByName(HOJA_EMPLEADOS);
-    if (sheetEmp) {
-      const dataEmp = sheetEmp.getDataRange().getValues();
-      if (dataEmp.length > 1) {
-        const headersEmp = dataEmp[0];
-        const filasConservarEmp = [headersEmp];
-        let movidosEmp = 0;
-
-        for (let i = 1; i < dataEmp.length; i++) {
-          const row = dataEmp[i];
-          const rowId = String(row[COLUMNAS_EMPLEADOS.ID] || '').trim();
-          const rowNombre = String(row[COLUMNAS_EMPLEADOS.NOMBRE] || '').trim();
-          
-          if (idsBusqueda.has(rowId) || (empNombre && rowNombre.toLowerCase() === empNombre.toLowerCase())) {
-            if (!empNombre && rowNombre) empNombre = rowNombre;
-            filasParaArchivar.push(empaquetarFila("EMPLEADOS", row, rowId, rowNombre));
-            movidosEmp++;
-          } else {
-            filasConservarEmp.push(row);
-          }
-        }
-
-        if (movidosEmp > 0) {
-          contadorPorHoja.empleados = movidosEmp;
-          sheetEmp.clearContents();
-          sheetEmp.getRange(1, 1, filasConservarEmp.length, headersEmp.length).setValues(filasConservarEmp);
-        }
-      }
-    }
-
-    // 3. Procesar hoja REGISTROS por lotes (evita timeout por deleteRow fila por fila)
-    const sheetReg = ss.getSheetByName(HOJA_REGISTROS);
-    if (sheetReg) {
-      const dataReg = sheetReg.getDataRange().getValues();
-      if (dataReg.length > 1) {
-        const headersReg = dataReg[0];
-        const filasConservarReg = [headersReg];
-        let movidosReg = 0;
-
-        for (let j = 1; j < dataReg.length; j++) {
-          const row = dataReg[j];
-          const rId = String(row[COLUMNAS.ID] || '').trim();
-          const rNombre = String(row[COLUMNAS.NOMBRE] || '').trim();
-          
-          if (idsBusqueda.has(rId) || (empNombre && rNombre.toLowerCase() === empNombre.toLowerCase())) {
-            filasParaArchivar.push(empaquetarFila("REGISTROS", row, rId, rNombre || empNombre));
-            movidosReg++;
-          } else {
-            filasConservarReg.push(row);
-          }
-        }
-
-        if (movidosReg > 0) {
-          contadorPorHoja.registros = movidosReg;
-          sheetReg.clearContents();
-          sheetReg.getRange(1, 1, filasConservarReg.length, headersReg.length).setValues(filasConservarReg);
-        }
-      }
-    }
-
-    // 4. Procesar hoja VACACIONES por lotes
-    const sheetVac = ss.getSheetByName(HOJA_VACACIONES) || ss.getSheetByName("VACACIONES");
-    if (sheetVac) {
-      const dataVac = sheetVac.getDataRange().getValues();
-      if (dataVac.length > 1) {
-        const headersVac = dataVac[0];
-        const filasConservarVac = [headersVac];
-        let movidosVac = 0;
-
-        for (let v = 1; v < dataVac.length; v++) {
-          const row = dataVac[v];
-          const vId = String(row[COLUMNAS.ID] || '').trim();
-          const vNombre = String(row[COLUMNAS.NOMBRE] || '').trim();
-          
-          if (idsBusqueda.has(vId) || (empNombre && vNombre.toLowerCase() === empNombre.toLowerCase())) {
-            filasParaArchivar.push(empaquetarFila("VACACIONES", row, vId, vNombre || empNombre));
-            movidosVac++;
-          } else {
-            filasConservarVac.push(row);
-          }
-        }
-
-        if (movidosVac > 0) {
-          contadorPorHoja.vacaciones = movidosVac;
-          sheetVac.clearContents();
-          sheetVac.getRange(1, 1, filasConservarVac.length, headersVac.length).setValues(filasConservarVac);
-        }
-      }
-    }
-
-    // 5. Procesar hoja CALCULAR_vacaciones por lotes
-    const sheetCalc = ss.getSheetByName(HOJA_CALCULAR_VACACIONES) || ss.getSheetByName("CALCULAR_vacaciones");
-    if (sheetCalc) {
-      const dataCalc = sheetCalc.getDataRange().getValues();
-      if (dataCalc.length > 1) {
-        const headersCalc = dataCalc[0];
-        const filasConservarCalc = [headersCalc];
-        let movidosCalc = 0;
-
-        for (let k = 1; k < dataCalc.length; k++) {
-          const row = dataCalc[k];
-          const cIdA = String(row[0] || '').trim();
-          const cIdB = String(row[1] || '').trim();
-          
-          if (idsBusqueda.has(cIdA) || idsBusqueda.has(cIdB) || (empNombre && (cIdA.toLowerCase() === empNombre.toLowerCase() || cIdB.toLowerCase() === empNombre.toLowerCase()))) {
-            filasParaArchivar.push(empaquetarFila("CALCULAR_vacaciones", row, cIdA, empNombre || cIdB));
-            movidosCalc++;
-          } else {
-            filasConservarCalc.push(row);
-          }
-        }
-
-        if (movidosCalc > 0) {
-          contadorPorHoja.calcular_vacaciones = movidosCalc;
-          sheetCalc.clearContents();
-          sheetCalc.getRange(1, 1, filasConservarCalc.length, headersCalc.length).setValues(filasConservarCalc);
-        }
-      }
-    }
-
-    // 6. Escribir todas las filas archivadas en DESVINCULADOS en una sola operación por lote
-    if (filasParaArchivar.length > 0) {
-      const lastRow = sheetDesv.getLastRow();
-      sheetDesv.getRange(lastRow + 1, 1, filasParaArchivar.length, headersDesv.length).setValues(filasParaArchivar);
-    }
-
-    const totalMovidos = filasParaArchivar.length;
-
-    return {
-      ok: true,
-      empleadoId: empId,
-      empleadoNombre: empNombre,
-      fechaDesvinculacion: fechaDesv,
-      motivo: motivo,
-      totalRegistrosMovidos: totalMovidos,
-      desglose: contadorPorHoja,
-      mensaje: `Colaborador ${empNombre || empId} desvinculado con éxito. Se respaldaron y movieron ${totalMovidos} registro(s) a la hoja DESVINCULADOS.`,
-      descargoLegal: "El archivo y custodia de registros en la hoja DESVINCULADOS se efectúa en cumplimiento del Art. 21 de la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador), Código del Trabajo y Ley de Seguridad Social, manteniéndose bajo estricta confidencialidad para fines exclusivos de auditorías patronales, tributarias y previsionales durante el término de prescripción legal."
-    };
-
-  } catch (error) {
-    console.error("Error en desvincularColaborador:", error);
-    return { error: error.toString() };
-  } finally {
-    try { lock.releaseLock(); } catch (e) {}
-  }
-}
-
-/**
- * Retorna la lista de colaboradores que han sido desvinculados y archivados en DESVINCULADOS.
- */
-function listarDesvinculados() {
-  try {
-    const ss = SpreadsheetApp.getActive();
-    const sheetDesv = ss.getSheetByName(HOJA_DESVINCULADOS);
-    if (!sheetDesv) {
-      return { ok: true, desvinculados: [] };
-    }
-
-    const data = sheetDesv.getDataRange().getValues();
-    if (data.length <= 1) {
-      return { ok: true, desvinculados: [] };
-    }
-
-    const mapa = {};
-    for (let i = 1; i < data.length; i++) {
-      const fechaDesv = String(data[i][0] || '');
-      const hojaOrigen = String(data[i][1] || '');
-      const empId = String(data[i][2] || '');
-      const empNombre = String(data[i][3] || '');
-      const motivo = String(data[i][4] || '');
-      const supervisor = String(data[i][5] || '');
-      const observaciones = String(data[i][6] || '');
-      const key = empId || empNombre;
-
-      if (!key) continue;
-
-      if (!mapa[key]) {
-        mapa[key] = {
-          id: empId,
-          nombre: empNombre,
-          fechaDesvinculacion: fechaDesv,
-          motivo: motivo,
-          supervisor: supervisor,
-          observaciones: observaciones,
-          conteo: { empleados: 0, registros: 0, vacaciones: 0, calcular_vacaciones: 0, total: 0 }
-        };
-      }
-
-      mapa[key].conteo.total++;
-      if (hojaOrigen === 'EMPLEADOS') mapa[key].conteo.empleados++;
-      else if (hojaOrigen === 'REGISTROS') mapa[key].conteo.registros++;
-      else if (hojaOrigen === 'VACACIONES') mapa[key].conteo.vacaciones++;
-      else if (hojaOrigen === 'CALCULAR_vacaciones') mapa[key].conteo.calcular_vacaciones++;
-    }
-
-    const lista = Object.values(mapa).sort((a, b) => b.fechaDesvinculacion.localeCompare(a.fechaDesvinculacion));
-    return { ok: true, desvinculados: lista };
-  } catch (error) {
-    console.error("Error en listarDesvinculados:", error);
-    return { error: error.toString() };
-  }
-}
-
-/**
- * Registra logs de envíos de notificaciones de WhatsApp en la hoja LOGS_WHATSAPP.
- * Soporta registro individual o arreglo masivo de logs.
- */
-function registrarLogWhatsApp(params) {
-  const lock = LockService.getDocumentLock();
-  try {
-    lock.waitLock(15000);
-    const ss = SpreadsheetApp.getActive();
-    let sheet = ss.getSheetByName(HOJA_LOGS_WHATSAPP);
-    
-    const headers = [
-      'TIMESTAMP', 'FECHA', 'HORA', 'ID_EMPLEADO', 'NOMBRE_EMPLEADO',
-      'TELEFONO', 'TIPO_NOTIFICACION', 'ESTADO', 'MENSAJE_ENVIADO',
-      'DETALLE_RESPUESTA', 'SUPERVISOR', 'ORIGEN'
-    ];
-    
-    if (!sheet) {
-      sheet = ss.insertSheet(HOJA_LOGS_WHATSAPP);
-      sheet.appendRow(headers);
-      const headerRange = sheet.getRange(1, 1, 1, headers.length);
-      headerRange.setBackground("#065f46").setFontColor("#ffffff").setFontWeight("bold");
-      sheet.setFrozenRows(1);
-    }
-    
-    const timeZone = Session.getScriptTimeZone() || "America/Guayaquil";
-    const ahora = new Date();
-    const tsStr = Utilities.formatDate(ahora, timeZone, "yyyy-MM-dd'T'HH:mm:ssXXX");
-    const fechaDef = Utilities.formatDate(ahora, timeZone, "yyyy-MM-dd");
-    const horaDef = Utilities.formatDate(ahora, timeZone, "HH:mm:ss");
-
-    let logsArray = [];
-    if (params.logs) {
-      logsArray = typeof params.logs === 'string' ? JSON.parse(params.logs) : params.logs;
-    } else {
-      logsArray = [params];
-    }
-    
-    const filasParaInsertar = [];
-    for (let i = 0; i < logsArray.length; i++) {
-      const item = logsArray[i];
-      if (!item) continue;
-      
-      const f = item.fecha ? String(item.fecha) : fechaDef;
-      const h = item.hora ? String(item.hora) : horaDef;
-      const ts = item.timestamp ? String(item.timestamp) : tsStr;
-      const idEmp = item.idEmpleado ? String(item.idEmpleado) : (item.id || '');
-      const nomEmp = item.nombreEmpleado ? String(item.nombreEmpleado) : (item.nombre || '');
-      const tel = item.telefono ? String(item.telefono) : '';
-      const tipo = item.tipoNotificacion ? String(item.tipoNotificacion) : (item.tipo || 'GENERAL');
-      const estado = item.estado ? String(item.estado).toUpperCase() : 'ENVIADO';
-      const msg = item.mensajeEnviado ? String(item.mensajeEnviado) : (item.mensaje || '');
-      const detalle = item.detalleRespuesta ? String(item.detalleRespuesta) : (item.detalle || item.error || item.mensajeId || 'OK');
-      const sup = item.supervisor ? String(item.supervisor) : 'Sistema';
-      const origen = item.origen ? String(item.origen).toUpperCase() : 'MANUAL';
-      
-      filasParaInsertar.push([
-        ts, f, h, idEmp, nomEmp, tel, tipo, estado, msg, detalle, sup, origen
-      ]);
-    }
-    
-    if (filasParaInsertar.length > 0) {
-      const lastRow = sheet.getLastRow();
-      sheet.getRange(lastRow + 1, 1, filasParaInsertar.length, headers.length).setValues(filasParaInsertar);
-    }
-    
-    return {
-      ok: true,
-      totalRegistrados: filasParaInsertar.length,
-      mensaje: `Se registraron ${filasParaInsertar.length} log(s) de WhatsApp exitosamente.`
-    };
-  } catch (error) {
-    console.error("Error en registrarLogWhatsApp:", error);
-    return { error: error.toString() };
-  } finally {
-    try { lock.releaseLock(); } catch (e) {}
-  }
-}
-
-/**
- * Retorna el historial de logs de WhatsApp desde la hoja LOGS_WHATSAPP.
- */
-function obtenerLogsWhatsApp(params) {
-  try {
-    const ss = SpreadsheetApp.getActive();
-    const sheet = ss.getSheetByName(HOJA_LOGS_WHATSAPP);
-    if (!sheet) {
-      return { ok: true, logs: [] };
-    }
-    
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) {
-      return { ok: true, logs: [] };
-    }
-    
-    const limite = params && params.limite ? parseInt(params.limite, 10) : 150;
-    const startIndex = Math.max(1, data.length - limite);
-    const logs = [];
-    
-    for (let i = data.length - 1; i >= startIndex; i--) {
-      const row = data[i];
-      logs.push({
-        timestamp: row[0],
-        fecha: row[1],
-        hora: row[2],
-        idEmpleado: row[3],
-        nombreEmpleado: row[4],
-        telefono: row[5],
-        tipo: row[6],
-        estado: row[7],
-        mensaje: row[8],
-        detalle: row[9],
-        supervisor: row[10],
-        origen: row[11]
-      });
-    }
-    
-    return { ok: true, logs: logs };
-  } catch (error) {
-    console.error("Error en obtenerLogsWhatsApp:", error);
-    return { error: error.toString(), logs: [] };
-  }
-}
-
 function listarSupervisores() {
   try {
     const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
@@ -2721,10 +2177,7 @@ function registrarAlmuerzoExtra(params) {
     }
     
     sheet.appendRow([fecha, nombre, empresa, tipo, cantidad, horaRegistro, timestamp, observaciones, supervisorId]);
-    return { ok: true, mensaje: "Registrado correctamente" };
-  } catch (err) {
-    console.error("Error en registrarAlmuerzoExtra:", err);
-    return { ok: false, error: err.toString() };
+    
   } finally { lock.releaseLock(); }
 }
 
@@ -2764,26 +2217,16 @@ function obtenerAlmuerzosExtra() {
       var empresa = r[2] ? String(r[2]).trim() : '';
       var tipo = r[3] ? String(r[3]).trim() : '';
       var cantidad = parseInt(r[4]) || 0;
-      var horaRegistro = '';
-      if (r[5]) {
-        if (r[5] instanceof Date) {
-          horaRegistro = Utilities.formatDate(r[5], tz, 'HH:mm:ss');
-        } else {
-          horaRegistro = String(r[5]).trim();
-        }
-      }
       var obs = r[7] ? String(r[7]).trim() : '';
       var supervisorId = r[8] ? String(r[8]).trim() : '';
       
       if (fechaStr && cantidad > 0) {
         almuerzos.push({
-          filaIndex: i + 1,
           fecha: fechaStr,
           nombre: nombre,
           empresa: empresa,
           tipo: tipo,
           cantidad: cantidad,
-          horaRegistro: horaRegistro,
           observaciones: obs,
           supervisorId: supervisorId
         });
@@ -2793,127 +2236,6 @@ function obtenerAlmuerzosExtra() {
   } catch (error) {
     console.error("Error en obtenerAlmuerzosExtra:", error);
     return { error: error.toString() };
-  }
-}
-
-/**
- * Normaliza una fecha proveniente de celda de Google Sheets a formato yyyy-MM-dd
- */
-function _normalizarFechaSheet(val, tz) {
-  if (!val) return '';
-  if (val instanceof Date) {
-    return Utilities.formatDate(val, tz || Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  }
-  var s = String(val).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (m) {
-    return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
-  }
-  var d = new Date(s);
-  return isNaN(d.getTime()) ? s.slice(0, 10) : Utilities.formatDate(d, tz || Session.getScriptTimeZone(), 'yyyy-MM-dd');
-}
-
-/**
- * Normaliza una cadena removiendo acentos, minúsculas y espacios extra
- */
-function _normalizarTextoBusqueda(txt) {
-  return String(txt || '')
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .trim();
-}
-
-/**
- * Elimina una fila de la hoja ALMUERZOS_EXTRA
- */
-function eliminarAlmuerzoExtra(params) {
-  const lock = LockService.getUserLock();
-  try {
-    lock.waitLock(20000);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(HOJA_ALMUERZOS_EXTRA);
-    if (!sheet) return { ok: false, error: "Hoja ALMUERZOS_EXTRA no encontrada" };
-    
-    var data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return { ok: true, mensaje: "No hay registros en la hoja" };
-    
-    var tz = Session.getScriptTimeZone();
-    var fechaTarget = _normalizarFechaSheet(params.fecha, tz);
-    var nombreRaw = (params.nombre || params.invitado || "");
-    var nombreTarget = _normalizarTextoBusqueda(nombreRaw);
-    
-    // Extraer nombre base si viene como "Invitado (Inv. de Solicitante)"
-    var baseTarget = nombreTarget;
-    var idxPar = baseTarget.indexOf('(');
-    if (idxPar !== -1) baseTarget = baseTarget.substring(0, idxPar).trim();
-    
-    var supIdTarget = String(params.supervisorId || params.empleadoId || "").trim();
-    var filaTarget = parseInt(params.filaIndex);
-    
-    var filaABorrar = -1;
-    
-    // 1. Probar primero si la fila directa proporcionada coincide con los datos
-    if (filaTarget > 1 && filaTarget <= data.length) {
-      var rFila = data[filaTarget - 1];
-      var fFila = _normalizarFechaSheet(rFila[0], tz);
-      var nFila = _normalizarTextoBusqueda(rFila[1]);
-      
-      var filaCoincide = true;
-      if (fechaTarget && fFila && fFila !== fechaTarget) filaCoincide = false;
-      if (baseTarget && nFila && !nFila.includes(baseTarget) && !baseTarget.includes(nFila)) filaCoincide = false;
-      
-      if (filaCoincide) {
-        filaABorrar = filaTarget;
-      }
-    }
-    
-    // 2. Si no se encontró por fila exacta, buscar de abajo hacia arriba (más recientes primero)
-    if (filaABorrar === -1) {
-      for (var i = data.length - 1; i >= 1; i--) {
-        var r = data[i];
-        var fStr = _normalizarFechaSheet(r[0], tz);
-        var nStr = _normalizarTextoBusqueda(r[1]);
-        var sId = String(r[8] || "").trim();
-        
-        var baseCell = nStr;
-        var idxCellPar = baseCell.indexOf('(');
-        if (idxCellPar !== -1) baseCell = baseCell.substring(0, idxCellPar).trim();
-        
-        var coincide = true;
-        if (fechaTarget && fStr && fStr !== fechaTarget) coincide = false;
-        
-        // Comparación de nombre: directa, contenida, o por nombre base
-        if (nombreTarget) {
-          var matchNom = false;
-          if (nStr.includes(nombreTarget) || nombreTarget.includes(nStr)) matchNom = true;
-          if (baseTarget && (baseCell.includes(baseTarget) || baseTarget.includes(baseCell))) matchNom = true;
-          if (!matchNom) coincide = false;
-        }
-        
-        if (supIdTarget && sId && sId !== supIdTarget) {
-          // Si el ID no es idéntico, verificar si el nombre del solicitante está contenido en la celda
-          if (!nStr.includes(supIdTarget)) coincide = false;
-        }
-        
-        if (coincide) {
-          filaABorrar = i + 1; // 1-indexed para deleteRow
-          break;
-        }
-      }
-    }
-    
-    if (filaABorrar > 1 && filaABorrar <= sheet.getLastRow()) {
-      sheet.deleteRow(filaABorrar);
-      return { ok: true, mensaje: "Registro eliminado de ALMUERZOS_EXTRA con éxito", filaEliminada: filaABorrar };
-    } else {
-      return { ok: false, error: "No se encontró el registro coincidente para eliminar en ALMUERZOS_EXTRA" };
-    }
-  } catch (err) {
-    console.error("Error en eliminarAlmuerzoExtra:", err);
-    return { ok: false, error: err.toString() };
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -3682,60 +3004,14 @@ function obtenerDatosSupervisor(params) {
         almuerzoHoy: almuerzoHoy,
         horaEntradaMs: horaEntradaMs,
         horaSalidaMs: horaSalidaMs,
-        telefono: fila[COLUMNAS_EMPLEADOS.TELEFONO] || "",
         registros: registrosEmpleado
       });
-    }
-    // Calcular KPIs de Vacaciones Globales e Individuales
-    let totalVacacionesAdjudicadas = 0;
-    let totalVacacionesTomadas = 0;
-    let totalVacacionesRestantes = 0;
-    let vacacionesPorEmpleado = {};
-    
-    try {
-      const sheetCalc = ss.getSheetByName("CALCULAR_vacaciones");
-      if (sheetCalc) {
-        const calcData = sheetCalc.getDataRange().getValues();
-        for (let i = 1; i < calcData.length; i++) {
-          const idColA = calcData[i][0] ? String(calcData[i][0]).trim() : '';
-          const idColB = calcData[i][1] ? String(calcData[i][1]).trim() : '';
-          const empId = idColA || idColB;
-          
-          if (!empId) continue;
-          const empIdLower = empId.toLowerCase();
-          if (empIdLower.includes('sumatoria') || empIdLower.includes('total') || empIdLower.includes('promedio') || empIdLower.includes('resumen')) {
-            continue;
-          }
-
-          const adj = parseFloat(calcData[i][6]) || 0; // Columna G
-          const tom = parseFloat(calcData[i][8]) || 0; // Columna I
-          const res = parseFloat(calcData[i][9]) || 0; // Columna J
-          
-          totalVacacionesAdjudicadas += adj;
-          totalVacacionesTomadas += tom;
-          totalVacacionesRestantes += res;
-          
-          vacacionesPorEmpleado[empId] = {
-              adjudicadas: adj,
-              tomadas: tom,
-              restantes: res
-          };
-        }
-      }
-    } catch(e) {
-      console.error("Error al procesar vacaciones en supervisor:", e);
     }
     
     return {
       empleados: empleados,
       registros: registros,
-      registrosEditados: Array.from(registrosEditadosHoy),
-      kpiVacaciones: {
-        adjudicadas: totalVacacionesAdjudicadas,
-        tomadas: totalVacacionesTomadas,
-        restantes: totalVacacionesRestantes
-      },
-      kpiVacacionesIndividual: vacacionesPorEmpleado
+      registrosEditados: Array.from(registrosEditadosHoy)
     };
     
   } catch (error) {
@@ -3884,7 +3160,6 @@ function exportarBaseDatosParaFirebase() {
           deviceToken: fila[COLUMNAS_EMPLEADOS.DEVICE_TOKEN] || "",
           supervisor: fila[COLUMNAS_EMPLEADOS.SUPERVISOR] || "NO",
           cargo: fila[COLUMNAS_EMPLEADOS.CARGO] || "",
-          telefono: fila[COLUMNAS_EMPLEADOS.TELEFONO] || "",
           fechaNacimiento: fila[COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO] ? formatearFecha(new Date(fila[COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO])) : "",
           baseLat: fila[COLUMNAS_EMPLEADOS.BASE_LAT] || null,
           baseLng: fila[COLUMNAS_EMPLEADOS.BASE_LNG] || null,
@@ -4170,12 +3445,7 @@ function obtenerVacacionesEmpleado(params) {
     let restanteVal = null;
 
     // Cargar de la hoja CALCULAR_vacaciones
-    let totalAdjudicadas = 0;
-    let totalTomadas = 0;
-    let totalRestantes = 0;
-let vacacionesPorEmpleado = {};
-
-try {
+    try {
       const calcSheet = ss.getSheetByName("CALCULAR_vacaciones");
       if (calcSheet) {
         const calcData = calcSheet.getDataRange().getValues();
@@ -4183,29 +3453,11 @@ try {
           var row = calcData[i];
           var idColA = row[0] ? String(row[0]).trim() : '';
           var idColB = row[1] ? String(row[1]).trim() : '';
-          var empIdRow = idColA || idColB;
-
-          if (!empIdRow) continue;
-          var empIdLower = empIdRow.toLowerCase();
-          if (empIdLower.includes('sumatoria') || empIdLower.includes('total') || empIdLower.includes('promedio') || empIdLower.includes('resumen')) {
-            continue;
-          }
-
-          if (!empIdReq) {
-              totalAdjudicadas += parseFloat(row[6]) || 0;
-              totalTomadas += parseFloat(row[8]) || 0;
-              totalRestantes += parseFloat(row[9]) || 0;
-
-              vacacionesPorEmpleado[empIdRow] = {
-                adjudicadas: parseFloat(row[6]) || 0,
-                tomadas: parseFloat(row[8]) || 0,
-                restantes: parseFloat(row[9]) || 0
-              };
-          } else if (idColA === empIdReq || idColB === empIdReq) {
+          if (empIdReq && (idColA === empIdReq || idColB === empIdReq)) {
             // Columna I (índice 8) es Vacaciones tomadas, Columna J (índice 9) es Vacaciones restantes
             tomadoVal = (row[8] !== undefined && row[8] !== '') ? row[8] : 0;
             restanteVal = (row[9] !== undefined && row[9] !== '') ? row[9] : 0;
-            break; // Solo necesitamos a este empleado
+            break;
           }
         }
       }
@@ -4246,20 +3498,8 @@ try {
         timestamp: r[9] ? String(r[9]) : ''
       });
     }
-    
-    return { 
-      ok: true, 
-      vacaciones: vacaciones, 
-      vacacionesTomadasHoy: tomadoVal, 
-      vacacionesRestantesHoy: restanteVal,
-      kpiVacaciones: !empIdReq ? {
-        adjudicadas: totalAdjudicadas,
-        tomadas: totalTomadas,
-        restantes: totalRestantes
-      } : null,
-kpiVacacionesIndividual: !empIdReq ? vacacionesPorEmpleado : null
-};
-} catch(e) {
+    return { ok: true, vacaciones: vacaciones, vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal };
+  } catch(e) {
     return { error: e.toString() };
   }
 }
@@ -4391,77 +3631,4 @@ function guardarPreguntasCultura(params) {
   } catch(e) {
     return { error: e.toString() };
   }
-}
-
-function obtenerConfiguracionWhatsApp() {
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName("CONFIGURACION");
-    if (!sheet) return { ok: true, config: null };
-    var data = sheet.getDataRange().getValues();
-    for (var i = 0; i < data.length; i++) {
-      if (String(data[i][0]).trim() === "CONFIG_WHATSAPP") {
-        var raw = data[i][1];
-        var config = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        return { ok: true, config: config };
-      }
-    }
-    return { ok: true, config: null };
-  } catch(e) {
-    return { error: e.toString() };
-  }
-}
-
-function guardarConfiguracionWhatsApp(params) {
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName("CONFIGURACION");
-    if (!sheet) {
-      sheet = ss.insertSheet("CONFIGURACION");
-      sheet.getRange(1, 1, 1, 2).setValues([["CLAVE", "VALOR"]]);
-      sheet.getRange(1, 1, 1, 2).setFontWeight("bold");
-    }
-    var raw = params.config;
-    var configStr = typeof raw === 'string' ? raw : JSON.stringify(raw);
-    var data = sheet.getDataRange().getValues();
-    var filaEncontrada = -1;
-    for (var i = 1; i < data.length; i++) {
-      if (String(data[i][0]).trim() === "CONFIG_WHATSAPP") {
-        filaEncontrada = i + 1;
-        break;
-      }
-    }
-    if (filaEncontrada !== -1) {
-      sheet.getRange(filaEncontrada, 2).setValue(configStr);
-    } else {
-      sheet.appendRow(["CONFIG_WHATSAPP", configStr]);
-    }
-    return { ok: true, mensaje: "Configuración de WhatsApp guardada en Google Sheets" };
-  } catch(e) {
-    return { error: e.toString() };
-  }
-}
-
-/**
- * Retorna los descargos de ley oficiales para el tratamiento y custodia de datos personales (LOPDP Ecuador).
- */
-function obtenerDescargoLegalDatosPersonales() {
-  return {
-    ok: true,
-    empresa: "TCONTROL S.A.",
-    normativa: "Ley Orgánica de Protección de Datos Personales (LOPDP) - Registro Oficial Suplemento 459 (República del Ecuador)",
-    version: "2026.1",
-    fechaActualizacion: "2026-09-08",
-    responsable: {
-      razonSocial: "TCONTROL S.A.",
-      domicilio: "Quito, República del Ecuador",
-      finalidad: "Control biométrico de asistencia, verificación de jornada laboral, gestión de horas suplementarias/extraordinarias y cumplimiento de obligaciones patronales y previsionales."
-    },
-    descargos: {
-      laboral: "Los datos personales recabados son tratados lícitamente bajo los numerales 2 y 8 del Art. 7 de la LOPDP para la ejecución de la relación contractual laboral y normativas del Código del Trabajo.",
-      biometriaYGPS: "Conforme al Art. 25 de la LOPDP, la fotografía facial (selfie) y las coordenadas GPS se procesan únicamente en el segundo exacto de la marcación presencial para verificar identidad y asistencia dentro del perímetro permitido. El sistema no efectúa rastreo continuo de ubicación.",
-      archivoDesvinculados: "Los registros del personal desvinculado se trasladan al archivo pasivo de DESVINCULADOS amparados en el Art. 21 de la LOPDP para respaldar auditorías patronales (IESS), tributarias (SRI) y laborales por los plazos de prescripción legal.",
-      derechosARCO: "El colaborador puede ejercer sus derechos de Acceso, Rectificación, Actualización, Eliminación y Oposición contemplados en la LOPDP ante el área de Talento Humano de TCONTROL S.A."
-    }
-  };
 }

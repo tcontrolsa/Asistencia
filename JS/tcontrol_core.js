@@ -246,3 +246,163 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+// ========== MÓDULO LEGAL Y PROTECCIÓN DE DATOS PERSONALES (LOPDP ECUADOR) ==========
+window.TCONTROL_LEGAL = {
+    EMPRESA: "TCONTROL S.A.",
+    NORMATIVA: "Ley Orgánica de Protección de Datos Personales (LOPDP) - Registro Oficial Suplemento 459 (República del Ecuador)",
+    FECHA_VIGENCIA: "2026",
+    FINALIDAD: "Control biométrico de asistencia, cumplimiento de jornada laboral, gestión de descansos y horas extraordinarias conforme al Código del Trabajo y la LOPDP.",
+    
+    // Descargo corto para pies de página, login y credenciales
+    AVISO_CORTO: "TCONTROL S.A. trata sus datos personales, biométricos y de ubicación en estricto cumplimiento de la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador), exclusivamente para la gestión y control de la jornada laboral.",
+    
+    // Descargo específico para marcación con foto y GPS
+    AVISO_MARCACION: "La fotografía y las coordenadas GPS se procesan única y exclusivamente al momento de la marcación para verificar identidad y presencia laboral dentro del perímetro autorizado (Arts. 7 y 25 LOPDP). No se realiza rastreo continuo.",
+    
+    // Descargo para archivo de desvinculaciones
+    AVISO_DESVINCULACION: "El traslado de registros a la base de DESVINCULADOS se ampara en el Art. 21 de la LOPDP, Código del Trabajo y Ley de Seguridad Social, manteniéndose en custodia confidencial para fines exclusivos de auditorías patronales, tributarias y laborales durante el término de prescripción legal.",
+    
+    // Descargo para notificaciones de WhatsApp
+    AVISO_WHATSAPP: "Aviso Legal: Mensaje automático institucional de TCONTROL S.A. emitido conforme a la LOPDP exclusivamente con fines de control y registro laboral."
+};
+
+/**
+ * Abre el modal institucional con el aviso legal completo y descargos sobre protección de datos personales.
+ */
+window.abrirModalAvisoPrivacidad = function(seccion = 'general') {
+    let modal = document.getElementById('modalAvisoPrivacidadTcontrol');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modalAvisoPrivacidadTcontrol';
+        modal.className = 'tcontrol-legal-modal-overlay';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.72); backdrop-filter:blur(4px); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; animation:fadeIn 0.2s ease-out;';
+        
+        modal.innerHTML = `
+            <div style="background:#ffffff; border-radius:20px; width:100%; max-width:680px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); border:1px solid #e2e8f0; overflow:hidden; font-family:'Outfit',system-ui,-apple-system,sans-serif;">
+                
+                <!-- Encabezado del Modal -->
+                <div style="padding:18px 24px; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#ffffff; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); flex-shrink:0;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg, #dc2626 0%, #ef4444 100%); display:flex; align-items:center; justify-content:center; font-size:18px; color:#ffffff; box-shadow:0 4px 12px rgba(220,38,38,0.35);">
+                            <i class="fas fa-shield-halved"></i>
+                        </div>
+                        <div>
+                            <h3 style="margin:0; font-size:16px; font-weight:800; letter-spacing:-0.2px; color:#ffffff;">Aviso Legal y Protección de Datos</h3>
+                            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">TCONTROL S.A. • Ley Orgánica de Protección de Datos Personales (Ecuador)</div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="window.cerrarModalAvisoPrivacidad()" aria-label="Cerrar" style="background:rgba(255,255,255,0.1); border:none; color:#cbd5e1; width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; transition:background 0.2s;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <!-- Barra de Certificación Normativa -->
+                <div style="padding:8px 24px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; flex-wrap:wrap; font-size:11px; font-weight:700; color:#475569; flex-shrink:0;">
+                    <span style="display:inline-flex; align-items:center; gap:5px; color:#0369a1;"><i class="fas fa-gavel"></i> LOPDP Registro Oficial Sup. 459</span>
+                    <span style="color:#cbd5e1;">•</span>
+                    <span style="display:inline-flex; align-items:center; gap:5px; color:#15803d;"><i class="fas fa-briefcase"></i> Código del Trabajo</span>
+                    <span style="color:#cbd5e1;">•</span>
+                    <span style="display:inline-flex; align-items:center; gap:5px; color:#7c3aed;"><i class="fas fa-lock"></i> Uso Exclusivamente Laboral</span>
+                </div>
+
+                <!-- Cuerpo con scroll -->
+                <div style="padding:20px 24px; overflow-y:auto; font-size:12.5px; line-height:1.6; color:#334155; display:flex; flex-direction:column; gap:16px;">
+                    
+                    <div style="background:#eff6ff; border-left:4px solid #3b82f6; padding:12px 16px; border-radius:8px; font-size:12px; color:#1e40af;">
+                        <strong>Declaración Institucional:</strong> TCONTROL S.A. garantiza la confidencialidad, integridad y uso estrictamente laboral de los datos personales de sus colaboradores, contratistas y usuarios, en estricto acatamiento a los principios de <em>Juridicidad, Finalidad, Proporcionalidad y Seguridad</em> establecidos en la legislación ecuatoriana.
+                    </div>
+
+                    <!-- Cláusula 1 -->
+                    <div style="border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; background:#ffffff;">
+                        <h4 style="margin:0 0 8px; font-size:13px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                            <span style="width:22px; height:22px; border-radius:6px; background:#dbeafe; color:#1d4ed8; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">1</span>
+                            Responsable del Tratamiento y Finalidad
+                        </h4>
+                        <p style="margin:0; font-size:12px; color:#475569;">
+                            El responsable del tratamiento de los datos es <strong>TCONTROL S.A.</strong>, domiciliada en la ciudad de Quito, Ecuador. Los datos personales recabados (nombres, cédula/ID, área, cargo, teléfono institucional, correos y registros de tiempo) son tratados de forma legítima bajo el Art. 7 (numerales 2 y 8) de la LOPDP para el cumplimiento del contrato individual de trabajo, verificación de jornada laboral ordinaria y suplementaria, cálculo de haberes y presentación de informes ante el Ministerio del Trabajo y el IESS.
+                        </p>
+                    </div>
+
+                    <!-- Cláusula 2 -->
+                    <div style="border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; background:#ffffff;">
+                        <h4 style="margin:0 0 8px; font-size:13px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                            <span style="width:22px; height:22px; border-radius:6px; background:#fef3c7; color:#b45309; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">2</span>
+                            Tratamiento de Datos Biométricos (Fotografía / Selfie)
+                        </h4>
+                        <p style="margin:0; font-size:12px; color:#475569;">
+                            De conformidad con el Artículo 25 de la LOPDP relativo al tratamiento de categorías especiales de datos (datos biométricos sensibles), la captura o verificación de fotografía se efectúa con la exclusiva finalidad de autenticar la identidad del titular en el momento exacto del registro presencial y evitar la suplantación de identidad. <strong>TCONTROL S.A. no comercializa, no cede ni somete estos datos a algoritmos de perfilamiento con fines ajenos a la relación de trabajo.</strong>
+                        </p>
+                    </div>
+
+                    <!-- Cláusula 3 -->
+                    <div style="border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; background:#ffffff;">
+                        <h4 style="margin:0 0 8px; font-size:13px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                            <span style="width:22px; height:22px; border-radius:6px; background:#dcfce7; color:#15803d; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">3</span>
+                            Geolocalización GPS Puntual (Sin Rastreo Continuo)
+                        </h4>
+                        <p style="margin:0; font-size:12px; color:#475569;">
+                            Las coordenadas de latitud y longitud son leídas <em>únicamente en el segundo preciso en que el colaborador presiona el botón de marcación</em> (entrada, salida o retorno de campo) para validar que se encuentre dentro del radio de la empresa o en el perímetro del proyecto asignado. <strong>El sistema NO efectúa rastreo continuo, ni monitorea los desplazamientos del colaborador en tiempo real, ni recopila ubicaciones fuera del acto voluntario de registro.</strong>
+                        </p>
+                    </div>
+
+                    <!-- Cláusula 4 -->
+                    <div style="border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; background:#ffffff;">
+                        <h4 style="margin:0 0 8px; font-size:13px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                            <span style="width:22px; height:22px; border-radius:6px; background:#f3e8ff; color:#7e22ce; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">4</span>
+                            Conservación de Datos y Módulo de Desvinculaciones
+                        </h4>
+                        <p style="margin:0; font-size:12px; color:#475569;">
+                            Al concluir la relación laboral por cualquier causa, los datos personales e históricos de marcaciones, saldos de vacaciones y liquidaciones del colaborador son trasladados de las bases operativas activas al archivo pasivo de <strong>"DESVINCULADOS"</strong>. Esta custodia se realiza amparada en el Artículo 21 de la LOPDP para satisfacer exigencias de auditoría patronal, fiscal (SRI), previsional (IESS) y defensa jurídica por el plazo de prescripción legal contemplado en las leyes de la República del Ecuador.
+                        </p>
+                    </div>
+
+                    <!-- Cláusula 5 -->
+                    <div style="border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; background:#ffffff;">
+                        <h4 style="margin:0 0 8px; font-size:13px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                            <span style="width:22px; height:22px; border-radius:6px; background:#fee2e2; color:#b91c1c; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">5</span>
+                            Derechos del Titular (Derechos ARCO)
+                        </h4>
+                        <p style="margin:0; font-size:12px; color:#475569;">
+                            El titular de los datos personales podrá ejercer en cualquier momento sus derechos de <strong>Acceso, Rectificación, Actualización, Eliminación y Oposición</strong> contemplados en la LOPDP mediante comunicación dirigida al departamento de Talento Humano o a través de los canales institucionales de TCONTROL S.A., salvaguardando los límites temporales que la ley laboral y tributaria obligue a conservar.
+                        </p>
+                    </div>
+
+                </div>
+
+                <!-- Footer del Modal -->
+                <div style="padding:14px 24px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+                    <span style="font-size:11px; color:#64748b;">
+                        <i class="fas fa-lock" style="color:#0284c7;"></i> Tratamiento confidencial • TCONTROL 2026
+                    </span>
+                    <button type="button" onclick="window.cerrarModalAvisoPrivacidad()" style="padding:8px 20px; border-radius:10px; font-size:12px; font-weight:800; background:#0f172a; color:#ffffff; border:none; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                        Entendido y Aceptar
+                    </button>
+                </div>
+
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Cerrar al hacer clic en el fondo
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                window.cerrarModalAvisoPrivacidad();
+            }
+        });
+    }
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+};
+
+/**
+ * Cierra el modal institucional de aviso legal.
+ */
+window.cerrarModalAvisoPrivacidad = function() {
+    const modal = document.getElementById('modalAvisoPrivacidadTcontrol');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+};

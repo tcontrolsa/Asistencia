@@ -9,12 +9,15 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260825_15">
+  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260907_08">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260825_15"></script>
+  <script src="./JS/firebase_backend.js?v=20260909_07"></script>
   <script>window.USE_FIREBASE = true;</script>
+  <!-- Librerias para exportacion de KPIs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     /* Estilos para el Creador Interactivo de Reportes */
     .chips-container {
@@ -111,6 +114,91 @@
         font-size: 10px !important;
         color: #000 !important;
       }
+    }
+
+    /* Inmovilizar encabezados en TODAS las tablas */
+    table thead th,
+    .employee-table thead th,
+    .table-wrapper table thead th,
+    .table-scroll-wrap table thead th,
+    .modal-content table thead th,
+    .modal-card table thead th,
+    #tablaKpiDetalle thead th,
+    #tablaHistoricoBaseModal thead th,
+    #tablaVacacionesModal thead th,
+    #tbodyModalInasistencias thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 10 !important;
+      background: var(--g50, #f8fafc) !important;
+      background-color: var(--g50, #f8fafc) !important;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+      white-space: nowrap;
+    }
+
+    table thead th:first-child,
+    .table-scroll-wrap table thead th:first-child,
+    .employee-table thead th:first-child {
+      z-index: 12 !important;
+      background: var(--g50, #f8fafc) !important;
+    }
+
+    /* Switches / Toggles Modernos */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 26px;
+      margin: 0;
+      cursor: pointer;
+      vertical-align: middle;
+      user-select: none;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .slider-round {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #cbd5e1;
+      transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s;
+      border-radius: 26px;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .slider-round::before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #ffffff;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s;
+      border-radius: 50%;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+    }
+
+    .switch input:checked + .slider-round {
+      background-color: #16a34a;
+    }
+
+    .switch input:focus-visible + .slider-round {
+      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.3);
+    }
+
+    .switch input:checked + .slider-round::before {
+      transform: translateX(22px);
     }
   </style>
 </head>
@@ -238,10 +326,14 @@
       <div id="sidebarSupervisorInfo" style="padding: 10px 16px; border-bottom: 1px dashed var(--g200); margin-bottom: 12px;"></div>
       <nav class="sidebar-nav">
         <div class="nav-item active" data-panel="asistencia"><i class="fas fa-calendar-day"></i><span>Asistencia</span></div>
+        <div class="nav-item" data-panel="mapa"><i class="fas fa-map-marked-alt"></i><span>Mapa de Asistencia</span></div>
         <div class="nav-item" data-panel="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></div>
         <div class="nav-item" data-panel="reportes"><i class="fas fa-file-invoice"></i><span>Reportes</span></div>
         <div class="nav-item" data-panel="emergencias"><i class="fas fa-exclamation-triangle"></i><span>Emergencias</span></div>
         <div class="nav-item" data-panel="menu"><i class="fas fa-utensils"></i><span>Menú Semanal</span></div>
+        <div class="nav-item" data-panel="cultura"><i class="fas fa-lightbulb"></i><span>Cultura Tcontrol</span></div>
+        <div class="nav-item" data-panel="invitados" id="navItemInvitados"><i class="fas fa-cookie-bite" style="color:#f97316;"></i><span>Invitados & Catering</span><span id="badgeInvitadosCount" style="display:none; margin-left:auto; background:#dc2626; color:white; font-size:10px; font-weight:800; padding:1px 6px; border-radius:10px;">0</span></div>
+        <div class="nav-item" data-panel="whatsapp" id="navItemWhatsApp" style="display:none"><i class="fab fa-whatsapp" style="color:#22c55e;"></i><span>Notificaciones WhatsApp</span></div>
         <div class="nav-item" data-panel="opciones" id="navItemOpciones" style="display:none"><i
             class="fas fa-sliders-h"></i><span>Opciones adicionales</span></div>
         <a class="nav-item" href="visor_empleado.html" target="_blank" style="text-decoration: none;"><i class="fas fa-mobile-alt"></i><span>Simulador de Vista</span></a>
@@ -249,6 +341,9 @@
       <div class="sidebar-footer">
         <button class="btn-extra-lunch" id="btnExtraLunch"><i class="fas fa-plus-circle"></i> Almuerzo Extra</button>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i> Actualizar</button>
+        <button type="button" onclick="window.abrirModalAvisoPrivacidad()" style="width:100%; margin-top:8px; background:transparent; border:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:700; padding:6px 10px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:all 0.15s;" title="Aviso Legal y Protección de Datos Personales (LOPDP Ecuador)">
+          <i class="fas fa-shield-halved" style="color:#0284c7;"></i> Aviso Legal LOPDP
+        </button>
       </div>
     </aside>
     <div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
@@ -268,6 +363,47 @@
         </div>
       </div>
 
+      <!-- BREADCRUMBS BAR (MIGAJAS DE PAN) -->
+      <div class="breadcrumb-nav-bar" id="breadcrumbNavBar">
+        <div class="breadcrumb-trail" id="breadcrumbTrail">
+          <span class="breadcrumb-link" onclick="cambiarPanel('asistencia')"><i class="fas fa-home"></i> Inicio</span>
+          <span class="breadcrumb-sep"><i class="fas fa-chevron-right"></i></span>
+          <span class="breadcrumb-current" id="breadcrumbCurrentItem">Control de Asistencia</span>
+        </div>
+        <button id="btnBreadcrumbBack" class="btn-breadcrumb-back" onclick="volverPanelAnterior()" style="display:none;" title="Volver a la vista anterior">
+          <i class="fas fa-arrow-left"></i> <span>Volver</span>
+        </button>
+      </div>
+
+      <!-- BANNER ALERTA SUP. ADMIN: SOLICITUDES DE INVITADOS PENDIENTES -->
+      <div id="bannerAlertaSupAdminInvitados" style="display:none; margin: 10px 0 16px 0; background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border: 1.5px solid #fb923c; border-left: 6px solid #ea580c; border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 12px rgba(234,88,12,0.10); align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 280px;">
+          <div style="width: 40px; height: 40px; border-radius: 10px; background: #ea580c; color: white; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 2px 8px rgba(234,88,12,0.25); flex-shrink: 0;">
+            <i class="fas fa-bell"></i>
+          </div>
+          <div>
+            <div style="font-size: 13.5px; font-weight: 800; color: #9a3412; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span>¡Atención Sup. Admin! Solicitudes de invitados pendientes</span>
+              <span id="badgeSupAdminCountInvitados" style="background:#ea580c; color:white; font-size:11px; padding:2px 8px; border-radius:20px; font-weight:700;">0 pendientes</span>
+            </div>
+            <div id="textoSupAdminAlertaInvitados" style="font-size: 12px; color: #7c2d12; margin-top: 3px; line-height: 1.35;">
+              Hay solicitudes de refrigerios o almuerzos extra registradas que requieren tu revisión o coordinación.
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn" onclick="window.cambiarPanel('invitados')" style="background: #ea580c; color: white; border: none; padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(234,88,12,0.25);">
+            <i class="fas fa-utensils"></i> Revisar Solicitudes
+          </button>
+          <button type="button" class="btn" onclick="window.notificarManualSupAdminsWhatsApp()" style="background: #25d366; color: white; border: none; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(37,211,102,0.25);" title="Enviar recordatorio WhatsApp a todos los Sup. Admin">
+            <i class="fab fa-whatsapp"></i> Notificar a Sup. Admin
+          </button>
+          <button type="button" onclick="document.getElementById('bannerAlertaSupAdminInvitados').style.display='none'" style="background: transparent; border: none; color: #9a3412; cursor: pointer; font-size: 16px; padding: 4px; margin-left: 4px;" title="Cerrar aviso">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+
       <!-- PANEL DASHBOARD -->
       <div id="panel-dashboard" class="panel">
         <div class="dashboard-header-sticky" style="position: sticky; top: 0; z-index: 100; background: #f8fafc; padding: 10px 0; border-bottom: 1px solid var(--g200); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
@@ -283,6 +419,146 @@
             <input type="date" id="filtroFechaDashboard" onchange="syncFecha('dash')" style="border:none; outline:none; font-family:'Plus Jakarta Sans', sans-serif; font-size:11.5px; font-weight:600; color:var(--g700); cursor:pointer; padding:2px;">
             <button onclick="limpiarFiltroFechaDashboard()" id="btnLimpiarFechaDash" style="display:none; border:none; background:none; cursor:pointer; color:var(--rose); font-size:11px; padding:2px 4px; line-height:1;" title="Limpiar fecha"><i class="fas fa-times-circle"></i></button>
           </div>
+        </div>
+
+          <!-- SECCIÓN DE KPIS ANALÍTICOS Y EXPORTACIÓN -->
+          <div id="kpisDashboardSection" style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.8); border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+              <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: var(--g800);"><i class="fas fa-chart-pie" style="color: var(--indigo); margin-right: 8px;"></i> Indicadores de Rendimiento (KPIs)</h3>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-primary" onclick="exportarKPIsExcel()" style="padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; background:var(--green); border:none; box-shadow:0 2px 4px rgba(22,163,74,0.2);"><i class="fas fa-file-excel"></i> Excel</button>
+                <button class="btn btn-primary" onclick="exportarKPIsPDF()" style="padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; background:var(--rose); border:none; box-shadow:0 2px 4px rgba(225,29,72,0.2);"><i class="fas fa-file-pdf"></i> PDF</button>
+              </div>
+            </div>
+
+            <div id="kpisContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+              
+              <!-- KPI Asistencia -->
+              <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--indigo);" id="kpiAsistenciaBorder"></div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                  <div>
+                    <h4 style="margin: 0; font-size: 13px; font-weight: 700; color: var(--g600);">Cumplimiento de Asistencia</h4>
+                    <p style="margin: 2px 0 0; font-size: 11px; color: var(--g400);">Histórico Base (Promedio de Asistencia)</p>
+                  </div>
+                  <div style="background: rgba(99, 102, 241, 0.1); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--indigo); font-size: 16px;">
+                    <i class="fas fa-calendar-check"></i>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                  <span id="kpiAsistenciaVal" style="font-size: 28px; font-weight: 800; color: var(--g900); letter-spacing: -0.5px;">--%</span>
+                  <span id="kpiAsistenciaStatus" style="font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 20px; background: #f1f5f9; color: var(--g500);">...</span>
+                </div>
+                <div style="margin-top: 10px; font-size: 11px; color: var(--g600); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #f8fafc; padding: 6px 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                  <div><span style="color:var(--g400);">Asist. Ordinarias:</span> <strong id="kpiAsistenciaDetalle1">--</strong></div>
+                  <div><span style="color:var(--g400);">Asist. Esperadas:</span> <strong id="kpiAsistenciaDetalle2">--</strong></div>
+                  <div><span style="color:var(--g400);">Vacaciones:</span> <strong id="kpiAsistenciaDetalleVacaciones" style="color:#0284c7;">--</strong></div>
+                  <div><span style="color:var(--g400);">Días Extras:</span> <strong id="kpiAsistenciaDetalleExtras" style="color:#4f46e5;">--</strong></div>
+                  <div style="grid-column: span 2;"><span style="color:var(--g400);">Colaboradores Evaluados:</span> <strong id="kpiAsistenciaDetalleColabs">--</strong></div>
+                </div>
+                <div style="margin-top: 10px; display: flex; gap: 6px;">
+                  <button type="button" onclick="window.abrirModalDesgloseHistoricoBase()" class="btn" style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 5px; background: #eef2ff; border: 1px solid #c7d2fe; color: #4338ca; cursor: pointer; transition: all 0.15s ease;" onmouseover="this.style.background='#e0e7ff'" onmouseout="this.style.background='#eef2ff'" title="Haz clic para ver el desglose detallado de las diferencias del período actual">
+                    <i class="fas fa-list-ol"></i> Ver Desglose (<span id="lblBtnDiferenciaTotal">--</span> d)
+                  </button>
+                  <button type="button" onclick="window.abrirModalDesgloseHistoricoBase('ANUAL')" class="btn" style="padding: 6px 12px; font-size: 11.5px; font-weight: 700; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 5px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; cursor: pointer; transition: all 0.15s ease;" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'" title="Haz clic para ver el Desglose Anual de Asistencia y Diferencias">
+                    <i class="fas fa-calendar"></i> Anual
+                  </button>
+                </div>
+              </div>
+
+              <!-- KPI Vacaciones -->
+              <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--teal);" id="kpiVacacionesBorder"></div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                  <div>
+                    <h4 style="margin: 0; font-size: 13px; font-weight: 700; color: var(--g600);">Cumplimiento de Vacaciones</h4>
+                    <p style="margin: 2px 0 0; font-size: 11px; color: var(--g400);">Goce Anual (Tomadas / Adjudicadas)</p>
+                  </div>
+                  <div style="background: rgba(20, 184, 166, 0.1); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--teal); font-size: 16px;">
+                    <i class="fas fa-umbrella-beach"></i>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                  <span id="kpiVacacionesVal" style="font-size: 28px; font-weight: 800; color: var(--g900); letter-spacing: -0.5px;">--%</span>
+                  <span id="kpiVacacionesStatus" style="font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 20px; background: #f1f5f9; color: var(--g500);">Objetivo: 100%</span>
+                </div>
+                <div style="margin-top: 10px; font-size: 11px; color: var(--g600); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #f8fafc; padding: 6px 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                  <div><span style="color:var(--g400);">Tomadas / Gozadas:</span> <strong id="kpiVacacionesDetalleTomadas" style="color:#0d9488;">--</strong></div>
+                  <div><span style="color:var(--g400);">Adjudicadas:</span> <strong id="kpiVacacionesDetalle2">--</strong></div>
+                  <div><span style="color:var(--g400);">Pendientes:</span> <strong id="kpiVacacionesDetalle1" style="color:#ef4444;">--</strong></div>
+                  <div><span style="color:var(--g400);">Promedio Indiv.:</span> <strong id="kpiVacacionesDetallePromedio" style="color:var(--g800);">--%</strong></div>
+                </div>
+                <button type="button" onclick="window.abrirModalDesgloseVacaciones()" class="btn" style="margin-top: 10px; width: 100%; padding: 6px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; background: #f0fdfa; border: 1px solid #99f6e4; color: #0f766e; cursor: pointer; transition: all 0.15s ease;" onmouseover="this.style.background='#ccfbf1'" onmouseout="this.style.background='#f0fdfa'" title="Haz clic para ver el estado de vacaciones colaborador por colaborador">
+                  <i class="fas fa-umbrella-beach"></i> Ver Desglose de Vacaciones
+                </button>
+              </div>
+            </div>
+
+              <!-- DETALLE DE KPIs POR EMPLEADO -->
+              <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; margin-top: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                  <div>
+                    <h4 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--g800);"><i class="fas fa-list-ul" style="color:var(--blue); margin-right:6px;"></i> Detalle de KPIs por Colaborador</h4>
+                    <p style="margin: 2px 0 0; font-size: 12px; color: var(--g500);">Desglose por período (26 al 25) • <em>Haz clic en cualquier colaborador para ver su reporte detallado</em></p>
+                  </div>
+                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 6px; background: #ffffff; padding: 4px 10px; border-radius: 10px; border: 1px solid var(--g300); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                      <span style="font-size: 11.5px; font-weight: 700; color: var(--g600);"><i class="fas fa-calendar-alt" style="color: var(--red);"></i> Período:</span>
+                      <select id="kpiDetallePeriodo" onchange="syncPeriodo('kpi')" class="filter-select" style="border: none; outline: none; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 600; color: var(--g700); cursor: pointer; padding: 2px; background: transparent;"></select>
+                    </div>
+                    <button class="btn btn-outline" onclick="exportarKPIsDetalladosExcel()" style="padding: 6px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel" style="color:#10b981;"></i> Excel</button>
+                    <button class="btn btn-outline" onclick="exportarKPIsDetalladosPDF()" style="padding: 6px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-file-pdf" style="color:#ef4444;"></i> PDF</button>
+                  </div>
+                </div>
+
+                <!-- Resumen Global del Período Seleccionado -->
+                <div id="kpiPeriodoResumenBar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 16px; margin-bottom: 12px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                      <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div>
+                      <div style="font-size: 11px; color: var(--g500); font-weight: 600; text-transform: uppercase;">Promedio KPI del Período (<span id="lblKpiPeriodoNombre">--</span>):</div>
+                      <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 1px;">
+                        <strong style="font-size: 19px; font-weight: 800; color: var(--g900);" id="lblKpiPeriodoPct">--%</strong>
+                        <span id="lblKpiPeriodoStatus" style="font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; background: #e2e8f0; color: #475569;">--</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--g600); flex-wrap: wrap;">
+                    <div><span style="color: var(--g400);">Asist. Ordinarias:</span> <strong id="lblKpiPeriodoEfectivas" style="color: var(--g800);">--</strong></div>
+                    <div><span style="color: var(--g400);">Asist. Esperadas:</span> <strong id="lblKpiPeriodoEsperadas" style="color: var(--g800);">--</strong></div>
+                    <div><span style="color: var(--g400);">Vacaciones:</span> <strong id="lblKpiPeriodoVacaciones" style="color: #0284c7;">--</strong></div>
+                    <div><span style="color: var(--g400);">Inasistencias:</span> <strong id="lblKpiPeriodoInasistencias" style="color: var(--red);">--</strong></div>
+                    <div><span style="color: var(--g400);">Días Extras:</span> <strong id="lblKpiPeriodoExtras" style="color: #4f46e5;">--</strong></div>
+                    <div><span style="color: var(--g400);">Colaboradores:</span> <strong id="lblKpiPeriodoColabs" style="color: var(--g800);">--</strong></div>
+                    <div><span style="color: var(--g400);">Días Laborables:</span> <strong id="lblKpiPeriodoDiasLab" style="color: var(--g800);">--</strong></div>
+                  </div>
+                </div>
+
+                <div style="overflow: auto; max-height: 520px; border-radius: 8px; border: 1px solid var(--g200); position: relative;">
+                  <table style="width: 100%; border-collapse: collapse; min-width: 850px; text-align: left;" id="tablaKpiDetalle">
+                    <thead style="position: sticky; top: 0; z-index: 10; background: #f8fafc; font-size: 12px; color: var(--g600); border-bottom: 1px solid var(--g200); box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
+                      <tr>
+                        <th style="padding: 10px 12px; font-weight: 700;">Colaborador</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;" title="Días hábiles (Lunes a Viernes no feriados) transcurridos del período">Días Laborables</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;" title="Asistencias en días laborables ordinarios">Asist. Ordinarias</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;" title="Inasistencias en días laborables">Inasistencias</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;" title="Trabajo en fines de semana o feriados fuera de los días laborables">Días Extras</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;" title="% de asistencia sobre días laborables ordinarios">KPI Asistencia</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;">Vac. Adjudicadas</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;">Vac. Tomadas</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;">Vac. Pendientes</th>
+                        <th style="padding: 10px 12px; font-weight: 700; text-align: center;" title="Porcentaje de vacaciones disfrutadas sobre las adjudicadas en el año (Tomadas / Adjudicadas)">% Goce Vacaciones</th>
+                      </tr>
+                    </thead>
+                    <tbody style="font-size: 13px; color: var(--g800);" id="tbodyKpiDetalle">
+                      <tr><td colspan="10" style="padding: 20px; text-align: center; color: var(--g500);">Cargando datos...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
         </div>
 
         <div class="stats-grid">
@@ -637,9 +913,9 @@
           <!-- Tables/Lists of users -->
           <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px;">
             <h3 style="font-size:15px; font-weight:700; color:#1e293b; margin:0 0 12px 0;">Detalle de Reportes por Empleado</h3>
-            <div class="table-wrapper" style="overflow-x:auto;">
+            <div class="table-wrapper" style="overflow: auto; max-height: 480px; border-radius: 8px;">
               <table class="employee-table" style="width:100%; border-collapse:collapse;">
-                <thead>
+                <thead style="position: sticky; top: 0; z-index: 10; background: #f1f5f9; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
                   <tr style="background:#f1f5f9; border-bottom:2px solid #e2e8f0;">
                     <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Empleado</th>
                     <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Área</th>
@@ -763,6 +1039,21 @@
             <div class="search-count-badge" id="searchCounterBadge" title="Empleados visibles en la tabla">
               <i class="fas fa-users"></i> <span id="searchResultCount">0</span>/<span id="searchTotalCount">0</span>
             </div>
+            <!-- Botones WhatsApp Dinámicos / Notificaciones -->
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" id="btnNotificarWhatsAppSinMarcar" class="btn" onclick="window.abrirModalNotificarWhatsApp('sin_marcar')" style="display:none; background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.25); white-space:nowrap; transition:all 0.2s;">
+                <i class="fab fa-whatsapp" style="font-size:14px;"></i> <span>Notificar Sin Marcar (<strong id="lblCountSinMarcarWhatsApp">0</strong>)</span>
+              </button>
+              <button type="button" id="btnNotificarWhatsAppAusentes" class="btn" onclick="window.abrirModalNotificarWhatsApp('ausente')" style="display:none; background:linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 6px rgba(220,38,38,0.25); white-space:nowrap; transition:all 0.2s;">
+                <i class="fab fa-whatsapp" style="font-size:14px;"></i> <span>Notificar Ausentes (<strong id="lblCountAusentesWhatsApp">0</strong>)</span>
+              </button>
+              <button type="button" id="btnNotificarWhatsAppSalida" class="btn" onclick="window.abrirModalNotificarWhatsApp('salida_faltante')" style="display:none; background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 6px rgba(2,132,199,0.25); white-space:nowrap; transition:all 0.2s;">
+                <i class="fab fa-whatsapp" style="font-size:14px;"></i> <span>Notificar Salida (<strong id="lblCountSalidaWhatsApp">0</strong>)</span>
+              </button>
+              <button type="button" id="btnNotificarWhatsAppGeneral" class="btn" onclick="window.abrirModalNotificarWhatsApp('sin_marcar')" style="display:none; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:12px; font-weight:700; border-radius:10px; padding:7px 12px; align-items:center; gap:6px; cursor:pointer; white-space:nowrap;" title="Abrir panel de envío de notificaciones WhatsApp">
+                <i class="fab fa-whatsapp" style="font-size:14px; color:#16a34a;"></i> <span>WhatsApp</span>
+              </button>
+            </div>
           </div>
         </div>
         <div class="table-wrapper">
@@ -770,6 +1061,246 @@
         </div>
       </div>
 
+      <!-- PANEL MAPA DE ASISTENCIA Y DISPONIBILIDAD DE PERSONAL -->
+      <div id="panel-mapa" class="panel">
+        <!-- KPI METRICS SUMMARY & FILTERS (MATCHING ASISTENCIA TAB) -->
+        <div class="cards-grid mapa-kpi-grid" style="margin-bottom: 12px;">
+          <!-- 1. TODOS -->
+          <div class="kpi-card active" data-filter="todos" onclick="setFiltroKpiMapa('todos', this)" style="--card-color: var(--blue); --active-bg: #eff6ff; --active-text: #1e40af; --shadow-color: rgba(37, 99, 235, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--blu-lt); color: var(--blue);"><i class="fas fa-users"></i></div>
+              <span class="kpi-label">Todos</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiTotal">0</div>
+          </div>
+
+          <!-- 2. PRESENTES / EN PLANTA -->
+          <div class="kpi-card" data-filter="presente" onclick="setFiltroKpiMapa('presente', this)" style="--card-color: var(--green); --active-bg: #f0fdf4; --active-text: #15803d; --shadow-color: rgba(22, 163, 74, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--grn-lt); color: var(--green);"><i class="fas fa-building"></i></div>
+              <span class="kpi-label">En Planta Hoy</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiPlanta">0</div>
+          </div>
+
+          <!-- 3. SIN MARCAR -->
+          <div class="kpi-card" data-filter="sin_marcar" onclick="setFiltroKpiMapa('sin_marcar', this)" style="--card-color: #ef4444; --active-bg: #fef2f2; --active-text: #b91c1c; --shadow-color: rgba(239, 68, 68, 0.2); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #fee2e2; color: #dc2626;"><i class="fas fa-bell"></i></div>
+              <span class="kpi-label">Sin Marcar</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiSinMarcar">0</div>
+          </div>
+
+          <!-- 4. EN CAMPO -->
+          <div class="kpi-card" data-filter="en_campo" onclick="setFiltroKpiMapa('en_campo', this)" style="--card-color: #f59e0b; --active-bg: #fffbeb; --active-text: #b45309; --shadow-color: rgba(245, 158, 11, 0.15); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #fef3c7; color: #d97706;"><i class="fas fa-route"></i></div>
+              <span class="kpi-label">En Campo</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiCampo">0</div>
+          </div>
+
+          <!-- 5. VACACIONES -->
+          <div class="kpi-card" data-filter="vacaciones" onclick="setFiltroKpiMapa('vacaciones', this)" style="--card-color: #06b6d4; --active-bg: #ecfeff; --active-text: #0e7490; --shadow-color: rgba(6, 182, 212, 0.15); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #cffafe; color: #0891b2;"><i class="fas fa-umbrella-beach"></i></div>
+              <span class="kpi-label">Vacaciones</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiVacaciones">0</div>
+          </div>
+
+          <!-- 6. PERMISOS -->
+          <div class="kpi-card" data-filter="permisos" onclick="setFiltroKpiMapa('permisos', this)" style="--card-color: #a855f7; --active-bg: #faf5ff; --active-text: #7e22ce; --shadow-color: rgba(168, 85, 247, 0.15); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #f3e8ff; color: #9333ea;"><i class="fas fa-file-medical"></i></div>
+              <span class="kpi-label">Permisos</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiPermisos">0</div>
+          </div>
+
+          <!-- 7. TARDANZAS -->
+          <div class="kpi-card" data-filter="tardanza" onclick="setFiltroKpiMapa('tardanza', this)" style="--card-color: var(--amber); --active-bg: #fffbeb; --active-text: #b45309; --shadow-color: rgba(217, 119, 6, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--amb-lt); color: var(--amber);"><i class="fas fa-exclamation-triangle"></i></div>
+              <span class="kpi-label">Tardanzas</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiTardanzas">0</div>
+          </div>
+
+          <!-- 8. PRÓXIMOS EVENTOS -->
+          <div class="kpi-card" data-filter="futuros" onclick="setFiltroKpiMapa('futuros', this)" style="--card-color: #6366f1; --active-bg: #e0e7ff; --active-text: #4338ca; --shadow-color: rgba(99, 102, 241, 0.15); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #e0e7ff; color: #4f46e5;"><i class="fas fa-calendar-check"></i></div>
+              <span class="kpi-label">Próx. Eventos</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiFuturos">0</div>
+          </div>
+
+          <!-- 9. ALM. PLANTA -->
+          <div class="kpi-card" data-filter="almuerzo_si" onclick="setFiltroKpiMapa('almuerzo_si', this)" style="--card-color: var(--indigo); --active-bg: #eef2ff; --active-text: #4338ca; --shadow-color: rgba(99, 102, 241, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--ind-lt); color: var(--indigo);"><i class="fas fa-utensils"></i></div>
+              <span class="kpi-label">Alm. Planta</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiAlmPlanta">0</div>
+          </div>
+
+          <!-- 10. ALM. FUERA -->
+          <div class="kpi-card" data-filter="almuerzo_no" onclick="setFiltroKpiMapa('almuerzo_no', this)" style="--card-color: var(--g500); --active-bg: #f8fafc; --active-text: #334155; --shadow-color: rgba(100, 116, 139, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--g100); color: var(--g500);"><i class="fas fa-home"></i></div>
+              <span class="kpi-label">Alm. Fuera</span>
+            </div>
+            <div class="kpi-value" id="mapaKpiAlmFuera">0</div>
+          </div>
+        </div>
+
+        <!-- CONTROLS & TOOLBAR CARD -->
+        <div class="mapa-controls-card">
+          <!-- TOP ROW: TITLE & ACTION BUTTONS -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+            <div>
+              <h2 style="font-size:18px; font-weight:800; color:#0f172a; margin:0; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-map-marked-alt" style="color:var(--red);"></i> Mapa de Asistencia y Disponibilidad
+              </h2>
+              <p style="font-size:12px; color:#64748b; margin:2px 0 0 0;">Visualización gráfica e interactiva de asistencias, salidas a campo, vacaciones y permisos futuros.</p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button class="btn" onclick="mostrarModalFuturos()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); color:white; border:none; padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 4px rgba(99,102,241,0.2);">
+                <i class="fas fa-calendar-plus"></i> + Ausencia / Vacación
+              </button>
+              <button class="btn" onclick="abrirModalCampoSupervisor()" style="background:linear-gradient(135deg,#059669,#10b981); color:white; border:none; padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 4px rgba(16,185,129,0.2);">
+                <i class="fas fa-route"></i> + Salida a Campo
+              </button>
+              <button class="btn" onclick="exportarExcelMapaAsistencia()" style="background:#ffffff; border:1px solid #cbd5e1; color:#334155; padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; cursor:pointer;" title="Descargar vista actual en Excel">
+                <i class="fas fa-file-excel" style="color:#16a34a;"></i> Excel
+              </button>
+              <button class="btn btn-refresh-mapa" onclick="recargarDatosMapa()" style="background:#ffffff; border:1px solid #cbd5e1; color:#334155; padding:8px 12px; border-radius:10px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; cursor:pointer;" title="Recargar datos desde Firebase">
+                <i class="fas fa-sync-alt"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- SECOND ROW: RANGE PRESETS & DATE NAVIGATOR -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 14px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:14px;">
+            <!-- PRESETS BUTTONS -->
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <span style="font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase; margin-right:4px;"><i class="fas fa-clock" style="color:var(--blue);"></i> Rango:</span>
+              <button class="mapa-range-btn active" id="btnRangoSemana" onclick="cambiarRangoMapa('semana')">Esta Semana</button>
+              <button class="mapa-range-btn" id="btnRango14Dias" onclick="cambiarRangoMapa('14dias')">14 Días</button>
+              <button class="mapa-range-btn" id="btnRangoMes" onclick="cambiarRangoMapa('mes')">Mes Actual</button>
+              <button class="mapa-range-btn" id="btnRangoPeriodo" onclick="cambiarRangoMapa('periodo')">Período 26-25</button>
+            </div>
+
+            <!-- DATE STEPPER & LABEL -->
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <button onclick="navegarRangoMapa(-1)" class="mapa-nav-arrow" title="Rango Anterior"><i class="fas fa-chevron-left"></i></button>
+              <button onclick="navegarRangoMapa(0)" class="mapa-nav-today" title="Ir a Hoy"><i class="fas fa-dot-circle"></i> Hoy</button>
+              <button onclick="navegarRangoMapa(1)" class="mapa-nav-arrow" title="Rango Siguiente"><i class="fas fa-chevron-right"></i></button>
+              <div id="mapaRangoLabel" style="font-size:12.5px; font-weight:800; color:#1e293b; background:#ffffff; padding:4px 12px; border-radius:8px; border:1px solid #cbd5e1; box-shadow:0 1px 2px rgba(0,0,0,0.03);">--</div>
+            </div>
+
+            <!-- CUSTOM DATE PICKERS -->
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="date" id="mapaFechaInicio" onchange="aplicarFechasCustomMapa()" class="mapa-date-input" title="Fecha Inicio">
+              <span style="font-size:11px; color:#94a3b8; font-weight:700;">a</span>
+              <input type="date" id="mapaFechaFin" onchange="aplicarFechasCustomMapa()" class="mapa-date-input" title="Fecha Fin">
+            </div>
+          </div>
+
+          <!-- THIRD ROW: FILTERS, SEARCH, COUNTER & VIEW SWITCHER -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <!-- SEARCH & AREA FILTER -->
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; flex:1; min-width:280px;">
+              <div style="position:relative; flex:1; max-width:320px;">
+                <input type="text" id="searchMapaAsistencia" placeholder="Buscar colaborador por nombre, ID o cargo..." oninput="filtrarMapaAsistencia()" class="search-input" style="padding-left:32px; height:34px; border-radius:10px; font-size:12px; margin:0; width:100%;">
+                <i class="fas fa-search" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:11px;"></i>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:3px 8px; height:34px;">
+                <i class="fas fa-building" style="color:var(--blue); font-size:12px;"></i>
+                <select id="mapaFiltroArea" onchange="filtrarMapaAsistencia()" style="border:none; outline:none; font-size:12px; font-weight:600; color:#334155; background:transparent; cursor:pointer;">
+                  <option value="">Todas las Áreas</option>
+                </select>
+              </div>
+              <div class="search-count-badge" id="searchCounterBadgeMapa" title="Colaboradores visibles en el mapa">
+                <i class="fas fa-users"></i> <span id="mapaResultCount">0</span>/<span id="mapaTotalCount">0</span>
+              </div>
+            </div>
+
+            <!-- VIEW SWITCHER (MATRIZ vs TARJETAS vs COBERTURA) -->
+            <div class="mapa-view-switcher">
+              <button class="mapa-view-btn active" id="btnVistaMatriz" onclick="cambiarVistaMapa('matriz')" title="Vista Matriz / Cronograma">
+                <i class="fas fa-table"></i> Matriz
+              </button>
+              <button class="mapa-view-btn" id="btnVistaTarjetas" onclick="cambiarVistaMapa('tarjetas')" title="Vista Tarjetas de Personal">
+                <i class="fas fa-id-card"></i> Tarjetas
+              </button>
+              <button class="mapa-view-btn" id="btnVistaCobertura" onclick="cambiarVistaMapa('cobertura')" title="Vista Cobertura por Área">
+                <i class="fas fa-chart-bar"></i> Cobertura
+              </button>
+            </div>
+          </div>
+
+          <!-- FOURTH ROW: INTERACTIVE LEGEND (CLICKABLE QUICK FILTER) -->
+          <div class="mapa-legend-bar">
+            <span style="font-size:10.5px; font-weight:800; color:#64748b; text-transform:uppercase; display:flex; align-items:center; gap:4px;"><i class="fas fa-filter"></i> Leyenda:</span>
+            <button class="legend-chip active" data-estado="TODOS" onclick="setFiltroEstadoMapa('TODOS', this)">
+              <span class="legend-dot" style="background:#64748b;"></span> Todos
+            </button>
+            <button class="legend-chip" data-estado="PRESENTE" onclick="setFiltroEstadoMapa('PRESENTE', this)">
+              <span class="legend-dot" style="background:#16a34a;"></span> Presentes
+            </button>
+            <button class="legend-chip" data-estado="TARDANZA" onclick="setFiltroEstadoMapa('TARDANZA', this)">
+              <span class="legend-dot" style="background:#f59e0b;"></span> Tardanzas
+            </button>
+            <button class="legend-chip" data-estado="CAMPO" onclick="setFiltroEstadoMapa('CAMPO', this)">
+              <span class="legend-dot" style="background:#ea580c;"></span> En Campo
+            </button>
+            <button class="legend-chip" data-estado="VACACIONES" onclick="setFiltroEstadoMapa('VACACIONES', this)">
+              <span class="legend-dot" style="background:#06b6d4;"></span> Vacaciones
+            </button>
+            <button class="legend-chip" data-estado="PERMISO_MEDICO" onclick="setFiltroEstadoMapa('PERMISO_MEDICO', this)">
+              <span class="legend-dot" style="background:#8b5cf6;"></span> P. Médico
+            </button>
+            <button class="legend-chip" data-estado="PERMISO" onclick="setFiltroEstadoMapa('PERMISO', this)">
+              <span class="legend-dot" style="background:#a855f7;"></span> Permiso Pers.
+            </button>
+            <button class="legend-chip" data-estado="FALTA" onclick="setFiltroEstadoMapa('FALTA', this)">
+              <span class="legend-dot" style="background:#ef4444;"></span> Faltas
+            </button>
+            <button class="legend-chip" data-estado="SIN_MARCAR" onclick="setFiltroEstadoMapa('SIN_MARCAR', this)">
+              <span class="legend-dot" style="background:#94a3b8;"></span> Sin Marcar
+            </button>
+          </div>
+        </div>
+
+        <!-- VIEW CONTAINER 1: INTERACTIVE TIMELINE MATRIX -->
+        <div id="mapaMatrizViewWrapper" class="mapa-view-container active">
+          <div class="mapa-matrix-scroll-wrapper">
+            <div id="mapaMatrizContainer">
+              <div style="padding:40px; text-align:center; color:#64748b;">
+                <i class="fas fa-spinner fa-spin" style="font-size:24px; color:var(--blue); margin-bottom:10px;"></i>
+                <div style="font-weight:700; font-size:13px;">Generando Mapa de Asistencia...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW CONTAINER 2: VISUAL EMPLOYEE CARDS GRID -->
+        <div id="mapaTarjetasViewWrapper" class="mapa-view-container" style="display:none;">
+          <div id="mapaTarjetasContainer" class="mapa-cards-grid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- VIEW CONTAINER 3: AREA COVERAGE HEATMAP -->
+        <div id="mapaCoberturaViewWrapper" class="mapa-view-container" style="display:none;">
+          <div id="mapaCoberturaContainer" class="mapa-coverage-grid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
 
       <!-- PANEL OPCIONES ADICIONALES (SOLO ADMIN 1058) -->
       <div id="panel-opciones" class="panel">
@@ -800,7 +1331,7 @@
           </div>
         </div>
 
-        <!-- NAVEGACIÓN SUPERIOR DE SECCIONES (3 PESTAÑAS PRINCIPALES) -->
+        <!-- NAVEGACIÓN SUPERIOR DE SECCIONES (4 SUBPESTAÑAS PRINCIPALES) -->
         <div class="opciones-nav-bar">
           <button onclick="cambiarSeccionOpciones('personal')" id="btnSecPersonal" class="btn-sec-opc active">
             <i class="fas fa-users-cog"></i> 1. Gestión de Personal
@@ -808,8 +1339,11 @@
           <button onclick="cambiarSeccionOpciones('roles')" id="btnSecRoles" class="btn-sec-opc">
             <i class="fas fa-user-shield"></i> 2. Asignación de Roles
           </button>
+          <button onclick="cambiarSeccionOpciones('desvincular')" id="btnSecDesvincular" class="btn-sec-opc">
+            <i class="fas fa-user-slash"></i> 3. Desvinculaciones
+          </button>
           <button onclick="cambiarSeccionOpciones('sistema')" id="btnSecSistema" class="btn-sec-opc">
-            <i class="fas fa-tools"></i> 3. Operaciones & Mantenimiento
+            <i class="fas fa-tools"></i> 4. Operaciones & Mantenimiento
           </button>
         </div>
 
@@ -829,6 +1363,7 @@
               <button onclick="cambiarModoGestion('manual')" id="btnModoManual" class="tab-gestion" style="border:none; padding:7px 12px; font-size:11.5px; font-weight:700; border-radius:8px; cursor:pointer; background:transparent; color:var(--g500); transition:all 0.2s;"><i class="fas fa-user-plus" style="color:var(--blue); margin-right:4px;"></i> 2. Formulario Nuevo</button>
               <button onclick="cambiarModoGestion('pasted')" id="btnModoPasted" class="tab-gestion" style="border:none; padding:7px 12px; font-size:11.5px; font-weight:700; border-radius:8px; cursor:pointer; background:transparent; color:var(--g500); transition:all 0.2s;"><i class="fas fa-clipboard" style="color:var(--indigo); margin-right:4px;"></i> 3. Pegar Excel</button>
               <button onclick="cambiarModoGestion('eliminar')" id="btnModoEliminar" class="tab-gestion" style="border:none; padding:7px 12px; font-size:11.5px; font-weight:700; border-radius:8px; cursor:pointer; background:transparent; color:#e11d48; transition:all 0.2s;"><i class="fas fa-user-minus" style="color:#e11d48; margin-right:4px;"></i> 4. Eliminar Usuarios</button>
+              <button onclick="cambiarModoGestion('desvincular')" id="btnModoDesvincular" class="tab-gestion" style="border:none; padding:7px 12px; font-size:11.5px; font-weight:700; border-radius:8px; cursor:pointer; background:transparent; color:#7c3aed; transition:all 0.2s;"><i class="fas fa-user-slash" style="color:#7c3aed; margin-right:4px;"></i> 5. Desvincular Personal</button>
             </div>
           </div>
 
@@ -865,10 +1400,14 @@
                   <input type="text" id="frmEmpArea" class="form-input" placeholder="Ej: PRODUCCION">
                 </div>
               </div>
-              <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:12px; margin-bottom:16px;">
+              <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap:12px; margin-bottom:16px;">
                 <div class="form-group" style="margin:0;">
                   <label class="form-label" style="font-size:11px; font-weight:700;">Cargo *</label>
                   <input type="text" id="frmEmpCargo" class="form-input" placeholder="Ej: Operario">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label" style="font-size:11px; font-weight:700;"><i class="fab fa-whatsapp" style="color:#16a34a;"></i> WhatsApp / Teléfono</label>
+                  <input type="text" id="frmEmpTelefono" class="form-input" placeholder="Ej: 0984660105">
                 </div>
                 <div class="form-group" style="margin:0;">
                   <label class="form-label" style="font-size:11px; font-weight:700;">PIN / Contraseña *</label>
@@ -944,6 +1483,144 @@
                     <i class="fas fa-trash"></i> Eliminar (<span id="cntEliminarEmpSel">0</span>) seleccionados
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CONTENIDO 5: DESVINCULAR PERSONAL (RESPALDO EN DESVINCULADOS) -->
+          <div id="contModoDesvincular" style="display:none;">
+            <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:14px 18px; margin-bottom:16px; display:flex; align-items:flex-start; gap:12px;">
+              <div style="width:36px; height:36px; border-radius:10px; background:#7c3aed; color:white; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">
+                <i class="fas fa-archive"></i>
+              </div>
+              <div style="font-size:12px; color:#5b21b6; line-height:1.5;">
+                <strong>Módulo de Desvinculación y Respaldo Permanente:</strong> Al desvincular un colaborador, el sistema cortará y trasladará automáticamente todos sus registros asociados desde las 4 hojas activas:
+                <ul style="margin:4px 0 0; padding-left:18px;">
+                  <li><strong>EMPLEADOS:</strong> Datos maestros, cargo, área y accesos.</li>
+                  <li><strong>REGISTROS:</strong> Historial íntegro de marcaciones, asistencias y horas extras.</li>
+                  <li><strong>VACACIONES:</strong> Solicitudes y justificaciones aprobadas de vacaciones.</li>
+                  <li><strong>CALCULAR_vacaciones:</strong> Saldo de días adjudicados, gozados y pendientes.</li>
+                </ul>
+                Todos estos datos se archivan como respaldo permanente en la hoja <strong>"DESVINCULADOS"</strong> y se retiran de las bases activas para no afectar los cálculos ni KPIs de la empresa.
+              </div>
+            </div>
+
+            <!-- Descargo de Ley LOPDP en Desvinculación -->
+            <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:flex-start; gap:12px;">
+              <div style="width:32px; height:32px; border-radius:8px; background:#2563eb; color:white; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;">
+                <i class="fas fa-balance-scale"></i>
+              </div>
+              <div style="font-size:11.5px; color:#1e40af; line-height:1.5;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; flex-wrap:wrap; gap:6px;">
+                  <strong style="font-size:12px; color:#1e3a8a;"><i class="fas fa-shield-alt"></i> Descargo de Ley — Archivo y Custodia de Datos Personales (LOPDP Ecuador)</strong>
+                  <button type="button" onclick="window.abrirModalAvisoPrivacidad()" style="background:transparent; border:none; color:#2563eb; font-weight:700; font-size:11px; cursor:pointer; text-decoration:underline; padding:0;">
+                    Ver Política Completa
+                  </button>
+                </div>
+                En observancia a los <strong>Arts. 7, 21 y 25 de la Ley Orgánica de Protección de Datos Personales (Registro Oficial Sup. 459)</strong>, el Código del Trabajo y la Ley de Seguridad Social de la República del Ecuador, el archivo histórico de los registros personales, biométricos y de jornada laboral del colaborador desvinculado se conservará bajo custodia técnica restringida y confidencialidad. Esta información se preserva exclusivamente para fines de acreditación patronal, auditorías de los organismos de control (IESS, Ministerio del Trabajo, SRI) y eventual defensa jurídica laboral durante los términos de prescripción legal. Queda estrictamente prohibida su cesión comercial o difusión no autorizada.
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-bottom:16px;">
+              <!-- Formulario de Desvinculación -->
+              <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                <h4 style="margin:0 0 12px; font-size:13px; font-weight:800; color:#1e293b; display:flex; align-items:center; gap:6px;">
+                  <i class="fas fa-user-times" style="color:#7c3aed;"></i> Datos de la Desvinculación
+                </h4>
+                
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                  <div>
+                    <label style="font-size:11.5px; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Seleccionar Colaborador (Activo o Inactivo) *</label>
+                    <select id="selDesvincularColaborador" onchange="window.actualizarResumenDesvinculacion(this.value)" class="form-select" style="width:100%; padding:8px 10px; font-size:12px; height:38px; border-radius:8px; border:1px solid #cbd5e1;">
+                      <option value="">-- Selecciona un colaborador --</option>
+                    </select>
+                  </div>
+
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <div>
+                      <label style="font-size:11.5px; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Fecha de Salida *</label>
+                      <input type="date" id="txtFechaDesvinculacion" class="form-input" style="width:100%; padding:8px 10px; font-size:12px; height:38px; border-radius:8px; border:1px solid #cbd5e1;">
+                    </div>
+                    <div>
+                      <label style="font-size:11.5px; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Motivo de Salida *</label>
+                      <select id="selMotivoDesvinculacion" class="form-select" style="width:100%; padding:8px 10px; font-size:12px; height:38px; border-radius:8px; border:1px solid #cbd5e1;">
+                        <option value="Renuncia voluntaria">Renuncia voluntaria</option>
+                        <option value="Fin de contrato">Fin de contrato</option>
+                        <option value="Mutuo acuerdo">Mutuo acuerdo</option>
+                        <option value="Despido intempestivo">Despido intempestivo</option>
+                        <option value="Visto bueno">Visto bueno</option>
+                        <option value="Jubilación">Jubilación</option>
+                        <option value="Otro">Otro motivo</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style="font-size:11.5px; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Observaciones / Comentarios</label>
+                    <textarea id="txtObservacionesDesvinculacion" rows="2" class="form-input" placeholder="Detalles de liquidación, entrega de equipos, notas de RRHH..." style="width:100%; padding:8px 10px; font-size:11.5px; border-radius:8px; border:1px solid #cbd5e1; resize:vertical;"></textarea>
+                  </div>
+
+                  <button type="button" onclick="window.confirmarDesvinculacionColaborador()" id="btnConfirmarDesvinculacion" class="btn" style="background:#7c3aed; color:white; border:none; padding:12px 18px; font-size:12.5px; font-weight:800; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 6px rgba(124,58,237,0.25); transition:all 0.15s ease;">
+                    <i class="fas fa-archive"></i> Desvincular y Trasladar a "DESVINCULADOS"
+                  </button>
+                </div>
+              </div>
+
+              <!-- Tarjeta de Resumen en Tiempo Real -->
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between;">
+                <div>
+                  <h4 style="margin:0 0 10px; font-size:13px; font-weight:800; color:#1e293b; display:flex; align-items:center; gap:6px;">
+                    <i class="fas fa-info-circle" style="color:#0284c7;"></i> Resumen del Colaborador Seleccionado
+                  </h4>
+                  <div id="resumenDesvinculacionBox" style="background:white; border:1px solid #e2e8f0; border-radius:10px; padding:12px; font-size:12px; color:#475569;">
+                    <div style="text-align:center; padding:15px; color:#94a3b8;">
+                      <i class="fas fa-user" style="font-size:24px; margin-bottom:6px; display:block;"></i>
+                      Selecciona un colaborador para previsualizar sus datos.
+                    </div>
+                  </div>
+                </div>
+
+                <div style="margin-top:12px; padding:10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:11.5px; color:#1e40af;">
+                  <i class="fas fa-shield-alt"></i> <strong>Garantía de Respaldo:</strong> Ningún dato se borra sin haber sido escrito primero en la hoja <code>DESVINCULADOS</code>.
+                </div>
+              </div>
+            </div>
+
+            <!-- Historial de Colaboradores Desvinculados e Inactivos -->
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <h4 style="margin:0; font-size:13px; font-weight:800; color:#1e293b; display:flex; align-items:center; gap:6px;">
+                  <i class="fas fa-history" style="color:#64748b;"></i> Historial de Personal Desvinculado e Inactivos
+                </h4>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <div id="filtroTipoDesvinculados" style="display:inline-flex; background:#f1f5f9; padding:2px; border-radius:8px; border:1px solid #e2e8f0; font-size:11px;">
+                    <button type="button" onclick="window.filtrarEstadoDesvinculados('todos')" id="btnFiltroDesvTodos" style="border:none; background:white; padding:4px 9px; border-radius:6px; font-weight:700; color:#1e293b; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">Todos</button>
+                    <button type="button" onclick="window.filtrarEstadoDesvinculados('archivados')" id="btnFiltroDesvArch" style="border:none; background:transparent; padding:4px 9px; border-radius:6px; font-weight:600; color:#64748b; cursor:pointer;">Archivados</button>
+                    <button type="button" onclick="window.filtrarEstadoDesvinculados('inactivos')" id="btnFiltroDesvInact" style="border:none; background:transparent; padding:4px 9px; border-radius:6px; font-weight:600; color:#64748b; cursor:pointer;">Inactivos en Base</button>
+                  </div>
+                  <input type="text" id="txtBuscarDesvinculados" onkeyup="window.filtrarTablaDesvinculados(this.value)" placeholder="Buscar por nombre o ID..." style="padding:5px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:11.5px; outline:none; width:160px;">
+                  <button type="button" onclick="window.cargarHistorialDesvinculados()" class="btn btn-outline" style="padding:5px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px; background:#ffffff;">
+                    <i class="fas fa-sync-alt"></i> Actualizar
+                  </button>
+                </div>
+              </div>
+
+              <div style="overflow: auto; max-height: 280px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; min-width: 720px; font-size: 12px; text-align: left;">
+                  <thead style="position: sticky; top: 0; z-index: 10; background: #f8fafc; color: #475569; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-transform: uppercase;">
+                    <tr>
+                      <th style="padding: 8px 10px; font-weight: 700; width: 35px; text-align: center;">#</th>
+                      <th style="padding: 8px 10px; font-weight: 700;">Colaborador</th>
+                      <th style="padding: 8px 10px; font-weight: 700; text-align: center;">Fecha / Estado</th>
+                      <th style="padding: 8px 10px; font-weight: 700;">Motivo</th>
+                      <th style="padding: 8px 10px; font-weight: 700; text-align: center;">Registros</th>
+                      <th style="padding: 8px 10px; font-weight: 700; text-align: center;">Acción / Responsable</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbodyHistorialDesvinculados">
+                    <tr><td colspan="6" style="padding: 20px; text-align: center; color: var(--g500);">Cargando historial de desvinculados...</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -1055,7 +1732,7 @@
                 <h4 style="font-size:14.5px; font-weight:800; color:var(--g800); margin:0 0 4px 0;"><i class="fas fa-archive" style="color:var(--teal); margin-right:6px;"></i> Archivar Datos Históricos</h4>
                 <p style="font-size:11.5px; color:var(--g500); margin:0;">Transfiere registros antiguos a Google Sheets para mantener Firebase ligero y de alta velocidad.</p>
               </div>
-              <button class="btn" id="btnArchivar" style="background:var(--teal); color:white; border:none; padding:10px 18px; font-size:12px; font-weight:700; border-radius:8px; white-space:nowrap; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <button class="btn" id="btnArchivar" onclick="iniciarArchivadoFirebase()" style="background:var(--teal); color:white; border:none; padding:10px 18px; font-size:12px; font-weight:700; border-radius:8px; white-space:nowrap; display:flex; align-items:center; gap:6px; cursor:pointer;">
                 <i class="fas fa-archive"></i> Iniciar Archivado
               </button>
             </div>
@@ -1122,6 +1799,729 @@
         </div>
       </div>
 
+      <!-- PANEL CULTURA TCONTROL (BANCO DE PREGUNTAS) -->
+      <div id="panel-cultura" class="panel">
+        <div style="background:#ffffff; border:1px solid var(--g200); border-radius:16px; padding:24px; margin-bottom:16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <!-- Header -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:20px; border-bottom:1px solid #f1f5f9; padding-bottom:16px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="background:linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color:white; width:36px; height:36px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; font-size:16px; box-shadow:0 3px 10px rgba(220,38,38,0.25);">
+                  <i class="fas fa-lightbulb"></i>
+                </span>
+                <div>
+                  <h4 style="font-weight:800; color:#0f172a; margin:0; font-size:18px;">Banco de Preguntas — Cultura Tcontrol</h4>
+                  <p style="color:#64748b; margin:3px 0 0 0; font-size:12.5px;">
+                    Gestiona las preguntas dinámicas de identidad corporativa (Propósito, Misión, Visión, Valores) para la evaluación diaria.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="btn" onclick="window.restablecerPreguntasCultura()" style="padding:9px 15px; border-radius:8px; font-size:12.5px; font-weight:600; background:#f8fafc; border:1px solid var(--g300); color:#475569; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Restaurar las preguntas predeterminadas">
+                <i class="fas fa-undo"></i> Restablecer Base
+              </button>
+              <button type="button" class="btn btn-primary" onclick="window.abrirModalPreguntaCultura()" style="padding:9px 18px; border-radius:8px; font-size:12.5px; font-weight:700; background:var(--red); border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 8px rgba(220,38,38,0.25);">
+                <i class="fas fa-plus-circle"></i> Nueva Pregunta
+              </button>
+              <button type="button" class="btn btn-success" onclick="window.guardarBancoPreguntasCultura()" style="padding:9px 18px; border-radius:8px; font-size:12.5px; font-weight:700; background:#16a34a; border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 8px rgba(22,163,74,0.25);" title="Guardar banco de preguntas en Google Sheets y Firebase">
+                <i class="fas fa-save"></i> Guardar Cambios
+              </button>
+            </div>
+          </div>
+
+          <!-- Switch Global para Habilitar/Deshabilitar Cultura Tcontrol -->
+          <div id="boxControlCulturaGlobal" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:18px; background:linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border:1px solid #bbf7d0; padding:14px 20px; border-radius:12px; transition:all 0.3s ease;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:40px; height:40px; border-radius:10px; background:#dcfce7; color:#16a34a; display:flex; align-items:center; justify-content:center; font-size:18px; transition:all 0.3s ease;">
+                <i class="fas fa-toggle-on" id="iconoEstadoCulturaGlobal"></i>
+              </div>
+              <div>
+                <div style="font-size:14px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                  Módulo de Evaluación "Cultura Tcontrol"
+                  <span id="badgeEstadoCulturaGlobal" style="font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; background:#dcfce7; color:#15803d; border:1px solid #86efac; transition:all 0.3s ease;">HABILITADO GENERAL</span>
+                </div>
+                <div style="font-size:12px; color:#475569; margin-top:2px;">
+                  Si está desactivado, ningún colaborador verá la trivia obligatoria de cultura al seleccionar su menú de almuerzo.
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span id="lblTextoSwitchCulturaGlobal" style="font-size:13px; font-weight:700; color:#16a34a; transition:color 0.3s ease;">Habilitado para todos</span>
+              <label class="switch" title="Activar o desactivar Cultura Tcontrol globalmente">
+                <input type="checkbox" id="chkCulturaTcontrolGlobal" checked onchange="window.toggleCulturaTcontrolGlobal(this.checked)">
+                <span class="slider-round"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- KPI & Filter bar -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; background:#f8fafc; padding:12px 16px; border-radius:12px; border:1px solid var(--g200);">
+            <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+              <div style="font-size:12px; color:#475569;">
+                Total preguntas activas: <strong id="lblTotalPreguntasCultura" style="color:#0f172a; font-size:14px; font-weight:800;">0</strong>
+              </div>
+              <div style="font-size:12px; color:#475569;">
+                Modalidad: <span style="background:#e0f2fe; color:#0369a1; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;"><i class="fas fa-random me-1"></i> 1 Pregunta Aleatoria Diaria por Colaborador</span>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <input type="text" id="buscarPreguntaCultura" oninput="window.filtrarPreguntasCultura()" placeholder="🔍 Buscar pregunta o pilar..." style="padding:7px 12px; border-radius:8px; border:1px solid var(--g300); font-size:12px; min-width:200px; outline:none; font-family:inherit;">
+              <select id="filtroPilarCultura" onchange="window.filtrarPreguntasCultura()" style="padding:7px 12px; border-radius:8px; border:1px solid var(--g300); font-size:12px; outline:none; font-family:inherit; background:white; cursor:pointer;">
+                <option value="TODOS">-- Todos los Pilares --</option>
+                <option value="PROPOSITO">🎯 Propósito</option>
+                <option value="MISION">⚡ Misión</option>
+                <option value="VISION">🚀 Visión</option>
+                <option value="VALORES">🛡️ Valores / Calidad</option>
+                <option value="SEGURIDAD">⚙️ Seguridad</option>
+                <option value="OTRO">🌟 Personalizados</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Dynamic Container for Question Cards -->
+          <div id="preguntasCulturaContainer" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px;">
+            <div style="text-align:center; padding:40px; color:#94a3b8; grid-column: 1/-1;">
+              <i class="fas fa-spinner fa-spin" style="font-size:24px; margin-bottom:8px; display:block;"></i>
+              Cargando preguntas de cultura...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL INVITADOS & CATERING (ALMUERZOS EXTRA Y REFRIGERIOS) -->
+      <div id="panel-invitados" class="panel">
+        <div style="background:#ffffff; border:1px solid var(--g200); border-radius:16px; padding:24px; margin-bottom:16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <!-- Header -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:20px; border-bottom:1px solid #f1f5f9; padding-bottom:16px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="background:linear-gradient(135deg, #f97316 0%, #ea580c 100%); color:white; width:38px; height:38px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 3px 10px rgba(249,115,22,0.3);">
+                  <i class="fas fa-utensils"></i>
+                </span>
+                <div>
+                  <h4 style="font-weight:800; color:#0f172a; margin:0; font-size:18px;">Almuerzos Extra & Refrigerios — Invitados</h4>
+                  <p style="color:#64748b; margin:3px 0 0 0; font-size:12.5px;">
+                    Control de pedidos registrados en la hoja <strong>ALMUERZOS_EXTRA</strong>. Horarios: Almuerzos hasta 09:40 | Sánduches hasta 08:40.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="btn" onclick="window.notificarManualSupAdminsWhatsApp()" style="padding:9px 15px; border-radius:8px; font-size:12.5px; font-weight:700; background:#25d366; border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 8px rgba(37,211,102,0.25);" title="Enviar recordatorio WhatsApp a los Sup. Admin">
+                <i class="fab fa-whatsapp"></i> Notificar a Sup. Admin
+              </button>
+              <button type="button" class="btn" onclick="window.copiarResumenCocinaInvitados()" style="padding:9px 15px; border-radius:8px; font-size:12.5px; font-weight:600; background:#f8fafc; border:1px solid var(--g300); color:#475569; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Copiar resumen formateado para cocina / WhatsApp">
+                <i class="fas fa-copy text-primary"></i> Copiar Resumen
+              </button>
+              <button type="button" class="btn" onclick="window.exportarInvitadosExcel()" style="padding:9px 15px; border-radius:8px; font-size:12.5px; font-weight:600; background:#f8fafc; border:1px solid var(--g300); color:#16a34a; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Descargar reporte en formato Excel">
+                <i class="fas fa-file-excel"></i> Excel
+              </button>
+              <button type="button" class="btn btn-primary" onclick="window.abrirModalSolicitudInvitadoSupervisor()" style="padding:9px 18px; border-radius:8px; font-size:12.5px; font-weight:700; background:var(--red); border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 8px rgba(220,38,38,0.25);">
+                <i class="fas fa-plus-circle"></i> Nuevo Pedido Manual
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="window.cargarPanelInvitados(true)" style="padding:9px 14px; border-radius:8px; font-size:12.5px; font-weight:600; background:#f1f5f9; border:1px solid #cbd5e1; color:#334155; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Actualizar datos">
+                <i class="fas fa-sync-alt"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tarjetas KPI -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
+            <div class="kpi-invitado-card" onclick="window.setFiltroKpiInvitados('ALMUERZO_EXTRA')" title="Clic para filtrar por Almuerzos Extra" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; display:flex; align-items:center; gap:14px; cursor:pointer; transition:all 0.2s ease;">
+              <span style="font-size:28px; width:44px; height:44px; border-radius:10px; background:#eff6ff; display:inline-flex; align-items:center; justify-content:center;">🍱</span>
+              <div>
+                <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Almuerzos Extra</div>
+                <div id="kpiInvitadosAlmuerzos" style="font-size:22px; font-weight:800; color:#1e40af;">0</div>
+              </div>
+            </div>
+
+            <div class="kpi-invitado-card" onclick="window.setFiltroKpiInvitados('REFRIGERIO_SANDUCHE')" title="Clic para filtrar por Sánduches" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; display:flex; align-items:center; gap:14px; cursor:pointer; transition:all 0.2s ease;">
+              <span style="font-size:28px; width:44px; height:44px; border-radius:10px; background:#fff7ed; display:inline-flex; align-items:center; justify-content:center;">🥪</span>
+              <div>
+                <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Sánduches / Preparados</div>
+                <div id="kpiInvitadosSanduches" style="font-size:22px; font-weight:800; color:#c2410c;">0</div>
+              </div>
+            </div>
+
+            <div class="kpi-invitado-card" onclick="window.setFiltroKpiInvitados('REFRIGERIO_GALLETAS')" title="Clic para filtrar por Breaks con Galletas" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; display:flex; align-items:center; gap:14px; cursor:pointer; transition:all 0.2s ease;">
+              <span style="font-size:28px; width:44px; height:44px; border-radius:10px; background:#fefce8; display:inline-flex; align-items:center; justify-content:center;">🍪</span>
+              <div>
+                <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Breaks con Galletas</div>
+                <div id="kpiInvitadosGalletas" style="font-size:22px; font-weight:800; color:#a16207;">0</div>
+              </div>
+            </div>
+
+            <div class="kpi-invitado-card" onclick="window.setFiltroKpiInvitados('TODOS')" title="Clic para ver todos los servicios" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; display:flex; align-items:center; gap:14px; cursor:pointer; transition:all 0.2s ease;">
+              <span style="font-size:28px; width:44px; height:44px; border-radius:10px; background:#f0fdf4; display:inline-flex; align-items:center; justify-content:center;">👥</span>
+              <div>
+                <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Total Invitados</div>
+                <div id="kpiInvitadosTotal" style="font-size:22px; font-weight:800; color:#15803d;">0</div>
+              </div>
+            </div>
+          </div>
+
+          <style>
+            .kpi-invitado-card:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 6px 14px rgba(0,0,0,0.06);
+              border-color: #cbd5e1 !important;
+            }
+            .table-invitados-wrap {
+              max-height: 560px;
+              overflow-x: auto;
+              overflow-y: auto;
+            }
+            #tablaInvitadosSupervisor {
+              width: 100%;
+              min-width: 1060px;
+              border-collapse: separate;
+              border-spacing: 0;
+            }
+            #tablaInvitadosSupervisor th,
+            #tablaInvitadosSupervisor td {
+              position: static !important;
+              box-shadow: none !important;
+            }
+            #tablaInvitadosSupervisor thead th {
+              position: sticky !important;
+              top: 0 !important;
+              z-index: 10 !important;
+              background: #f8fafc !important;
+              color: #475569 !important;
+              font-size: 11px !important;
+              font-weight: 800 !important;
+              text-transform: uppercase !important;
+              letter-spacing: 0.5px !important;
+              padding: 12px 14px !important;
+              border-bottom: 2px solid #e2e8f0 !important;
+              border-top: none !important;
+              white-space: nowrap !important;
+            }
+            #tablaInvitadosSupervisor tbody td {
+              padding: 12px 14px !important;
+              border-bottom: 1px solid #f1f5f9 !important;
+              vertical-align: middle !important;
+              background: #ffffff;
+            }
+            #tablaInvitadosSupervisor tbody tr:hover td {
+              background: #f8fafc !important;
+            }
+            .btn-filtro-pill {
+              padding: 6px 13px;
+              border-radius: 20px;
+              font-size: 11.5px;
+              font-weight: 700;
+              border: 1px solid #cbd5e1;
+              background: #ffffff;
+              color: #475569;
+              cursor: pointer;
+              transition: all 0.15s ease;
+            }
+            .btn-filtro-pill:hover {
+              background: #f1f5f9;
+              border-color: #94a3b8;
+            }
+            .btn-filtro-pill.active {
+              background: #0284c7 !important;
+              color: #ffffff !important;
+              border-color: #0284c7 !important;
+              box-shadow: 0 2px 6px rgba(2,132,199,0.25);
+            }
+          </style>
+
+          <!-- Barra de Filtros -->
+          <div style="background:#f8fafc; border:1px solid var(--g200); border-radius:12px; padding:14px; margin-bottom:16px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <label style="font-size:12px; font-weight:700; color:#475569; margin:0;"><i class="fas fa-calendar-day text-primary"></i> Fecha:</label>
+              <input type="date" id="filtroFechaInvitados" onchange="window.filtrarTablaInvitados()" style="padding:6px 10px; border-radius:8px; border:1px solid var(--g300); font-size:12px; font-family:'Plus Jakarta Sans', sans-serif;">
+              <button type="button" id="btnPillHoy" class="btn-filtro-pill active" onclick="window.setFiltroFechaInvitadosHoy()" title="Ver pedidos de hoy">Hoy</button>
+              <button type="button" id="btnPillManana" class="btn-filtro-pill" onclick="window.setFiltroFechaInvitadosManana()" title="Ver pedidos programados para mañana">Mañana</button>
+              <button type="button" id="btnPillTodas" class="btn-filtro-pill" onclick="window.setFiltroFechaInvitadosTodas()" title="Ver todos los pedidos sin filtro de fecha">Ver Todo</button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+              <label style="font-size:12px; font-weight:700; color:#475569; margin:0;"><i class="fas fa-filter text-primary"></i> Servicio:</label>
+              <select id="filtroTipoInvitados" onchange="window.filtrarTablaInvitados()" style="padding:6px 10px; border-radius:8px; border:1px solid var(--g300); font-size:12px; font-family:'Plus Jakarta Sans', sans-serif;">
+                <option value="TODOS">Todos los servicios</option>
+                <option value="ALMUERZO_EXTRA">🍱 Solo Almuerzos Extra</option>
+                <option value="REFRIGERIO_SANDUCHE">🥪 Solo Sánduches</option>
+                <option value="REFRIGERIO_GALLETAS">🍪 Solo Breaks Galletas</option>
+              </select>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+              <label style="font-size:12px; font-weight:700; color:#475569; margin:0;"><i class="fas fa-info-circle text-primary"></i> Estado:</label>
+              <select id="filtroEstadoInvitados" onchange="window.filtrarTablaInvitados()" style="padding:6px 10px; border-radius:8px; border:1px solid var(--g300); font-size:12px; font-family:'Plus Jakarta Sans', sans-serif;">
+                <option value="TODOS">Todos los estados</option>
+                <option value="SOLICITADO">⏳ Solicitado / Pendiente</option>
+                <option value="CONFIRMADO">✓ Confirmado</option>
+                <option value="ENTREGADO">🍽️ Entregado / Servido</option>
+                <option value="CANCELADO">✕ Cancelado</option>
+              </select>
+            </div>
+
+            <div style="flex:1; min-width:200px; display:flex; align-items:center; position:relative;">
+              <i class="fas fa-search" style="position:absolute; left:10px; color:#94a3b8; font-size:12px;"></i>
+              <input type="text" id="filtroBusquedaInvitados" onkeyup="window.filtrarTablaInvitados()" placeholder="Buscar por invitado, empresa o solicitante..." style="width:100%; padding:6px 10px 6px 30px; border-radius:8px; border:1px solid var(--g300); font-size:12px;">
+            </div>
+          </div>
+
+          <!-- Tabla de Solicitudes -->
+          <div class="table-wrapper" style="box-shadow:0 4px 6px -1px rgba(0,0,0,0.04); border:1px solid var(--g200); border-radius:12px; overflow:hidden;">
+            <div class="table-invitados-wrap">
+              <table id="tablaInvitadosSupervisor">
+                <thead>
+                  <tr>
+                    <th style="width:125px;">Fecha / Hora</th>
+                    <th style="width:170px;">Solicitante</th>
+                    <th style="width:145px;">Servicio</th>
+                    <th style="width:65px; text-align:center;">Cant.</th>
+                    <th style="min-width:210px;">Invitado / Empresa</th>
+                    <th style="min-width:220px;">Hora Req. / Observaciones</th>
+                    <th style="width:135px; text-align:center;">Estado</th>
+                    <th style="width:85px; text-align:center;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyInvitadosSupervisor">
+                  <tr>
+                    <td colspan="8" style="text-align:center; padding:30px; color:#94a3b8;">
+                      <i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Cargando solicitudes...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL WHATSAPP & NOTIFICACIONES -->
+      <div id="panel-whatsapp" class="panel">
+        <div style="background:#ffffff; border:1px solid var(--g200); border-radius:16px; padding:24px; margin-bottom:16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <!-- Header -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:20px; border-bottom:1px solid #f1f5f9; padding-bottom:16px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="background:linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color:white; width:38px; height:38px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; font-size:19px; box-shadow:0 3px 10px rgba(34,197,94,0.3);">
+                  <i class="fab fa-whatsapp"></i>
+                </span>
+                <div>
+                  <h4 style="font-weight:800; color:#0f172a; margin:0; font-size:18px;">Configuración de Notificaciones por WhatsApp</h4>
+                  <p style="color:#64748b; margin:3px 0 0 0; font-size:12.5px;">
+                    Integración con servicio OpenWA para alertas de asistencia, recordatorios a no registrados y comunicación directa.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="btn" onclick="window.restablecerConfiguracionWhatsApp()" style="padding:9px 15px; border-radius:8px; font-size:12.5px; font-weight:600; background:#f8fafc; border:1px solid var(--g300); color:#475569; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Restablecer plantilla y valores por defecto">
+                <i class="fas fa-undo"></i> Restablecer Plantilla
+              </button>
+              <button type="button" class="btn btn-success" onclick="window.guardarConfiguracionWhatsAppDesdePanel()" style="padding:9px 20px; border-radius:8px; font-size:12.5px; font-weight:700; background:#16a34a; border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 8px rgba(22,163,74,0.25);">
+                <i class="fas fa-save"></i> Guardar Configuración
+              </button>
+            </div>
+          </div>
+
+          <!-- NAVEGACIÓN DE SUBPESTAÑAS DE WHATSAPP -->
+          <div class="wa-subtabs-bar">
+            <button type="button" onclick="window.cambiarSubtabWhatsApp('servidor')" id="btnWaSubServidor" class="btn-wa-subtab active">
+              <i class="fas fa-server"></i> 1. Servidor & Conexión
+            </button>
+            <button type="button" onclick="window.cambiarSubtabWhatsApp('automatico')" id="btnWaSubAutomatico" class="btn-wa-subtab">
+              <i class="fas fa-robot"></i> 2. Recordatorio Automático
+            </button>
+            <button type="button" onclick="window.cambiarSubtabWhatsApp('plantillas')" id="btnWaSubPlantillas" class="btn-wa-subtab">
+              <i class="fas fa-comment-alt"></i> 3. Plantillas & Simulador
+            </button>
+            <button type="button" onclick="window.cambiarSubtabWhatsApp('logs')" id="btnWaSubLogs" class="btn-wa-subtab">
+              <i class="fas fa-clipboard-list"></i> 4. Auditoría & Logs Sheets
+            </button>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- SUBPESTAÑA 1: SERVIDOR & CONEXIÓN                            -->
+          <!-- ============================================================ -->
+          <div id="waSecServidor" class="wa-subtab-content" style="display:block;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:20px;">
+              
+              <!-- Card 1: Servidor OpenWA & Estado de Conexión -->
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:20px; display:flex; flex-direction:column; justify-content:space-between; gap:16px;">
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                    <h5 style="margin:0; font-size:14.5px; font-weight:750; color:#1e293b; display:flex; align-items:center; gap:8px;">
+                      <i class="fas fa-server" style="color:#0284c7;"></i> Servidor OpenWA / WAHA
+                    </h5>
+                    <span id="badgeOpenWAEstado" style="font-size:11px; font-weight:800; padding:3px 10px; border-radius:20px; background:#e2e8f0; color:#475569;">
+                      <i class="fas fa-circle-notch fa-spin"></i> Verificando...
+                    </span>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:11.5px; font-weight:700;">URL del Servidor WhatsApp *</label>
+                    <input type="text" id="txtWhatsAppServidorUrl" class="form-input" placeholder="http://192.168.10.129:2785" style="font-family:monospace; font-size:12.5px;">
+                    <small style="color:#64748b; font-size:11px; margin-top:3px; display:block;">Dirección IP o dominio local donde corre el servicio de WAHA / OpenWA.</small>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:11.5px; font-weight:700;">API Key / Token (Opcional)</label>
+                    <input type="password" id="txtWhatsAppApiKey" class="form-input" placeholder="Ingresa tu clave de WAHA / OpenWA si aplica" style="font-family:monospace; font-size:12.5px;">
+                    <small style="color:#64748b; font-size:11px; margin-top:3px; display:block;">Clave de seguridad configurada en el servidor (header X-Api-Key).</small>
+                  </div>
+
+                  <!-- Info de Línea -->
+                  <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:10px 12px; margin-bottom:12px;">
+                    <div style="font-size:11.5px; color:#64748b; margin-bottom:4px;">Línea de WhatsApp Vinculada:</div>
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                      <strong id="lblWhatsAppNumeroEmisor" style="color:#0f172a; font-size:13px;">--</strong>
+                      <span id="lblWhatsAppNombreEmisor" style="font-size:11px; background:#dcfce7; color:#15803d; padding:2px 8px; border-radius:6px; font-weight:700;">--</span>
+                    </div>
+                  </div>
+
+                  <!-- Toggle Habilitar Servicio -->
+                  <label for="chkWhatsAppActivo" style="display:flex; align-items:center; justify-content:space-between; background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:10px 12px; cursor:pointer; user-select:none;">
+                    <div>
+                      <strong style="font-size:12.5px; color:#1e293b; display:block;">Módulo WhatsApp Activo</strong>
+                      <span style="font-size:11px; color:#64748b;">Habilita el envío de mensajes desde la plataforma</span>
+                    </div>
+                    <div class="switch">
+                      <input type="checkbox" id="chkWhatsAppActivo" checked>
+                      <span class="slider-round"></span>
+                    </div>
+                  </label>
+                </div>
+
+                <div>
+                  <button type="button" class="btn" onclick="window.probarConexionWhatsApp()" style="width:100%; padding:10px; border-radius:8px; font-size:12px; font-weight:700; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <i class="fas fa-plug"></i> Probar Conexión con Servidor
+                  </button>
+                  <div style="margin-top:8px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:7px 9px; font-size:11px; color:#1e40af; line-height:1.35;">
+                    <i class="fas fa-info-circle"></i> <strong>CORS / Red Local:</strong> Para conexión desde el navegador, confirma que el parámetro <code>CORS_ORIGINS</code> en el contenedor incluya la URL de la plataforma.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card 3: Prueba Rápida de Envío Directo -->
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:20px; display:flex; flex-direction:column; justify-content:space-between; gap:16px;">
+                <div>
+                  <h5 style="margin:0 0 12px 0; font-size:14.5px; font-weight:750; color:#1e293b; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-paper-plane" style="color:#ea580c;"></i> Prueba Rápida de Envío Directo
+                  </h5>
+                  <p style="color:#64748b; font-size:12px; margin:0 0 14px 0; line-height:1.4;">
+                    Comprueba que la línea y la plantilla funcionen enviando un mensaje directo a cualquier número de WhatsApp.
+                  </p>
+
+                  <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:11.5px; font-weight:700;">Número de WhatsApp Destino *</label>
+                    <input type="text" id="txtWhatsAppNumeroPrueba" class="form-input" placeholder="Ej: 0984660105 o 593984660105" value="593984660105" style="font-size:13px; font-weight:600;">
+                    <small style="color:#64748b; font-size:11px; margin-top:3px; display:block;">Se normaliza automáticamente con código de país Ecuador (+593).</small>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom:10px;">
+                    <label class="form-label" style="font-size:11.5px; font-weight:700;">Tipo de Mensaje de Prueba</label>
+                    <select id="selTipoMensajePrueba" class="form-select" onchange="window.cargarMensajePruebaSeleccionado(this.value)" style="font-size:12px; font-weight:600; padding:7px 10px; border-radius:8px; border:1px solid #cbd5e1; width:100%; background:white;">
+                      <option value="ENTRADA_FALTANTE">🔔 Recordatorio: Marcación de Entrada Pendiente</option>
+                      <option value="AUSENCIA_LABORAL">📋 Notificación: Ausencia Injustificada</option>
+                      <option value="SALIDA_FALTANTE">🚪 Recordatorio: Marcación de Salida Pendiente</option>
+                      <option value="ALERTA_EMERGENCIA">🚨 Comunicado / Alerta de Emergencia</option>
+                      <option value="PING_RAPIDO">⚡ Ping Rápido de Verificación</option>
+                      <option value="PLANTILLA_ACTIVA">📝 Plantilla Activa del Panel</option>
+                      <option value="PERSONALIZADO">✏️ Mensaje Personalizado Libre</option>
+                    </select>
+                  </div>
+
+                  <!-- Plantillas rápidas en pastillas -->
+                  <div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:12px;">
+                    <button type="button" onclick="window.cargarMensajePruebaSeleccionado('ENTRADA_FALTANTE')" style="font-size:11px; font-weight:700; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; border-radius:6px; padding:3px 8px; cursor:pointer;" title="Cargar mensaje de Entrada">🔔 Entrada</button>
+                    <button type="button" onclick="window.cargarMensajePruebaSeleccionado('AUSENCIA_LABORAL')" style="font-size:11px; font-weight:700; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px; padding:3px 8px; cursor:pointer;" title="Cargar mensaje de Ausencia">📋 Ausencia</button>
+                    <button type="button" onclick="window.cargarMensajePruebaSeleccionado('SALIDA_FALTANTE')" style="font-size:11px; font-weight:700; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:6px; padding:3px 8px; cursor:pointer;" title="Cargar mensaje de Salida">🚪 Salida</button>
+                    <button type="button" onclick="window.cargarMensajePruebaSeleccionado('ALERTA_EMERGENCIA')" style="font-size:11px; font-weight:700; background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; border-radius:6px; padding:3px 8px; cursor:pointer;" title="Cargar alerta de Emergencia">🚨 Emergencia</button>
+                    <button type="button" onclick="window.cargarMensajePruebaSeleccionado('PING_RAPIDO')" style="font-size:11px; font-weight:700; background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; border-radius:6px; padding:3px 8px; cursor:pointer;" title="Cargar ping de prueba">⚡ Ping</button>
+                  </div>
+
+                  <!-- Vista Previa de Imagen Adjunta en Prueba Rápida -->
+                  <div id="waPruebaImgPreviewContainer" style="display:none; margin-bottom:10px; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; text-align:center;">
+                    <div style="margin-bottom:6px; font-size:11.5px; color:#15803d; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px;">
+                      <i class="fas fa-image"></i> Imagen de la plantilla lista para enviar:
+                    </div>
+                    <img id="waPruebaImgPreviewEl" src="" style="max-height:130px; max-width:100%; border-radius:8px; object-fit:cover; border:1px solid #86efac; display:inline-block; box-shadow:0 2px 5px rgba(0,0,0,0.06);" alt="Imagen de prueba">
+                  </div>
+
+                  <!-- Textarea editable del mensaje de prueba -->
+                  <div class="form-group" style="margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <label class="form-label" style="font-size:11.5px; font-weight:700; margin:0;">Contenido del Mensaje *</label>
+                      <button type="button" onclick="window.regenerarMensajePrueba()" style="background:none; border:none; color:var(--blue); font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px; padding:0;">
+                        <i class="fas fa-sync-alt"></i> Restablecer
+                      </button>
+                    </div>
+                    <textarea id="txtWhatsAppMensajePrueba" class="form-input" rows="4" style="font-size:12px; font-family:inherit; line-height:1.45; resize:vertical; background:#ffffff;" placeholder="Escribe el mensaje de prueba o selecciona una plantilla arriba..."></textarea>
+                    <small style="color:#64748b; font-size:10.5px; margin-top:3px; display:block;">Puedes editar libremente el texto antes de enviar la prueba.</small>
+                  </div>
+
+                  <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:8px 12px; font-size:11.5px; color:#9a3412; line-height:1.4;">
+                    <i class="fas fa-shield-alt"></i> Todas las pruebas quedan registradas automáticamente en la hoja <strong>LOGS_WHATSAPP</strong> con el tipo <code>PRUEBA_SISTEMA</code>.
+                  </div>
+                </div>
+
+                <div>
+                  <button type="button" class="btn btn-primary" onclick="window.probarEnvioWhatsApp()" style="width:100%; padding:11px; border-radius:8px; font-size:12.5px; font-weight:700; background:#ea580c; border:none; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 2px 6px rgba(234,88,12,0.25);">
+                    <i class="fas fa-paper-plane"></i> Enviar Mensaje de Prueba
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- SUBPESTAÑA 2: RECORDATORIO AUTOMÁTICO                        -->
+          <!-- ============================================================ -->
+          <div id="waSecAutomatico" class="wa-subtab-content" style="display:none;">
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:24px; max-width:820px; margin:0 auto; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+              <div style="margin-bottom:18px;">
+                <h5 style="margin:0 0 4px 0; font-size:16px; font-weight:800; color:#1e293b; display:flex; align-items:center; gap:8px;">
+                  <i class="fas fa-robot" style="color:#8b5cf6;"></i> Automatización Diaria de Recordatorios (No Registro)
+                </h5>
+                <p style="color:#64748b; font-size:12.5px; margin:0;">
+                  El sistema monitorea la asistencia y despacha recordatorios amigables por WhatsApp a los colaboradores que no han registrado su entrada a la hora estipulada.
+                </p>
+              </div>
+
+              <!-- Toggle Envío Automático -->
+              <label for="chkWhatsAppAutoNoRegistro" style="display:flex; align-items:center; justify-content:space-between; background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:12px 14px; margin-bottom:16px; cursor:pointer; user-select:none;">
+                <div>
+                  <strong style="font-size:13px; color:#1e293b; display:block;">Activar Recordatorio Automático Diario</strong>
+                  <span style="font-size:11.5px; color:#64748b;">Notifica automáticamente a los colaboradores sin marcación en días hábiles</span>
+                </div>
+                <div class="switch">
+                  <input type="checkbox" id="chkWhatsAppAutoNoRegistro">
+                  <span class="slider-round"></span>
+                </div>
+              </label>
+
+              <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:14px; margin-bottom:16px;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label" style="font-size:11.5px; font-weight:700;">Hora Límite de Corte *</label>
+                  <input type="time" id="txtWhatsAppHoraCorte" class="form-input" value="08:15" style="font-size:13px; font-weight:700; text-align:center;">
+                  <small style="color:#64748b; font-size:11px; margin-top:3px; display:block;">Hora a partir de la cual se evalúa la inasistencia matutina.</small>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label" style="font-size:11.5px; font-weight:700;">Enlace a la App de Asistencia *</label>
+                  <input type="text" id="txtWhatsAppEnlaceApp" class="form-input" value="https://tcontrol.ec/asistencia" style="font-size:12px;">
+                  <small style="color:#64748b; font-size:11px; margin-top:3px; display:block;">Reemplaza la etiqueta <code>{link}</code> en el mensaje.</small>
+                </div>
+              </div>
+
+              <!-- Días de Envío -->
+              <div style="margin-bottom:18px;">
+                <label class="form-label" style="font-size:11.5px; font-weight:700; margin-bottom:8px; display:block;">Días Hábiles de Aplicación</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;" id="diasWhatsAppContainer">
+                  <label style="font-size:12px; background:white; border:1px solid #cbd5e1; padding:6px 12px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+                    <input type="checkbox" name="chkDiaWhatsApp" value="LUNES" checked> Lunes
+                  </label>
+                  <label style="font-size:12px; background:white; border:1px solid #cbd5e1; padding:6px 12px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+                    <input type="checkbox" name="chkDiaWhatsApp" value="MARTES" checked> Martes
+                  </label>
+                  <label style="font-size:12px; background:white; border:1px solid #cbd5e1; padding:6px 12px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+                    <input type="checkbox" name="chkDiaWhatsApp" value="MIERCOLES" checked> Miércoles
+                  </label>
+                  <label style="font-size:12px; background:white; border:1px solid #cbd5e1; padding:6px 12px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+                    <input type="checkbox" name="chkDiaWhatsApp" value="JUEVES" checked> Jueves
+                  </label>
+                  <label style="font-size:12px; background:white; border:1px solid #cbd5e1; padding:6px 12px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+                    <input type="checkbox" name="chkDiaWhatsApp" value="VIERNES" checked> Viernes
+                  </label>
+                  <label style="font-size:12px; background:white; border:1px solid #cbd5e1; padding:6px 12px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+                    <input type="checkbox" name="chkDiaWhatsApp" value="SABADO"> Sábado
+                  </label>
+                </div>
+              </div>
+
+              <div style="font-size:11.5px; color:#64748b; background:#f1f5f9; padding:12px 14px; border-radius:10px; line-height:1.45; border:1px solid #e2e8f0;">
+                <div style="display:flex; align-items:flex-start; gap:8px;">
+                  <i class="fas fa-info-circle" style="color:#0284c7; margin-top:2px; font-size:13px;"></i>
+                  <span><em>Funcionamiento:</em> La alerta automática se evalúa periódicamente y se dispara 1 vez al día tras superar la hora de corte mientras la pestaña del supervisor permanezca abierta en la red local.</span>
+                </div>
+                <button type="button" class="btn" onclick="window.verificarAutoEnvioWhatsApp(true)" style="margin-top:12px; width:100%; font-size:12px; font-weight:700; padding:9px 14px; display:inline-flex; align-items:center; justify-content:center; gap:8px; background:#ffffff; color:#0369a1; border:1px solid #bae6fd; border-radius:8px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+                  <i class="fas fa-play" style="color:#0284c7;"></i> Probar / Disparar Alerta Automática Ahora
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- SUBPESTAÑA 3: PLANTILLAS & SIMULADOR LIVE                    -->
+          <!-- ============================================================ -->
+          <div id="waSecPlantillas" class="wa-subtab-content" style="display:none;">
+            
+            <!-- Selector de Tipo de Plantilla -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;" id="tabsPlantillasWhatsApp">
+                <button type="button" class="btn" id="btnTabPlantillaNoRegistro" onclick="window.cambiarTabPlantillaWhatsApp('no_registro')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; border:1px solid #bbf7d0; background:#f0fdf4; color:#15803d; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                  <i class="fas fa-bell"></i> 🔔 Entrada Faltante
+                </button>
+                <button type="button" class="btn" id="btnTabPlantillaAusente" onclick="window.cambiarTabPlantillaWhatsApp('ausente')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                  <i class="fas fa-user-slash"></i> 📋 Ausencia Laboral
+                </button>
+                <button type="button" class="btn" id="btnTabPlantillaSalida" onclick="window.cambiarTabPlantillaWhatsApp('salida_faltante')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                  <i class="fas fa-door-open"></i> 🚪 Salida Faltante
+                </button>
+                <button type="button" class="btn" id="btnTabPlantillaEmergencia" onclick="window.cambiarTabPlantillaWhatsApp('emergencia')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                  <i class="fas fa-exclamation-triangle"></i> 🚨 Alerta de Emergencia
+                </button>
+                
+                <div style="width:1px; height:24px; background:#e2e8f0; margin:0 4px;"></div>
+                
+                <!-- Contenedor de pestañas dinámicas -->
+                <div id="contenedorTabsPersonalizadas" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"></div>
+                
+                <button type="button" class="btn" onclick="window.abrirModalNuevaPlantilla()" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; border:1px dashed #3b82f6; background:#eff6ff; color:#2563eb; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                  <i class="fas fa-plus"></i> Añadir Plantilla
+                </button>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span id="lblTituloPlantillaActiva" style="font-size:12px; font-weight:700; color:#0f172a;">Plantilla: Entrada Faltante</span>
+                <button type="button" id="btnEliminarPlantillaActual" onclick="window.eliminarPlantillaActual()" class="btn hidden" style="padding:4px 8px; font-size:11px; border-radius:6px; background:#fef2f2; color:#ef4444; border:1px solid #fecaca; cursor:pointer;" title="Eliminar Plantilla Personalizada">
+                  <i class="fas fa-trash-alt"></i>
+                </button>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:20px;">
+              
+              <!-- Editor de Plantilla -->
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <span style="font-size:12px; font-weight:700; color:#475569;">Variables disponibles para insertar:</span>
+                </div>
+                
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+                  <button type="button" onclick="window.insertarVariableWhatsApp('{nombre}')" class="btn" style="padding:4px 9px; font-size:11px; font-weight:700; border-radius:6px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; cursor:pointer;">
+                    + {nombre}
+                  </button>
+                  <button type="button" onclick="window.insertarVariableWhatsApp('{fecha}')" class="btn" style="padding:4px 9px; font-size:11px; font-weight:700; border-radius:6px; background:#fef3c7; color:#b45309; border:1px solid #fde68a; cursor:pointer;">
+                    + {fecha}
+                  </button>
+                  <button type="button" onclick="window.insertarVariableWhatsApp('{hora}')" class="btn" style="padding:4px 9px; font-size:11px; font-weight:700; border-radius:6px; background:#f3e8ff; color:#7e22ce; border:1px solid #e9d5ff; cursor:pointer;">
+                    + {hora}
+                  </button>
+                  <button type="button" onclick="window.insertarVariableWhatsApp('{link}')" class="btn" style="padding:4px 9px; font-size:11px; font-weight:700; border-radius:6px; background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; cursor:pointer;">
+                    + {link}
+                  </button>
+                  <button type="button" onclick="window.insertarVariableWhatsApp('{area}')" class="btn" style="padding:4px 9px; font-size:11px; font-weight:700; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; cursor:pointer;">
+                    + {area}
+                  </button>
+                  <button type="button" onclick="window.insertarVariableWhatsApp('{cargo}')" class="btn" style="padding:4px 9px; font-size:11px; font-weight:700; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; cursor:pointer;">
+                    + {cargo}
+                  </button>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
+                  <textarea id="txtWhatsAppPlantilla" class="form-input" rows="9" style="font-size:12.5px; line-height:1.5; font-family:inherit; resize:vertical; padding:12px;" placeholder="Escribe aquí el contenido del mensaje..."></textarea>
+                  <small style="color:#64748b; font-size:11px; margin-top:4px; display:block;">
+                    Formato WhatsApp: <code>*negrita*</code>, <code>_cursiva_</code>, <code>~tachado~</code>.
+                  </small>
+                </div>
+
+                <!-- Adjuntar Imagen -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:12px;">
+                  <label class="form-label" style="font-size:11.5px; font-weight:700; margin-bottom:6px; display:flex; justify-content:space-between;">
+                    <span><i class="fas fa-image" style="color:#0284c7;"></i> Adjuntar Imagen a la Plantilla (Opcional)</span>
+                    <button type="button" id="btnRemoverImagenWA" onclick="window._removerImagenPlantillaWA()" style="background:none; border:none; color:#ef4444; font-size:11px; cursor:pointer; display:none;">
+                      <i class="fas fa-times-circle"></i> Quitar Imagen
+                    </button>
+                  </label>
+                  <input type="file" id="waImageUpload" accept="image/*" class="form-input" style="font-size:11px; padding:6px;" onchange="window._onSubirImagenPlantillaWA(event)">
+                  <small style="color:#64748b; font-size:10.5px; margin-top:4px; display:block;">Soporta formatos JPG, PNG o WebP. Se enviará adjunta con el mensaje.</small>
+                </div>
+              </div>
+
+              <!-- Simulador en Vivo de WhatsApp (Smartphone Mockup) -->
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <span style="font-size:12px; font-weight:700; color:#475569;">Vista Previa en Vivo (Simulador):</span>
+                  <span style="font-size:10.5px; color:#16a34a; font-weight:700; background:#dcfce7; padding:2px 8px; border-radius:6px;">
+                    <i class="fas fa-eye"></i> Simulación Tiempo Real
+                  </span>
+                </div>
+
+                <!-- Mockup de WhatsApp -->
+                <div style="background:#0b141a; border-radius:18px; padding:12px; border:2px solid #1f2c34; max-width:380px; margin:0 auto; box-shadow:0 10px 25px -5px rgba(0,0,0,0.3);">
+                  <!-- Barra Superior del Chat -->
+                  <div style="display:flex; align-items:center; gap:10px; padding-bottom:10px; border-bottom:1px solid #1f2c34; margin-bottom:12px;">
+                    <div style="width:34px; height:34px; border-radius:50%; background:#22c55e; color:white; display:flex; align-items:center; justify-content:center; font-size:16px;">
+                      <i class="fab fa-whatsapp"></i>
+                    </div>
+                    <div>
+                      <div style="color:#e9edef; font-size:12.5px; font-weight:700;">Tcontrol Asistencia</div>
+                      <div style="color:#8696a0; font-size:10px;">en línea</div>
+                    </div>
+                  </div>
+
+                  <!-- Contenedor del Mensaje tipo Burbuja -->
+                  <div style="background:#005c4b; color:#e9edef; border-radius:10px 10px 0 10px; padding:10px 12px; font-size:12px; line-height:1.45; word-break:break-word; max-width:92%; margin-left:auto; box-shadow:0 1px 2px rgba(0,0,0,0.2);">
+                    <!-- Contenedor de Imagen de Vista Previa -->
+                    <div id="waPreviewImageContainer" style="display:none; margin-bottom:8px; border-radius:8px; overflow:hidden; border:1px solid rgba(255,255,255,0.1);">
+                      <img id="waPreviewImageEl" src="" alt="Imagen adjunta" style="width:100%; max-height:180px; object-fit:cover; display:block;">
+                    </div>
+                    <div id="previewWhatsAppBody" style="white-space:pre-wrap; font-family:system-ui, -apple-system, sans-serif;">
+                      Cargando mensaje...
+                    </div>
+                    <div style="text-align:right; font-size:10px; color:#6b7280; margin-top:6px; display:flex; justify-content:flex-end; align-items:center; gap:3px;">
+                      <span id="previewWhatsAppHora">08:15</span> <i class="fas fa-check-double" style="color:#38bdf8;"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- SUBPESTAÑA 4: AUDITORÍA & LOGS EN GOOGLE SHEETS              -->
+          <!-- ============================================================ -->
+          <div id="waSecLogs" class="wa-subtab-content" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h5 style="margin:0; font-size:14.5px; font-weight:800; color:#1e293b; display:flex; align-items:center; gap:8px;">
+                  <i class="fas fa-file-invoice" style="color:#059669;"></i> Registro de Auditoría de Envíos WhatsApp
+                  <span class="badge" style="background:#ecfdf5; color:#065f46; font-size:11px; padding:2px 8px; border:1px solid #a7f3d0; border-radius:6px;">Hoja "LOGS_WHATSAPP"</span>
+                </h5>
+                <p style="color:#64748b; margin:2px 0 0; font-size:12px;">Auditoría histórica de mensajes enviados, estado de entrega, errores y destinatarios respaldada en Google Sheets.</p>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input type="text" id="txtBuscarLogWhatsApp" onkeyup="window.filtrarLogsWhatsApp(this.value)" placeholder="🔍 Buscar en logs..." style="padding:7px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; outline:none; min-width:200px;">
+                <button type="button" onclick="window.cargarLogsWhatsApp()" class="btn btn-outline" style="padding:7px 14px; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:6px; background:#ffffff;">
+                  <i class="fas fa-sync-alt"></i> Actualizar Logs
+                </button>
+              </div>
+            </div>
+
+            <div style="overflow: auto; max-height: 480px; border: 1px solid #e2e8f0; border-radius: 12px; background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+              <table style="width: 100%; border-collapse: collapse; min-width: 820px; font-size: 12px; text-align: left;">
+                <thead style="position: sticky; top: 0; z-index: 10; background: #f8fafc; color: #475569; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-transform: uppercase;">
+                  <tr>
+                    <th style="padding: 10px 10px; font-weight: 700; width: 40px; text-align: center;">#</th>
+                    <th style="padding: 10px 10px; font-weight: 700; text-align: center; width: 130px;">Fecha y Hora</th>
+                    <th style="padding: 10px 10px; font-weight: 700;">Colaborador</th>
+                    <th style="padding: 10px 10px; font-weight: 700;">Teléfono</th>
+                    <th style="padding: 10px 10px; font-weight: 700; text-align: center;">Tipo</th>
+                    <th style="padding: 10px 10px; font-weight: 700; text-align: center;">Estado</th>
+                    <th style="padding: 10px 10px; font-weight: 700;">Mensaje / Detalle</th>
+                    <th style="padding: 10px 10px; font-weight: 700; text-align: center;">Supervisor</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyLogsWhatsApp">
+                  <tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--g500);">Cargando registros de logs desde la hoja LOGS_WHATSAPP...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- PANEL DETALLE -->
       <div id="panel-detalle" class="panel"><button class="btn-back-detail" onclick="volverAAsistencia()"><i
             class="fas fa-arrow-left"></i> Volver</button>
@@ -1156,14 +2556,30 @@
     </div>
   </div>
 
-  <!-- MODAL ALMUERZO EXTRA -->
+  <!-- MODAL ALMUERZO EXTRA Y REFRIGERIOS -->
   <div id="extraLunchModal" class="modal-overlay hidden">
-    <div class="modal-container">
+    <div class="modal-container" style="max-width: 440px;">
       <div class="modal-header">
-        <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Almuerzo extra</h3>
+        <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Pedido para Invitados</h3>
         <button class="modal-close" onclick="cerrarModal()">&times;</button>
       </div>
       <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Tipo de Servicio</label>
+          <select id="visitanteTipoServicio" class="form-input">
+            <option value="ALMUERZO_EXTRA">🍱 Almuerzo Extra</option>
+            <option value="REFRIGERIO_SANDUCHE">🥪 Refrigerio — Sánduche</option>
+            <option value="REFRIGERIO_GALLETAS">🍪 Refrigerio — Break con Galletas</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nombre del Invitado o Motivo *</label>
+          <input type="text" id="visitanteNombre" class="form-input" placeholder="Nombre de la persona o visita">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Empresa</label>
+          <input type="text" id="visitanteEmpresa" class="form-input" placeholder="Empresa visitante (opcional)">
+        </div>
         <div class="form-group">
           <label class="form-label">Fecha</label>
           <input type="date" id="visitanteFecha" class="form-input" style="font-family:'Plus Jakarta Sans', sans-serif;">
@@ -1173,8 +2589,12 @@
           <input type="number" id="visitanteCantidad" class="form-input" value="1" min="1">
         </div>
         <div class="form-group">
+          <label class="form-label">Hora requerida para servir (opcional)</label>
+          <input type="time" id="visitanteHoraServicio" class="form-input">
+        </div>
+        <div class="form-group">
           <label class="form-label">Observaciones</label>
-          <textarea id="visitanteObservaciones" class="form-input" rows="3" placeholder="Detalles u observaciones del almuerzo extra..."></textarea>
+          <textarea id="visitanteObservaciones" class="form-input" rows="2" placeholder="Detalles u observaciones del pedido..."></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -1375,7 +2795,8 @@
           <div class="form-group" style="margin-bottom:14px;">
             <label class="form-label" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#059669; font-weight:700;">👤 Empleado</label>
             <input type="hidden" id="supCampoEmpId">
-            <input type="text" id="supCampoEmpNombreDisplay" class="form-input" style="border:2px solid #a7f3d0; border-radius:8px; padding:8px 12px; font-size:13px; background:#f0fdf4; font-weight:700;" readonly>
+            <select id="supCampoEmpSelect" class="form-select" onchange="alCambiarEmpCampoModal(this.value)" style="border:2px solid #a7f3d0; border-radius:8px; padding:8px 12px; font-size:13px; font-weight:700; background:#f0fdf4;"></select>
+            <input type="hidden" id="supCampoEmpNombreDisplay">
           </div>
 
           <!-- Proyecto -->
@@ -1431,12 +2852,607 @@
       </div>
     </div>
   </div>
+  <!-- MODAL DETALLE / ACCIÓN RÁPIDA DEL MAPA -->
+  <div id="mapaDetalleDiaModal" class="modal-overlay hidden" style="z-index: 99999;">
+    <div class="modal-container" style="max-width: 480px; width: 95%;">
+      <div class="modal-header" id="mapaDetalleModalHeader" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color:white; border-radius: 12px 12px 0 0;">
+        <h3 class="modal-title" style="color:white; font-size:15px; display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-calendar-day" id="mapaDetalleModalIcon"></i> <span id="mapaDetalleModalTitulo">Detalle de Asistencia</span>
+        </h3>
+        <button class="modal-close" onclick="cerrarModalMapaDetalleDia()" style="color:white; opacity:0.8;">&times;</button>
+      </div>
+      <div class="modal-body" id="mapaDetalleModalBody" style="padding: 20px; background: #f8fafc;">
+        <!-- Dynamic Content injected by JS -->
+      </div>
+      <div class="modal-footer" id="mapaDetalleModalFooter" style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; border-radius: 0 0 12px 12px;">
+        <!-- Dynamic Actions injected by JS -->
+      </div>
+    </div>
+  </div>
 
+  <!-- MODAL AGREGAR / EDITAR PREGUNTA DE CULTURA -->
+  <div id="modalPreguntaCultura" class="modal-overlay hidden" style="z-index: 99999;">
+    <div class="modal-container" style="max-width:580px; width:95%;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalPreguntaCulturaTitulo" style="display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-plus-circle" style="color:var(--red);"></i> <span>Nueva Pregunta de Cultura</span>
+        </h3>
+        <button class="modal-close" onclick="window.cerrarModalPreguntaCultura()">&times;</button>
+      </div>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:12px; padding:18px;">
+        <input type="hidden" id="culturaPreguntaId">
 
+        <div style="display:grid; grid-template-columns:1fr 110px; gap:10px;">
+          <div>
+            <label class="form-label" style="font-size:12px; font-weight:700;">Pilar / Categoría</label>
+            <select id="culturaPilarSelect" class="form-select" onchange="window.onCulturaPilarChange(this.value)" style="font-size:12.5px;">
+              <option value="PROPOSITO" data-icon="🎯" data-pilar="Propósito">🎯 Propósito</option>
+              <option value="MISION" data-icon="⚡" data-pilar="Misión">⚡ Misión</option>
+              <option value="VISION" data-icon="🚀" data-pilar="Visión (2030)">🚀 Visión (2030)</option>
+              <option value="VALORES" data-icon="🛡️" data-pilar="Valores y Calidad">🛡️ Valores y Calidad</option>
+              <option value="SEGURIDAD" data-icon="⚙️" data-pilar="Seguridad Industrial">⚙️ Seguridad Industrial</option>
+              <option value="INNOVACION" data-icon="💡" data-pilar="Innovación y Tecnología">💡 Innovación y Tecnología</option>
+              <option value="OTRO" data-icon="🌟" data-pilar="Cultura Corporativa">🌟 Personalizado</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size:12px; font-weight:700;">Ícono Emoji</label>
+            <select id="culturaIconoSelect" class="form-select" style="font-size:14px; text-align:center;">
+              <option value="🎯">🎯</option>
+              <option value="⚡">⚡</option>
+              <option value="🚀">🚀</option>
+              <option value="🛡️">🛡️</option>
+              <option value="⚙️">⚙️</option>
+              <option value="💡">💡</option>
+              <option value="🌟">🌟</option>
+              <option value="🏆">🏆</option>
+              <option value="🔧">🔧</option>
+              <option value="🤝">🤝</option>
+            </select>
+          </div>
+        </div>
 
+        <div id="culturaPilarCustomContainer" style="display:none;">
+          <label class="form-label" style="font-size:12px; font-weight:700;">Nombre del Pilar Personalizado</label>
+          <input type="text" id="culturaPilarCustomText" class="form-input" placeholder="Ej: Trabajo en Equipo">
+        </div>
 
-  <script src="./JS/tcontrol_core.js?v=20260825_15"></script>
-  <script src="./JS/supervisor_core.js?v=20260825_15"></script>
+        <div>
+          <label class="form-label" style="font-size:12px; font-weight:700;">Pregunta para el Colaborador <span style="color:#ef4444;">*</span></label>
+          <textarea id="culturaPreguntaTexto" class="form-input" rows="2" placeholder="Ej: ¿Cuál es el propósito fundamental de Tcontrol?" style="resize:vertical; font-size:12.5px;"></textarea>
+        </div>
+
+        <div>
+          <label class="form-label" style="font-size:12px; font-weight:700;">Pista Pedagógica / Explicación (se muestra si falla) <span style="color:#ef4444;">*</span></label>
+          <textarea id="culturaPistaTexto" class="form-input" rows="2" placeholder="Ej: Recuerda: El propósito de Tcontrol es 'Diseñar soluciones para el futuro'." style="resize:vertical; font-size:12px;"></textarea>
+        </div>
+
+        <div>
+          <label class="form-label" style="font-size:12px; font-weight:700; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Opciones de Respuesta (Marca la Correcta)</span>
+            <span style="font-size:11px; color:#16a34a; font-weight:700;"><i class="fas fa-check-circle"></i> Selecciona la correcta</span>
+          </label>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Opción A -->
+            <div style="display:flex; align-items:center; gap:8px; background:#f8fafc; padding:8px 10px; border-radius:8px; border:1px solid var(--g200);">
+              <span style="font-weight:800; color:#475569; width:20px; text-align:center;">A</span>
+              <input type="text" id="culturaOptTexto_0" class="form-input" placeholder="Texto de la opción A..." style="flex:1; padding:6px 10px; font-size:12.5px;">
+              <label style="display:flex; align-items:center; gap:4px; margin:0; cursor:pointer; font-size:11.5px; font-weight:700; color:#15803d; white-space:nowrap;">
+                <input type="radio" name="culturaOptCorrecta" value="0" checked style="accent-color:#16a34a; width:16px; height:16px;"> Correcta
+              </label>
+            </div>
+            <!-- Opción B -->
+            <div style="display:flex; align-items:center; gap:8px; background:#f8fafc; padding:8px 10px; border-radius:8px; border:1px solid var(--g200);">
+              <span style="font-weight:800; color:#475569; width:20px; text-align:center;">B</span>
+              <input type="text" id="culturaOptTexto_1" class="form-input" placeholder="Texto de la opción B..." style="flex:1; padding:6px 10px; font-size:12.5px;">
+              <label style="display:flex; align-items:center; gap:4px; margin:0; cursor:pointer; font-size:11.5px; font-weight:700; color:#15803d; white-space:nowrap;">
+                <input type="radio" name="culturaOptCorrecta" value="1" style="accent-color:#16a34a; width:16px; height:16px;"> Correcta
+              </label>
+            </div>
+            <!-- Opción C -->
+            <div style="display:flex; align-items:center; gap:8px; background:#f8fafc; padding:8px 10px; border-radius:8px; border:1px solid var(--g200);">
+              <span style="font-weight:800; color:#475569; width:20px; text-align:center;">C</span>
+              <input type="text" id="culturaOptTexto_2" class="form-input" placeholder="Texto de la opción C..." style="flex:1; padding:6px 10px; font-size:12.5px;">
+              <label style="display:flex; align-items:center; gap:4px; margin:0; cursor:pointer; font-size:11.5px; font-weight:700; color:#15803d; white-space:nowrap;">
+                <input type="radio" name="culturaOptCorrecta" value="2" style="accent-color:#16a34a; width:16px; height:16px;"> Correcta
+              </label>
+            </div>
+            <!-- Opción D (Opcional) -->
+            <div style="display:flex; align-items:center; gap:8px; background:#f8fafc; padding:8px 10px; border-radius:8px; border:1px solid var(--g200);">
+              <span style="font-weight:800; color:#475569; width:20px; text-align:center;">D</span>
+              <input type="text" id="culturaOptTexto_3" class="form-input" placeholder="Opción D (opcional)..." style="flex:1; padding:6px 10px; font-size:12.5px;">
+              <label style="display:flex; align-items:center; gap:4px; margin:0; cursor:pointer; font-size:11.5px; font-weight:700; color:#15803d; white-space:nowrap;">
+                <input type="radio" name="culturaOptCorrecta" value="3" style="accent-color:#16a34a; width:16px; height:16px;"> Correcta
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary-modal" onclick="window.cerrarModalPreguntaCultura()">Cancelar</button>
+        <button class="btn btn-primary-modal" onclick="window.guardarPreguntaDesdeModal()"><i class="fas fa-check"></i> Guardar Pregunta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NOTIFICAR POR WHATSAPP (MULTI-CATEGORÍA) -->
+  <div id="modalNotificarSinMarcarWhatsApp" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width: 660px; border-radius:16px; overflow:hidden;">
+      <div class="modal-header" style="background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:white; padding:16px 20px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <i class="fab fa-whatsapp" style="font-size:22px;"></i>
+          <div>
+            <h3 style="margin:0; font-size:16px; font-weight:800; color:white;" id="lblTituloModalWhatsApp">Notificar por WhatsApp</h3>
+            <p style="margin:2px 0 0 0; font-size:12px; color:#bbf7d0;" id="lblSubtituloModalWhatsApp">Despacho masivo directo vía OpenWA</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="window.cerrarModalNotificarSinMarcar()" style="color:white; opacity:0.85;">&times;</button>
+      </div>
+
+      <!-- Selector de Categoría en el Modal -->
+      <div style="background:#f1f5f9; padding:8px 16px; border-bottom:1px solid #e2e8f0; display:flex; gap:6px; overflow-x:auto;">
+        <button type="button" id="btnModalCatSinMarcar" onclick="window.cambiarCategoriaModalWhatsApp('sin_marcar')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:700; border:1px solid #bbf7d0; background:#f0fdf4; color:#15803d; cursor:pointer;">
+          🔔 Sin Marcar Entrada
+        </button>
+        <button type="button" id="btnModalCatAusentes" onclick="window.cambiarCategoriaModalWhatsApp('ausente')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer;">
+          📋 Ausentes
+        </button>
+        <button type="button" id="btnModalCatSalida" onclick="window.cambiarCategoriaModalWhatsApp('salida_faltante')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer;">
+          🚪 Salida Faltante
+        </button>
+        <button type="button" id="btnModalCatEmergencia" onclick="window.cambiarCategoriaModalWhatsApp('emergencia')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer;">
+          🚨 Emergencia
+        </button>
+      </div>
+      
+      <div class="modal-body" style="padding:18px 20px; background:#f8fafc; max-height:72vh; overflow-y:auto;">
+        
+        <!-- Alerta Informativa Dinámica -->
+        <div id="alertaInformativaModalWhatsApp" style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px 14px; margin-bottom:12px; display:flex; align-items:center; gap:10px;">
+          <i class="fas fa-info-circle" style="color:#16a34a; font-size:16px;"></i>
+          <div style="font-size:12px; color:#166534; line-height:1.4;" id="lblTextoAlertaModalWhatsApp">
+            Selecciona a los colaboradores a quienes deseas enviar la notificación. Los números son normalizados automáticamente.
+          </div>
+        </div>
+
+        <!-- Barra Superior de Selección -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <label style="font-size:12.5px; font-weight:700; color:#1e293b; display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0;">
+            <input type="checkbox" id="chkWhatsAppSeleccionarTodos" onchange="window.toggleSeleccionarTodosWhatsApp(this.checked)" checked style="accent-color:#16a34a; width:16px; height:16px;">
+            <span>Seleccionar Todos (<strong id="lblTotalSinMarcarModal">0</strong>)</span>
+          </label>
+          <span style="font-size:11.5px; color:#64748b;" id="lblInfoConTelefono">0 con teléfono registrado</span>
+        </div>
+
+        <!-- Lista de Colaboradores -->
+        <div id="listaColaboradoresSinMarcarWhatsApp" style="display:flex; flex-direction:column; gap:8px; max-height:240px; overflow-y:auto; padding-right:4px; margin-bottom:14px;">
+          <!-- Renderizado dinámicamente -->
+        </div>
+
+        <!-- Barra de Progreso de Envío -->
+        <div id="progresoEnvioWhatsAppContainer" style="display:none; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:#1e293b;" id="lblProgresoWhatsAppTexto">Enviando notificaciones...</span>
+            <span style="font-size:11.5px; font-weight:800; color:#16a34a;" id="lblProgresoWhatsAppPorcentaje">0%</span>
+          </div>
+          <div style="width:100%; height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden;">
+            <div id="barraProgresoWhatsAppFill" style="width:0%; height:100%; background:linear-gradient(90deg, #22c55e, #16a34a); transition:width 0.3s;"></div>
+          </div>
+        </div>
+
+        <!-- Vista Previa Colapsable -->
+        <details style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;" open>
+          <summary style="font-size:12px; font-weight:700; color:#475569; cursor:pointer;"><i class="fas fa-eye"></i> Ver plantilla del mensaje que se enviará</summary>
+          <div id="previewMensajeModalWhatsApp" style="margin-top:10px; padding:10px; background:#f8fafc; border-radius:8px; font-size:12px; line-height:1.45; white-space:pre-wrap; color:#334155; border:1px dashed #cbd5e1;"></div>
+        </details>
+
+      </div>
+
+      <div class="modal-footer" style="padding:14px 20px; background:#ffffff; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" class="btn btn-secondary-modal" onclick="window.cerrarModalNotificarSinMarcar()">Cerrar</button>
+        <button type="button" id="btnEjecutarEnvioWhatsApp" class="btn btn-primary-modal" onclick="window.ejecutarEnvioMasivoWhatsApp()" style="background:#16a34a; border-color:#16a34a; font-weight:700; display:inline-flex; align-items:center; gap:8px;">
+          <i class="fab fa-whatsapp"></i> <span>Enviar Notificaciones (<strong id="lblCountSeleccionadosWhatsApp">0</strong>)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ENVIAR MENSAJE WHATSAPP INDIVIDUAL -->
+  <div id="modalWhatsAppIndividual" class="modal-overlay hidden" style="z-index: 10000;">
+    <div class="modal-card" style="max-width: 520px; border-radius:16px; overflow:hidden; box-shadow: 0 20px 30px rgba(0,0,0,0.18); background:#ffffff;">
+      <div class="modal-header" style="background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:white; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,0.2); display:flex; align-items:center; justify-content:center; font-size:20px;">
+            <i class="fab fa-whatsapp"></i>
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:16px; font-weight:800; color:white;">Mensaje Directo de WhatsApp</h3>
+            <p style="margin:2px 0 0 0; font-size:11.5px; color:#dcfce7;" id="lblSubtituloWaIndividual">Comunicación directa e instantánea con el colaborador</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="window.cerrarModalWhatsAppIndividual()" style="color:white; opacity:0.85; font-size:22px; cursor:pointer; background:transparent; border:none; line-height:1;">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding:18px 20px; background:#ffffff;">
+        <!-- Tarjeta del colaborador -->
+        <div id="cardEmpleadoWaIndividual" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:14px; gap:10px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div id="fotoWaIndividual" style="width:42px; height:42px; min-width:42px; border-radius:50%; overflow:hidden; background:#e0f2fe; display:flex; align-items:center; justify-content:center; font-weight:700; color:#0369a1; font-size:16px; border:2px solid #ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.1);"></div>
+            <div>
+              <div id="nombreWaIndividual" style="font-size:14px; font-weight:800; color:#0f172a;">--</div>
+              <div style="font-size:11px; color:#64748b; margin-top:2px;">
+                <span id="areaWaIndividual" style="background:#f1f5f9; padding:1px 6px; border-radius:4px; font-weight:600;">--</span> • <span id="cargoWaIndividual">--</span>
+              </div>
+            </div>
+          </div>
+          <div id="badgeTelefonoWaIndividual" style="text-align:right;">
+            <!-- Estado de teléfono / número -->
+          </div>
+        </div>
+
+        <!-- Formulario para registrar/editar número de teléfono -->
+        <div id="secRegistrarTelWaIndividual" style="display:none; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:12px 14px; margin-bottom:14px;">
+          <div style="font-size:12px; font-weight:700; color:#9a3412; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-exclamation-circle"></i> No tiene número de WhatsApp registrado
+          </div>
+          <div style="font-size:11px; color:#78350f; margin-bottom:8px;">Ingresa el número celular para vincularlo a este colaborador y habilitar el envío:</div>
+          <div style="display:flex; gap:8px;">
+            <input type="tel" id="txtNuevoTelefonoWaIndividual" placeholder="Ej: 0984660105" style="flex:1; padding:7px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; font-weight:600; outline:none;">
+            <button type="button" onclick="window.guardarTelefonoDesdeModalWa()" style="background:#16a34a; color:white; border:none; padding:7px 14px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 3px rgba(22,163,74,0.3);">
+              <i class="fas fa-save"></i> Guardar
+            </button>
+          </div>
+        </div>
+
+        <!-- Selector de Plantillas Rápidas -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px; font-weight:700; color:#475569; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+            <span><i class="fas fa-bolt" style="color:#eab308; margin-right:4px;"></i> Plantillas de Mensaje:</span>
+            <span style="font-size:10px; color:#94a3b8; font-weight:500;">Haz clic para auto-rellenar</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            <button type="button" onclick="window.aplicarPlantillaWaIndividual('entrada')" class="btn-plantilla-wa" style="background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
+              ⏰ Entrada
+            </button>
+            <button type="button" onclick="window.aplicarPlantillaWaIndividual('salida')" class="btn-plantilla-wa" style="background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
+              🚪 Salida
+            </button>
+            <button type="button" onclick="window.aplicarPlantillaWaIndividual('ausencia')" class="btn-plantilla-wa" style="background:#fff7ed; border:1px solid #fed7aa; color:#c2410c; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
+              🩺 Ausencia
+            </button>
+            <button type="button" onclick="window.aplicarPlantillaWaIndividual('saludo')" class="btn-plantilla-wa" style="background:#f5f3ff; border:1px solid #ddd6fe; color:#6d28d9; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
+              👋 Saludo
+            </button>
+            <button type="button" onclick="window.aplicarPlantillaWaIndividual('limpiar')" class="btn-plantilla-wa" style="background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:600; padding:4px 10px; border-radius:8px; cursor:pointer;">
+              ✏️ Borrar
+            </button>
+          </div>
+        </div>
+
+        <!-- Área de redacción del mensaje -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+            <label style="font-size:11.5px; font-weight:700; color:#1e293b;">Mensaje para enviar:</label>
+            <span id="lblLongitudMensajeWa" style="font-size:10.5px; color:#94a3b8;">0 caracteres</span>
+          </div>
+          <textarea id="txtMensajeWaIndividual" oninput="window.actualizarContadorCaracteresWa()" rows="4" style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #cbd5e1; border-radius:10px; font-size:12.5px; font-family:inherit; line-height:1.45; resize:vertical; outline:none;" placeholder="Escribe aquí el mensaje para el colaborador..."></textarea>
+        </div>
+
+        <!-- Botones de Acción -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button type="button" id="btnAbrirChatWaMe" onclick="window.ejecutarAbrirWhatsAppWeb()" style="width:100%; padding:11px 16px; background:linear-gradient(135deg, #25d366 0%, #16a34a 100%); color:white; border:none; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 8px rgba(37,211,102,0.3); transition:all 0.15s;">
+            <i class="fab fa-whatsapp" style="font-size:17px;"></i> Abrir Chat en WhatsApp (wa.me)
+          </button>
+          <button type="button" id="btnEnviarServidorOpenWa" onclick="window.ejecutarEnvioDirectoOpenWA()" style="width:100%; padding:9px 16px; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 0.15s;">
+            <i class="fas fa-paper-plane" style="color:#16a34a;"></i> Despachar por Servidor OpenWA (Silencioso)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NUEVA PLANTILLA WHATSAPP -->
+  <div id="modalNuevaPlantillaWhatsApp" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width:380px; padding:20px; border-radius:14px; background:white; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+      <h3 style="margin:0 0 14px 0; font-size:15px; font-weight:800; color:#1e293b;"><i class="fas fa-plus-circle" style="color:#2563eb;"></i> Nueva Plantilla de Mensaje</h3>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Nombre de la Plantilla (Ej: Bono Navidad)</label>
+        <input type="text" id="txtNuevaPlantillaNombre" class="form-input" placeholder="Nombre corto..." style="font-size:12.5px;">
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Imagen / Multimedia (Opcional)</label>
+        <input type="file" id="fileNuevaPlantillaImg" class="form-input" accept="image/*" style="font-size:12px;">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn" onclick="document.getElementById('modalNuevaPlantillaWhatsApp').classList.add('hidden')" style="padding:8px 14px; border-radius:8px; font-size:12px; background:#f1f5f9; color:#475569; font-weight:600; cursor:pointer; border:none;">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="window.guardarNuevaPlantillaCustom()" style="padding:8px 14px; border-radius:8px; font-size:12px; font-weight:700; background:#2563eb; color:white; border:none; cursor:pointer;">Crear Plantilla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DESGLOSE DE INASISTENCIAS -->
+  <div id="modalDesgloseInasistencias" class="modal-overlay hidden" style="z-index: 99999;">
+    <div class="modal-content" style="max-width: 720px; width: 94%; padding: 0; border-radius: 16px; background: white; box-shadow: 0 20px 40px rgba(0,0,0,0.25); overflow: hidden; display: flex; flex-direction: column; max-height: 88vh;">
+      
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #e11d48, #be123c); padding: 18px 22px; display: flex; justify-content: space-between; align-items: center; color: white;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 20px;">
+            <i class="fas fa-calendar-times"></i>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: white;" id="lblTituloModalInasistencias">Detalle y Diagnóstico de Inasistencias</h3>
+            <p style="margin: 2px 0 0; font-size: 12px; color: #fecdd3;" id="lblSubtituloModalInasistencias">Colaborador • Período</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="window.cerrarModalDesgloseInasistencias()" style="color: white; opacity: 0.85; background: none; border: none; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <!-- Resumen Métricas Rápidas -->
+      <div style="background: #f8fafc; padding: 12px 20px; border-bottom: 1px solid #e2e8f0; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
+        <div style="background: white; padding: 8px 12px; border-radius: 10px; border: 1px solid #e2e8f0; text-align: center;">
+          <div style="font-size: 11px; color: var(--g500); font-weight: 600;">Días Laborables</div>
+          <div style="font-size: 17px; font-weight: 800; color: var(--g800);" id="lblModalDiasLab">0</div>
+        </div>
+        <div style="background: white; padding: 8px 12px; border-radius: 10px; border: 1px solid #e2e8f0; text-align: center;">
+          <div style="font-size: 11px; color: var(--g500); font-weight: 600;">Asistencias</div>
+          <div style="font-size: 17px; font-weight: 800; color: #10b981;" id="lblModalAsistEfect">0</div>
+        </div>
+        <div style="background: white; padding: 8px 12px; border-radius: 10px; border: 1px solid #e2e8f0; text-align: center;">
+          <div style="font-size: 11px; color: var(--g500); font-weight: 600;">Inasistencias</div>
+          <div style="font-size: 17px; font-weight: 800; color: #e11d48;" id="lblModalInasistTotal">0</div>
+        </div>
+        <div style="background: white; padding: 8px 12px; border-radius: 10px; border: 1px solid #e2e8f0; text-align: center;">
+          <div style="font-size: 11px; color: var(--g500); font-weight: 600;">% Cumplimiento</div>
+          <div style="font-size: 17px; font-weight: 800; color: var(--g800);" id="lblModalPctAsist">0%</div>
+        </div>
+      </div>
+
+      <!-- Cuerpo del Modal (Tabla de Días) -->
+      <div style="padding: 16px 20px; overflow-y: auto; flex: 1;">
+        <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px;">
+          <i class="fas fa-info-circle" style="color: #e11d48; margin-top: 2px;"></i>
+          <div style="font-size: 12px; color: #9f1239; line-height: 1.45;">
+            <strong>¿Cómo se determina una inasistencia?</strong> Se considera inasistencia todo día hábil (lunes a viernes, no feriado nacional/local) en el que el colaborador no registró marcaje de Entrada, Salida en Campo, Vacaciones aprobadas o Permiso Justificado.
+          </div>
+        </div>
+
+        <div style="overflow: auto; max-height: 48vh; border-radius: 10px; border: 1px solid #e2e8f0;">
+          <table style="width: 100%; border-collapse: collapse; min-width: 580px; text-align: left; font-size: 12.5px;">
+            <thead style="position: sticky; top: 0; z-index: 10; background: #f1f5f9; color: var(--g600); font-size: 11.5px; border-bottom: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
+              <tr>
+                <th style="padding: 10px 12px; font-weight: 700; width: 40px; text-align: center;">#</th>
+                <th style="padding: 10px 12px; font-weight: 700; width: 170px;">Fecha y Día</th>
+                <th style="padding: 10px 12px; font-weight: 700; width: 140px;">Marcación</th>
+                <th style="padding: 10px 12px; font-weight: 700;">Motivo / Diagnóstico</th>
+                <th style="padding: 10px 12px; font-weight: 700; width: 100px; text-align: center;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyModalInasistencias">
+              <tr>
+                <td colspan="5" style="padding: 20px; text-align: center; color: var(--g500);">Cargando días...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 11.5px; color: var(--g500);"><i class="fas fa-lightbulb" style="color: #f59e0b;"></i> Tip: Puedes hacer clic en "Ver en Historial" para justificar el día de ser necesario.</span>
+        <button type="button" class="btn" onclick="window.cerrarModalDesgloseInasistencias()" style="padding: 7px 16px; border-radius: 8px; font-size: 12px; background: #e2e8f0; color: #334155; font-weight: 700; border: none; cursor: pointer;">Cerrar</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL DESGLOSE HISTÓRICO DE ASISTENCIA Y DIFERENCIAS -->
+  <div id="modalDesgloseHistoricoBase" class="modal-overlay hidden" style="z-index: 99999; display: none; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(5px);">
+    <div class="modal-card" style="max-width: 1260px; width: 97vw; max-height: 92vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; background: #ffffff !important; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35); border: 1px solid #cbd5e1;">
+      
+      <!-- Header -->
+      <div style="padding: 14px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 10px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 17px;">
+            <i class="fas fa-calculator"></i>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 15.5px; font-weight: 800; color: #1e293b;">Desglose Histórico de Asistencia y Diferencias</h3>
+            <p id="subtituloModalHistorico" style="margin: 2px 0 0; font-size: 11.5px; color: #64748b;">Auditoría: Asistencias Ordinarias + Vacaciones vs. Esperadas por Colaborador</p>
+          </div>
+        </div>
+        <button type="button" onclick="window.cerrarModalDesgloseHistoricoBase()" style="background: none; border: none; font-size: 20px; color: #94a3b8; cursor: pointer; padding: 4px 8px; border-radius: 6px;" onmouseover="this.style.color='#1e293b'" onmouseout="this.style.color='#94a3b8'">&times;</button>
+      </div>
+
+      <!-- Resumen Cards -->
+      <div style="padding: 10px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;">
+        <div style="background: white; padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: var(--g500); font-weight: 700; text-transform: uppercase;">Asist. Ordinarias</div>
+          <div style="font-size: 17px; font-weight: 800; color: #10b981;" id="lblModalHistOrdinarias">--</div>
+        </div>
+        <div style="background: white; padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: var(--g500); font-weight: 700; text-transform: uppercase;">Asist. Esperadas</div>
+          <div style="font-size: 17px; font-weight: 800; color: #3b82f6;" id="lblModalHistEsperadas">--</div>
+        </div>
+        <div style="background: #f0f9ff; padding: 8px 12px; border-radius: 8px; border: 1px solid #bae6fd; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: #0369a1; font-weight: 800; text-transform: uppercase;">Vacaciones</div>
+          <div style="font-size: 17px; font-weight: 800; color: #0284c7;" id="lblModalHistVacaciones">--</div>
+        </div>
+        <div style="background: #fff5f5; padding: 8px 12px; border-radius: 8px; border: 1px solid #fecaca; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: #b91c1c; font-weight: 800; text-transform: uppercase;">Diferencia Acumulada</div>
+          <div style="font-size: 17px; font-weight: 800; color: #ef4444;" id="lblModalHistDiferencia">--</div>
+        </div>
+        <div style="background: #f5f3ff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd6fe; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: #4338ca; font-weight: 800; text-transform: uppercase;">Días Extras</div>
+          <div style="font-size: 17px; font-weight: 800; color: #6366f1;" id="lblModalHistExtras">--</div>
+        </div>
+        <div style="background: white; padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: var(--g500); font-weight: 700; text-transform: uppercase;">Promedio General</div>
+          <div style="font-size: 17px; font-weight: 800; color: #1e293b;" id="lblModalHistPromedio">--%</div>
+        </div>
+      </div>
+
+      <!-- Filtros y Búsqueda -->
+      <div style="padding: 9px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px;">
+          <i class="fas fa-search" style="color: #94a3b8; font-size: 12px;"></i>
+          <input type="text" id="txtBuscarHistoricoBase" onkeyup="window.filtrarTablaHistoricoBase(this.value)" placeholder="Buscar por colaborador, cargo o área..." style="width: 100%; border: 1px solid #cbd5e1; padding: 5px 9px; border-radius: 6px; font-size: 11.5px; outline: none; background: #ffffff;">
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <!-- Selector Rápido: Mensual / Anual -->
+          <div style="display: inline-flex; align-items: center; background: #f1f5f9; padding: 2px; border-radius: 8px; border: 1px solid #cbd5e1;">
+            <button type="button" id="btnModoHistoricoMensual" onclick="window.seleccionarModoHistorico('mensual')" style="border: none; background: #ffffff; color: #0f172a; font-weight: 750; font-size: 11px; padding: 4px 9px; border-radius: 6px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.06); transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px;">
+              <i class="fas fa-calendar-alt" style="color: #2563eb; font-size: 10.5px;"></i> Mensual
+            </button>
+            <button type="button" id="btnModoHistoricoAnual" onclick="window.seleccionarModoHistorico('anual')" style="border: none; background: transparent; color: #64748b; font-weight: 750; font-size: 11px; padding: 4px 9px; border-radius: 6px; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px;">
+              <i class="fas fa-calendar" style="color: #10b981; font-size: 10.5px;"></i> Anual
+            </button>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 5px; background: #f8fafc; padding: 4px 10px; border-radius: 8px; border: 1px solid #cbd5e1;">
+            <i class="fas fa-calendar-alt" style="color: #64748b; font-size: 11.5px;"></i>
+            <span style="font-size: 11px; font-weight: 700; color: #334155;">Período:</span>
+            <select id="selPeriodoModalHistorico" onchange="window.cambiarPeriodoModalHistorico(this.value)" style="border: none; background: transparent; font-size: 11.5px; font-weight: 700; color: #1e293b; outline: none; cursor: pointer; max-width: 270px;">
+            </select>
+          </div>
+          <button type="button" class="btn btn-outline" onclick="window.exportarTablaHistoricoBaseExcel()" style="padding: 5px 12px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; background: #ffffff; border-radius: 8px; font-weight: 600;">
+            <i class="fas fa-file-excel" style="color: #10b981;"></i> Exportar Excel
+          </button>
+        </div>
+      </div>
+
+      <!-- Body / Tabla -->
+      <div style="padding: 10px 16px; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #ffffff;">
+        <div style="overflow-x: hidden; overflow-y: auto; flex: 1; max-height: 54vh; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;">
+          <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.5px; text-align: left; background: #ffffff;" id="tablaHistoricoBaseModal">
+            <thead style="position: sticky; top: 0; z-index: 10; background: #f8fafc; color: #475569; border-bottom: 1px solid #e2e8f0; font-size: 10.5px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
+              <tr>
+                <th style="padding: 8px 6px; font-weight: 700; width: 32px; text-align: center;">#</th>
+                <th style="padding: 8px 6px; font-weight: 700; width: 195px;">Colaborador</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; width: 95px;">Rango / Inicio</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; color: #3b82f6; width: 70px;">Esperadas</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; color: #10b981; width: 70px;">Ordinarias</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; color: #0284c7; width: 80px;">Vacaciones</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; color: #b91c1c; width: 155px;">Diferencia</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; color: #6366f1; width: 70px;">Días Extras</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; width: 75px;">% Cumpl.</th>
+                <th style="padding: 8px 6px; font-weight: 700; text-align: center; width: 90px;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyModalHistoricoBase" style="background: #ffffff;">
+              <tr>
+                <td colspan="10" style="padding: 20px; text-align: center; color: var(--g500); background: #ffffff;">Cargando análisis...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 10px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 15px;">
+        <span style="font-size: 11px; color: var(--g500); line-height: 1.4;">
+          <i class="fas fa-info-circle" style="color: #3b82f6;"></i> <strong>Criterios de Auditoría:</strong> <em>Esperadas</em> = días hábiles en rango activo. <em>Ordinarias</em> = marcaciones presenciales/campo. <em>Vacaciones tomadas</em> y <em>Permisos médicos/justificados</em> están protegidos y no descuentan cumplimiento. <em>Diferencia</em> = inasistencias injustificadas con indicación exacta de fechas.
+        </span>
+        <button type="button" class="btn" onclick="window.cerrarModalDesgloseHistoricoBase()" style="padding: 6px 14px; border-radius: 8px; font-size: 11.5px; background: #e2e8f0; color: #334155; font-weight: 700; border: none; cursor: pointer; flex-shrink: 0;">Cerrar</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL DESGLOSE DE VACACIONES (GOCE ANUAL) -->
+  <div id="modalDesgloseVacaciones" class="modal-overlay hidden" style="z-index: 99999; display: none; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(5px); overflow-y: auto; padding: 20px 10px;">
+    <div class="modal-card" style="max-width: 920px; width: 96%; max-height: 88vh; margin: auto; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; background: #ffffff !important; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); border: 1px solid #cbd5e1;">
+      
+      <!-- Header -->
+      <div style="padding: 14px 18px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(20, 184, 166, 0.12); color: #0d9488; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0;">
+            <i class="fas fa-umbrella-beach"></i>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 15.5px; font-weight: 800; color: #0f172a;">Auditoría y Desglose de Vacaciones</h3>
+            <p style="margin: 2px 0 0; font-size: 11.5px; color: var(--g500);">Cumplimiento y goce de días de vacaciones adjudicados en el año en curso</p>
+          </div>
+        </div>
+        <button type="button" onclick="window.cerrarModalDesgloseVacaciones()" style="background: none; border: none; font-size: 22px; color: #94a3b8; cursor: pointer; padding: 4px 8px; border-radius: 6px; line-height: 1;" onmouseover="this.style.color='#1e293b'" onmouseout="this.style.color='#94a3b8'">&times;</button>
+      </div>
+
+      <!-- Resumen Cards -->
+      <div style="padding: 10px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; flex-shrink: 0;">
+        <div style="background: white; padding: 8px 10px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: var(--g500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">Adjudicadas Totales</div>
+          <div style="font-size: 17px; font-weight: 800; color: #3b82f6; margin-top: 2px;" id="lblModalVacAdjudicadas">--</div>
+        </div>
+        <div style="background: #f0fdf4; padding: 8px 10px; border-radius: 8px; border: 1px solid #bbf7d0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: #15803d; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px;">Tomadas / Gozadas</div>
+          <div style="font-size: 17px; font-weight: 800; color: #16a34a; margin-top: 2px;" id="lblModalVacTomadas">--</div>
+        </div>
+        <div style="background: #fff5f5; padding: 8px 10px; border-radius: 8px; border: 1px solid #fecaca; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: #b91c1c; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px;">Pendientes de Goce</div>
+          <div style="font-size: 17px; font-weight: 800; color: #ef4444; margin-top: 2px;" id="lblModalVacRestantes">--</div>
+        </div>
+        <div style="background: #f0fdfa; padding: 8px 10px; border-radius: 8px; border: 1px solid #99f6e4; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: #0f766e; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px;">Goce Global Empresa</div>
+          <div style="font-size: 17px; font-weight: 800; color: #0d9488; margin-top: 2px;" id="lblModalVacTasaGlobal">--%</div>
+        </div>
+        <div style="background: white; padding: 8px 10px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size: 10px; color: var(--g500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">Promedio Indiv.</div>
+          <div style="font-size: 17px; font-weight: 800; color: #1e293b; margin-top: 2px;" id="lblModalVacPromedioIndiv">--%</div>
+        </div>
+      </div>
+
+      <!-- Filtros y Búsqueda -->
+      <div style="padding: 10px 16px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px;">
+          <i class="fas fa-search" style="color: #94a3b8; font-size: 13px;"></i>
+          <input type="text" id="txtBuscarVacaciones" onkeyup="window.filtrarTablaVacaciones(this.value)" placeholder="Buscar colaborador, cargo o área..." style="width: 100%; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none; background: #ffffff;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-outline" onclick="window.exportarTablaVacacionesExcel()" style="padding: 5px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; background: #ffffff;">
+            <i class="fas fa-file-excel" style="color: #10b981;"></i> Exportar Excel
+          </button>
+        </div>
+      </div>
+
+      <!-- Body / Tabla -->
+      <div style="padding: 12px 16px; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #ffffff;">
+        <div style="overflow: auto; flex: 1; max-height: 52vh; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;">
+          <table style="width: 100%; border-collapse: collapse; min-width: 680px; font-size: 12px; text-align: left; background: #ffffff;" id="tablaVacacionesModal">
+            <thead style="position: sticky; top: 0; z-index: 10; background: #f8fafc; color: #475569; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
+              <tr>
+                <th style="padding: 9px 10px; font-weight: 700; width: 35px; text-align: center;">#</th>
+                <th style="padding: 9px 10px; font-weight: 700;">Colaborador</th>
+                <th style="padding: 9px 10px; font-weight: 700; text-align: center; width: 85px;">Adjudicadas</th>
+                <th style="padding: 9px 10px; font-weight: 700; text-align: center; color: #16a34a; width: 80px;">Tomadas</th>
+                <th style="padding: 9px 10px; font-weight: 700; text-align: center; color: #b91c1c; width: 85px;">Pendientes</th>
+                <th style="padding: 9px 10px; font-weight: 700; text-align: center; width: 130px;">% Goce</th>
+                <th style="padding: 9px 10px; font-weight: 700; text-align: center; width: 100px;">Estado</th>
+                <th style="padding: 9px 10px; font-weight: 700; text-align: center; width: 80px;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyModalVacaciones" style="background: #ffffff;">
+              <tr>
+                <td colspan="8" style="padding: 20px; text-align: center; color: var(--g500); background: #ffffff;">Cargando análisis...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 10px 16px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+        <span style="font-size: 11px; color: var(--g500);">
+          <i class="fas fa-info-circle" style="color: #0d9488;"></i> El objetivo anual es alcanzar el 100% de goce ocupando todos los días de vacaciones adjudicados.
+        </span>
+        <button type="button" class="btn" onclick="window.cerrarModalDesgloseVacaciones()" style="padding: 6px 15px; border-radius: 7px; font-size: 11.5px; background: #e2e8f0; color: #334155; font-weight: 700; border: none; cursor: pointer;">Cerrar</button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="./JS/openwa_service.js?v=20260909_06"></script>
+  <script src="./JS/tcontrol_core.js?v=20260908_11"></script>
+  <script src="./JS/supervisor_core.js?v=20260909_07"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

@@ -1959,9 +1959,12 @@ async function verificarPIN() {
                 foto_url: res.empleado.foto_url || '',
                 cargo: res.empleado.cargo || '',
                 fechaNacimiento: res.empleado.fechaNacimiento || '',
+                telefono: res.empleado.telefono || '',
                 baseLat: res.empleado.baseLat || null,
                 baseLng: res.empleado.baseLng || null,
                 pagos_url: estadoRes.pagos_url || '',
+                cultura_habilitada: (res.empleado.cultura_habilitada !== undefined) ? res.empleado.cultura_habilitada : estadoRes.cultura_habilitada,
+                cultura_activa: (res.empleado.cultura_activa !== undefined) ? res.empleado.cultura_activa : estadoRes.cultura_activa,
                 tipoRegistro: '',
                 almuerzo: ''
             };
@@ -1976,6 +1979,8 @@ async function verificarPIN() {
             // Si el PIN es antiguo, se obliga a crear una contraseña antes de entrar
             if (res.debeActualizarPassword) {
                 renderMigrarPasswordScreen();
+            } else if (!empleado.telefono || empleado.telefono.trim() === '') {
+                renderUpdateDataScreen();
             } else {
                 if (esCumpleanos(empleado.fechaNacimiento)) {
                     setTimeout(celebrarCumpleanos, 1000);
@@ -2189,6 +2194,7 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
                 area: estadoRes.area,
                 foto_url: estadoRes.foto_url,
                 cargo: estadoRes.cargo || '',
+                telefono: estadoRes.telefono || '',
                 fechaNacimiento: estadoRes.fechaNacimiento || '',
                 baseLat: estadoRes.baseLat || null,
                 baseLng: estadoRes.baseLng || null,
@@ -2418,9 +2424,12 @@ async function confirmarRegistroInicial() {
                     area: estadoRes.area,
                     foto_url: estadoRes.foto_url,
                     cargo: estadoRes.cargo || '',
+                    telefono: estadoRes.telefono || '',
                     fechaNacimiento: estadoRes.fechaNacimiento || '',
                     baseLat: estadoRes.baseLat || null,
                     baseLng: estadoRes.baseLng || null,
+                    cultura_habilitada: estadoRes.cultura_habilitada,
+                    cultura_activa: estadoRes.cultura_activa,
                     tipoRegistro: '',
                     almuerzo: ''
                 };
@@ -2453,8 +2462,143 @@ async function confirmarRegistroInicial() {
     }
 }
 
+// ========== ACTUALIZACIÓN DE DATOS OBLIGATORIA (TELÉFONO) ==========
+function renderUpdateDataScreen() {
+    currentPage = 'updateData';
+    const mainContent = document.getElementById('mainContent');
+    
+    // Ocultar bottom nav si está visible
+    const bottomNav = document.querySelector('.bottom-nav');
+    if (bottomNav) bottomNav.style.display = 'none';
+
+    // Formatear fecha para el input type="date" si ya existe en formato dd/mm/yyyy o yyyy-mm-dd
+    let fechaDateValue = '';
+    if (empleado.fechaNacimiento) {
+        const parts = empleado.fechaNacimiento.split('/');
+        if (parts.length === 3) {
+            fechaDateValue = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else {
+            fechaDateValue = empleado.fechaNacimiento;
+        }
+    }
+
+    mainContent.innerHTML = `
+            <div class="page" style="animation: fadeIn 0.4s ease; background-color: #f8fafc; min-height: 100vh; padding-top: 20px;">
+                <div class="glass-card" style="border-radius: 24px; padding: 32px 24px; background: linear-gradient(145deg, #ffffff 0%, #f1f5f9 100%); box-shadow: 0 20px 40px rgba(0,0,0,0.08); border: 1px solid rgba(255,255,255,1); text-align: center; max-width: 400px; margin: 0 auto;">
+                    
+                    <div style="width: 72px; height: 72px; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; box-shadow: 0 8px 16px rgba(2,132,199,0.15);">
+                        <i class="fas fa-user-edit" style="font-size: 32px; color: #0284c7;"></i>
+                    </div>
+
+                    <h3 style="color: #0f172a; font-weight: 800; font-size: 1.5rem; margin-bottom: 8px;">Actualización de Datos</h3>
+                    <p style="color: #64748b; font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5;">Por favor confirma tus datos de contacto para mantener tu expediente laboral al día y recibir comunicados oficiales y comprobantes de pago.</p>
+
+                    <form id="frmUpdateData" onsubmit="guardarDatosPersonales(event)" style="text-align: left;">
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; font-size: 0.85rem; font-weight: 700; color: #475569; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Teléfono Móvil / Celular <span style="color: #ef4444;">*</span></label>
+                            <div style="position: relative;">
+                                <i class="fas fa-phone-alt" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.1rem;"></i>
+                                <input type="tel" id="updTelefono" class="form-control" placeholder="Ej. 0991234567" required style="width: 100%; padding: 14px 14px 14px 44px; border: 2px solid #e2e8f0; border-radius: 14px; font-size: 1.05rem; color: #0f172a; transition: all 0.2s ease; background: #ffffff;" onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 4px rgba(59,130,246,0.1)';" onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none';">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 28px;">
+                            <label style="display: block; font-size: 0.85rem; font-weight: 700; color: #475569; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Fecha de Nacimiento (Opcional)</label>
+                            <div style="position: relative;">
+                                <i class="fas fa-calendar-alt" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.1rem;"></i>
+                                <input type="date" id="updFechaNacimiento" value="${fechaDateValue}" class="form-control" style="width: 100%; padding: 14px 14px 14px 44px; border: 2px solid #e2e8f0; border-radius: 14px; font-size: 1.05rem; color: #0f172a; transition: all 0.2s ease; background: #ffffff;" onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 4px rgba(59,130,246,0.1)';" onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none';">
+                            </div>
+                        </div>
+
+                        <button type="submit" id="btnSaveData" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: white; border: none; border-radius: 14px; padding: 16px; font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 14px rgba(2,132,199,0.3);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(2,132,199,0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 14px rgba(2,132,199,0.3)';">
+                            <span>Guardar Datos</span>
+                            <i class="fas fa-check-circle" style="font-size: 1.1rem;"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+    `;
+}
+
+async function guardarDatosPersonales(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSaveData');
+    const tel = document.getElementById('updTelefono').value.trim();
+    let fecha = document.getElementById('updFechaNacimiento').value.trim();
+
+    if (!tel) {
+        mostrarToast('El teléfono es obligatorio', 'error');
+        return;
+    }
+
+    const telLimpio = tel.replace(/\D/g, '');
+    if (telLimpio.length < 8) {
+        mostrarToast('Por favor ingresa un número de teléfono válido', 'warning');
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+    }
+
+    try {
+        let res = null;
+        if (window.FirebaseBackend && window.USE_FIREBASE) {
+            res = await window.FirebaseBackend.actualizarPerfilEmpleado({
+                empleadoId: empleado.id,
+                telefono: telLimpio,
+                fechaNacimiento: fecha
+            });
+        } else {
+            res = await jsonpRequest({
+                accion: 'actualizarPerfilEmpleado',
+                id: empleado.id,
+                empleadoId: empleado.id,
+                telefono: telLimpio,
+                fechaNacimiento: fecha
+            });
+        }
+
+        if (res && res.ok) {
+            empleado.telefono = telLimpio;
+            // Si la fecha está en yyyy-mm-dd, la formateamos a dd/mm/yyyy para la UI
+            if (fecha && fecha.includes('-')) {
+                const parts = fecha.split('-');
+                if (parts.length === 3) {
+                    fecha = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                }
+            }
+            if (fecha) empleado.fechaNacimiento = fecha;
+            
+            mostrarToast('Datos guardados correctamente', 'success');
+            
+            // Continuar con el inicio de sesión normal
+            if (esCumpleanos(empleado.fechaNacimiento)) {
+                setTimeout(celebrarCumpleanos, 1000);
+            }
+            renderHomePage();
+            const bottomNav = document.querySelector('.bottom-nav');
+            if (bottomNav) bottomNav.style.display = 'flex';
+        } else {
+            mostrarToast(res?.error || 'Error al guardar', 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<span>Intentar de nuevo</span><i class="fas fa-redo"></i>';
+            }
+        }
+    } catch (err) {
+        mostrarToast('Error de conexión', 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>Intentar de nuevo</span><i class="fas fa-redo"></i>';
+        }
+    }
+}
+
 // ========== MIGRACIÓN DE CONTRASEÑA (PIN ANTIGUO → NUEVA CLAVE SEGURA) ==========
 function renderMigrarPasswordScreen() {
+    currentPage = 'migrarPassword';
     const mainContent = document.getElementById('mainContent');
     mainContent.innerHTML = `
             <div class="page" style="animation: fadeIn 0.35s ease;">
@@ -2614,6 +2758,11 @@ function renderAuthScreen() {
                             <i class="fas fa-user-plus me-1"></i> Vincular Dispositivo
                         </button>
                         
+                        <div class="text-center mt-3" style="font-size: 11px; color: #64748b; line-height: 1.4;">
+                            <i class="fas fa-shield-alt text-primary me-1"></i> Tratamiento de datos protegido por la <strong>LOPDP Ecuador</strong>.<br>
+                            <a href="javascript:void(0)" onclick="window.abrirModalAvisoPrivacidad()" style="color: #0284c7; text-decoration: underline; font-weight: 600;">Ver Descargo Legal y Derechos</a>
+                        </div>
+                        
                         <div id="pinResult" class="hidden alert alert-danger mt-3" style="border-radius: 10px; font-size: 12px;"></div>
                     </div>
                 </div>
@@ -2664,6 +2813,11 @@ function renderAuthScreen() {
                         <button class="btn btn-outline-secondary w-100" onclick="volverAPIN()" style="border-radius: 12px; font-weight: 600;">
                             <i class="fas fa-arrow-left me-1"></i> Volver
                         </button>
+                        
+                        <div class="text-center mt-3" style="font-size: 11px; color: #64748b; line-height: 1.4;">
+                            <i class="fas fa-shield-alt text-primary me-1"></i> Datos tratados bajo la <strong>LOPDP</strong> para fines de control laboral.<br>
+                            <a href="javascript:void(0)" onclick="window.abrirModalAvisoPrivacidad()" style="color: #0284c7; text-decoration: underline; font-weight: 600;">Aviso de Privacidad y Derechos ARCO</a>
+                        </div>
                         
                         <div id="registroResult" class="hidden alert alert-danger mt-3" style="border-radius: 10px; font-size: 12px;"></div>
                     </div>
@@ -3302,8 +3456,13 @@ function renderHomePage() {
                     </div>
                     
                     <!-- Footer simplificado -->
-                    <div class="credencial-footer-profesional" style="padding: 15px; border-top: 1px solid #f1f5f9; background: #f8fafc;">
-                         <div style="text-align: center; width: 100%; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 1px;">TCONTROL S.A. © 2026</div>
+                    <div class="credencial-footer-profesional" style="padding: 12px 15px; border-top: 1px solid #f1f5f9; background: #f8fafc; text-align: center;">
+                         <div style="width: 100%; color: #64748b; font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;">TCONTROL S.A. © 2026</div>
+                         <div style="margin-top: 4px;">
+                             <a href="javascript:void(0)" onclick="window.abrirModalAvisoPrivacidad()" style="color: #0284c7; text-decoration: none; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; background: #eff6ff; border: 1px solid #dbeafe;">
+                                 <i class="fas fa-shield-halved"></i> Aviso Legal y Protección de Datos (LOPDP)
+                             </a>
+                         </div>
                     </div>
                 </div>
                 
@@ -4828,6 +4987,17 @@ async function renderProfilePage() {
     });
     const diasTrabajadosMes = cargandoRegistros ? '...' : new Set(registrosMes.map(r => r.fecha)).size;
 
+    // Formatear fecha de nacimiento para input date (yyyy-mm-dd)
+    let fechaNacDateValue = '';
+    if (empleado.fechaNacimiento) {
+        const parts = String(empleado.fechaNacimiento).trim().split('/');
+        if (parts.length === 3) {
+            fechaNacDateValue = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else {
+            fechaNacDateValue = empleado.fechaNacimiento;
+        }
+    }
+
     mainContent.innerHTML = `
             <div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;">
                 <!-- Tarjeta Principal de Perfil Premium -->
@@ -4850,11 +5020,13 @@ async function renderProfilePage() {
                     <div class="d-flex justify-content-center gap-2 mt-2 flex-wrap">
                         <span class="badge" style="background: rgba(15, 23, 42, 0.05); color: #1e293b; font-size: 11.5px; padding: 6px 12px; border-radius: 8px; font-weight: 600; border: 1px solid rgba(15,23,42,0.05);"><i class="fas fa-id-card me-1" style="color: #64748b;"></i> ID: ${empleado.id || '-'}</span>
                         ${estado.esSupervisor ? '<span class="badge" style="background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(37,99,235,0.15)); color: #1d4ed8; font-size: 11.5px; padding: 6px 12px; border-radius: 8px; font-weight: 700; border: 1px solid rgba(37,99,235,0.1);"><i class="fas fa-crown me-1" style="color: #3b82f6;"></i> Supervisor</span>' : ''}
+                        ${empleado.telefono ? `<span class="badge" style="background: rgba(2, 132, 199, 0.07); color: #0284c7; font-size: 11.5px; padding: 6px 12px; border-radius: 8px; font-weight: 600; border: 1px solid rgba(2,132,199,0.15);"><i class="fas fa-phone-alt me-1" style="color: #0284c7;"></i> ${escapeHtml(empleado.telefono)}</span>` : ''}
+                        ${empleado.fechaNacimiento ? `<span class="badge" style="background: rgba(234, 88, 12, 0.07); color: #ea580c; font-size: 11.5px; padding: 6px 12px; border-radius: 8px; font-weight: 600; border: 1px solid rgba(234,88,12,0.15);"><i class="fas fa-cake-candles me-1" style="color: #ea580c;"></i> ${escapeHtml(empleado.fechaNacimiento)}</span>` : ''}
                     </div>
 
                     <!-- Estadísticas de Asistencia Recientes -->
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px dashed rgba(148,163,184,0.3);">
-                        <div style="text-align: center; background: rgba(22,163,74,0.04); padding: 10px 5px; border-radius: 12px; border: 1px solid rgba(22,163,74,0.06);">
+                        <div style="text-align: center; background: rgba(220,38,38,0.04); padding: 10px 5px; border-radius: 12px; border: 1px solid rgba(22,163,74,0.06);">
                             <div style="font-size: 20px; font-weight: 800; color: #16a34a; line-height: 1;">${totalEntradas}</div>
                             <div style="font-size: 9.5px; color: #16a34a; font-weight: 700; text-transform: uppercase; margin-top: 6px; letter-spacing: 0.3px;">Entradas</div>
                         </div>
@@ -4888,6 +5060,22 @@ async function renderProfilePage() {
                         <div>
                             <label class="form-label small fw-bold text-secondary mb-1">Nombre Completo</label>
                             <input type="text" id="profNombre" class="form-control" value="${escapeHtml(empleado.nombre || '')}" placeholder="Tu nombre">
+                        </div>
+
+                        <div>
+                            <label class="form-label small fw-bold text-secondary mb-1">Teléfono Móvil / Celular</label>
+                            <div class="input-group">
+                                <span class="input-group-text" style="background:#f8fafc; color:#64748b; border:1px solid #ced4da; border-right:none;"><i class="fas fa-phone-alt"></i></span>
+                                <input type="tel" id="profTelefono" class="form-control" value="${escapeHtml(empleado.telefono || '')}" placeholder="Ej. 0991234567">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label small fw-bold text-secondary mb-1">Fecha de Nacimiento</label>
+                            <div class="input-group">
+                                <span class="input-group-text" style="background:#f8fafc; color:#64748b; border:1px solid #ced4da; border-right:none;"><i class="fas fa-calendar-alt"></i></span>
+                                <input type="date" id="profFechaNacimiento" class="form-control" value="${fechaNacDateValue}">
+                            </div>
                         </div>
 
                         <div>
@@ -4966,14 +5154,18 @@ async function renderProfilePage() {
                         <button class="btn btn-outline-primary w-100" onclick="verificarDistanciaEmpresa()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; transition: all 0.2s; border-color: rgba(59,130,246,0.5); color: #2563eb; background: rgba(59,130,246,0.02);">
                             <i class="fas fa-location-dot" style="color: #3b82f6;"></i> Probar Rango de Ubicación
                         </button>
+                        <button class="btn w-100" onclick="window.abrirModalAvisoPrivacidad()" style="font-size: 13px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; transition: all 0.2s; border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; cursor: pointer;">
+                            <i class="fas fa-balance-scale" style="color: #2563eb;"></i> Descargo Legal y Protección de Datos (LOPDP)
+                        </button>
                         <button class="btn btn-outline-danger w-100" onclick="cerrarSesion()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; transition: all 0.2s; border-color: #fca5a5; background: #fff5f5; color: #dc2626;">
                             <i class="fas fa-right-from-bracket"></i> Cerrar Sesión en Dispositivo
                         </button>
                     </div>
                 </div>
                 
-                <div class="text-center text-muted small py-4" style="font-size: 11.5px; font-weight: 500; opacity: 0.7;">
-                    <i class="fas fa-shield-halved"></i> CONTROL 2026 v2.0
+                <div class="text-center text-muted small py-4" style="font-size: 11px; font-weight: 500; opacity: 0.8; line-height: 1.5;">
+                    <i class="fas fa-shield-halved text-primary"></i> CONTROL 2026 v2.0 • TCONTROL S.A.<br>
+                    <span style="font-size: 10px; color: #94a3b8;">Cumplimiento LOPDP Registro Oficial Sup. 459 (Ecuador)</span>
                 </div>
             </div>
             `;
@@ -5014,6 +5206,8 @@ async function renderProfilePage() {
 
 async function guardarPerfilEmpleado() {
     const nombre = document.getElementById('profNombre')?.value.trim();
+    const tel = document.getElementById('profTelefono')?.value.trim() || '';
+    let fechaNac = document.getElementById('profFechaNacimiento')?.value.trim() || '';
     const fotoUrl = document.getElementById('profFotoUrl')?.value.trim();
     const passActual = document.getElementById('profPassActual')?.value.trim();
     const passNueva = document.getElementById('profPassNueva')?.value.trim();
@@ -5024,11 +5218,21 @@ async function guardarPerfilEmpleado() {
         return;
     }
 
+    const telLimpio = tel ? tel.replace(/\D/g, '') : '';
+    if (tel && telLimpio.length < 8) {
+        mostrarToast('Por favor ingresa un número de teléfono válido (mínimo 8 dígitos)', 'warning');
+        document.getElementById('profTelefono')?.focus();
+        return;
+    }
+
     const params = {
         accion: 'actualizarPerfilEmpleado',
         empleadoId: empleado.id,
+        id: empleado.id,
         nombre: nombre,
-        foto_url: fotoUrl
+        foto_url: fotoUrl,
+        telefono: telLimpio,
+        fechaNacimiento: fechaNac
     };
 
     if (passNueva) {
@@ -5069,6 +5273,17 @@ async function guardarPerfilEmpleado() {
         if (res && (res.ok || res.mensaje)) {
             empleado.nombre = nombre;
             empleado.foto_url = fotoUrl;
+            empleado.telefono = telLimpio;
+
+            // Formatear fecha a dd/mm/yyyy para visualización si viene en yyyy-mm-dd
+            let fechaUI = fechaNac;
+            if (fechaNac && fechaNac.includes('-')) {
+                const parts = fechaNac.split('-');
+                if (parts.length === 3) {
+                    fechaUI = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                }
+            }
+            empleado.fechaNacimiento = fechaUI;
 
             const elActual = document.getElementById('profPassActual');
             const elNueva = document.getElementById('profPassNueva');
@@ -5083,8 +5298,8 @@ async function guardarPerfilEmpleado() {
                 subtitulo: passNueva ? "Tu información y tu contraseña fueron actualizadas exitosamente." : "Tu información personal fue guardada exitosamente.",
                 icono: "check",
                 detalles: [
-                    "Datos corporativos sincronizados",
-                    passNueva ? "Nueva contraseña guardada" : "Credencial actualizada"
+                    "Datos personales sincronizados",
+                    passNueva ? "Nueva contraseña guardada" : "Expediente actualizado"
                 ],
                 duracion: 1500
             });
@@ -5103,6 +5318,310 @@ async function guardarPerfilEmpleado() {
     }
 }
 window.guardarPerfilEmpleado = guardarPerfilEmpleado;
+
+window.reiniciarAnimacionAlmuerzo = function () {
+    const el = document.getElementById('lunchAssemblyAd');
+    if (!el) return;
+    const animElements = el.querySelectorAll('.deep-soup-plate, .soup-liquid-pool, .soup-ladle-motion, .soup-steam-waves, .long-platter-dish, .platter-food, .platter-sparkle, .juice-dispenser-unit, .juice-pour-stream, .dispenser-glass, .glass-liquid-fill, .outside-item, .outside-lunchbox-box, .buen-provecho-banner, .bubble-act');
+    animElements.forEach(item => {
+        item.style.animation = 'none';
+        void item.offsetWidth;
+        item.style.animation = '';
+    });
+};
+// ============================================================
+// EVALUACIÓN DE CULTURA TCONTROL (PROPÓSITO, MISIÓN, VISIÓN, VALORES)
+// ============================================================
+const PREGUNTAS_CULTURA_DEFAULT = [
+    {
+        id: 'proposito',
+        tipo: 'PROPOSITO',
+        pilar: 'Propósito',
+        clasePilar: 'quiz-pillar-proposito',
+        iconoPilar: '🎯',
+        pregunta: '¿Cuál es el Propósito de Tcontrol?',
+        pista: 'Recuerda: El propósito de Tcontrol es <strong>"Diseñar soluciones para el futuro"</strong>.',
+        opciones: [
+            { letra: 'A', texto: 'Diseñar soluciones para el futuro', correcta: true },
+            { letra: 'B', texto: 'Vender equipos eléctricos al menor costo', correcta: false },
+            { letra: 'C', texto: 'Importar maquinaria industrial usada', correcta: false }
+        ],
+        activo: true
+    },
+    {
+        id: 'mision',
+        tipo: 'MISION',
+        pilar: 'Misión',
+        clasePilar: 'quiz-pillar-mision',
+        iconoPilar: '⚡',
+        pregunta: '¿Cuál es la Misión principal de Tcontrol?',
+        pista: 'Recuerda: La misión es <strong>"Brindar soluciones eléctricas confiables mediante diseño y fabricación de tableros, cuartos eléctricos y automatización con calidad, eficiencia y seguridad"</strong>.',
+        opciones: [
+            { letra: 'A', texto: 'Comercializar herramientas manuales para construcción', correcta: false },
+            { letra: 'B', texto: 'Brindar soluciones eléctricas confiables mediante el diseño y fabricación de tableros de control industrial, cuartos eléctricos y sistemas de automatización adaptados a cada cliente con calidad y seguridad', correcta: true },
+            { letra: 'C', texto: 'Realizar únicamente instalaciones residenciales básicas', correcta: false }
+        ],
+        activo: true
+    },
+    {
+        id: 'vision',
+        tipo: 'VISION',
+        pilar: 'Visión (2030)',
+        clasePilar: 'quiz-pillar-vision',
+        iconoPilar: '🚀',
+        pregunta: 'Para el año 2030, la Visión de Tcontrol es:',
+        pista: 'Recuerda: La visión 2030 es <strong>"Ser referentes nacionales en soluciones electromecánicas de calidad (>95% satisfacción), con certificaciones internacionales y expansión a al menos 2 países"</strong>.',
+        opciones: [
+            { letra: 'A', texto: 'Ser referentes nacionales como proveedores de soluciones electromecánicas de calidad (>95% satisfacción), certificaciones internacionales y expandir operaciones a 2 países de la región', correcta: true },
+            { letra: 'B', texto: 'Cambiar el modelo de negocio al comercio minorista', correcta: false },
+            { letra: 'C', texto: 'Reducir las operaciones a una sola ciudad local', correcta: false }
+        ],
+        activo: true
+    },
+    {
+        id: 'valores_calidad',
+        tipo: 'VALORES',
+        pilar: 'Valores y Calidad',
+        clasePilar: 'quiz-pillar-proposito',
+        iconoPilar: '🛡️',
+        pregunta: '¿Cuáles son los principios fundamentales de calidad y seguridad en Tcontrol?',
+        pista: 'Recuerda: En Tcontrol la <strong>calidad superior, precisión técnica y seguridad del personal y cliente</strong> son nuestros pilares de trabajo diario.',
+        opciones: [
+            { letra: 'A', texto: 'Priorizar la velocidad sobre la seguridad y el control de calidad', correcta: false },
+            { letra: 'B', texto: 'Cumplimiento estricto de normas técnicas, precisión en ensamblaje y protección total del personal', correcta: true },
+            { letra: 'C', texto: 'Entregar proyectos sin protocolos de prueba ni calibración', correcta: false }
+        ],
+        activo: true
+    }
+];
+
+window.PREGUNTAS_CULTURA_TCONTROL = [...PREGUNTAS_CULTURA_DEFAULT];
+let culturaPreguntasCargadas = false;
+let preguntaCulturaDelDiaActual = null;
+let quizBloqueandoClick = false;
+
+async function cargarPreguntasCultura() {
+    if (culturaPreguntasCargadas) return;
+    try {
+        let cached = null;
+        try { cached = JSON.parse(localStorage.getItem('cultura_preguntas_cache') || 'null'); } catch(e){}
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+            window.PREGUNTAS_CULTURA_TCONTROL = cached;
+        }
+
+        const localHab = localStorage.getItem('cultura_habilitada_global');
+        if (localHab !== null) {
+            window._culturaHabilitadaGlobal = (localHab !== 'false');
+        }
+
+        const res = await jsonpRequest({ accion: 'obtenerPreguntasCultura' });
+        if (res && res.habilitado !== undefined) {
+            window._culturaHabilitadaGlobal = (res.habilitado === true || res.habilitado === 'true');
+            try { localStorage.setItem('cultura_habilitada_global', window._culturaHabilitadaGlobal ? 'true' : 'false'); } catch(e){}
+        }
+
+        if (res && res.preguntas && Array.isArray(res.preguntas) && res.preguntas.length > 0) {
+            window.PREGUNTAS_CULTURA_TCONTROL = res.preguntas;
+            try { localStorage.setItem('cultura_preguntas_cache', JSON.stringify(res.preguntas)); } catch(e){}
+            culturaPreguntasCargadas = true;
+        } else if (res && Array.isArray(res) && res.length > 0) {
+            window.PREGUNTAS_CULTURA_TCONTROL = res;
+            try { localStorage.setItem('cultura_preguntas_cache', JSON.stringify(res)); } catch(e){}
+            culturaPreguntasCargadas = true;
+        }
+    } catch (e) {
+        console.warn("Usando preguntas de cultura por defecto o cache:", e);
+    }
+}
+
+function obtenerPreguntaCulturaDelDia() {
+    const lista = (window.PREGUNTAS_CULTURA_TCONTROL && window.PREGUNTAS_CULTURA_TCONTROL.length > 0)
+        ? window.PREGUNTAS_CULTURA_TCONTROL
+        : PREGUNTAS_CULTURA_DEFAULT;
+
+    const activas = lista.filter(p => p.activo !== false);
+    const pool = activas.length > 0 ? activas : lista;
+
+    const hoy = new Date();
+    const y = hoy.getFullYear();
+    const m = hoy.getMonth() + 1;
+    const d = hoy.getDate();
+    const hoySeed = (y * 10000) + (m * 100) + d;
+
+    // Cálculo pseudo-aleatorio determinístico para que cada día cambie aleatoriamente
+    const seed = ((hoySeed * 9301 + 49297) % 233280);
+    const index = Math.floor((seed / 233280) * pool.length);
+    return pool[index] || pool[0];
+}
+
+async function renderAlmuerzoQuiz() {
+    quizBloqueandoClick = false;
+    const mainContent = document.getElementById('mainContent');
+    if (!mainContent) return;
+
+    if (!culturaPreguntasCargadas) {
+        await cargarPreguntasCultura();
+    }
+
+    // Si Cultura está deshabilitada globalmente o para este empleado, saltar directamente al almuerzo
+    const culturaGlobDeshabilitada = (window._culturaHabilitadaGlobal === false || localStorage.getItem('cultura_habilitada_global') === 'false');
+    const emp = (typeof empleado !== 'undefined' && empleado) ? empleado : ((typeof currentEmpleado !== 'undefined') ? currentEmpleado : null);
+    const culturaEmpExcluida = !!(emp && (emp.cultura_habilitada === false || emp.cultura_activa === false || emp.cultura_habilitada === 'false' || emp.cultura_activa === 'false'));
+
+    if (culturaGlobDeshabilitada || culturaEmpExcluida) {
+        renderAlmuerzoPage();
+        return;
+    }
+
+    const q = obtenerPreguntaCulturaDelDia();
+    preguntaCulturaDelDiaActual = q;
+    if (!q) {
+        renderAlmuerzoPage();
+        return;
+    }
+
+    const opcionesHTML = (q.opciones || []).map((op, idx) => `
+        <button type="button" class="quiz-option-card" id="quizOptBtn_${idx}" onclick="responderQuizAlmuerzo(${idx})">
+            <div class="quiz-option-letter">${op.letra || String.fromCharCode(65 + idx)}</div>
+            <div class="quiz-option-text">${escapeHtml(op.texto || '')}</div>
+        </button>
+    `).join('');
+
+    mainContent.innerHTML = `
+        <div class="page" style="padding-bottom: 30px;">
+            <div class="tcontrol-quiz-container">
+                <div class="tcontrol-quiz-card">
+                    <!-- Cabecera Institucional -->
+                    <div class="quiz-header-banner">
+                        <div class="quiz-header-top">
+                            <div class="quiz-brand-chip">
+                                <i class="fas fa-shield-alt" style="color:#ef4444;"></i> Cultura Tcontrol
+                            </div>
+                            <div class="quiz-step-badge">
+                                <i class="fas fa-calendar-day me-1"></i> Pregunta del Día
+                            </div>
+                        </div>
+                        <h3 class="quiz-header-title">Conoce nuestra Identidad</h3>
+                        <p class="quiz-header-subtitle">Responde la pregunta del día para ingresar al módulo de Almuerzo.</p>
+                        
+                        <!-- Barra de Progreso -->
+                        <div class="quiz-progress-track">
+                            <div class="quiz-progress-fill" style="width: 100%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Cuerpo de la Pregunta -->
+                    <div class="quiz-body" id="quizBodyContainer">
+                        <div class="quiz-pillar-pill ${q.clasePilar || 'quiz-pillar-proposito'}">
+                            <span>${q.iconoPilar || '🎯'}</span>
+                            <span>${escapeHtml(q.pilar || 'Cultura Tcontrol')}</span>
+                        </div>
+
+                        <div class="quiz-question-text">${escapeHtml(q.pregunta || '')}</div>
+
+                        <div class="quiz-options-grid" id="quizOptionsGrid">
+                            ${opcionesHTML}
+                        </div>
+
+                        <div id="quizHintContainer"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+window.renderAlmuerzoQuiz = renderAlmuerzoQuiz;
+
+function responderQuizAlmuerzo(opcionIdx) {
+    if (quizBloqueandoClick) return;
+    const q = preguntaCulturaDelDiaActual || obtenerPreguntaCulturaDelDia();
+    if (!q) return;
+
+    const opciones = q.opciones || [];
+    const opcion = opciones[opcionIdx];
+    const btn = document.getElementById(`quizOptBtn_${opcionIdx}`);
+    const hintContainer = document.getElementById('quizHintContainer');
+
+    if (opcion && opcion.correcta) {
+        quizBloqueandoClick = true;
+        if (btn) btn.classList.add('correct');
+
+        const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr(new Date()) : new Date().toISOString().slice(0, 10);
+        try {
+            sessionStorage.setItem('cultura_completada_hoy_' + hoyStr, 'true');
+        } catch (e) { }
+
+        if (hintContainer) {
+            hintContainer.innerHTML = `
+                <div class="quiz-hint-box" style="background:#f0fdf4; border-color:#86efac;">
+                    <div class="quiz-hint-icon" style="color:#16a34a;"><i class="fas fa-check-circle"></i></div>
+                    <div class="quiz-hint-text" style="color:#14532d;">
+                        <strong>¡Excelente respuesta!</strong> Has validado la identidad corporativa de hoy.
+                    </div>
+                </div>
+            `;
+        }
+
+        setTimeout(() => {
+            // Pantalla de Desbloqueo y Éxito
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent) {
+                mainContent.innerHTML = `
+                    <div class="page" style="padding-bottom: 30px;">
+                        <div class="tcontrol-quiz-container">
+                            <div class="tcontrol-quiz-card">
+                                <div class="quiz-success-unlocked">
+                                    <div class="quiz-trophy-icon">
+                                        <i class="fas fa-utensils"></i>
+                                    </div>
+                                    <h3 style="font-size:18px; font-weight:800; color:#0f172a; margin-bottom:6px;">¡Cultura Tcontrol Reforzada!</h3>
+                                    <p style="font-size:12.5px; color:#64748b; margin:0 0 16px 0; max-width:320px; line-height:1.4;">
+                                        Identidad validada con éxito. Cargando el menú de hoy...
+                                    </p>
+                                    <div class="spinner-border text-danger" style="width:24px; height:24px; border-width:2.5px;" role="status"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            setTimeout(() => {
+                renderAlmuerzoPage();
+            }, 650);
+        }, 450);
+    } else {
+        // Respuesta Incorrecta: Efecto de error y mostrar pista pedagógica
+        if (btn) {
+            btn.classList.add('wrong');
+            setTimeout(() => {
+                btn.classList.remove('wrong');
+            }, 600);
+        }
+
+        if (hintContainer) {
+            hintContainer.innerHTML = `
+                <div class="quiz-hint-box">
+                    <div class="quiz-hint-icon"><i class="fas fa-lightbulb"></i></div>
+                    <div class="quiz-hint-text">
+                        ${q.pista || 'Revisa con atención los principios de Tcontrol e inténtalo de nuevo.'}
+                    </div>
+                </div>
+            `;
+        }
+    }
+}
+window.responderQuizAlmuerzo = responderQuizAlmuerzo;
+
+// Helper: Determina si el colaborador pertenece al área o cargo de Taller
+function esUsuarioTaller(emp) {
+    if (!emp) return false;
+    const a = (emp.area || '').toString().trim().toUpperCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const c = (emp.cargo || '').toString().trim().toUpperCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return a.includes('TALLER') || c.includes('TALLER');
+}
+window.esUsuarioTaller = esUsuarioTaller;
 
 function renderAlmuerzoPage() {
     const mainContent = document.getElementById('mainContent');
@@ -5151,50 +5670,129 @@ function renderAlmuerzoPage() {
 
     const hoyMenu = menuSemanal[hoyKey] || { sopa: '', plato: '', jugo: '', postre: '' };
 
-    // Renderizar la tarjeta del estado de almuerzo del usuario con el estilo exacto anterior
-    const cardEstadoAlmuerzoHTML = `
-                <div class="status-card lunch ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy ? 'lunch-animated-si' : (almuerzo === 'NO' || almuerzo === 'FUERA') || esCumpleanosHoy ? 'lunch-animated-no' : ''}" 
-                     style="position: relative; overflow: hidden; display: flex; flex-direction: row; align-items: center; min-height: 170px; border-radius: 20px; margin-bottom: 15px; padding: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.04); ${esCumpleanosHoy ? 'opacity: 0.85; background: linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%); border: 2px solid #db2777;' : ''}">
-                     
-                    <!-- Left Half: Image / Icon -->
-                    <div class="status-icon" style="width: 55%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; margin-bottom: 0; overflow: visible;">
-                        ${(almuerzo === 'SI' || almuerzo === 'PLANTA') && !esCumpleanosHoy
-            ? `
-                            <div style="position: absolute; width: 160px; height: 160px; background: radial-gradient(circle, rgba(16,185,129,0.25) 0%, transparent 70%); animation: pulse-glow 2s infinite;"></div>
-                            <img src="almuerzo.gif" alt="Almuerzo" style="width: 200px; max-width: 100%; height: auto; position: relative; z-index: 2; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.15)); animation: float-img 3s ease-in-out infinite;">
-                            `
-            : esCumpleanosHoy
-                ? `
-                            <i class="fas fa-birthday-cake" style="font-size: 80px; color: #db2777; filter: drop-shadow(0 2px 4px rgba(219,39,119,0.2));"></i>
-                            `
-                : `
-                            <i class="fas fa-utensils" style="font-size: 75px; color: var(--warning);"></i>
-                            `
-        }
-                    </div>
+    let cardEstadoAlmuerzoHTML = '';
 
-                    <!-- Right Half: Details -->
-                    <div style="width: 45%; display: flex; flex-direction: column; justify-content: center; padding-left: 10px; border-left: 1.5px dashed rgba(0,0,0,0.06); height: 140px; text-align: left;">
-                        <div class="status-label" style="font-size: 15px; font-weight: 800; letter-spacing: 0.8px; color: ${(almuerzo === 'SI' || almuerzo === 'PLANTA') ? '#065f46' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? '#1e3a8a' : '#92400e'}; text-transform: uppercase;">ALMUERZO</div>
-                        <div class="status-value" style="font-size: 25px; font-weight: 900; margin-top: 4px; line-height: 1.2; ${esCumpleanosHoy ? 'color:#db2777;' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'color:#059669;' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'color:#2563eb;' : 'color:#b45309;'}">
-                            ${esCumpleanosHoy ? 'No aplica' : esDespuesDeAlmuerzo && (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Almuerzo Consumido' : (almuerzo === 'SI' || almuerzo === 'PLANTA') ? 'Dentro de Planta' : (almuerzo === 'NO' || almuerzo === 'FUERA') ? 'Fuera de Planta' : 'Pendiente'}
+    if (almuerzo === 'NO' || almuerzo === 'FUERA') {
+        // ESCENARIO ANIMADO: ALMUERZO FUERA DE PLANTA (TEMA ROJO + POPUP TO LANDING ENTRANCE)
+        cardEstadoAlmuerzoHTML = `
+            <div class="lunch-assembly-ad theme-no lunch-popup-entrance" id="lunchAssemblyAd">
+                <div class="lunch-ad-ambient-glow"></div>
+
+                <div class="lunch-ad-header">
+                    <div class="lunch-ad-status-pill">
+                        <span class="lunch-ad-beacon"></span>
+                        <span>🏠 ALMUERZO FUERA DE PLANTA</span>
+                    </div>
+                </div>
+
+                <!-- Animación de Almuerzo Fuera: Lunchbox / To-Go Packing en bucle -->
+                <div class="outside-assembly-scene">
+                    <div class="outside-lunchbox-box">
+                        <div class="outside-item outside-item-1" title="Almuerzo">
+                            <div class="outside-icon-wrapper">🥪</div>
+                        </div>
+                        <div class="outside-item outside-item-2" title="Bebida">
+                            <div class="outside-icon-wrapper">☕</div>
+                        </div>
+                        <div class="outside-item outside-item-3" title="Fruta">
+                            <div class="outside-icon-wrapper">🍎</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Banner de Buen Provecho -->
+                <div class="buen-provecho-banner">
+                    <span class="bp-sparkle">✨</span>
+                    <span class="bp-text">¡Buen Provecho en tu Jornada!</span>
+                    <span class="bp-sparkle">✨</span>
+                </div>
+            </div>
+        `;
+    } else {
+        // ESCENARIO ANIMADO: CHEF SIRVIENDO ALMUERZO EN 4 TIEMPOS (POPUP TO LANDING ENTRANCE)
+        const isPlanta = (almuerzo === 'SI' || almuerzo === 'PLANTA');
+        const themeClass = esCumpleanosHoy ? 'theme-cumple' : isPlanta ? 'theme-si' : 'theme-pendiente';
+        const pillClass = isPlanta ? 'pill-planta-confirmado' : '';
+        const pillText = esCumpleanosHoy ? '🎂 ¡Feliz Cumpleaños!' : isPlanta ? '🍽️ ALMUERZO EN PLANTA CONFIRMADO' : '⏳ RESERVA PENDIENTE';
+        const bpText = esCumpleanosHoy ? '¡Feliz Cumpleaños y Buen Provecho!' : '¡Buen Provecho!';
+
+        cardEstadoAlmuerzoHTML = `
+            <div class="lunch-assembly-ad ${themeClass} lunch-popup-entrance" id="lunchAssemblyAd">
+                <div class="lunch-ad-ambient-glow"></div>
+
+                <div class="lunch-ad-header">
+                    <div class="lunch-ad-status-pill ${pillClass}">
+                        <span class="lunch-ad-beacon"></span>
+                        <span>${pillText}</span>
+                    </div>
+                </div>
+
+                <!-- Escenario Culinario del Chef sirviendo en 4 tiempos -->
+                <div class="chef-kitchen-stage">
+                    <!-- Chef animado con globo de acción -->
+                    <div class="chef-avatar-wrapper">
+                        <span class="chef-character">👨‍🍳</span>
+                        <div class="chef-action-bubble">
+                            <span class="bubble-act act-1">🥣 Sirviendo la sopa...</span>
+                            <span class="bubble-act act-2">🍱 Sirviendo el plato fuerte...</span>
+                            <span class="bubble-act act-3">🧃 Sirviendo la bebida...</span>
+                            <span class="bubble-act act-4">✨ ¡Listo para disfrutar!</span>
                         </div>
                     </div>
 
-                    <style>
-                        @keyframes pulse-glow {
-                            0% { transform: scale(0.8); opacity: 0.5; }
-                            50% { transform: scale(1.2); opacity: 0.8; }
-                            100% { transform: scale(0.8); opacity: 0.5; }
-                        }
-                        @keyframes float-img {
-                            0% { transform: translateY(0px); }
-                            50% { transform: translateY(-5px); }
-                            100% { transform: translateY(0px); }
-                        }
-                    </style>
+                    <!-- Mostrador con los 3 tiempos de servicio -->
+                    <div class="kitchen-counter-tray">
+                        <!-- 1. Plato hondo de porcelana: Sirve la sopa -->
+                        <div class="counter-station station-soup" title="1. Plato hondo: Sopa">
+                            <div class="deep-soup-plate">
+                                <div class="soup-liquid-pool">
+                                    <span class="soup-herb">🌿</span>
+                                </div>
+                                <div class="soup-ladle-motion">🥄</div>
+                                <div class="soup-steam-waves">
+                                    <span class="steam-line"></span>
+                                    <span class="steam-line"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. Plato largo: Sirve el plato fuerte directamente sobre el plato -->
+                        <div class="counter-station station-main" title="2. Plato largo: Plato Fuerte">
+                            <div class="long-platter-dish">
+                                <div class="platter-food food-rice" title="Arroz">🍚</div>
+                                <div class="platter-food food-meat" title="Plato Fuerte">🥩</div>
+                                <div class="platter-food food-salad" title="Ensalada">🥗</div>
+                                <span class="platter-sparkle">✨</span>
+                            </div>
+                        </div>
+
+                        <!-- 3. Dispensador de jugos: Sirve la bebida -->
+                        <div class="counter-station station-juice" title="3. Dispensador y Vaso de Jugo">
+                            <div class="juice-dispenser-unit">
+                                <div class="dispenser-tank">
+                                    <div class="dispenser-fluid"></div>
+                                </div>
+                                <div class="dispenser-spout">
+                                    <div class="juice-pour-stream"></div>
+                                </div>
+                            </div>
+                            <div class="dispenser-glass">
+                                <div class="glass-liquid-fill"></div>
+                                <span class="glass-ice-straw">🥤</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            `;
+
+                <!-- 4. Finalmente se muestra el mensaje de buen provecho -->
+                <div class="buen-provecho-banner">
+                    <span class="bp-sparkle">✨</span>
+                    <span class="bp-text">${bpText}</span>
+                    <span class="bp-sparkle">✨</span>
+                </div>
+            </div>
+        `;
+    }
 
     // Botones de acción / edición
     let accionesAlmuerzoHTML = '';
@@ -5207,7 +5805,7 @@ function renderAlmuerzoPage() {
                             <button class="btn btn-sm ${almuerzo === 'SI' || almuerzo === 'PLANTA' ? 'btn-success' : 'btn-outline-success'} w-100" onclick="window.registrarAlmuerzoTab('SI')" style="font-size:12.5px; font-weight:700; padding:10px; border-radius:10px;">
                                 🏢 En Planta
                             </button>
-                            <button class="btn btn-sm ${almuerzo === 'NO' || almuerzo === 'FUERA' ? 'btn-primary' : 'btn-outline-primary'} w-100" onclick="window.registrarAlmuerzoTab('NO')" style="font-size:12.5px; font-weight:700; padding:10px; border-radius:10px;">
+                            <button class="btn btn-sm ${almuerzo === 'NO' || almuerzo === 'FUERA' ? 'btn-danger' : 'btn-outline-danger'} w-100" onclick="window.registrarAlmuerzoTab('NO')" style="font-size:12.5px; font-weight:700; padding:10px; border-radius:10px;">
                                 🏠 Fuera
                             </button>
                         </div>
@@ -5220,6 +5818,146 @@ function renderAlmuerzoPage() {
                     </div>
                     `;
         }
+    }
+
+    // ===== SECCIÓN DE ATENCIÓN A INVITADOS (ALMUERZOS EXTRA Y REFRIGERIOS) =====
+    // No disponible para colaboradores de Taller
+    let seccionInvitadosHTML = '';
+    const esTaller = esUsuarioTaller(empleado);
+
+    if (!esTaller) {
+        const ahoraMin = ahora.getHours() * 60 + ahora.getMinutes();
+        const almuerzoExtraHoyAbierto = ahoraMin <= 580; // 09:40
+        const refrigerioSanducheHoyAbierto = ahoraMin <= 520; // 08:40
+        const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().slice(0, 10);
+
+        if (window._misSolicitudesInvitadosHoy === undefined && empleado && empleado.id) {
+            window._misSolicitudesInvitadosHoy = [];
+            jsonpRequest({
+                accion: 'obtenerSolicitudesInvitados',
+                fechaDesde: hoyStr,
+                empleadoId: empleado.id
+            }).then(res => {
+                if (res && res.ok && res.solicitudes) {
+                    window._misSolicitudesInvitadosHoy = res.solicitudes;
+                    if (typeof currentPage !== 'undefined' && currentPage === 'almuerzo') {
+                        renderAlmuerzoPage();
+                    }
+                }
+            }).catch(e => console.warn("Error cargando solicitudes invitados:", e));
+        }
+
+        const misSolicitudes = (window._misSolicitudesInvitadosHoy || []).filter(s => s.estado !== 'CANCELADO');
+        let listaSolicitudesHTML = '';
+        if (misSolicitudes.length > 0) {
+            listaSolicitudesHTML = `
+                <div style="margin-top: 14px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
+                    <div style="font-size: 11px; font-weight: 750; color: #475569; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                        <span><i class="fas fa-calendar-check text-primary"></i> Mis Solicitudes Programadas (${misSolicitudes.length})</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${misSolicitudes.map(s => {
+                            const isAlm = s.tipoSolicitud === 'ALMUERZO_EXTRA' || s.subtipo === 'ALMUERZO_EXTRA';
+                            const badgeIcon = isAlm ? '🍱' : (s.subtipo === 'REFRIGERIO_GALLETAS' ? '🍪' : '🥪');
+                            const badgeLabel = isAlm ? 'Almuerzo Extra' : (s.subtipo === 'REFRIGERIO_GALLETAS' ? 'Break Galletas' : 'Sánduche');
+                            const badgeBg = isAlm ? '#eff6ff' : (s.subtipo === 'REFRIGERIO_GALLETAS' ? '#fefce8' : '#ecfdf5');
+                            const badgeColor = isAlm ? '#1d4ed8' : (s.subtipo === 'REFRIGERIO_GALLETAS' ? '#a16207' : '#047857');
+                            
+                            const esMismoDia = (s.fecha === hoyStr);
+                            const esFuturo = (s.fecha > hoyStr);
+                            const puedeCancelar = esFuturo || (isAlm ? almuerzoExtraHoyAbierto : (s.subtipo === 'REFRIGERIO_SANDUCHE' ? refrigerioSanducheHoyAbierto : true));
+                            const fechaBadge = esMismoDia ? 'Hoy' : (s.fecha || 'Hoy');
+
+                            return `
+                                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; flex-wrap: wrap;">
+                                            <span style="font-size: 10px; font-weight: 700; background: ${badgeBg}; color: ${badgeColor}; padding: 2px 7px; border-radius: 6px;">${badgeIcon} ${badgeLabel} (x${s.cantidad})</span>
+                                            <span style="font-size: 10px; font-weight: 700; background: ${esMismoDia ? '#e0f2fe' : '#fef3c7'}; color: ${esMismoDia ? '#0369a1' : '#b45309'}; padding: 2px 6px; border-radius: 6px;">
+                                                <i class="fas fa-calendar-day"></i> ${fechaBadge}
+                                            </span>
+                                            <span style="font-size: 10px; color: #94a3b8;"><i class="fas fa-clock"></i> ${s.hora || ''}</span>
+                                        </div>
+                                        <div style="font-size: 12px; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                            ${s.invitado || 'Invitado'} ${s.empresa ? '· ' + s.empresa : ''}
+                                        </div>
+                                        ${s.horaServicio ? `<div style="font-size: 10.5px; color: #64748b;">Hora req: <strong>${s.horaServicio}</strong></div>` : ''}
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="font-size: 9.5px; font-weight: 700; padding: 3px 8px; border-radius: 20px; background: ${s.estado === 'CONFIRMADO' ? '#dcfce7' : '#fef9c3'}; color: ${s.estado === 'CONFIRMADO' ? '#15803d' : '#854d0e'};">
+                                            ${s.estado === 'CONFIRMADO' ? '✓ Confirmado' : '⏳ Solicitado'}
+                                        </span>
+                                        ${puedeCancelar ? `
+                                            <button onclick="window.cancelarSolicitudInvitado('${s.id}', '${s.subtipo || s.tipoSolicitud}')" title="Cancelar Solicitud" style="border: none; background: #fee2e2; color: #dc2626; border-radius: 8px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px;">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        seccionInvitadosHTML = `
+            <div class="glass-card mb-3" style="border-radius: 20px; padding: 16px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 8px;">
+                    <h6 class="fw-bold mb-0" style="color: #0f172a; font-size: 13.5px; display: flex; align-items: center; gap: 7px;">
+                        <span style="font-size: 16px;">🤝</span> Atención a Invitados y Visitas
+                    </h6>
+                    <span style="font-size: 10px; color: #64748b; font-weight: 600; background: #f8fafc; border: 1px solid #e2e8f0; padding: 2px 8px; border-radius: 12px;">Catering</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <!-- Tarjeta 1: Almuerzos Extra -->
+                    <div style="background: #f8fafc; border: 1px solid ${almuerzoExtraHoyAbierto ? '#bfdbfe' : '#e2e8f0'}; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                                <span style="font-size: 22px;">🍱</span>
+                                <span style="font-size: 9px; font-weight: 750; padding: 2px 6px; border-radius: 6px; background: ${almuerzoExtraHoyAbierto ? '#dbeafe' : '#f1f5f9'}; color: ${almuerzoExtraHoyAbierto ? '#1e40af' : '#64748b'};">
+                                    ${almuerzoExtraHoyAbierto ? 'HOY HASTA 09:40' : 'HOY CERRADO · ANTICIPADO'}
+                                </span>
+                            </div>
+                            <div style="font-weight: 700; font-size: 12.5px; color: #0f172a; line-height: 1.2; margin-bottom: 3px;">Almuerzo Extra</div>
+                            <p style="font-size: 10px; color: #64748b; margin: 0 0 8px 0; line-height: 1.3;">Para visitas o clientes en planta</p>
+                        </div>
+                        <button class="btn btn-sm btn-primary" 
+                            onclick="window.abrirModalSolicitudInvitado('ALMUERZO_EXTRA')" 
+                            style="font-size: 11px; font-weight: 700; padding: 7px; border-radius: 8px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            <i class="fas fa-plus-circle"></i>
+                            <span>${almuerzoExtraHoyAbierto ? 'Solicitar' : 'Solicitar Anticipado'}</span>
+                        </button>
+                    </div>
+
+                    <!-- Tarjeta 2: Refrigerios -->
+                    <div style="background: #f8fafc; border: 1px solid #fed7aa; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                                <span style="font-size: 22px;">🥪</span>
+                                <span style="font-size: 9px; font-weight: 750; padding: 2px 6px; border-radius: 6px; background: ${refrigerioSanducheHoyAbierto ? '#ffedd5' : '#fef3c7'}; color: ${refrigerioSanducheHoyAbierto ? '#9a3412' : '#b45309'};">
+                                    ${refrigerioSanducheHoyAbierto ? 'SÁNDUCHE HOY 08:40' : 'ANTICIPADO / GALLETAS'}
+                                </span>
+                            </div>
+                            <div style="font-weight: 700; font-size: 12.5px; color: #0f172a; line-height: 1.2; margin-bottom: 3px;">Refrigerios</div>
+                            <p style="font-size: 10px; color: #64748b; margin: 0 0 8px 0; line-height: 1.3;">
+                                ${refrigerioSanducheHoyAbierto ? 'Sánduches u otras opciones' : 'Anticipados o Break con Galletas'}
+                            </p>
+                        </div>
+                        <button class="btn btn-sm" 
+                            onclick="window.abrirModalSolicitudInvitado('REFRIGERIO')" 
+                            style="background: #f97316; color: white; border: none; font-size: 11px; font-weight: 700; padding: 7px; border-radius: 8px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            <i class="fas fa-plus-circle"></i>
+                            <span>Solicitar</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Listado de solicitudes realizadas hoy por el colaborador -->
+                ${listaSolicitudesHTML}
+            </div>
+        `;
     }
 
     mainContent.innerHTML = `
@@ -5236,6 +5974,9 @@ function renderAlmuerzoPage() {
 
                 <!-- Acciones de Almuerzo -->
                 ${accionesAlmuerzoHTML}
+
+                <!-- Atención a Invitados y Visitas -->
+                ${seccionInvitadosHTML}
 
                 <!-- Menú del Día -->
                 <div class="glass-card mb-3" style="border-radius: 20px; padding: 18px 16px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
@@ -5316,6 +6057,418 @@ window.registrarAlmuerzoTab = async function (opcion) {
         }
     } catch (error) {
         console.error("Error registrando almuerzo:", error);
+        mostrarToast("Error de conexión", "error");
+    } finally {
+        showLoading(false);
+    }
+};
+
+// ============================================================
+// ============================================================
+// FUNCIONES Y MODALES DE SOLICITUD DE INVITADOS (ALMUERZOS Y REFRIGERIOS)
+// ============================================================
+window.abrirModalSolicitudInvitado = function (tipo) {
+    if (typeof esUsuarioTaller === 'function' && esUsuarioTaller(empleado)) {
+        mostrarToast("Esta opción no está habilitada para personal de Taller.", "warning");
+        return;
+    }
+
+    const ahora = new Date();
+    const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : ahora.toISOString().slice(0, 10);
+    const manana = new Date(ahora.getTime() + 86400000);
+    const mananaStr = manana.toISOString().slice(0, 10);
+
+    const minDia = ahora.getHours() * 60 + ahora.getMinutes();
+    const almuerzoExtraHoyAbierto = minDia <= 580; // 09:40
+
+    // Si para hoy ya cerró el almuerzo extra, sugerir mañana por defecto
+    const fechaInicial = (tipo === 'ALMUERZO_EXTRA' && !almuerzoExtraHoyAbierto) ? mananaStr : hoyStr;
+
+    let existingModal = document.getElementById('modalSolicitudInvitado');
+    if (existingModal) existingModal.remove();
+
+    const isAlm = (tipo === 'ALMUERZO_EXTRA');
+    const modalHTML = `
+        <div id="modalSolicitudInvitado" class="almuerzo-modal-overlay" onclick="if(event.target === this) window.cerrarModalSolicitudInvitado()">
+            <div class="almuerzo-modal-card" style="max-width: 390px; text-align: left; padding: 22px 20px;">
+                <button class="almuerzo-modal-close" onclick="window.cerrarModalSolicitudInvitado()">&times;</button>
+                
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 10px;">
+                    <div style="font-size: 26px; width: 42px; height: 42px; border-radius: 12px; background: ${isAlm ? '#eff6ff' : '#fff7ed'}; display: flex; align-items: center; justify-content: center;">
+                        ${isAlm ? '🍱' : '🥪'}
+                    </div>
+                    <div>
+                        <h6 style="font-weight: 800; color: #0f172a; margin: 0; font-size: 15px;">
+                            ${isAlm ? 'Solicitar Almuerzo Extra' : 'Solicitar Refrigerio'}
+                        </h6>
+                        <span style="font-size: 11px; color: #64748b;">Para tus invitados o visitas en planta</span>
+                    </div>
+                </div>
+
+                <!-- Formulario -->
+                <form id="formSolicitudInvitado" onsubmit="window.enviarSolicitudInvitado(event, '${tipo}')" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Selector de Fecha del Servicio (Permite anticipados) -->
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; margin: 0;">
+                                <i class="fas fa-calendar-alt text-primary"></i> Fecha del Servicio *
+                            </label>
+                            <span id="badgeAvisoFecha" style="font-size: 10px; font-weight: 700;"></span>
+                        </div>
+                        <input type="date" id="solFecha" min="${hoyStr}" value="${fechaInicial}" required 
+                            class="form-control form-control-sm" style="font-size: 12.5px; border-radius: 8px; font-weight: 700;" 
+                            onchange="window.actualizarAvisosModalInvitado('${tipo}')">
+                        <div id="alertaHorarioFecha" style="margin-top: 6px; font-size: 11px; display: none;"></div>
+                    </div>
+
+                    ${!isAlm ? `
+                        <div>
+                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 6px;">Tipo de Refrigerio</label>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label id="labelSanduche" style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                    <input type="radio" name="subtipoRefrigerio" id="radioSanduche" value="REFRIGERIO_SANDUCHE" checked>
+                                    <span>🥪 Sánduche / Opción de cocina</span>
+                                    <span id="tagSanduche" style="margin-left: auto; font-size: 10px; color: #059669; font-weight: 700;">Disponible</span>
+                                </label>
+                                <label id="labelGalletas" style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                    <input type="radio" name="subtipoRefrigerio" id="radioGalletas" value="REFRIGERIO_GALLETAS">
+                                    <span>🍪 Break con Galletas TCONTROL</span>
+                                    <span style="margin-left: auto; font-size: 10px; color: #b45309; font-weight: 700;">Disponible</span>
+                                </label>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px;">
+                        <div>
+                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Cantidad</label>
+                            <input type="number" id="solCantidad" min="1" max="50" value="1" required class="form-control form-control-sm" style="font-size: 13px; font-weight: 700; border-radius: 8px; text-align: center;">
+                        </div>
+                        <div>
+                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Empresa / Visita</label>
+                            <input type="text" id="solEmpresa" placeholder="Ej: Cliente / Proveedor" class="form-control form-control-sm" style="font-size: 12.5px; border-radius: 8px;">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Nombre del Invitado o Motivo *</label>
+                        <input type="text" id="solInvitado" required placeholder="Nombre de la persona que asiste" class="form-control form-control-sm" style="font-size: 12.5px; border-radius: 8px;">
+                    </div>
+
+                    ${!isAlm ? `
+                        <div>
+                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Hora solicitada para servir</label>
+                            <input type="time" id="solHoraServicio" class="form-control form-control-sm" style="font-size: 12.5px; border-radius: 8px;">
+                        </div>
+                    ` : ''}
+
+                    <div>
+                        <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Observaciones / Preferencias</label>
+                        <textarea id="solObservaciones" rows="2" placeholder="Restricciones, ubicación en planta, etc." class="form-control form-control-sm" style="font-size: 12px; border-radius: 8px; resize: none;"></textarea>
+                    </div>
+
+                    <div style="font-size: 10px; color: #64748b; background: #f8fafc; padding: 6px 8px; border-radius: 6px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 5px;">
+                        <i class="fas fa-file-invoice text-primary"></i>
+                        <span>Se registrará en la hoja <strong>ALMUERZOS_EXTRA</strong> con trazabilidad a tu usuario.</span>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <button type="button" onclick="window.cerrarModalSolicitudInvitado()" class="btn btn-sm btn-light w-50" style="font-weight: 600; border-radius: 8px;">Cancelar</button>
+                        <button type="submit" id="btnEnviarSolInvitado" class="btn btn-sm ${isAlm ? 'btn-primary' : 'btn-warning'} w-50" style="font-weight: 700; border-radius: 8px; ${!isAlm ? 'color: white; background: #f97316;' : ''}">
+                            <i class="fas fa-paper-plane"></i> Enviar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    window.actualizarAvisosModalInvitado(tipo);
+};
+
+window.actualizarAvisosModalInvitado = function (tipo) {
+    const inputFecha = document.getElementById('solFecha');
+    if (!inputFecha) return;
+    const fechaSeleccionada = inputFecha.value;
+    const ahora = new Date();
+    const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : ahora.toISOString().slice(0, 10);
+    const minDia = ahora.getHours() * 60 + ahora.getMinutes();
+    const almuerzoExtraAbierto = minDia <= 580; // 09:40
+    const refrigerioSanducheAbierto = minDia <= 520; // 08:40
+
+    const esMismoDia = (fechaSeleccionada === hoyStr);
+    const esFuturo = (fechaSeleccionada > hoyStr);
+
+    const alertaDiv = document.getElementById('alertaHorarioFecha');
+    const badgeFecha = document.getElementById('badgeAvisoFecha');
+    const btnEnviar = document.getElementById('btnEnviarSolInvitado');
+
+    const radioSanduche = document.getElementById('radioSanduche');
+    const radioGalletas = document.getElementById('radioGalletas');
+    const labelSanduche = document.getElementById('labelSanduche');
+    const tagSanduche = document.getElementById('tagSanduche');
+
+    if (esFuturo) {
+        if (badgeFecha) {
+            badgeFecha.innerHTML = '<span style="color: #15803d; background: #dcfce7; padding: 2px 7px; border-radius: 6px;">📅 Anticipado (Sin límite hoy)</span>';
+        }
+        if (alertaDiv) {
+            alertaDiv.style.display = 'block';
+            alertaDiv.style.background = '#f0fdf4';
+            alertaDiv.style.color = '#166534';
+            alertaDiv.style.border = '1px solid #bbf7d0';
+            alertaDiv.style.borderRadius = '6px';
+            alertaDiv.style.padding = '6px 8px';
+            alertaDiv.innerHTML = '<i class="fas fa-calendar-check"></i> <strong>Solicitud anticipada:</strong> Las restricciones de horario rigen únicamente para solicitudes del mismo día.';
+        }
+        if (btnEnviar) btnEnviar.disabled = false;
+
+        if (radioSanduche) {
+            radioSanduche.disabled = false;
+            if (labelSanduche) {
+                labelSanduche.style.opacity = '1';
+                labelSanduche.style.cursor = 'pointer';
+            }
+            if (tagSanduche) {
+                tagSanduche.textContent = 'Disponible anticipado';
+                tagSanduche.style.color = '#059669';
+            }
+        }
+    } else if (esMismoDia) {
+        if (badgeFecha) {
+            badgeFecha.innerHTML = '<span style="color: #0369a1; background: #e0f2fe; padding: 2px 7px; border-radius: 6px;">⚡ Para hoy</span>';
+        }
+
+        if (tipo === 'ALMUERZO_EXTRA') {
+            if (!almuerzoExtraAbierto) {
+                if (alertaDiv) {
+                    alertaDiv.style.display = 'block';
+                    alertaDiv.style.background = '#fef2f2';
+                    alertaDiv.style.color = '#991b1b';
+                    alertaDiv.style.border = '1px solid #fecaca';
+                    alertaDiv.style.borderRadius = '6px';
+                    alertaDiv.style.padding = '6px 8px';
+                    alertaDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Cerrado para hoy (09:40):</strong> Selecciona mañana o una fecha posterior para registrar tu pedido con anticipación.';
+                }
+                if (btnEnviar) btnEnviar.disabled = true;
+            } else {
+                if (alertaDiv) {
+                    alertaDiv.style.display = 'block';
+                    alertaDiv.style.background = '#eff6ff';
+                    alertaDiv.style.color = '#1e40af';
+                    alertaDiv.style.border = '1px solid #bfdbfe';
+                    alertaDiv.style.borderRadius = '6px';
+                    alertaDiv.style.padding = '6px 8px';
+                    alertaDiv.innerHTML = '<i class="fas fa-clock"></i> <strong>Mismo día:</strong> Solicitudes de hoy habilitadas hasta las 09:40.';
+                }
+                if (btnEnviar) btnEnviar.disabled = false;
+            }
+        } else {
+            // REFRIGERIOS
+            if (!refrigerioSanducheAbierto) {
+                if (radioSanduche) {
+                    radioSanduche.disabled = true;
+                    if (labelSanduche) {
+                        labelSanduche.style.opacity = '0.5';
+                        labelSanduche.style.cursor = 'not-allowed';
+                    }
+                    if (tagSanduche) {
+                        tagSanduche.textContent = 'Cerrado 08:40 hoy';
+                        tagSanduche.style.color = '#dc2626';
+                    }
+                }
+                if (radioGalletas) radioGalletas.checked = true;
+
+                if (alertaDiv) {
+                    alertaDiv.style.display = 'block';
+                    alertaDiv.style.background = '#fffbeb';
+                    alertaDiv.style.color = '#92400e';
+                    alertaDiv.style.border = '1px solid #fde68a';
+                    alertaDiv.style.borderRadius = '6px';
+                    alertaDiv.style.padding = '6px 8px';
+                    alertaDiv.innerHTML = '<i class="fas fa-info-circle"></i> Sánduches para hoy cerraron a las 08:40. Para hoy se puede solicitar <strong>Break con Galletas</strong> (disp. TCONTROL) o seleccionar una fecha futura para sánduches.';
+                }
+            } else {
+                if (radioSanduche) {
+                    radioSanduche.disabled = false;
+                    if (labelSanduche) {
+                        labelSanduche.style.opacity = '1';
+                        labelSanduche.style.cursor = 'pointer';
+                    }
+                    if (tagSanduche) {
+                        tagSanduche.textContent = 'Hasta 08:40';
+                        tagSanduche.style.color = '#059669';
+                    }
+                }
+                if (alertaDiv) {
+                    alertaDiv.style.display = 'block';
+                    alertaDiv.style.background = '#eff6ff';
+                    alertaDiv.style.color = '#1e40af';
+                    alertaDiv.style.border = '1px solid #bfdbfe';
+                    alertaDiv.style.borderRadius = '6px';
+                    alertaDiv.style.padding = '6px 8px';
+                    alertaDiv.innerHTML = '<i class="fas fa-clock"></i> <strong>Mismo día:</strong> Sánduches disponibles hasta las 08:40.';
+                }
+            }
+            if (btnEnviar) btnEnviar.disabled = false;
+        }
+    } else {
+        if (alertaDiv) {
+            alertaDiv.style.display = 'block';
+            alertaDiv.style.background = '#fef2f2';
+            alertaDiv.style.color = '#991b1b';
+            alertaDiv.style.border = '1px solid #fecaca';
+            alertaDiv.style.borderRadius = '6px';
+            alertaDiv.style.padding = '6px 8px';
+            alertaDiv.innerHTML = '<i class="fas fa-ban"></i> No se permiten solicitudes para fechas pasadas.';
+        }
+        if (btnEnviar) btnEnviar.disabled = true;
+    }
+};
+
+window.cerrarModalSolicitudInvitado = function () {
+    const m = document.getElementById('modalSolicitudInvitado');
+    if (m) m.remove();
+};
+
+window.enviarSolicitudInvitado = async function (e, tipo) {
+    e.preventDefault();
+    if (typeof esUsuarioTaller === 'function' && esUsuarioTaller(empleado)) {
+        mostrarToast("Esta opción no está habilitada para personal de Taller.", "error");
+        return;
+    }
+
+    const btn = document.getElementById('btnEnviarSolInvitado');
+    if (btn) btn.disabled = true;
+
+    const fecha = document.getElementById('solFecha')?.value || ((typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().slice(0, 10));
+    const cantidad = parseInt(document.getElementById('solCantidad')?.value) || 1;
+    const invitado = document.getElementById('solInvitado')?.value.trim();
+    const empresa = document.getElementById('solEmpresa')?.value.trim();
+    const horaServicio = document.getElementById('solHoraServicio')?.value || '';
+    const observaciones = document.getElementById('solObservaciones')?.value.trim();
+
+    let subtipo = tipo;
+    if (tipo === 'REFRIGERIO') {
+        const radios = document.getElementsByName('subtipoRefrigerio');
+        for (const r of radios) {
+            if (r.checked) subtipo = r.value;
+        }
+    }
+
+    showLoading(true);
+    try {
+        const res = await jsonpRequest({
+            accion: 'crearSolicitudInvitado',
+            empleadoId: empleado.id,
+            empleadoNombre: empleado.nombre,
+            empleadoArea: empleado.area,
+            fecha: fecha,
+            tipoSolicitud: tipo,
+            subtipo: subtipo,
+            cantidad: cantidad,
+            invitado: invitado,
+            empresa: empresa || 'TCONTROL',
+            horaServicio: horaServicio,
+            observaciones: observaciones
+        });
+
+        if (res && res.ok !== false) {
+            mostrarToast("¡Solicitud registrada correctamente!", "success");
+            window.cerrarModalSolicitudInvitado();
+            window._misSolicitudesInvitadosHoy = undefined; // Forzar recarga
+            renderAlmuerzoPage();
+
+            // Notificar automáticamente a los Sup. Admin vía WhatsApp
+            if (window.OpenWAService && typeof window.OpenWAService.notificarSupAdminsSolicitudInvitado === 'function') {
+                window.OpenWAService.notificarSupAdminsSolicitudInvitado({
+                    tipoSolicitud: tipo,
+                    subtipo: subtipo,
+                    cantidad: cantidad,
+                    invitado: invitado,
+                    empresa: empresa || 'TCONTROL',
+                    fecha: fecha,
+                    horaServicio: horaServicio,
+                    observaciones: observaciones,
+                    empleadoNombre: empleado?.nombre || '',
+                    empleadoArea: empleado?.area || ''
+                }).catch(eWa => console.warn("Aviso WhatsApp a Sup. Admin:", eWa));
+            }
+        } else {
+            mostrarToast("No se pudo registrar: " + (res?.error || "Error desconocido"), "error");
+        }
+    } catch (err) {
+        console.error("Error enviando solicitud invitado:", err);
+        mostrarToast("Error de conexión al enviar", "error");
+    } finally {
+        showLoading(false);
+        if (btn) btn.disabled = false;
+    }
+};
+
+window.cancelarSolicitudInvitado = async function (id, tipo) {
+    const ahora = new Date();
+    const minActual = ahora.getHours() * 60 + ahora.getMinutes();
+    
+    // Buscar la solicitud en caché para conocer su fecha
+    const lista = window._misSolicitudesInvitadosHoy || [];
+    const sol = lista.find(s => s.id === id);
+    const fechaSol = sol?.fecha || '';
+    const hoyStrLocal = (typeof normalizarFechaStr === 'function') 
+        ? normalizarFechaStr(new Date().toISOString().slice(0, 10)) 
+        : new Date().toISOString().slice(0, 10);
+    const esParaHoy = (fechaSol === hoyStrLocal || !fechaSol);
+
+    if (esParaHoy) {
+        if (tipo === 'ALMUERZO_EXTRA' && minActual > 580) {
+            mostrarToast("El horario para modificar almuerzos de hoy expiró a las 09:40.", "warning");
+            return;
+        }
+        if (tipo === 'REFRIGERIO_SANDUCHE' && minActual > 520) {
+            mostrarToast("El horario para sánduches de hoy expiró a las 08:40.", "warning");
+            return;
+        }
+    }
+
+    if (!confirm("¿Seguro que deseas cancelar esta solicitud de invitado? Se retirará de la hoja ALMUERZOS_EXTRA y se notificará a los Sup. Admin.")) return;
+
+    showLoading(true);
+    try {
+        const res = await jsonpRequest({
+            accion: 'eliminarSolicitudInvitado',
+            id: id,
+            fecha: fechaSol,
+            nombre: sol?.invitado || '',
+            invitado: sol?.invitado || '',
+            empleadoId: empleado.id,
+            empleadoNombre: empleado.nombre
+        });
+        if (res && res.ok) {
+            if (res.alertaSheets) {
+                mostrarToast("Cancelada en Firestore. Aviso: " + (res.errorSheets || "Actualización de Apps Script requerida"), "warning");
+            } else {
+                mostrarToast("Solicitud cancelada y retirada de ALMUERZOS_EXTRA", "info");
+            }
+            window._misSolicitudesInvitadosHoy = undefined;
+
+            // Notificar a los Sup. Admin vía WhatsApp
+            if (window.OpenWAService && typeof window.OpenWAService.notificarSupAdminsCancelacionInvitado === 'function') {
+                window.OpenWAService.notificarSupAdminsCancelacionInvitado({
+                    invitado: sol?.invitado || 'Invitado',
+                    solicitante: empleado.nombre || 'Colaborador',
+                    subtipo: tipo || sol?.subtipo || 'ALMUERZO_EXTRA',
+                    cantidad: sol?.cantidad || 1,
+                    fecha: fechaSol || 'Hoy',
+                    eliminadoPor: empleado.nombre || 'Colaborador'
+                }).catch(eNotif => console.warn("Aviso notificando cancelación:", eNotif));
+            }
+
+            renderAlmuerzoPage();
+        } else {
+            mostrarToast("Error: " + (res?.error || "No se pudo cancelar"), "error");
+        }
+    } catch (e) {
         mostrarToast("Error de conexión", "error");
     } finally {
         showLoading(false);
@@ -5450,7 +6603,17 @@ async function navigateTo(page) {
         } else if (page === 'extras') {
             renderHorasExtrasPage();
         } else if (page === 'almuerzo') {
-            renderAlmuerzoPage();
+            const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr(new Date()) : new Date().toISOString().slice(0, 10);
+            
+            const culturaGlobDeshabilitada = (window._culturaHabilitadaGlobal === false || localStorage.getItem('cultura_habilitada_global') === 'false');
+            const emp = (typeof empleado !== 'undefined' && empleado) ? empleado : ((typeof currentEmpleado !== 'undefined') ? currentEmpleado : null);
+            const culturaEmpExcluida = !!(emp && (emp.cultura_habilitada === false || emp.cultura_activa === false || emp.cultura_habilitada === 'false' || emp.cultura_activa === 'false'));
+
+            if (culturaGlobDeshabilitada || culturaEmpExcluida || sessionStorage.getItem('cultura_completada_hoy_' + hoyStr) === 'true') {
+                renderAlmuerzoPage();
+            } else {
+                await renderAlmuerzoQuiz();
+            }
         } else if (page === 'profile') {
             await renderProfilePage();
         } else if (page === 'pagos') {
@@ -5588,10 +6751,13 @@ async function verificarEstadoInicial() {
                         foto_url: estadoRes.foto_url,
                         cargo: estadoRes.cargo || '',
                         fechaNacimiento: estadoRes.fechaNacimiento || '',
+                        telefono: estadoRes.telefono || '',
                         baseLat: estadoRes.baseLat || null,
                         baseLng: estadoRes.baseLng || null,
                         authExtras: estadoRes.authExtras || 'NO',
                         pagos_url: estadoRes.pagos_url || '',
+                        cultura_habilitada: estadoRes.cultura_habilitada,
+                        cultura_activa: estadoRes.cultura_activa,
                         tipoRegistro: '',
                         almuerzo: ''
                     };
@@ -5602,11 +6768,14 @@ async function verificarEstadoInicial() {
                     // Cargar registros históricos en segundo plano
                     obtenerRegistrosEmpleado();
 
-                    if (esCumpleanos(empleado.fechaNacimiento)) {
-                        setTimeout(celebrarCumpleanos, 1000);
+                    if (!empleado.telefono || empleado.telefono.trim() === '') {
+                        renderUpdateDataScreen();
+                    } else {
+                        if (esCumpleanos(empleado.fechaNacimiento)) {
+                            setTimeout(celebrarCumpleanos, 1000);
+                        }
+                        renderHomePage();
                     }
-
-                    renderHomePage();
 
                     // Cargar configuraciones en segundo plano si fallaron
                     if (!configRes) {
@@ -6527,4 +7696,4 @@ async function renderEstadoPage() {
     html += `</div>`;
     mainContent.innerHTML = html;
 }
-// ========================================================
+// ========================================================

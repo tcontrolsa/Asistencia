@@ -10,7 +10,7 @@
  */
 
 // Mapeo oficial de columnas de REGISTROS y VACACIONES (0-based)
-const COL_REGISTROS = {
+var COL_REGISTROS = {
   FECHA: 0,       // A
   ID: 1,          // B
   NOMBRE: 2,      // C
@@ -20,7 +20,7 @@ const COL_REGISTROS = {
 };
 
 // Variable global para acumular los logs del mantenimiento
-let logsMantenimiento = [];
+var logsMantenimiento = [];
 
 /**
  * Formatea cualquier valor de fecha (Date, string ISO, string de texto) a 'yyyy-MM-dd'.

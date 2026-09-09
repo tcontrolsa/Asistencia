@@ -8,15 +8,15 @@
  */
 
 // =================== CONFIGURACIÓN ===================
-const FIRESTORE_PROJECT_ID = "tcontrol-asistencia";
-const DIAS_A_MANTENER = 60;
+var FIRESTORE_PROJECT_ID = "tcontrol-asistencia";
+var DIAS_A_MANTENER = 60;
 
 // Nombres de las hojas de cálculo destino
-const HOJA_REGISTROS_NAME = "REGISTROS";
-const HOJA_VACACIONES_NAME = "VACACIONES";
+var HOJA_REGISTROS_NAME = "REGISTROS";
+var HOJA_VACACIONES_NAME = "VACACIONES";
 
 // Encabezados oficiales de 24 columnas
-const ENCABEZADOS_OFICIALES = [
+var ENCABEZADOS_OFICIALES = [
   'FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 
   'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 
   'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 

@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.33';
+const CACHE_NAME = 'tcontrol-v1.64';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -14,6 +14,7 @@ const PRECACHE_URLS = [
   './icon-192.png',
   './icon-512.png',
   './CSS/index.css',
+  './JS/openwa_service.js',
   './JS/tcontrol_core.js',
   './JS/index_core.js',
   './JS/firebase_backend.js',
@@ -72,52 +73,55 @@ self.addEventListener('activate', event => {
 
 // ===== ESTRATEGIA DE FETCH =====
 self.addEventListener('fetch', event => {
+  // ── 0. Solo interceptar peticiones GET ──
+  // Cache API solo soporta GET. Las peticiones POST/PUT/DELETE no son cacheables.
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   const url = new URL(event.request.url);
 
-  // ── 0. Ignorar extensiones de Chrome y esquemas no soportados ──
+  // ── 1. Ignorar extensiones de Chrome y esquemas no soportados ──
   if (!url.protocol.startsWith('http')) {
     return;
   }
 
-  // ── 1. Solicitudes a la API de Google Apps Script ──
-  // SIEMPRE network — los datos de asistencia deben ser en tiempo real
+  // ── 2. Solicitudes a APIs externas, Google Sheets, Firestore y OpenWA ──
   if (url.hostname.includes('script.google.com') ||
-      url.hostname.includes('googleapis.com')) {
-    // No interceptamos — el navegador maneja directamente (JSONP via script tags)
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('firebaseio.com') ||
+      url.hostname === '192.168.10.129' ||
+      url.port === '2785' ||
+      url.port === '8081') {
+    // No interceptamos — el navegador maneja directamente
     return;
   }
 
-  // ── 2. Solicitudes de script tags (JSONP) ──
-  // Los script tags de JSONP no se pueden cachear útilmente
-  if (event.request.destination === 'script' &&
-      url.hostname.includes('google')) {
+  // ── 3. Solicitudes de script tags (JSONP) ──
+  if (event.request.destination === 'script' && url.hostname.includes('google')) {
     return;
   }
 
-  // ── 3. App Shell y recursos estáticos: Network First con fallback a caché ──
+  // ── 4. App Shell y recursos estáticos: Network First con fallback a caché ──
   event.respondWith(
     fetch(event.request)
       .then(networkResponse => {
-        // Si la red responde bien, actualizar la caché
-        if (networkResponse && networkResponse.status === 200) {
+        if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseClone);
+            cache.put(event.request, responseClone).catch(() => {});
           });
         }
         return networkResponse;
       })
       .catch(() => {
-        // Sin red: servir desde caché
         return caches.match(event.request).then(cachedResponse => {
           if (cachedResponse) {
             return cachedResponse;
           }
-          // Si es navegación a la app, servir el shell cacheado
           if (event.request.mode === 'navigate') {
             return caches.match('./index.html');
           }
-          // Para otros recursos, retornar respuesta vacía
           return new Response('', {
             status: 503,
             statusText: 'Service Unavailable'
