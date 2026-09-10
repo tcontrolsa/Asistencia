@@ -326,6 +326,7 @@
       <div id="sidebarSupervisorInfo" style="padding: 10px 16px; border-bottom: 1px dashed var(--g200); margin-bottom: 12px;"></div>
       <nav class="sidebar-nav">
         <div class="nav-item active" data-panel="asistencia"><i class="fas fa-calendar-day"></i><span>Asistencia</span></div>
+        <div class="nav-item" data-panel="directorio" id="navItemDirectorio"><i class="fas fa-address-book" style="color:var(--blue);"></i><span>Directorio</span></div>
         <div class="nav-item" data-panel="mapa"><i class="fas fa-map-marked-alt"></i><span>Mapa de Asistencia</span></div>
         <div class="nav-item" data-panel="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></div>
         <div class="nav-item" data-panel="reportes"><i class="fas fa-file-invoice"></i><span>Reportes</span></div>
@@ -1058,6 +1059,173 @@
         </div>
         <div class="table-wrapper">
           <div id="asistenciaTablaContainer"></div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- PANEL DIRECTORIO DE USUARIOS Y PERSONAL                      -->
+      <!-- ============================================================ -->
+      <div id="panel-directorio" class="panel">
+        <!-- BARRA SUPERIOR DE KPIS DEL DIRECTORIO -->
+        <div class="cards-grid directorio-kpi-grid" style="margin-bottom: 14px;">
+          <!-- 1. TOTAL -->
+          <div class="kpi-card active" id="kpiDirCardTodos" onclick="setFiltroKpiDirectorio('todos', this)" style="--card-color: var(--blue); --active-bg: #eff6ff; --active-text: #1e40af; --shadow-color: rgba(37, 99, 235, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--blu-lt); color: var(--blue);"><i class="fas fa-users"></i></div>
+              <span class="kpi-label">Total Usuarios</span>
+            </div>
+            <div class="kpi-value" id="dirKpiTotal">--</div>
+            <div style="font-size:10px; color:#64748b; margin-top:2px;">En base de datos</div>
+          </div>
+
+          <!-- 2. ACTIVOS -->
+          <div class="kpi-card" id="kpiDirCardActivos" onclick="setFiltroKpiDirectorio('activos', this)" style="--card-color: var(--green); --active-bg: #f0fdf4; --active-text: #15803d; --shadow-color: rgba(22, 163, 74, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--grn-lt); color: var(--green);"><i class="fas fa-user-check"></i></div>
+              <span class="kpi-label">Activos</span>
+            </div>
+            <div class="kpi-value" id="dirKpiActivos">--</div>
+            <div style="font-size:10px; color:#16a34a; font-weight:600; margin-top:2px;">En nómina activa</div>
+          </div>
+
+          <!-- 3. INACTIVOS -->
+          <div class="kpi-card" id="kpiDirCardInactivos" onclick="setFiltroKpiDirectorio('inactivos', this)" style="--card-color: var(--rose); --active-bg: #fff1f2; --active-text: #be123c; --shadow-color: rgba(225, 29, 72, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: var(--ros-lt); color: var(--rose);"><i class="fas fa-user-slash"></i></div>
+              <span class="kpi-label">Inactivos</span>
+            </div>
+            <div class="kpi-value" id="dirKpiInactivos">--</div>
+            <div style="font-size:10px; color:#e11d48; margin-top:2px;">Suspendidos / Bajas</div>
+          </div>
+
+          <!-- 4. SUPERVISORES -->
+          <div class="kpi-card" id="kpiDirCardSupervisores" onclick="setFiltroKpiDirectorio('supervisores', this)" style="--card-color: var(--purple); --active-bg: #f5f3ff; --active-text: #6d28d9; --shadow-color: rgba(124, 58, 237, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #ede9fe; color: #7c3aed;"><i class="fas fa-user-shield"></i></div>
+              <span class="kpi-label">Supervisores</span>
+            </div>
+            <div class="kpi-value" id="dirKpiSupervisores">--</div>
+            <div style="font-size:10px; color:#7c3aed; margin-top:2px;">Con permisos de gestión</div>
+          </div>
+
+          <!-- 5. CON WHATSAPP -->
+          <div class="kpi-card" id="kpiDirCardWhatsApp" onclick="setFiltroKpiDirectorio('whatsapp', this)" style="--card-color: #10b981; --active-bg: #ecfdf5; --active-text: #047857; --shadow-color: rgba(16, 185, 129, 0.12); cursor:pointer;">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #d1fae5; color: #059669;"><i class="fab fa-whatsapp"></i></div>
+              <span class="kpi-label">Con WhatsApp</span>
+            </div>
+            <div class="kpi-value" id="dirKpiWhatsApp">--</div>
+            <div style="font-size:10px; color:#059669; margin-top:2px;">Notificaciones listas</div>
+          </div>
+        </div>
+
+        <!-- BARRA DE HERRAMIENTAS Y CONTROLES DEL DIRECTORIO -->
+        <div class="directorio-toolbar-container" style="background:#ffffff; border:1px solid var(--g200); border-radius:14px; padding:12px 16px; margin-bottom:16px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+          <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px;">
+            <!-- Buscador Dinámico -->
+            <div style="position:relative; flex:1; min-width:260px;">
+              <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:13px;"></i>
+              <input type="text" id="srchDirectorio" onkeyup="filtrarDirectorio()" placeholder="🔍 Buscar por nombre, cédula, área, cargo o teléfono..." class="form-input" style="width:100%; padding-left:36px; padding-right:32px; border-radius:10px; font-size:12px; height:38px; border:1px solid #cbd5e1;">
+              <button id="btnLimpiarSrchDir" onclick="limpiarBuscadorDirectorio()" style="display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:none; color:#94a3b8; cursor:pointer; font-size:12px;"><i class="fas fa-times-circle"></i></button>
+            </div>
+
+            <!-- Filtros Dropdowns -->
+            <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+              <!-- Área -->
+              <select id="filtroAreaDirectorio" onchange="filtrarDirectorio()" class="filter-select" style="font-size:11.5px; height:38px; border-radius:10px; padding:0 10px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; font-weight:600;">
+                <option value="">🏢 Todas las áreas</option>
+              </select>
+
+              <!-- Rol -->
+              <select id="filtroRolDirectorio" onchange="filtrarDirectorio()" class="filter-select" style="font-size:11.5px; height:38px; border-radius:10px; padding:0 10px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; font-weight:600;">
+                <option value="">🛡️ Todos los roles</option>
+                <option value="REGULAR">👤 Empleados Regulares</option>
+                <option value="SUPERVISOR">🛡️ Supervisores</option>
+                <option value="SUPERVISOR_ADMIN">👑 Supervisores Admin</option>
+              </select>
+
+              <!-- Estado -->
+              <select id="filtroEstadoDirectorio" onchange="filtrarDirectorio()" class="filter-select" style="font-size:11.5px; height:38px; border-radius:10px; padding:0 10px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; font-weight:600;">
+                <option value="">Todos los estados</option>
+                <option value="SI" selected>🟢 Solo Activos</option>
+                <option value="NO">🔴 Solo Inactivos</option>
+              </select>
+
+              <!-- Almuerzo Hoy -->
+              <select id="filtroAlmuerzoDirectorio" onchange="filtrarDirectorio()" class="filter-select" style="font-size:11.5px; height:38px; border-radius:10px; padding:0 10px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; font-weight:600;" title="Filtrar colaboradores por opción de almuerzo hoy">
+                <option value="">🍽️ Almuerzo: Todos</option>
+                <option value="SI">🍱 Almuerzo en Planta</option>
+                <option value="NO">🥪 Almuerzo Fuera</option>
+                <option value="SIN_ASIGNAR">⚪ Sin Asignar / Ausente</option>
+              </select>
+
+              <!-- Selector de Vista: Tarjetas vs Tabla -->
+              <div class="directorio-view-toggle" style="display:inline-flex; background:#f1f5f9; padding:3px; border-radius:10px; border:1px solid #e2e8f0;">
+                <button type="button" id="btnDirVistaGrid" onclick="cambiarVistaDirectorio('grid')" class="btn-dir-view active" title="Vista de Cuadrícula / Tarjetas" style="border:none; background:white; color:#0f172a; padding:6px 10px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 3px rgba(0,0,0,0.08); transition:all 0.15s;">
+                  <i class="fas fa-th-large"></i> Tarjetas
+                </button>
+                <button type="button" id="btnDirVistaTabla" onclick="cambiarVistaDirectorio('tabla')" class="btn-dir-view" title="Vista de Lista / Tabla" style="border:none; background:transparent; color:#64748b; padding:6px 10px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all 0.15s;">
+                  <i class="fas fa-table-list"></i> Tabla
+                </button>
+              </div>
+            </div>
+
+            <!-- Botones de Acción Primaria -->
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button type="button" onclick="exportarDirectorioExcel()" class="btn btn-success" style="height:38px; padding:0 14px; border-radius:10px; font-size:12px; font-weight:700; background:#0f9d58; border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 5px rgba(15,157,88,0.22); transition:transform 0.15s;" title="Exportar la lista actual a archivo Excel (.xlsx)">
+                <i class="fas fa-file-excel"></i> Exportar Excel
+              </button>
+              <button type="button" onclick="abrirModalNuevoEmpleadoDirectorio()" class="btn btn-primary" style="height:38px; padding:0 14px; border-radius:10px; font-size:12px; font-weight:700; background:var(--blue); border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 5px rgba(37,99,235,0.22); transition:transform 0.15s;" title="Registrar un nuevo colaborador">
+                <i class="fas fa-user-plus"></i> Nuevo Usuario
+              </button>
+            </div>
+          </div>
+
+          <!-- Resumen de Conteo de Filtro -->
+          <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0; display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:#64748b;">
+            <div>
+              Mostrando <strong id="dirConteoFiltrados" style="color:#0f172a;">0</strong> de <span id="dirConteoTotal">0</span> colaboradores
+            </div>
+            <div id="dirFiltroActivoIndicator" style="display:none; color:#2563eb; font-weight:600;">
+              <i class="fas fa-filter"></i> Filtro activo aplicado · <a href="javascript:void(0)" onclick="limpiarTodosFiltrosDirectorio()" style="color:#ef4444; text-decoration:underline;">Restablecer filtros</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTENEDOR VISTA TARJETAS (GRID) -->
+        <div id="directorioGridContainer" class="directorio-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
+        </div>
+
+        <!-- CONTENEDOR VISTA TABLA -->
+        <div id="directorioTablaContainer" class="table-wrapper" style="display:none; background:#ffffff; border-radius:12px; border:1px solid var(--g200); box-shadow:0 2px 8px rgba(0,0,0,0.03); overflow-x:auto;">
+          <table class="employee-table directorio-table" style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f8fafc;">
+                <th style="padding:10px 12px; text-align:left; font-size:11px; font-weight:800; color:#475569;">Colaborador</th>
+                <th style="padding:10px 12px; text-align:left; font-size:11px; font-weight:800; color:#475569;">Área & Cargo</th>
+                <th style="padding:10px 12px; text-align:left; font-size:11px; font-weight:800; color:#475569;"><i class="fas fa-cake-candles" style="color:#f59e0b; margin-right:4px;"></i> F. Nacimiento</th>
+                <th style="padding:10px 12px; text-align:left; font-size:11px; font-weight:800; color:#475569;">Contacto WhatsApp</th>
+                <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569;">Rol / Nivel</th>
+                <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569;">Estado</th>
+                <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569; min-width:140px;"><i class="fas fa-utensils" style="color:#64748b; margin-right:4px;"></i> Almuerzo Hoy</th>
+                <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569; min-width:220px;">Acciones Rápidas</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyDirectorioTabla">
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ESTADO VACÍO (SIN RESULTADOS) -->
+        <div id="directorioEmptyState" style="display:none; text-align:center; padding:50px 20px; background:#ffffff; border-radius:14px; border:1px dashed #cbd5e1; margin-top:14px;">
+          <div style="width:64px; height:64px; border-radius:50%; background:#f1f5f9; color:#94a3b8; display:inline-flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:12px;">
+            <i class="fas fa-users-slash"></i>
+          </div>
+          <h3 style="font-size:15px; font-weight:800; color:#1e293b; margin:0 0 6px 0;">No se encontraron colaboradores</h3>
+          <p style="font-size:12px; color:#64748b; margin:0 0 14px 0;">Intenta modificar el término de búsqueda o limpia los filtros activos.</p>
+          <button type="button" onclick="limpiarTodosFiltrosDirectorio()" class="btn btn-primary" style="padding:8px 16px; border-radius:8px; font-size:12px; font-weight:700; background:#2563eb; color:white; border:none; cursor:pointer;">
+            <i class="fas fa-sync-alt"></i> Limpiar Filtros
+          </button>
         </div>
       </div>
 
@@ -2552,6 +2720,191 @@
         </div>
         <button class="btn-login" id="btnIngresarSup">Ingresar al Panel</button>
         <div id="login-error" class="error-msg hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL EDITAR EMPLEADO DIRECTÓRIO                             -->
+  <!-- ============================================================ -->
+  <div id="modalEditarEmpleadoDirectorio" class="modal-overlay hidden" style="z-index: 100000;">
+    <div class="modal-container" style="max-width: 560px; width: 95%; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color:white; border-radius: 12px 12px 0 0; padding:14px 18px;">
+        <h3 class="modal-title" style="color:white; font-size:15px; display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-user-edit"></i> Editar Ficha de Colaborador
+        </h3>
+        <button class="modal-close" onclick="cerrarModalEditarEmpleadoDirectorio()" style="color:white; opacity:0.8; font-size:22px;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px; background: #ffffff;">
+        <form id="formEditarEmpleadoDirectorio" onsubmit="event.preventDefault(); guardarEdicionEmpleadoDirectorio();">
+          <input type="hidden" id="editDirEmpIdOriginal">
+          
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px; background:#f8fafc; padding:12px; border-radius:12px; border:1px solid #e2e8f0;">
+            <div id="editDirFotoPreviewContainer" style="position:relative; width:64px; height:64px; border-radius:50%; overflow:hidden; border:2px solid #cbd5e1; flex-shrink:0; background:#ffffff;">
+              <img id="editDirFotoPreview" src="./Logotipo T Control.png" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='./Logotipo T Control.png'">
+            </div>
+            <div style="flex:1;">
+              <div id="editDirNombreBadge" style="font-weight:750; font-size:14px; color:#0f172a;">--</div>
+              <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Cédula / ID: <strong id="editDirIdBadge">--</strong></div>
+              <button type="button" onclick="triggerPhotoUpload(document.getElementById('editDirEmpIdOriginal').value)" class="btn" style="margin-top:5px; padding:3px 8px; font-size:10.5px; font-weight:700; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; color:#334155; display:inline-flex; align-items:center; gap:4px;">
+                <i class="fas fa-camera" style="color:#2563eb;"></i> Cambiar Fotografía
+              </button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Cédula / ID *</label>
+              <input type="text" id="editDirId" class="form-input" required readonly style="background:#f1f5f9; cursor:not-allowed; font-weight:700; color:#475569;" title="El ID es el identificador único en Firebase">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">PIN / Contraseña (4 dígitos) *</label>
+              <input type="text" id="editDirPin" class="form-input" maxlength="4" placeholder="Ej: 1234" required style="letter-spacing:2px; font-weight:700;">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:12px;">
+            <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Nombre Completo *</label>
+            <input type="text" id="editDirNombre" class="form-input" required placeholder="Ej: Juan Pérez">
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Área / Departamento *</label>
+              <input type="text" id="editDirArea" list="listaAreasDirectorioDatalist" class="form-input" required placeholder="Ej: PRODUCCION">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Cargo *</label>
+              <input type="text" id="editDirCargo" list="listaCargosDirectorioDatalist" class="form-input" required placeholder="Ej: Operario">
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fab fa-whatsapp" style="color:#16a34a;"></i> WhatsApp / Teléfono</label>
+              <input type="tel" id="editDirTelefono" class="form-input" placeholder="Ej: 0984660105">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fas fa-cake-candles" style="color:#f59e0b;"></i> Fecha de Nacimiento</label>
+              <input type="date" id="editDirFechaNacimiento" class="form-input" title="Fecha de nacimiento del colaborador">
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Rol / Nivel de Acceso</label>
+              <select id="editDirSupervisor" class="form-select">
+                <option value="NO">👤 Empleado regular</option>
+                <option value="SI">🛡️ Supervisor</option>
+                <option value="SUPERVISOR ADMIN">👑 Supervisor Admin</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Estado Activo</label>
+              <select id="editDirActivo" class="form-select">
+                <option value="SI">🟢 SI (Activo / En planilla)</option>
+                <option value="NO">🔴 NO (Inactivo / Baja)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fas fa-lightbulb" style="color:#2563eb;"></i> Preguntas Cultura</label>
+              <select id="editDirCultura" class="form-select">
+                <option value="SI">Habilitado</option>
+                <option value="NO">Exonerado</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="padding:14px 0 0; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="btn" onclick="cerrarModalEditarEmpleadoDirectorio()" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
+              Cancelar
+            </button>
+            <button type="submit" id="btnGuardarEdicionEmpleadoDirectorio" class="btn btn-primary" style="background:#2563eb; color:white; border:none; padding:8px 18px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(37,99,235,0.25);">
+              <i class="fas fa-save"></i> Guardar Cambios
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL NUEVO EMPLEADO DIRECTÓRIO                             -->
+  <!-- ============================================================ -->
+  <div id="modalNuevoEmpleadoDirectorio" class="modal-overlay hidden" style="z-index: 100000;">
+    <div class="modal-container" style="max-width: 540px; width: 95%; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); color:white; border-radius: 12px 12px 0 0; padding:14px 18px;">
+        <h3 class="modal-title" style="color:white; font-size:15px; display:flex; align-items:center; gap:8px;">
+          <i class="fas fa-user-plus"></i> Registrar Nuevo Colaborador
+        </h3>
+        <button class="modal-close" onclick="cerrarModalNuevoEmpleadoDirectorio()" style="color:white; opacity:0.8; font-size:22px;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px; background: #ffffff;">
+        <form id="formNuevoEmpleadoDirectorio" onsubmit="event.preventDefault(); guardarNuevoEmpleadoDirectorio();">
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Cédula / ID *</label>
+              <input type="text" id="nuevoDirId" class="form-input" placeholder="Ej: 1712345678" required>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">PIN (4 dígitos numéricos) *</label>
+              <input type="text" id="nuevoDirPin" class="form-input" maxlength="4" placeholder="Ej: 1234" required style="letter-spacing:2px; font-weight:700;">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:12px;">
+            <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Nombre Completo *</label>
+            <input type="text" id="nuevoDirNombre" class="form-input" placeholder="Ej: Carlos López" required>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Área / Departamento *</label>
+              <input type="text" id="nuevoDirArea" list="listaAreasDirectorioDatalist" class="form-input" placeholder="Ej: PRODUCCION" required>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Cargo *</label>
+              <input type="text" id="nuevoDirCargo" list="listaCargosDirectorioDatalist" class="form-input" placeholder="Ej: Operario" required>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fab fa-whatsapp" style="color:#16a34a;"></i> WhatsApp / Teléfono</label>
+              <input type="tel" id="nuevoDirTelefono" class="form-input" placeholder="Ej: 0984660105">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fas fa-cake-candles" style="color:#f59e0b;"></i> Fecha de Nacimiento</label>
+              <input type="date" id="nuevoDirFechaNacimiento" class="form-input" title="Fecha de nacimiento opcional">
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Rol de Acceso</label>
+              <select id="nuevoDirSupervisor" class="form-select">
+                <option value="NO">👤 Empleado regular</option>
+                <option value="SI">🛡️ Supervisor</option>
+                <option value="SUPERVISOR ADMIN">👑 Supervisor Admin</option>
+              </select>
+            </div>
+          </div>
+
+          <datalist id="listaAreasDirectorioDatalist"></datalist>
+          <datalist id="listaCargosDirectorioDatalist"></datalist>
+
+          <div class="modal-footer" style="padding:14px 0 0; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="btn" onclick="cerrarModalNuevoEmpleadoDirectorio()" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
+              Cancelar
+            </button>
+            <button type="submit" id="btnGuardarNuevoEmpleadoDirectorio" class="btn btn-success" style="background:#059669; color:white; border:none; padding:8px 18px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(5,150,105,0.25);">
+              <i class="fas fa-user-plus"></i> Crear Colaborador
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

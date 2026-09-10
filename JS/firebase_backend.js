@@ -151,7 +151,7 @@ window.FirebaseBackend = {
                                     almuerzos: resJson.almuerzos,
                                     lastSync: new Date().toISOString()
                                 }));
-                            } catch(e) {}
+                            } catch (e) { }
                         }
                         return resJson;
                     } catch (eAlm) {
@@ -163,7 +163,7 @@ window.FirebaseBackend = {
                                     return { ok: true, almuerzos: parsed.almuerzos, desdeCache: true };
                                 }
                             }
-                        } catch(eC) {}
+                        } catch (eC) { }
                         return { ok: false, error: eAlm.message || eAlm.toString() };
                     }
                 case 'obtenerVacacionesEmpleado':
@@ -262,8 +262,8 @@ window.FirebaseBackend = {
     async verificarPIN(params) {
         const pin = params.pin ? params.pin.toString().trim() : '';
         const token = params.deviceToken;
-        const idRequerido = params.empleadoId ? params.empleadoId.toString().trim() : ''; 
-        
+        const idRequerido = params.empleadoId ? params.empleadoId.toString().trim() : '';
+
         console.log("🔐 Verificando PIN...", { pin: pin ? '***' : '', token: token, idRequerido: idRequerido });
 
         if (!pin || !token) return { error: "PIN o Token ausente", valido: false };
@@ -293,10 +293,10 @@ window.FirebaseBackend = {
 
                 // Si no tiene contraseña establecida, se deniega y se redirige a vincular
                 if (!pinEnBd) {
-                    return { 
-                        error: "Tu cuenta aún no tiene contraseña configurada. Por favor, haz clic en 'Vincular Dispositivo' para establecerla.", 
-                        valido: false, 
-                        debeRegistrarPin: true 
+                    return {
+                        error: "Tu cuenta aún no tiene contraseña configurada. Por favor, haz clic en 'Vincular Dispositivo' para establecerla.",
+                        valido: false,
+                        debeRegistrarPin: true
                     };
                 }
 
@@ -568,13 +568,13 @@ window.FirebaseBackend = {
             updateData.cultura_habilitada = hab;
             updateData.cultura_activa = hab;
         }
-        
+
         // Manejo de PIN / Contraseña (permite tanto asignar clave como resetear / dejar en blanco '')
         if (params.passwordHash !== undefined || params.pin !== undefined) {
             const nuevoPin = params.passwordHash !== undefined ? params.passwordHash : params.pin;
             updateData.pin = nuevoPin !== null ? nuevoPin.toString().trim() : '';
         }
-        
+
         // Manejo de Device Token / Dispositivo (permite desvincular o limpiar)
         if (params.deviceToken !== undefined) {
             updateData.deviceToken = params.deviceToken !== null ? params.deviceToken.toString().trim() : '';
@@ -588,8 +588,8 @@ window.FirebaseBackend = {
         }
 
         // Si se resetea la contraseña o el token de dispositivo, limpiar también la colección 'dispositivos' para este empleado
-        if ((params.passwordHash !== undefined && params.passwordHash === '') || 
-            (params.pin !== undefined && params.pin === '') || 
+        if ((params.passwordHash !== undefined && params.passwordHash === '') ||
+            (params.pin !== undefined && params.pin === '') ||
             (params.deviceToken !== undefined && params.deviceToken === '')) {
             try {
                 const idEmpBuscado = empData.id ? empData.id.toString() : empleadoId;
@@ -601,7 +601,7 @@ window.FirebaseBackend = {
                     snapDispositivos.forEach(d => batch.delete(d.ref));
                     await batch.commit();
                 }
-            } catch(errDisp) {
+            } catch (errDisp) {
                 console.warn("Aviso al limpiar colección dispositivos:", errDisp);
             }
         }
@@ -609,7 +609,7 @@ window.FirebaseBackend = {
         // Dual-write to Sheets si corresponde
         try {
             this._jsonp({ accion: 'actualizarPerfilEmpleado', ...params });
-        } catch(e) {}
+        } catch (e) { }
 
         return { ok: true, mensaje: "Perfil actualizado exitosamente en Firebase" };
     },
@@ -766,15 +766,15 @@ window.FirebaseBackend = {
             try {
                 const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
                 if (storedArch) archivadosData = JSON.parse(storedArch);
-            } catch(e) { console.warn("Error leyendo caché archivados:", e); }
+            } catch (e) { console.warn("Error leyendo caché archivados:", e); }
 
             // Cache por 30 minutos (antes era 12 horas) para evitar falsas faltas tras archivar
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
             const _fetchArchivados = async () => {
                 try {
-                    const resJson = await this._jsonp({ 
+                    const resJson = await this._jsonp({
                         accion: 'obtenerRegistrosArchivados',
-                        empleadoId: empleadoId 
+                        empleadoId: empleadoId
                     });
                     if (resJson.ok && resJson.registros) {
                         archivadosData.registros = resJson.registros;
@@ -783,12 +783,12 @@ window.FirebaseBackend = {
                             localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
                             console.log("✅ Registros archivados de Sheets actualizados para el empleado.");
                             window.dispatchEvent(new Event('archivadosActualizados'));
-                        } catch(e) {}
+                        } catch (e) { }
                     }
-                } catch(e) { console.warn("Error consultando archivados:", e); }
+                } catch (e) { console.warn("Error consultando archivados:", e); }
             };
 
-            if (params.force || !archivadosData.registros || archivadosData.registros.length === 0 || horasArchivados > 0.5) { 
+            if (params.force || !archivadosData.registros || archivadosData.registros.length === 0 || horasArchivados > 0.5) {
                 console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
                 await _fetchArchivados();
             }
@@ -874,7 +874,7 @@ window.FirebaseBackend = {
         const h = ahora.getHours().toString().padStart(2, '0');
         const m = ahora.getMinutes().toString().padStart(2, '0');
         const s = ahora.getSeconds().toString().padStart(2, '0');
-        
+
         let horaStr = "00:00:00";
         if (data.hora && String(data.hora).trim() !== "") {
             horaStr = String(data.hora).trim();
@@ -893,7 +893,7 @@ window.FirebaseBackend = {
                 .where('empleadoId', '==', empleadoId)
                 .where('tipo', '==', 'ENTRADA')
                 .get();
-                
+
             let entradaDocId = null;
             entradaSnap.forEach(doc => {
                 const docData = this._processDoc(doc.id, doc.data());
@@ -901,7 +901,7 @@ window.FirebaseBackend = {
                     entradaDocId = doc.id;
                 }
             });
-            
+
             if (entradaDocId) {
                 await db.collection('registros').doc(entradaDocId).update({
                     estado: data.razon_ausencia || "A salvo",
@@ -957,7 +957,7 @@ window.FirebaseBackend = {
                 if (!isNaN(parsedDate.getTime())) {
                     tsObj = firebase.firestore.Timestamp.fromDate(parsedDate);
                 }
-            } catch(e) {}
+            } catch (e) { }
         } else if (esAusenciaTipo(data.tipo)) {
             tsObj = firebase.firestore.Timestamp.fromDate(fechaRegistro);
         }
@@ -995,7 +995,7 @@ window.FirebaseBackend = {
                 const snapAusencias = await db.collection('registros')
                     .where('empleadoId', '==', empleadoId)
                     .get();
-                
+
                 let docsABorrar = [];
                 snapAusencias.forEach(doc => {
                     const docData = doc.data();
@@ -1006,7 +1006,7 @@ window.FirebaseBackend = {
                         }
                     }
                 });
-                
+
                 for (const dId of docsABorrar) {
                     await db.collection('registros').doc(dId).delete();
                 }
@@ -1277,10 +1277,10 @@ window.FirebaseBackend = {
             const m = hoy.getMinutes().toString().padStart(2, '0');
             const s = hoy.getSeconds().toString().padStart(2, '0');
             const horaStr = `${h}:${m}:${s}`;
-            
+
             const idLimpio = horaStr.replace(/:/g, '');
             const idDocumento = `${id}_SOLO_ALMUERZO_${targetFecha}_${idLimpio}`;
-            
+
             await db.collection('registros').doc(idDocumento).set({
                 empleadoId: id,
                 nombre: nombre,
@@ -1317,7 +1317,7 @@ window.FirebaseBackend = {
                 autor: "SUPERVISOR",
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             });
-        } catch (e) {}
+        } catch (e) { }
 
         return { ok: true, mensaje: "Almuerzo actualizado" };
     },
@@ -1381,12 +1381,12 @@ window.FirebaseBackend = {
                 } else {
                     updateData[campo] = valor;
                     if (campo === 'hora') {
-                         if (docSnap.data().timestamp) {
-                             const oldDate = docSnap.data().timestamp.toDate ? docSnap.data().timestamp.toDate() : new Date(docSnap.data().timestamp);
-                             const [h, m, s] = valor.split(':').map(Number);
-                             const newDate = new Date(oldDate.getFullYear(), oldDate.getMonth(), oldDate.getDate(), h || 0, m || 0, s || 0);
-                             updateData.timestamp = firebase.firestore.Timestamp.fromDate(newDate);
-                         }
+                        if (docSnap.data().timestamp) {
+                            const oldDate = docSnap.data().timestamp.toDate ? docSnap.data().timestamp.toDate() : new Date(docSnap.data().timestamp);
+                            const [h, m, s] = valor.split(':').map(Number);
+                            const newDate = new Date(oldDate.getFullYear(), oldDate.getMonth(), oldDate.getDate(), h || 0, m || 0, s || 0);
+                            updateData.timestamp = firebase.firestore.Timestamp.fromDate(newDate);
+                        }
                     }
                 }
                 if (params.justificado) updateData.justificado = params.justificado;
@@ -1509,7 +1509,7 @@ window.FirebaseBackend = {
                 // Si no hay marcaciones ese día, creamos una marcación de tipo 'JUSTIFICACION'
                 const empDoc = await db.collection('empleados').doc(empleadoId).get();
                 const nombre = empDoc.exists ? empDoc.data().nombre : empleadoId;
-                
+
                 const fechaPartes = fecha.split('-').map(Number);
                 const fechaObj = new Date(fechaPartes[0], fechaPartes[1] - 1, fechaPartes[2], 0, 0, 0);
 
@@ -1659,7 +1659,7 @@ window.FirebaseBackend = {
                     try {
                         localStorage.setItem('cultura_preguntas_cache', JSON.stringify(data.preguntas));
                         localStorage.setItem('cultura_habilitada_global', habilitado ? 'true' : 'false');
-                    } catch (e) {}
+                    } catch (e) { }
                     return { ok: true, preguntas: data.preguntas, habilitado: habilitado };
                 }
             }
@@ -1681,7 +1681,7 @@ window.FirebaseBackend = {
                     const parsed = JSON.parse(cached);
                     if (Array.isArray(parsed) && parsed.length > 0) return { ok: true, preguntas: parsed, habilitado: habilitado };
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             return {
                 ok: true,
@@ -1786,7 +1786,7 @@ window.FirebaseBackend = {
                 if (dataToSet.habilitado !== undefined) {
                     localStorage.setItem('cultura_habilitada_global', dataToSet.habilitado ? 'true' : 'false');
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             return { ok: true, mensaje: "Banco de preguntas guardado en Google Sheets y Firebase" };
         } catch (e) {
@@ -1805,7 +1805,7 @@ window.FirebaseBackend = {
 
             try {
                 localStorage.setItem('cultura_habilitada_global', habilitado ? 'true' : 'false');
-            } catch(e) {}
+            } catch (e) { }
 
             return { ok: true, habilitado: habilitado };
         } catch (e) {
@@ -1892,20 +1892,31 @@ window.FirebaseBackend = {
     },
 
     async actualizarEmpleado(params) {
-        const id = params.empleadoId;
-        const campo = params.campo;
-        const valor = params.valor;
+        const id = (params.empleadoId || params.id || '').toString().trim();
+        if (!id) return { error: "Falta ID de empleado" };
 
-        if (!id || !campo) return { error: "Faltan parámetros" };
+        let updateData = {};
+        if (params.datos && typeof params.datos === 'object') {
+            updateData = { ...params.datos };
+        } else if (params.campo) {
+            updateData[params.campo] = params.valor;
+        } else {
+            const camposPermitidos = ['nombre', 'area', 'cargo', 'telefono', 'pin', 'supervisor', 'rol', 'activo', 'cultura_habilitada', 'cultura_activa', 'id_dispositivo', 'foto_url', 'fechaNacimiento'];
+            camposPermitidos.forEach(k => {
+                if (params[k] !== undefined) updateData[k] = params[k];
+            });
+        }
 
-        const updateData = {};
-        updateData[campo] = valor;
-        if (campo === 'cultura_habilitada') {
-            updateData.cultura_activa = valor;
+        if (Object.keys(updateData).length === 0) {
+            return { error: "No se proporcionaron campos para actualizar" };
+        }
+
+        if (updateData.cultura_habilitada !== undefined) {
+            updateData.cultura_activa = updateData.cultura_habilitada;
         }
 
         await db.collection('empleados').doc(id).set(updateData, { merge: true });
-        return { ok: true };
+        return { ok: true, empleadoId: id, actualizados: Object.keys(updateData) };
     },
 
     async eliminarEmpleadoDefinitivo(params) {
@@ -2069,26 +2080,26 @@ window.FirebaseBackend = {
         try {
             if (!params.empleados) return { error: "No se proporcionaron datos de empleados" };
             const lista = typeof params.empleados === 'string' ? JSON.parse(params.empleados) : params.empleados;
-            
+
             console.log(`⚡ Iniciando importación masiva y dinámica de ${lista.length} empleados...`);
-            
+
             let batch = db.batch();
             let count = 0;
             let guardados = 0;
-            
+
             for (const emp of lista) {
                 if (!emp.id) continue;
                 const docRef = db.collection('empleados').doc(emp.id.toString());
-                
+
                 const dataObj = {};
-                
+
                 // Mapear dinámicamente todas las propiedades recibidas
                 for (const key in emp) {
                     if (emp.hasOwnProperty(key)) {
                         if (key === 'id') continue; // ID es el doc id, no va en el cuerpo del doc
-                        
+
                         let val = emp[key];
-                        
+
                         // Conversión de tipos segura
                         if (key === 'baseLat' || key === 'baseLng') {
                             if (val !== undefined && val !== null && val !== '') {
@@ -2110,26 +2121,26 @@ window.FirebaseBackend = {
                         }
                     }
                 }
-                
+
                 // Asegurar campos mínimos obligatorios por si no estuvieran presentes
                 if (dataObj.activo === undefined) dataObj.activo = 'SI';
                 if (dataObj.supervisor === undefined) dataObj.supervisor = 'NO';
-                
+
                 batch.set(docRef, dataObj, { merge: true });
                 count++;
                 guardados++;
-                
+
                 if (count === 400) {
                     await batch.commit();
                     batch = db.batch();
                     count = 0;
                 }
             }
-            
+
             if (count > 0) {
                 await batch.commit();
             }
-            
+
             console.log(`✅ Importación masiva completada: ${guardados} empleados procesados.`);
             return { ok: true, procesados: guardados };
         } catch (error) {
@@ -2142,7 +2153,7 @@ window.FirebaseBackend = {
         try {
             console.log("🔄 Iniciando restablecimiento de contraseñas/PINs de todos los empleados...");
             const querySnap = await db.collection('empleados').get();
-            
+
             if (querySnap.empty) {
                 return { ok: false, error: "No se encontraron empleados en la base de datos." };
             }
@@ -2154,7 +2165,7 @@ window.FirebaseBackend = {
             for (const doc of querySnap.docs) {
                 // Actualizar PIN a vacío para que el usuario deba registrar su nueva contraseña
                 const updateData = { pin: "" };
-                
+
                 // Si se solicita desvincular dispositivos también (opcional)
                 if (params.desvincularDispositivos) {
                     updateData.deviceToken = "";
@@ -2194,7 +2205,7 @@ window.FirebaseBackend = {
                     if (dispCount > 0) {
                         await dispBatch.commit();
                     }
-                } catch(e) {
+                } catch (e) {
                     console.warn("Aviso al limpiar dispositivos:", e);
                 }
             }
@@ -2202,7 +2213,7 @@ window.FirebaseBackend = {
             // Sincronizar con Google Sheets (dual write)
             try {
                 this._jsonp({ accion: 'resetearPinesEmpleados' });
-            } catch(e) {
+            } catch (e) {
                 console.warn("Aviso al sincronizar reseteo con Sheets:", e);
             }
 
@@ -2346,7 +2357,7 @@ window.FirebaseBackend = {
             const observaciones = (params.observaciones || '').trim();
 
             const horaActualStr = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}:${String(ahora.getSeconds()).padStart(2, '0')}`;
-            
+
             // Construir observaciones con trazabilidad de área y hora estimada
             let obsCompleta = observaciones;
             if (horaServicio) obsCompleta = obsCompleta ? `${obsCompleta} [Hora req: ${horaServicio}]` : `[Hora req: ${horaServicio}]`;
@@ -2467,7 +2478,7 @@ window.FirebaseBackend = {
                         empleadoId = empleadoId || data.empleadoId || '';
                     }
                     await docRef.delete();
-                } catch(eDoc) {
+                } catch (eDoc) {
                     console.warn("Aviso eliminando en Firestore:", eDoc);
                 }
             }
@@ -2486,7 +2497,7 @@ window.FirebaseBackend = {
                 if (sheetsResult && !sheetsResult.ok) {
                     console.warn("⚠️ Respuesta de Google Sheets al eliminar:", sheetsResult);
                 }
-            } catch(eSheet) {
+            } catch (eSheet) {
                 console.warn("Aviso eliminando en Sheets:", eSheet);
                 sheetsResult = { ok: false, error: eSheet.message || eSheet.toString() };
             }
@@ -2509,7 +2520,7 @@ window.FirebaseBackend = {
                         localStorage.setItem(CACHE_KEY, JSON.stringify(parsed));
                     }
                 }
-            } catch(eCache) {}
+            } catch (eCache) { }
 
             if (sheetsResult && sheetsResult.error) {
                 return {
@@ -2604,10 +2615,10 @@ window.FirebaseBackend = {
             try {
                 const stored = localStorage.getItem(CACHE_KEY);
                 if (stored) cacheData = JSON.parse(stored);
-            } catch(e) { console.warn("Error leyendo caché:", e); }
+            } catch (e) { console.warn("Error leyendo caché:", e); }
 
             let query = db.collection('registros');
-            
+
             // Si hay caché reciente (de hoy), solo traemos datos desde ayer para atrapar cambios recientes
             // Si el administrador necesita forzar recarga total, puede limpiar caché local o hacer refresh duro
             const ayer = new Date();
@@ -2636,13 +2647,13 @@ window.FirebaseBackend = {
 
             // Limpiar caché de registros más antiguos que 60 días para liberar memoria
             const allRegistros = Object.values(cacheData.registros).filter(r => r.fecha >= limiteStr);
-            
+
             // Guardar caché actualizado
             try {
                 let cacheToSave = { registros: {}, lastSync: new Date().toISOString() };
                 allRegistros.forEach(r => cacheToSave.registros[r.id] = r);
                 localStorage.setItem(CACHE_KEY, JSON.stringify(cacheToSave));
-            } catch(e) { console.warn("Error guardando caché (posible límite de localStorage):", e); }
+            } catch (e) { console.warn("Error guardando caché (posible límite de localStorage):", e); }
 
             // 2.5 Caching y obtención de Registros Archivados en Sheets
             const CACHE_ARCHIVADOS_KEY = 'tcontrol_archivados_cache_v2';
@@ -2650,7 +2661,7 @@ window.FirebaseBackend = {
             try {
                 const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
                 if (storedArch) archivadosData = JSON.parse(storedArch);
-            } catch(e) { console.warn("Error leyendo caché archivados:", e); }
+            } catch (e) { console.warn("Error leyendo caché archivados:", e); }
 
             // Usar caché en memoria si ya fue descargada en la sesión actual
             if (this._cacheArchivadosMemoria && (!archivadosData.registros || archivadosData.registros.length === 0)) {
@@ -2676,14 +2687,14 @@ window.FirebaseBackend = {
                             }
                             localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(toStore));
                             console.log("✅ Registros archivados de Sheets actualizados en caché.");
-                        } catch(e) {
+                        } catch (e) {
                             console.warn("Aviso guardando caché archivados en localStorage:", e);
                         }
                         window.dispatchEvent(new Event('archivadosActualizados'));
                     }
-                } catch(e) { console.warn("Aviso consultando archivados:", e); }
+                } catch (e) { console.warn("Aviso consultando archivados:", e); }
             };
-            
+
             // NUNCA congelar la pantalla del supervisor esperando a Sheets: solo esperar si se fuerza expresamente
             if (params.force || params.forceSheets || params.forceAll) {
                 console.log("📥 Forzando actualización de registros archivados de Sheets...");
@@ -2699,7 +2710,7 @@ window.FirebaseBackend = {
             try {
                 const storedAlm = localStorage.getItem(CACHE_ALMUERZOS_EXTRA_KEY);
                 if (storedAlm) almuerzosExtraData = JSON.parse(storedAlm);
-            } catch(e) { console.warn("Error leyendo caché almuerzos extras:", e); }
+            } catch (e) { console.warn("Error leyendo caché almuerzos extras:", e); }
 
             const horasAlmuerzos = almuerzosExtraData.lastSync ? (new Date() - new Date(almuerzosExtraData.lastSync)) / (1000 * 60 * 60) : 999;
             const _fetchAlmuerzosExtra = async () => {
@@ -2711,9 +2722,9 @@ window.FirebaseBackend = {
                         try {
                             localStorage.setItem(CACHE_ALMUERZOS_EXTRA_KEY, JSON.stringify(almuerzosExtraData));
                             console.log("✅ Almuerzos extras de Sheets actualizados en caché.");
-                        } catch(e) {}
+                        } catch (e) { }
                     }
-                } catch(e) { console.warn("Error consultando almuerzos extras:", e); }
+                } catch (e) { console.warn("Error consultando almuerzos extras:", e); }
             };
 
             if (params.force || params.forceSheets || params.forceAll) {
@@ -2773,7 +2784,7 @@ window.FirebaseBackend = {
 
                 // Normalizar almuerzo: solo SI/NO si tiene valor, vacío si no
                 const vAlm = (reg.almuerzo || '').toString().trim().toUpperCase();
-                reg.almuerzo = (vAlm === 'SI' || vAlm === 'SÍ') ? 'SI' : (vAlm === 'NO' ? 'NO' : '');
+                reg.almuerzo = (vAlm === 'SI' || vAlm === 'SÍ' || vAlm === 'PLANTA') ? 'SI' : ((vAlm === 'NO' || vAlm === 'FUERA') ? 'NO' : '');
 
                 if (empleadosMap[eid]) {
                     empleadosMap[eid].registros.push(reg);
@@ -2865,7 +2876,7 @@ window.FirebaseBackend = {
                     const vacRes = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' }, 0, 1);
                     if (vacRes && vacRes.ok) {
                         window._vacacionesCache = vacRes.vacaciones || [];
-                        
+
                         // Limpiar kpiVacacionesIndividual eliminando filas de sumatoria o resumen de Sheets
                         const kpiIndivLimpio = {};
                         let sumaAdj = 0;
@@ -2907,7 +2918,7 @@ window.FirebaseBackend = {
                         window.kpiVacaciones = kpiVac;
                         window._lastSheetsVacOk = ahoraTs;
                     }
-                } catch(e) {
+                } catch (e) {
                     window._lastSheetsVacError = ahoraTs;
                 }
             }
@@ -2947,7 +2958,7 @@ window.FirebaseBackend = {
                 if (emSnap.exists) {
                     emergencia = emSnap.data();
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error("Error al leer emergencia en obtenerDatosSupervisor:", e);
             }
 
@@ -2998,7 +3009,7 @@ window.FirebaseBackend = {
             if (payload.empleados && typeof payload.empleados === 'string') {
                 try {
                     payload.empleados = JSON.parse(payload.empleados);
-                } catch(e) {}
+                } catch (e) { }
             }
             const res = await fetch(api_url, {
                 method: 'POST',
@@ -3006,7 +3017,7 @@ window.FirebaseBackend = {
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
-            
+
             const isLockError = data && data.error && (
                 data.error.toString().toLowerCase().includes('lock') ||
                 data.error.toString().toLowerCase().includes('candado') ||
@@ -3047,7 +3058,7 @@ window.FirebaseBackend = {
         return new Promise((resolve, reject) => {
             const callbackName = 'cb_' + Math.floor(Math.random() * 1000000);
             const api_url = (window.TCONTROL_CONFIG && window.TCONTROL_CONFIG.API_URL) || window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
-            
+
             let settled = false;
             const script = document.createElement('script');
 
@@ -3056,7 +3067,7 @@ window.FirebaseBackend = {
             // HTTP request — the browser will still execute the response.
             // A no-op absorbs the late call and avoids ReferenceError.
             const cleanup = () => {
-                window[callbackName] = function() {};
+                window[callbackName] = function () { };
                 setTimeout(() => { delete window[callbackName]; }, 60000);
                 if (script.parentNode) script.parentNode.removeChild(script);
             };
@@ -3081,7 +3092,7 @@ window.FirebaseBackend = {
                 settled = true;
                 clearTimeout(timeout);
                 cleanup();
-                
+
                 // If it is a lock error or service busy, retry too!
                 const isLockError = data && data.error && (
                     data.error.toString().toLowerCase().includes('lock') ||
@@ -3187,14 +3198,14 @@ window.FirebaseBackend = {
                 const m = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
                 if (!res.fecha) res.fecha = `${y}-${m}-${day}`;
-                
+
                 const hh = String(d.getHours()).padStart(2, '0');
                 const mm = String(d.getMinutes()).padStart(2, '0');
                 const ss = String(d.getSeconds()).padStart(2, '0');
                 if (!res.hora || res.hora === '') {
                     res.hora = `${hh}:${mm}:${ss}`;
                 }
-                
+
                 res.dia = this._obtenerDiaSemana(d);
             }
         }
@@ -3264,7 +3275,7 @@ window.FirebaseBackend = {
         // Cualquier otro formato parseable como Date
         const d = new Date(s);
         if (!isNaN(d.getTime())) {
-            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         }
         return s;
     },
@@ -3346,7 +3357,7 @@ window.FirebaseBackend = {
                 try {
                     const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
                     return await this._jsonp(sheetsParams);
-                } catch(e) {
+                } catch (e) {
                     console.warn("Error writing past permission to Sheets:", e);
                     return { error: "Error de conexión con Sheets: " + e.message };
                 }
@@ -3380,21 +3391,21 @@ window.FirebaseBackend = {
                     updateObj.razon_permiso = String(params.comentario || '').trim();
                 }
                 await db.collection('registros').doc(entryDocId).update(updateObj);
-                
+
                 // Invalidate local storage cache to force refetch of all days
                 try {
                     localStorage.removeItem('tcontrol_registros_cache_v1');
                     localStorage.removeItem(`tcontrol_archivados_cache_${empleadoId}_v1`);
-                } catch(e) {}
+                } catch (e) { }
 
                 // Sincronizar en Sheets (dual write)
                 try {
                     const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
                     await this._jsonp(sheetsParams);
-                } catch(e) {
+                } catch (e) {
                     console.warn("Error dual write to Sheets:", e);
                 }
-                
+
                 return { ok: true };
             } else {
                 return { error: "No se encontró registro de entrada para ese día en Firebase" };
@@ -3450,7 +3461,7 @@ function parsearTimestamp(tsString) {
 
 console.log("🚀 Motor de Firebase inicializado y listo para usar.");
 
-window.resetearPinesTodosLosEmpleados = async function(desvincularDispositivos = false) {
+window.resetearPinesTodosLosEmpleados = async function (desvincularDispositivos = false) {
     if (!confirm("⚠️ ADVERTENCIA:\n\n¿Estás seguro de que deseas BORRAR los PINs/Contraseñas de TODOS los empleados?\n\nAl hacerlo, ningún empleado tendrá contraseña guardada y cada usuario deberá ingresar a la app para registrar y confirmar su nueva contraseña personal.")) {
         return;
     }

@@ -1680,6 +1680,297 @@
       font-size: var(--fsm)
     }
 
+    /* Estilos Enriquecidos para Módulo Directorio */
+    .directorio-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .btn-dir-view {
+      border: none;
+      background: transparent;
+      color: #64748b;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-dir-view.active {
+      background: white !important;
+      color: #0f172a !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .dir-emp-card {
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s;
+      position: relative;
+    }
+
+    .dir-emp-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 20px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+      border-color: #cbd5e1;
+    }
+
+    .dir-card-header {
+      padding: 16px;
+      background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      position: relative;
+    }
+
+    .dir-photo-container {
+      width: 58px;
+      height: 58px;
+      min-width: 58px;
+      border-radius: 50%;
+      overflow: hidden;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .dir-photo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .dir-status-dot {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+    }
+    .dir-status-dot.active { background: #16a34a; }
+    .dir-status-dot.inactive { background: #e11d48; }
+
+    .dir-card-body {
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .dir-info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11.5px;
+      color: #64748b;
+      padding: 4px 0;
+      border-bottom: 1px dashed #f1f5f9;
+    }
+
+    .dir-badge-pill {
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .dir-badge-rol-admin {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    .dir-badge-rol-sup {
+      background: #ede9fe;
+      color: #6d28d9;
+      border: 1px solid #ddd6fe;
+    }
+    .dir-badge-rol-reg {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+
+    .dir-card-actions {
+      padding: 10px 14px;
+      background: #f8fafc;
+      border-top: 1px solid #f1f5f9;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .dir-btn-action {
+      flex: 1;
+      min-width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #334155;
+      font-size: 11.5px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+
+    .dir-btn-action:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      color: #0f172a;
+      transform: translateY(-1px);
+    }
+
+    .dir-btn-action.btn-edit {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+    .dir-btn-action.btn-edit:hover {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+
+    .dir-btn-action.btn-wp {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+      color: #047857;
+    }
+    .dir-btn-action.btn-wp:hover {
+      background: #d1fae5;
+      border-color: #6ee7b7;
+    }
+
+    .dir-btn-action.btn-key {
+      background: #fff1f2;
+      border-color: #fecdd3;
+      color: #be123c;
+    }
+    .dir-btn-action.btn-key:hover {
+      background: #ffe4e6;
+      border-color: #fda4af;
+    }
+
+    .dir-btn-action.btn-detail {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: #475569;
+    }
+    .dir-btn-action.btn-detail:hover {
+      background: #e2e8f0;
+    }
+
+    .dir-table-actions {
+      display: flex;
+      gap: 4px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .dir-table-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #475569;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .dir-table-btn:hover {
+      transform: scale(1.08);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Select & Badges de Almuerzo Hoy en Directorio */
+    .dir-alm-select {
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 750;
+      border-radius: 8px;
+      padding: 4px 8px;
+      border: 1px solid #cbd5e1;
+      background-color: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      text-align: center;
+    }
+
+    .dir-alm-select:hover {
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .dir-alm-select.is-planta {
+      background-color: #ecfdf5;
+      border-color: #6ee7b7;
+      color: #047857;
+      box-shadow: 0 1px 3px rgba(16, 185, 129, 0.12);
+    }
+
+    .dir-alm-select.is-planta:hover {
+      background-color: #d1fae5;
+      border-color: #34d399;
+    }
+
+    .dir-alm-select.is-fuera {
+      background-color: #eff6ff;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+      box-shadow: 0 1px 3px rgba(59, 130, 246, 0.12);
+    }
+
+    .dir-alm-select.is-fuera:hover {
+      background-color: #dbeafe;
+      border-color: #60a5fa;
+    }
+
+    .dir-alm-select.is-none {
+      background-color: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      color: #64748b;
+    }
+
+    .dir-alm-select.is-none:hover {
+      background-color: #f1f5f9;
+      border-color: #94a3b8;
+    }
+
     /* Detalle */
     .detail-view {
       background: white;
