@@ -19,11 +19,18 @@ window.TCONTROL_CONFIG = {
     WHATSAPP_MESSAGE: "Hola, necesito soporte técnico para el sistema CONTROL 2026"
 };
 
-window.fixFotoUrl = function(url) {
+window.fixFotoUrl = window.formatearUrlFoto = function(url, size = 200) {
     if (!url || typeof url !== 'string') return '';
     url = url.trim();
-    if (!url) return '';
     if (url.startsWith('data:image') || url.startsWith('blob:')) return url;
+
+    // Si ya es googleusercontent, asegurar parámetro de tamaño
+    if (url.includes('googleusercontent.com/d/')) {
+        if (!url.includes('=')) {
+            return `${url}=w${size}`;
+        }
+        return url;
+    }
 
     // Si es un link de Google Drive (formato /file/d/ID/view o ?id=ID o /d/ID)
     if (url.includes('drive.google.com') || url.includes('docs.google.com') || url.includes('googleusercontent.com')) {
@@ -39,7 +46,7 @@ window.fixFotoUrl = function(url) {
             if (m) fileId = m[1];
         }
         if (fileId) {
-            return `https://lh3.googleusercontent.com/d/${fileId}`;
+            return `https://lh3.googleusercontent.com/d/${fileId}=w${size}`;
         }
     }
     return url;

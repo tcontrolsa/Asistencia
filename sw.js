@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.64';
+const CACHE_NAME = 'tcontrol-v1.65';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -86,11 +86,15 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ── 2. Solicitudes a APIs externas, Google Sheets, Firestore y OpenWA ──
+  // ── 2. Solicitudes a APIs externas, Google Sheets, Firestore, Drive y OpenWA ──
   if (url.hostname.includes('script.google.com') ||
       url.hostname.includes('googleapis.com') ||
       url.hostname.includes('firebaseio.com') ||
+      url.hostname.includes('googleusercontent.com') ||
+      url.hostname.includes('drive.google.com') ||
       url.hostname === '192.168.10.129' ||
+      url.hostname.includes('trycloudflare.com') ||
+      url.hostname.includes('cloudflare.com') ||
       url.port === '2785' ||
       url.port === '8081') {
     // No interceptamos — el navegador maneja directamente

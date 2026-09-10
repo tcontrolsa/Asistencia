@@ -3155,11 +3155,19 @@ window.FirebaseBackend = {
         return dias[fecha.getDay()];
     },
 
-    _normalizarUrlFoto(url) {
+    _normalizarUrlFoto(url, size = 200) {
         if (!url || typeof url !== 'string') return "";
         url = url.trim();
         if (!url) return "";
         if (url.startsWith('data:image') || url.startsWith('blob:')) return url;
+
+        // Si ya es googleusercontent, asegurar parámetro de tamaño
+        if (url.includes('googleusercontent.com/d/')) {
+            if (!url.includes('=')) {
+                return `${url}=w${size}`;
+            }
+            return url;
+        }
 
         // Si es un link de Google Drive (formato /file/d/ID/view o ?id=ID o /d/ID)
         if (url.includes('drive.google.com') || url.includes('docs.google.com') || url.includes('googleusercontent.com')) {
@@ -3175,7 +3183,7 @@ window.FirebaseBackend = {
                 if (m) id = m[1];
             }
             if (id) {
-                return `https://lh3.googleusercontent.com/d/${id}`;
+                return `https://lh3.googleusercontent.com/d/${id}=w${size}`;
             }
         }
         return url;

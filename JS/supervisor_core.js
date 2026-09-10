@@ -461,20 +461,30 @@ function esEnCampo(lat, lng) {
   return distancia > RADIO_METROS;
 }
 
-function fixFotoUrl(url) {
+function fixFotoUrl(url, size = 200) {
   if (!url) return null;
-  // Convertir URLs de Google Drive a formato compatible con img src
+  url = url.trim();
+  if (url.startsWith('data:image') || url.startsWith('blob:')) return url;
+
+  // Si ya es googleusercontent, asegurar parámetro de tamaño para usar CDN de Google y evitar 429
+  if (url.includes('googleusercontent.com/d/')) {
+    if (!url.includes('=')) {
+      return `${url}=w${size}`;
+    }
+    return url;
+  }
+  // Convertir URLs de Google Drive a formato CDN optimizado con thumbnail
   if (url.includes('drive.google.com/file/d/')) {
     const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-    if (m) return `https://lh3.googleusercontent.com/d/${m[1]}`;
+    if (m) return `https://lh3.googleusercontent.com/d/${m[1]}=w${size}`;
   }
-  if (url.includes('drive.google.com/open?id=') || url.includes('id=')) {
+  if (url.includes('drive.google.com/open?id=') || url.includes('/uc?export=view&id=') || url.includes('/uc?id=') || url.includes('id=')) {
     const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-    if (m) return `https://lh3.googleusercontent.com/d/${m[1]}`;
+    if (m) return `https://lh3.googleusercontent.com/d/${m[1]}=w${size}`;
   }
-  if (url.includes('/uc?export=view&id=') || url.includes('/uc?id=')) {
-    const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-    if (m) return `https://lh3.googleusercontent.com/d/${m[1]}`;
+  if (url.includes('/d/')) {
+    const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return `https://lh3.googleusercontent.com/d/${m[1]}=w${size}`;
   }
   return url;
 }
@@ -6911,7 +6921,15 @@ function mostrarInformacionSupervisor(session) {
   }
 
   if (foto_url && typeof fixFotoUrl === 'function') {
-    foto_url = fixFotoUrl(foto_url);
+    foto_url = fixFotoUrl(foto_url, 200);
+  }
+
+  // Si la sesión almacenada tenía la URL directa sin optimizar, actualizarla
+  if (session && session.foto_url && session.foto_url !== foto_url) {
+    try {
+      session.foto_url = foto_url;
+      localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(session));
+    } catch (e) { }
   }
 
   // Obtener inicial para fallback
@@ -6927,11 +6945,14 @@ function mostrarInformacionSupervisor(session) {
     rolLabelTopBar = 'Sup. Admin';
   }
 
-  // 1. Renderizar en Sidebar (#sidebarSupervisorInfo)
+  const renderKey = `${id}|${nombre}|${rol}|${foto_url}`;
+
+  // 1. Renderizar en Sidebar (#sidebarSupervisorInfo) - Solo si cambió para no reiniciar peticiones de imagen
   const elSidebar = $('sidebarSupervisorInfo');
-  if (elSidebar) {
+  if (elSidebar && elSidebar.dataset.renderedSup !== renderKey) {
+    elSidebar.dataset.renderedSup = renderKey;
     const avatarImgHtml = foto_url
-      ? `<img src="${foto_url}" alt="${escapeHtml(nombre)}" class="sup-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      ? `<img src="${foto_url}" alt="${escapeHtml(nombre)}" class="sup-avatar-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.retried && this.src.includes('googleusercontent.com')){ this.dataset.retried='1'; const m=this.src.match(/\\/d\\/([a-zA-Z0-9_-]+)/); if(m){ this.src='https://drive.google.com/thumbnail?id='+m[1]+'&sz=w200'; return; } } this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
              <div class="sup-avatar-fallback" style="display:none;">${primerLetra}</div>`
       : `<div class="sup-avatar-fallback">${primerLetra}</div>`;
 
@@ -6954,11 +6975,12 @@ function mostrarInformacionSupervisor(session) {
         `;
   }
 
-  // 2. Renderizar en TopBar (#topbarSupervisorProfile)
+  // 2. Renderizar en TopBar (#topbarSupervisorProfile) - Solo si cambió
   const elTopBar = $('topbarSupervisorProfile');
-  if (elTopBar) {
+  if (elTopBar && elTopBar.dataset.renderedSup !== renderKey) {
+    elTopBar.dataset.renderedSup = renderKey;
     const topbarAvatarHtml = foto_url
-      ? `<img src="${foto_url}" alt="${escapeHtml(nombre)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      ? `<img src="${foto_url}" alt="${escapeHtml(nombre)}" referrerpolicy="no-referrer" onerror="if(!this.dataset.retried && this.src.includes('googleusercontent.com')){ this.dataset.retried='1'; const m=this.src.match(/\\/d\\/([a-zA-Z0-9_-]+)/); if(m){ this.src='https://drive.google.com/thumbnail?id='+m[1]+'&sz=w200'; return; } } this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
              <div class="topbar-fallback" style="display:none;">${primerLetra}</div>`
       : `<div class="topbar-fallback">${primerLetra}</div>`;
 
@@ -12800,7 +12822,7 @@ window.inicializarPanelWhatsApp = async function () {
   await window.OpenWAService.inicializar();
   const cfg = window.OpenWAService.config || {};
 
-  if ($('txtWhatsAppServidorUrl')) $('txtWhatsAppServidorUrl').value = cfg.servidorUrl || 'http://192.168.10.129:2785';
+  if ($('txtWhatsAppServidorUrl')) $('txtWhatsAppServidorUrl').value = cfg.servidorUrl || 'https://trails-aids-spending-targeted.trycloudflare.com';
   if ($('txtWhatsAppApiKey')) $('txtWhatsAppApiKey').value = cfg.apiKey || '';
   if ($('chkWhatsAppActivo')) $('chkWhatsAppActivo').checked = (cfg.activo !== false);
 
@@ -13023,7 +13045,7 @@ window.probarEnvioWhatsApp = async function () {
 window.guardarConfiguracionWhatsAppDesdePanel = async function () {
   if (!window.OpenWAService) return;
   const cfg = {
-    servidorUrl: $('txtWhatsAppServidorUrl')?.value.trim() || 'http://192.168.10.129:2785',
+    servidorUrl: $('txtWhatsAppServidorUrl')?.value.trim() || 'https://trails-aids-spending-targeted.trycloudflare.com',
     apiKey: $('txtWhatsAppApiKey')?.value.trim() || '',
     activo: $('chkWhatsAppActivo')?.checked ?? true,
     autoEnvioNoRegistro: $('chkWhatsAppAutoNoRegistro')?.checked ?? false,

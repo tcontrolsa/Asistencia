@@ -6,7 +6,8 @@
     'use strict';
 
     const DEFAULT_CONFIG_WHATSAPP = {
-        servidorUrl: 'http://192.168.10.129:2785',
+        servidorUrl: 'https://trails-aids-spending-targeted.trycloudflare.com',
+        servidorUrlLocal: 'http://192.168.10.129:2785',
         apiKey: 'owa_k1_0b88a4ca047df765c8256adaa1607c60afb4db126e383187653b0f0d0828d6d7',
         activo: true,
         autoEnvioNoRegistro: false,
@@ -102,9 +103,9 @@
                     this.config.imagenesPlantillas['no_registro'] = this.config.imagenesPlantillas['sin_marcar'];
                 }
 
-                // Auto-migración si el almacenamiento local aún tenía el puerto antiguo 8081
-                if (this.config.servidorUrl && (this.config.servidorUrl.includes(':8081') || this.config.servidorUrl === 'http://192.168.10.129:8081')) {
-                    this.config.servidorUrl = 'http://192.168.10.129:2785';
+                // Auto-migración si el almacenamiento local aún tenía el puerto antiguo 8081 o URL HTTP no segura
+                if (this.config.servidorUrl && (this.config.servidorUrl.includes(':8081') || this.config.servidorUrl === 'http://192.168.10.129:8081' || this.config.servidorUrl === 'http://192.168.10.129:2785')) {
+                    this.config.servidorUrl = DEFAULT_CONFIG_WHATSAPP.servidorUrl;
                     try { localStorage.setItem('tcontrol_config_whatsapp', JSON.stringify(this.config)); } catch(e) {}
                 }
             } catch (e) {
@@ -258,9 +259,22 @@
             return num;
         },
 
+        // Obtener URL base segura para peticiones (maneja auto-upgrade a HTTPS para evitar bloqueo de Contenido Mixto en smartphones)
+        _obtenerUrlBase(servidorUrl = null) {
+            let url = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl || '').replace(/\/+$/, '');
+            // Si el cliente está corriendo bajo HTTPS (ej: en smartphones o tcontrol.ec) y la URL configurada es HTTP plano local,
+            // auto-upgradear a la URL con túnel HTTPS para evitar Mixed Content y Private Network Access blocks.
+            if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && url.startsWith('http://')) {
+                if (DEFAULT_CONFIG_WHATSAPP.servidorUrl && DEFAULT_CONFIG_WHATSAPP.servidorUrl.startsWith('https://')) {
+                    url = DEFAULT_CONFIG_WHATSAPP.servidorUrl.replace(/\/+$/, '');
+                }
+            }
+            return url;
+        },
+
         // Probar conexión y obtener estado de la sesión
         async probarConexion(servidorUrl = null, apiKeyCustom = null) {
-            const urlBase = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl).replace(/\/+$/, '');
+            const urlBase = this._obtenerUrlBase(servidorUrl);
             const apiKey = apiKeyCustom !== null ? apiKeyCustom : (this.config.apiKey || DEFAULT_CONFIG_WHATSAPP.apiKey || '');
             let timeoutId = null;
 
@@ -378,7 +392,7 @@
 
         // Resolver y validar destinatario WhatsApp (soporta verificación previa con OpenWA /contacts/check/{cleanNumber})
         async resolverChatId(numeroDestino, servidorUrl = null) {
-            const urlBase = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl).replace(/\/+$/, '');
+            const urlBase = this._obtenerUrlBase(servidorUrl);
             const sessId = this._sessionId || '5a509468-647a-4973-b10c-bf87d04666ea';
             let toChatId = this.normalizarNumero(numeroDestino);
 
@@ -418,7 +432,7 @@
 
         // Enviar un mensaje de texto directo (soporta endpoints WAHA y OpenWA)
         async enviarMensajeTexto(numeroDestino, mensajeTexto, servidorUrl = null) {
-            const urlBase = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl).replace(/\/+$/, '');
+            const urlBase = this._obtenerUrlBase(servidorUrl);
             const sessId = this._sessionId || '5a509468-647a-4973-b10c-bf87d04666ea';
 
             if (!mensajeTexto || !mensajeTexto.trim()) {
@@ -503,7 +517,7 @@
 
         // Enviar un mensaje con imagen adjunta (soporta endpoints WAHA y OpenWA)
         async enviarMensajeImagen(numeroDestino, mensajeTexto, base64Imagen, servidorUrl = null) {
-            const urlBase = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl).replace(/\/+$/, '');
+            const urlBase = this._obtenerUrlBase(servidorUrl);
             const sessId = this._sessionId || '5a509468-647a-4973-b10c-bf87d04666ea';
 
             if (!base64Imagen) {
