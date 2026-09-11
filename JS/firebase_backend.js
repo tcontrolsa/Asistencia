@@ -1296,17 +1296,7 @@ window.FirebaseBackend = {
             console.log(`ℹ️ Usuario ordinario (${id} - ${cargo}) sin marcación previa para ${targetFecha}. No se crea SOLO_ALMUERZO.`);
         }
 
-        // Para evitar duplicación en Google Sheets (base fría):
-        // Si el empleado tiene cargo "Solo Almuerzo" / "Sin Asistencia" o se trata de un registro SOLO_ALMUERZO,
-        // ÚNICAMENTE se registra en Firebase y NUNCA se envía a Google Sheets.
-        if (!esSoloAlmuerzo && matchedReg && matchedReg.tipo !== 'SOLO_ALMUERZO') {
-            try {
-                await this._jsonp({
-                    ...params,
-                    soloSiExiste: true
-                });
-            } catch (e) { console.warn("Error Sheets:", e); }
-        }
+        // Los cambios de almuerzo se gestionan 100% en Firebase y se transfieren a Sheets al archivar datos históricos.
 
         // Registrar auditoría en Firebase
         try {
@@ -2366,23 +2356,7 @@ window.FirebaseBackend = {
                 obsCompleta = obsCompleta ? `${obsCompleta} (Sol: ${empleadoNombre})` : `(Sol: ${empleadoNombre})`;
             }
 
-            // 2. Registro en Google Sheets (Hoja ALMUERZOS_EXTRA)
-            try {
-                await this._jsonp({
-                    accion: 'registrarAlmuerzoExtra',
-                    fecha: fechaTarget,
-                    nombre: `${invitado} (Inv. de ${empleadoNombre})`,
-                    empresa: empresa,
-                    tipo: subtipo,
-                    cantidad: cantidad,
-                    observaciones: obsCompleta,
-                    supervisorId: empleadoId || ''
-                });
-            } catch (errSheets) {
-                console.warn("Aviso: Registro asíncrono en Sheets con demora o fallback:", errSheets);
-            }
-
-            // 3. Registro en Firestore (Colección solicitudes_invitados)
+            // 2. Registro exclusivo en Firestore (disponibilidad instantánea, sin latencia ni cuotas de Sheets)
             const idDoc = `inv_${fechaTarget.replace(/-/g, '')}_${horaActualStr.replace(/:/g, '')}_${empleadoId || 'ext'}_${Math.random().toString(36).slice(2, 6)}`;
             const dataFirestore = {
                 id: idDoc,
@@ -3406,13 +3380,7 @@ window.FirebaseBackend = {
                     localStorage.removeItem(`tcontrol_archivados_cache_${empleadoId}_v1`);
                 } catch (e) { }
 
-                // Sincronizar en Sheets (dual write)
-                try {
-                    const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
-                    await this._jsonp(sheetsParams);
-                } catch (e) {
-                    console.warn("Error dual write to Sheets:", e);
-                }
+                // Los permisos se registran en Firebase y se transfieren a Sheets al archivar datos históricos.
 
                 return { ok: true };
             } else {

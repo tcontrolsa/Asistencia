@@ -193,9 +193,10 @@ function doPost(e) {
           sheetVacs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS']);
         }
         
-        var registros = data.registros;
-        if (!registros || registros.length === 0) {
-          return ContentService.createTextOutput(JSON.stringify({ok: true, mensaje: "Sin registros" })).setMimeType(ContentService.MimeType.JSON);
+        var registros = data.registros || [];
+        var almuerzosExtra = data.almuerzosExtra || [];
+        if ((!registros || registros.length === 0) && (!almuerzosExtra || almuerzosExtra.length === 0)) {
+          return ContentService.createTextOutput(JSON.stringify({ok: true, mensaje: "Sin registros para archivar" })).setMimeType(ContentService.MimeType.JSON);
         }
         var filasRegs = [];
         var filasVacs = [];
@@ -252,7 +253,40 @@ function doPost(e) {
         if (filasVacs.length > 0) {
           sheetVacs.getRange(sheetVacs.getLastRow() + 1, 1, filasVacs.length, filasVacs[0].length).setValues(filasVacs);
         }
-        return ContentService.createTextOutput(JSON.stringify({ok: true, guardados: filasRegs.length, vacacionesGuardadas: filasVacs.length})).setMimeType(ContentService.MimeType.JSON);
+
+        // Archivado en bloque de Almuerzos Extra / Invitados
+        var filasAlm = [];
+        if (almuerzosExtra && almuerzosExtra.length > 0) {
+          var sheetAlm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ALMUERZOS_EXTRA');
+          if (!sheetAlm) {
+            sheetAlm = SpreadsheetApp.getActiveSpreadsheet().insertSheet('ALMUERZOS_EXTRA');
+            sheetAlm.appendRow(["FECHA", "NOMBRE", "EMPRESA", "TIPO", "CANTIDAD", "HORA_REGISTRO", "TIMESTAMP", "OBSERVACIONES", "SUPERVISOR_ID"]);
+          }
+          for (var j = 0; j < almuerzosExtra.length; j++) {
+            var a = almuerzosExtra[j];
+            var a_fecha = a.fecha || '';
+            var a_nombre = a.nombre || (a.invitado ? (a.invitado + (a.empleadoNombre ? ' (Inv. de ' + a.empleadoNombre + ')' : '')) : 'Almuerzo Extra');
+            var a_empresa = a.empresa || '';
+            var a_tipo = a.subtipo || a.tipo || a.tipoSolicitud || 'ALMUERZO_EXTRA';
+            var a_cantidad = parseInt(a.cantidad) || 1;
+            var a_hora = a.hora || a.horaRegistro || '';
+            var a_ts = a.timestamp ? String(a.timestamp) : new Date().toISOString();
+            var a_obs = a.observacionesCompletas || a.observaciones || '';
+            var a_supId = a.empleadoId || a.supervisorId || '';
+
+            filasAlm.push([a_fecha, a_nombre, a_empresa, a_tipo, a_cantidad, a_hora, a_ts, a_obs, a_supId]);
+          }
+          if (filasAlm.length > 0) {
+            sheetAlm.getRange(sheetAlm.getLastRow() + 1, 1, filasAlm.length, filasAlm[0].length).setValues(filasAlm);
+          }
+        }
+
+        return ContentService.createTextOutput(JSON.stringify({
+          ok: true, 
+          guardados: filasRegs.length, 
+          vacacionesGuardadas: filasVacs.length,
+          almuerzosExtraGuardados: filasAlm.length
+        })).setMimeType(ContentService.MimeType.JSON);
       }
       
       if (data.accion === 'obtenerRegistrosArchivados') {

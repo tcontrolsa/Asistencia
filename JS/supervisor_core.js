@@ -5738,7 +5738,7 @@ async function iniciarArchivadoFirebase() {
   if (!diasArchivar || isNaN(diasArchivar)) return;
 
   const diasNum = parseInt(diasArchivar);
-  if (!confirm(`¿Estás seguro de mover permanentemente los registros de hace más de ${diasNum} días a la hoja de cálculo REGISTROS?\n\nEsto limpiará tu Firebase y reducirá los costos. Esta acción es irreversible en Firebase.`)) return;
+  if (!confirm(`¿Estás seguro de mover permanentemente los registros y solicitudes de invitados de hace más de ${diasNum} días a las hojas de cálculo REGISTROS y ALMUERZOS_EXTRA?\n\nEsto limpiará tu Firebase y mantendrá la base liviana y de alta velocidad. Esta acción es irreversible en Firebase.`)) return;
 
   mostrarLoader(true);
 
@@ -5750,15 +5750,17 @@ async function iniciarArchivadoFirebase() {
     const d = String(limite.getDate()).padStart(2, '0');
     const limiteStr = `${y}-${m}-${d}`;
 
-    mostrarToast('Buscando registros en Firebase...', 'info');
+    mostrarToast('Buscando registros y solicitudes en Firebase...', 'info');
 
-    // 1. Obtener registros de Firebase
+    // 1. Obtener registros de asistencia de Firebase
     const snap = await db.collection('registros').get();
 
-    if (snap.empty) {
-      mostrarLoader(false);
-      mostrarToast('No hay registros para archivar.', 'info');
-      return;
+    // 2. Obtener solicitudes de catering/invitados de Firebase
+    let snapInvitados = null;
+    try {
+      snapInvitados = await db.collection('solicitudes_invitados').get();
+    } catch (eInv) {
+      console.warn("Aviso consultando solicitudes_invitados para archivar:", eInv);
     }
 
     const registrosToArchive = [];
@@ -5874,27 +5876,74 @@ async function iniciarArchivadoFirebase() {
       }
     });
 
+    // Procesar solicitudes de invitados para archivar en ALMUERZOS_EXTRA
+    const almuerzosToArchive = [];
+    if (snapInvitados && !snapInvitados.empty) {
+      snapInvitados.forEach(doc => {
+        const data = doc.data() || {};
+        const docFecha = data.fecha;
+        let parsedDate = null;
+        if (docFecha) {
+          const matchYMD = String(docFecha).trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+          if (matchYMD) {
+            parsedDate = new Date(parseInt(matchYMD[1], 10), parseInt(matchYMD[2], 10) - 1, parseInt(matchYMD[3], 10));
+          } else {
+            parsedDate = new Date(docFecha);
+          }
+        } else if (data.timestamp) {
+          let ts = data.timestamp;
+          if (ts && typeof ts.toDate === 'function') parsedDate = ts.toDate();
+          else if (ts && ts.seconds) parsedDate = new Date(ts.seconds * 1000);
+          else parsedDate = new Date(ts);
+        }
+
+        if (parsedDate && !isNaN(parsedDate.getTime())) {
+          const docDateNormalized = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate()).getTime();
+          if (docDateNormalized < limitDateNormalized) {
+            const nomCompleto = (data.invitado || 'Invitado') + (data.empleadoNombre ? ` (Inv. de ${data.empleadoNombre})` : '');
+            almuerzosToArchive.push({
+              id: doc.id,
+              fecha: formatearFechaA_DMY(docFecha || parsedDate),
+              nombre: nomCompleto,
+              empresa: data.empresa || '',
+              tipo: data.subtipo || data.tipoSolicitud || 'ALMUERZO_EXTRA',
+              cantidad: data.cantidad || 1,
+              hora: data.hora || '',
+              timestamp: data.horaServicio ? `[Hora req: ${data.horaServicio}]` : '',
+              observaciones: data.observacionesCompletas || data.observaciones || '',
+              supervisorId: data.empleadoId || ''
+            });
+          }
+        }
+      });
+    }
+
     console.log("=== FIN DIAGNÓSTICO ===");
     console.log("- Sin campo 'fecha':", countSinFecha);
     console.log("- Fallas de parseo:", countParseFail);
     console.log("- Omitidos (hoy/futuro):", countMayorOIgual);
-    console.log("- Aceptados para archivar:", countMenores);
+    console.log("- Asistencias para archivar:", countMenores);
+    console.log("- Pedidos de catering para archivar:", almuerzosToArchive.length);
 
-    if (registrosToArchive.length === 0) {
+    if (registrosToArchive.length === 0 && almuerzosToArchive.length === 0) {
       mostrarLoader(false);
-      mostrarToast('No hay registros tan antiguos para archivar.', 'info');
+      mostrarToast('No hay registros ni solicitudes antiguas para archivar.', 'info');
       return;
     }
 
     const chunkSiz = 200;
     const totalRegistros = registrosToArchive.length;
-    const totalLotes = Math.ceil(totalRegistros / chunkSiz);
+    const totalLotes = Math.max(1, Math.ceil(totalRegistros / chunkSiz));
 
-    for (let i = 0; i < totalRegistros; i += chunkSiz) {
+    for (let i = 0; i < Math.max(totalRegistros, 1); i += chunkSiz) {
       const chunk = registrosToArchive.slice(i, i + chunkSiz);
       const loteActual = Math.floor(i / chunkSiz) + 1;
+      const esPrimerLote = (i === 0);
+      const chunkAlmuerzos = esPrimerLote ? almuerzosToArchive : [];
 
-      mostrarToast(`Archivando lote ${loteActual} de ${totalLotes} (${chunk.length} registros)...`, 'info');
+      if (chunk.length === 0 && chunkAlmuerzos.length === 0) break;
+
+      mostrarToast(`Archivando lote ${loteActual} de ${totalLotes} (${chunk.length} asistencias, ${chunkAlmuerzos.length} pedidos de catering)...`, 'info');
 
       // Enviar lote a Google Apps Script usando POST
       const respuesta = await fetch(API_URL, {
@@ -5903,7 +5952,8 @@ async function iniciarArchivadoFirebase() {
         body: JSON.stringify({
           apiKey: 'TCONTROL_SECURE_2026_XYZ',
           accion: 'archivarRegistros',
-          registros: chunk
+          registros: chunk,
+          almuerzosExtra: chunkAlmuerzos
         })
       });
 
@@ -5917,16 +5967,37 @@ async function iniciarArchivadoFirebase() {
       }
 
       // Si se guardaron bien, borrarlos de Firebase inmediatamente
-      mostrarToast(`✅ Lote ${loteActual} guardado. Borrando de Firebase...`, 'info');
-      let batch = db.batch();
-      for (const reg of chunk) {
-        batch.delete(db.collection('registros').doc(reg.id));
+      if (chunk.length > 0) {
+        mostrarToast(`✅ Lote ${loteActual} guardado. Borrando asistencias de Firebase...`, 'info');
+        let batch = db.batch();
+        for (const reg of chunk) {
+          batch.delete(db.collection('registros').doc(reg.id));
+        }
+        await batch.commit();
       }
-      await batch.commit();
+
+      // Si se transfirieron almuerzos extra en este lote, borrarlos de Firebase
+      if (chunkAlmuerzos.length > 0) {
+        mostrarToast(`✅ Pedidos de catering guardados en ALMUERZOS_EXTRA. Borrando de Firebase...`, 'info');
+        let batchInv = db.batch();
+        let countBatch = 0;
+        for (const alm of chunkAlmuerzos) {
+          batchInv.delete(db.collection('solicitudes_invitados').doc(alm.id));
+          countBatch++;
+          if (countBatch >= 400) {
+            await batchInv.commit();
+            batchInv = db.batch();
+            countBatch = 0;
+          }
+        }
+        if (countBatch > 0) {
+          await batchInv.commit();
+        }
+      }
     }
 
     mostrarLoader(false);
-    mostrarToast('Archivado completado exitosamente.', 'success');
+    mostrarToast(`Archivado exitoso: ${registrosToArchive.length} asistencias en REGISTROS y ${almuerzosToArchive.length} pedidos en ALMUERZOS_EXTRA.`, 'success');
 
     // Limpiar todas las cachés locales (incluyendo tcontrol_archivados_cache)
     // Esto evita que aparezca la ventana de "Justificar Asistencias"
