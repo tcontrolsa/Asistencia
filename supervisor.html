@@ -1117,6 +1117,16 @@
             <div class="kpi-value" id="dirKpiWhatsApp">--</div>
             <div style="font-size:10px; color:#059669; margin-top:2px;">Notificaciones listas</div>
           </div>
+
+          <!-- 6. CUMPLEAÑOS -->
+          <div class="kpi-card" id="kpiDirCardCumpleanos" onclick="setFiltroKpiDirectorio('cumpleanos', this)" style="--card-color: #d97706; --active-bg: #fef3c7; --active-text: #b45309; --shadow-color: rgba(217, 119, 6, 0.12); cursor:pointer;" title="Filtrar colaboradores que cumplen años hoy o en los próximos 30 días">
+            <div class="kpi-header">
+              <div class="kpi-icon" style="background: #fef3c7; color: #d97706;"><i class="fas fa-cake-candles"></i></div>
+              <span class="kpi-label">Cumpleaños</span>
+            </div>
+            <div class="kpi-value" id="dirKpiCumpleanos">--</div>
+            <div id="dirKpiCumpleanosSub" style="font-size:10px; color:#d97706; font-weight:600; margin-top:2px;">Hoy / Próximos 30d</div>
+          </div>
         </div>
 
         <!-- BARRA DE HERRAMIENTAS Y CONTROLES DEL DIRECTORIO -->
@@ -1125,7 +1135,7 @@
             <!-- Buscador Dinámico -->
             <div style="position:relative; flex:1; min-width:260px;">
               <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:13px;"></i>
-              <input type="text" id="srchDirectorio" onkeyup="filtrarDirectorio()" placeholder="🔍 Buscar por nombre, cédula, área, cargo o teléfono..." class="form-input" style="width:100%; padding-left:36px; padding-right:32px; border-radius:10px; font-size:12px; height:38px; border:1px solid #cbd5e1;">
+              <input type="text" id="srchDirectorio" onkeyup="filtrarDirectorio()" placeholder="🔍 Buscar por nombre, ID, área, cargo o teléfono..." class="form-input" style="width:100%; padding-left:36px; padding-right:32px; border-radius:10px; font-size:12px; height:38px; border:1px solid #cbd5e1;">
               <button id="btnLimpiarSrchDir" onclick="limpiarBuscadorDirectorio()" style="display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:none; color:#94a3b8; cursor:pointer; font-size:12px;"><i class="fas fa-times-circle"></i></button>
             </div>
 
@@ -1157,6 +1167,15 @@
                 <option value="SI">🍱 Almuerzo en Planta</option>
                 <option value="NO">🥪 Almuerzo Fuera</option>
                 <option value="SIN_ASIGNAR">⚪ Sin Asignar / Ausente</option>
+              </select>
+
+              <!-- Cumpleaños -->
+              <select id="filtroCumpleanosDirectorio" onchange="filtrarDirectorio()" class="filter-select" style="font-size:11.5px; height:38px; border-radius:10px; padding:0 10px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; font-weight:600;" title="Filtrar colaboradores por cumpleaños">
+                <option value="">🎂 Cumpleaños: Todos</option>
+                <option value="HOY">🎂 Cumplen Hoy</option>
+                <option value="7">🎉 Próximos 7 días</option>
+                <option value="15">🗓️ Próximos 15 días</option>
+                <option value="30">📅 Próximos 30 días</option>
               </select>
 
               <!-- Selector de Vista: Tarjetas vs Tabla -->
@@ -1192,6 +1211,9 @@
           </div>
         </div>
 
+        <!-- BANNER DE NOTIFICACIÓN DE CUMPLEAÑOS (HOY Y PRÓXIMOS) -->
+        <div id="dirBannerCumpleanos" style="display:none; margin-bottom:16px;"></div>
+
         <!-- CONTENEDOR VISTA TARJETAS (GRID) -->
         <div id="directorioGridContainer" class="directorio-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
         </div>
@@ -1205,8 +1227,6 @@
                 <th style="padding:10px 12px; text-align:left; font-size:11px; font-weight:800; color:#475569;">Área & Cargo</th>
                 <th style="padding:10px 12px; text-align:left; font-size:11px; font-weight:800; color:#475569;"><i class="fas fa-cake-candles" style="color:#f59e0b; margin-right:4px;"></i> F. Nacimiento</th>
                 <th style="padding:10px 12px; text-align:left; font-size:11px; font-weight:800; color:#475569;">Contacto WhatsApp</th>
-                <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569;">Rol / Nivel</th>
-                <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569;">Estado</th>
                 <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569; min-width:140px;"><i class="fas fa-utensils" style="color:#64748b; margin-right:4px;"></i> Almuerzo Hoy</th>
                 <th style="padding:10px 12px; text-align:center; font-size:11px; font-weight:800; color:#475569; min-width:220px;">Acciones Rápidas</th>
               </tr>
@@ -3476,6 +3496,9 @@
             <button type="button" onclick="window.aplicarPlantillaWaIndividual('saludo')" class="btn-plantilla-wa" style="background:#f5f3ff; border:1px solid #ddd6fe; color:#6d28d9; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
               👋 Saludo
             </button>
+            <button type="button" onclick="window.aplicarPlantillaWaIndividual('cumple')" class="btn-plantilla-wa" style="background:#fef3c7; border:1px solid #fde68a; color:#b45309; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
+              🎂 Cumpleaños
+            </button>
             <button type="button" onclick="window.aplicarPlantillaWaIndividual('limpiar')" class="btn-plantilla-wa" style="background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:600; padding:4px 10px; border-radius:8px; cursor:pointer;">
               ✏️ Borrar
             </button>
@@ -3803,9 +3826,9 @@
     </div>
   </div>
 
-  <script src="./JS/openwa_service.js?v=20260911_02"></script>
-  <script src="./JS/tcontrol_core.js?v=20260911_02"></script>
-  <script src="./JS/supervisor_core.js?v=20260911_02"></script>
+  <script src="./JS/openwa_service.js?v=20260911_04"></script>
+  <script src="./JS/tcontrol_core.js?v=20260911_04"></script>
+  <script src="./JS/supervisor_core.js?v=20260911_04"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

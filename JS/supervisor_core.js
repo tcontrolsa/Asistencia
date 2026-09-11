@@ -3782,7 +3782,8 @@ window.directorioUltimaLista = [];
 window.setFiltroKpiDirectorio = function (filtro, elCard) {
   window.directorioFiltroKpi = filtro;
   document.querySelectorAll('.directorio-kpi-grid .kpi-card').forEach(c => c.classList.remove('active'));
-  if (elCard) elCard.classList.add('active');
+  const card = elCard || (filtro === 'cumpleanos' ? $('kpiDirCardCumpleanos') : (filtro === 'todos' ? $('kpiDirCardTodos') : null));
+  if (card) card.classList.add('active');
   filtrarDirectorio();
 };
 
@@ -3814,12 +3815,14 @@ window.limpiarTodosFiltrosDirectorio = function () {
   const selRol = $('filtroRolDirectorio');
   const selEstado = $('filtroEstadoDirectorio');
   const selAlm = $('filtroAlmuerzoDirectorio');
+  const selCumple = $('filtroCumpleanosDirectorio');
 
   if (input) input.value = '';
   if (selArea) selArea.value = '';
   if (selRol) selRol.value = '';
   if (selEstado) selEstado.value = '';
   if (selAlm) selAlm.value = '';
+  if (selCumple) selCumple.value = '';
 
   window.directorioFiltroKpi = 'todos';
   document.querySelectorAll('.directorio-kpi-grid .kpi-card').forEach(c => c.classList.remove('active'));
@@ -3827,6 +3830,79 @@ window.limpiarTodosFiltrosDirectorio = function () {
   if (cardTodos) cardTodos.classList.add('active');
 
   filtrarDirectorio();
+};
+
+window.renderBannerCumpleanosDirectorio = function (listaCumples) {
+  const banner = $('dirBannerCumpleanos');
+  if (!banner) return;
+
+  if (!listaCumples || listaCumples.length === 0) {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+    return;
+  }
+
+  // Ordenar por días faltantes (hoy primero)
+  listaCumples.sort((a, b) => a.estado.diasFaltan - b.estado.diasFaltan);
+
+  const hayHoy = listaCumples.some(item => item.estado.esHoy);
+
+  const chipsHtml = listaCumples.map(item => {
+    const e = item.emp;
+    const st = item.estado;
+    const nombreFmt = (typeof obtenerPrimerNombreYPrimerApellido === 'function')
+      ? obtenerPrimerNombreYPrimerApellido(e.nombre)
+      : (e.nombre || 'Colaborador');
+    const edadStr = st.edad ? ` (${st.edad} años)` : '';
+
+    if (st.esHoy) {
+      return `
+        <div style="background:#fef3c7; border:1.5px solid #f59e0b; border-radius:10px; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; box-shadow:0 2px 5px rgba(245,158,11,0.15);">
+          <span style="font-size:16px;">🎂</span>
+          <div>
+            <div style="font-weight:800; font-size:12px; color:#92400e;">¡Hoy! ${escapeHtml(nombreFmt)}${edadStr}</div>
+            <div style="font-size:10px; color:#b45309;">${escapeHtml(e.cargo || e.area || '')}</div>
+          </div>
+          <button type="button" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" style="background:#16a34a; color:white; border:none; border-radius:6px; padding:4px 9px; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px; margin-left:4px;" title="Felicitar por WhatsApp">
+            <i class="fab fa-whatsapp"></i> Felicitar
+          </button>
+        </div>`;
+    }
+
+    const diasText = st.diasFaltan === 1 ? 'Mañana' : `En ${st.diasFaltan} días`;
+    return `
+      <div style="background:#ffffff; border:1px solid #fed7aa; border-radius:10px; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <span style="font-size:14px; color:#ea580c;">🎉</span>
+        <div>
+          <div style="font-weight:750; font-size:11.5px; color:#1e293b;">${escapeHtml(nombreFmt)}${edadStr}</div>
+          <div style="font-size:10px; color:#ea580c; font-weight:600;">${diasText} (${st.fechaLegible})</div>
+        </div>
+        <button type="button" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; border-radius:6px; padding:3px 7px; font-size:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:3px; margin-left:2px;" title="Enviar WhatsApp">
+          <i class="fab fa-whatsapp"></i>
+        </button>
+      </div>`;
+  }).join('');
+
+  banner.innerHTML = `
+    <div style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border:1px solid #fde68a; border-radius:14px; padding:12px 16px; box-shadow:0 3px 8px rgba(245,158,11,0.08);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">${hayHoy ? '🎂' : '🗓️'}</span>
+          <span style="font-weight:800; font-size:13px; color:#92400e;">
+            ${hayHoy ? '¡Cumpleaños de Hoy y Próximos Colaboradores!' : 'Próximos Cumpleaños (15 días)'}
+          </span>
+          <span style="background:#fde68a; color:#78350f; padding:1px 7px; border-radius:20px; font-size:10.5px; font-weight:800;">${listaCumples.length}</span>
+        </div>
+        <button type="button" onclick="window.setFiltroKpiDirectorio('cumpleanos')" style="background:none; border:none; color:#b45309; font-size:11.5px; font-weight:700; cursor:pointer; text-decoration:underline;">
+          Ver todos en la lista →
+        </button>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+        ${chipsHtml}
+      </div>
+    </div>`;
+
+  banner.style.display = 'block';
 };
 
 window.cargarDirectorio = function () {
@@ -3844,11 +3920,49 @@ window.cargarDirectorio = function () {
   }).length;
   const conWp = empCache.filter(e => e.telefono && String(e.telefono).trim().length >= 7).length;
 
+  // Calcular cumpleaños de colaboradores activos (hoy y próximos 30 días)
+  let countCumpleanosHoy = 0;
+  let countCumpleanosProximos = 0;
+  const listaCumplesCercanos = [];
+
+  empCache.forEach(e => {
+    if (e.activo === 'NO') return;
+    const rawN = (typeof obtenerFechaNacimientoEmpleado === 'function')
+      ? obtenerFechaNacimientoEmpleado(e)
+      : (e.fechaNacimiento || e.fecha_nacimiento || '');
+    const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
+      ? obtenerEstadoCumpleanos(rawN)
+      : null;
+    if (!estadoC) return;
+    if (estadoC.esHoy) {
+      countCumpleanosHoy++;
+      listaCumplesCercanos.push({ emp: e, estado: estadoC });
+    } else if (estadoC.diasFaltan <= 30) {
+      countCumpleanosProximos++;
+      if (estadoC.diasFaltan <= 15) {
+        listaCumplesCercanos.push({ emp: e, estado: estadoC });
+      }
+    }
+  });
+
+  const totalCumpleanos = countCumpleanosHoy + countCumpleanosProximos;
+
   if ($('dirKpiTotal')) $('dirKpiTotal').textContent = total;
   if ($('dirKpiActivos')) $('dirKpiActivos').textContent = activos;
   if ($('dirKpiInactivos')) $('dirKpiInactivos').textContent = inactivos;
   if ($('dirKpiSupervisores')) $('dirKpiSupervisores').textContent = supervisores;
   if ($('dirKpiWhatsApp')) $('dirKpiWhatsApp').textContent = conWp;
+  if ($('dirKpiCumpleanos')) $('dirKpiCumpleanos').textContent = totalCumpleanos;
+  if ($('dirKpiCumpleanosSub')) {
+    $('dirKpiCumpleanosSub').textContent = countCumpleanosHoy > 0
+      ? `🎂 ${countCumpleanosHoy} Hoy · ${countCumpleanosProximos} próx.`
+      : `${totalCumpleanos} en próx. 30 días`;
+  }
+
+  // Renderizar banner interactivo de cumpleaños si hay cumpleañeros cercanos
+  if (typeof renderBannerCumpleanosDirectorio === 'function') {
+    renderBannerCumpleanosDirectorio(listaCumplesCercanos);
+  }
 
   // 2. Poblar selector y datalists de Áreas y Cargos
   const selArea = $('filtroAreaDirectorio');
@@ -3898,6 +4012,7 @@ window.filtrarDirectorio = function () {
   const rolFiltro = $('filtroRolDirectorio') ? $('filtroRolDirectorio').value : '';
   const estadoFiltro = $('filtroEstadoDirectorio') ? $('filtroEstadoDirectorio').value : '';
   const almFiltro = $('filtroAlmuerzoDirectorio') ? $('filtroAlmuerzoDirectorio').value : '';
+  const cumpleFiltro = $('filtroCumpleanosDirectorio') ? $('filtroCumpleanosDirectorio').value : '';
   const kpiFiltro = window.directorioFiltroKpi || 'todos';
 
   // Botón limpiar búsqueda
@@ -3906,7 +4021,7 @@ window.filtrarDirectorio = function () {
 
   // Indicador de filtros activos
   const indicadorFiltros = $('dirFiltroActivoIndicator');
-  const hayFiltrosActivos = (term !== '' || areaFiltro !== '' || rolFiltro !== '' || (estadoFiltro !== '' && estadoFiltro !== 'SI') || almFiltro !== '' || kpiFiltro !== 'todos');
+  const hayFiltrosActivos = (term !== '' || areaFiltro !== '' || rolFiltro !== '' || (estadoFiltro !== '' && estadoFiltro !== 'SI') || almFiltro !== '' || cumpleFiltro !== '' || kpiFiltro !== 'todos');
   if (indicadorFiltros) indicadorFiltros.style.display = hayFiltrosActivos ? 'block' : 'none';
 
   // Filtrar empleados
@@ -3955,7 +4070,22 @@ window.filtrarDirectorio = function () {
       if (almFiltro === 'SIN_ASIGNAR' && almEmp !== '') return false;
     }
 
-    // 6. Filtro KPI clicado
+    // 6. Filtro Cumpleaños Dropdown
+    if (cumpleFiltro) {
+      const rawN = (typeof obtenerFechaNacimientoEmpleado === 'function')
+        ? obtenerFechaNacimientoEmpleado(emp)
+        : (emp.fechaNacimiento || emp.fecha_nacimiento || '');
+      const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
+        ? obtenerEstadoCumpleanos(rawN)
+        : null;
+      if (!estadoC) return false;
+      if (cumpleFiltro === 'HOY' && !estadoC.esHoy) return false;
+      if (cumpleFiltro === '7' && (estadoC.diasFaltan < 0 || estadoC.diasFaltan > 7)) return false;
+      if (cumpleFiltro === '15' && (estadoC.diasFaltan < 0 || estadoC.diasFaltan > 15)) return false;
+      if (cumpleFiltro === '30' && (estadoC.diasFaltan < 0 || estadoC.diasFaltan > 30)) return false;
+    }
+
+    // 7. Filtro KPI clicado
     if (kpiFiltro === 'activos' && emp.activo === 'NO') return false;
     if (kpiFiltro === 'inactivos' && emp.activo !== 'NO') return false;
     if (kpiFiltro === 'supervisores') {
@@ -3964,6 +4094,15 @@ window.filtrarDirectorio = function () {
     }
     if (kpiFiltro === 'whatsapp') {
       if (!emp.telefono || String(emp.telefono).trim().length < 7) return false;
+    }
+    if (kpiFiltro === 'cumpleanos') {
+      const rawN = (typeof obtenerFechaNacimientoEmpleado === 'function')
+        ? obtenerFechaNacimientoEmpleado(emp)
+        : (emp.fechaNacimiento || emp.fecha_nacimiento || '');
+      const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
+        ? obtenerEstadoCumpleanos(rawN)
+        : null;
+      if (!estadoC || (!estadoC.esHoy && estadoC.diasFaltan > 30)) return false;
     }
 
     return true;
@@ -4112,6 +4251,74 @@ function formatearFechaNacimientoLegible(fechaVal) {
 }
 window.formatearFechaNacimientoLegible = formatearFechaNacimientoLegible;
 
+function obtenerEstadoCumpleanos(fechaVal) {
+  if (!fechaVal) return null;
+  const norm = normalizarFechaParaInput(fechaVal);
+  if (!norm || !/^\d{4}-\d{2}-\d{2}$/.test(norm)) return null;
+  const [anioStr, mesStr, diaStr] = norm.split('-');
+  const anio = parseInt(anioStr, 10);
+  const mes = parseInt(mesStr, 10) - 1;
+  const dia = parseInt(diaStr, 10);
+  if (isNaN(mes) || isNaN(dia)) return null;
+
+  const hoyD = new Date();
+  const hoyAnio = hoyD.getFullYear();
+  const hoyCero = new Date(hoyAnio, hoyD.getMonth(), hoyD.getDate(), 0, 0, 0, 0);
+
+  // Fecha de cumpleaños este año
+  let proximoCump = new Date(hoyAnio, mes, dia, 0, 0, 0, 0);
+
+  // Si ya pasó este año, el próximo es el año que viene
+  if (proximoCump.getTime() < hoyCero.getTime()) {
+    proximoCump = new Date(hoyAnio + 1, mes, dia, 0, 0, 0, 0);
+  }
+
+  const diffMs = proximoCump.getTime() - hoyCero.getTime();
+  const diasFaltan = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  const esHoy = (diasFaltan === 0);
+  const edadCumplida = (!isNaN(anio) && anio > 1900) ? (proximoCump.getFullYear() - anio) : null;
+  const fLegible = formatearFechaNacimientoLegible(fechaVal);
+
+  return {
+    esHoy,
+    esProximo: (diasFaltan > 0 && diasFaltan <= 30),
+    diasFaltan,
+    edad: edadCumplida,
+    fechaLegible: fLegible
+  };
+}
+window.obtenerEstadoCumpleanos = obtenerEstadoCumpleanos;
+
+function capitalizarPalabra(str) {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+window.capitalizarPalabra = capitalizarPalabra;
+
+function obtenerPrimerNombreYPrimerApellido(nombreCompleto) {
+  if (!nombreCompleto) return 'Colaborador';
+  const clean = String(nombreCompleto).trim();
+  if (!clean) return 'Colaborador';
+  const partes = clean.split(/\s+/);
+
+  if (partes.length === 1) {
+    return capitalizarPalabra(partes[0]);
+  }
+  if (partes.length === 2) {
+    return `${capitalizarPalabra(partes[1])} ${capitalizarPalabra(partes[0])}`;
+  }
+  if (partes.length >= 3) {
+    // Formato oficial habitual en nóminas de Ecuador:
+    // [APELLIDO PATERNO] [APELLIDO MATERNO] [PRIMER NOMBRE] [SEGUNDO NOMBRE...]
+    // Ejemplo: ABALCO CHUQUIN NAYDELIN RUBIELA -> Naydelin Abalco
+    const primerApellido = capitalizarPalabra(partes[0]);
+    const primerNombre = capitalizarPalabra(partes[2]);
+    return `${primerNombre} ${primerApellido}`;
+  }
+  return clean;
+}
+window.obtenerPrimerNombreYPrimerApellido = obtenerPrimerNombreYPrimerApellido;
+
 window.renderDirectorioCards = function (lista) {
   const container = $('directorioGridContainer');
   if (!container) return;
@@ -4144,17 +4351,27 @@ window.renderDirectorioCards = function (lista) {
     }
 
     const rawFNac = obtenerFechaNacimientoEmpleado(emp);
-    const edadEmp = calcularEdad(rawFNac);
-    const esCumple = esCumpleanosFecha(rawFNac);
-    const fNacLegible = formatearFechaNacimientoLegible(rawFNac);
+    const estadoC = obtenerEstadoCumpleanos(rawFNac);
+    const fNacLegible = estadoC ? estadoC.fechaLegible : formatearFechaNacimientoLegible(rawFNac);
 
     let fNacCardHtml = '';
-    if (esCumple) {
+    if (estadoC && estadoC.esHoy) {
       fNacCardHtml = `
-            <span style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:800; display:inline-flex; align-items:center; gap:4px;" title="¡Hoy es su cumpleaños! Fecha: ${escapeHtml(fNacLegible)}">
-              🎂 ¡Hoy! ${edadEmp !== null ? `(${edadEmp} años)` : ''}
+            <span style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 3px rgba(245,158,11,0.2);" title="¡Hoy es su cumpleaños! Fecha: ${escapeHtml(fNacLegible)}">
+              🎂 ¡Hoy! ${estadoC.edad !== null ? `(${estadoC.edad} años)` : ''}
+            </span>`;
+    } else if (estadoC && estadoC.diasFaltan <= 7) {
+      fNacCardHtml = `
+            <span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:750; display:inline-flex; align-items:center; gap:4px;" title="Próximo cumpleaños en ${estadoC.diasFaltan} días (${escapeHtml(fNacLegible)})">
+              🎉 En ${estadoC.diasFaltan} día${estadoC.diasFaltan > 1 ? 's' : ''} ${estadoC.edad !== null ? `(${estadoC.edad} a.)` : ''}
+            </span>`;
+    } else if (estadoC && estadoC.diasFaltan <= 30) {
+      fNacCardHtml = `
+            <span style="background:#f0f9ff; color:#0369a1; border:1px solid #bae6fd; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" title="Cumpleaños próximo: ${escapeHtml(fNacLegible)}">
+              🗓️ En ${estadoC.diasFaltan} días ${estadoC.edad !== null ? `(${estadoC.edad} a.)` : ''}
             </span>`;
     } else if (fNacLegible) {
+      const edadEmp = calcularEdad(rawFNac);
       fNacCardHtml = `
             <span style="color:#1e293b; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="Fecha de nacimiento">
               ${escapeHtml(fNacLegible)} ${edadEmp !== null ? `<span style="color:#64748b; font-size:10.5px; font-weight:500;">(${edadEmp} a.)</span>` : ''}
@@ -4308,7 +4525,7 @@ window.renderDirectorioTabla = function (lista) {
                     ${escapeHtml(emp.nombre)}
                   </div>
                   <div style="font-size:10.5px; color:#64748b; font-family:'Fira Code', monospace; margin-top:1px;">
-                    Cédula: <strong>${escapeHtml(emp.id)}</strong>
+                    ID: <strong>${escapeHtml(emp.id)}</strong>
                   </div>
                 </div>
               </div>
@@ -4324,17 +4541,37 @@ window.renderDirectorioTabla = function (lista) {
             <td style="padding:10px 12px; font-size:11.5px; white-space:nowrap;">
               ${(() => {
                 const rawN = obtenerFechaNacimientoEmpleado(emp);
-                const edad = calcularEdad(rawN);
-                const esCump = esCumpleanosFecha(rawN);
-                const fLegible = formatearFechaNacimientoLegible(rawN);
+                const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
+                  ? obtenerEstadoCumpleanos(rawN)
+                  : null;
+                const fLegible = estadoC ? estadoC.fechaLegible : formatearFechaNacimientoLegible(rawN);
+                const edad = estadoC ? estadoC.edad : calcularEdad(rawN);
 
-                if (esCump) {
+                if (estadoC && estadoC.esHoy) {
                   return `
                     <div style="display:flex; flex-direction:column; gap:2px;">
-                      <span style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:800; display:inline-flex; align-items:center; gap:4px; width:fit-content;" title="¡Hoy cumpleaños! (${escapeHtml(fLegible)})">
+                      <span style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:2.5px 8px; border-radius:6px; font-size:10.5px; font-weight:800; display:inline-flex; align-items:center; gap:4px; width:fit-content; box-shadow:0 1px 3px rgba(245,158,11,0.2);" title="¡Hoy es su cumpleaños!">
                         🎂 ¡Hoy! ${edad !== null ? `(${edad} años)` : ''}
                       </span>
-                      <span style="color:#475569; font-size:11px; font-weight:600;">${escapeHtml(fLegible)}</span>
+                      <span style="color:#475569; font-size:10.5px; font-weight:600;">${escapeHtml(fLegible)}</span>
+                    </div>`;
+                }
+                if (estadoC && estadoC.diasFaltan <= 7) {
+                  return `
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                      <span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:800; display:inline-flex; align-items:center; gap:4px; width:fit-content;" title="Próximo cumpleaños en ${estadoC.diasFaltan} días">
+                        🎉 En ${estadoC.diasFaltan} día${estadoC.diasFaltan > 1 ? 's' : ''} ${edad !== null ? `(${edad} a.)` : ''}
+                      </span>
+                      <span style="color:#64748b; font-size:10.5px;">${escapeHtml(fLegible)}</span>
+                    </div>`;
+                }
+                if (estadoC && estadoC.diasFaltan <= 30) {
+                  return `
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                      <span style="background:#f0f9ff; color:#0369a1; border:1px solid #bae6fd; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:4px; width:fit-content;" title="Cumpleaños próximo en ${estadoC.diasFaltan} días">
+                        🗓️ En ${estadoC.diasFaltan} días ${edad !== null ? `(${edad} a.)` : ''}
+                      </span>
+                      <span style="color:#64748b; font-size:10.5px;">${escapeHtml(fLegible)}</span>
                     </div>`;
                 }
                 if (fLegible) {
@@ -4356,19 +4593,6 @@ window.renderDirectorioTabla = function (lista) {
             <!-- Contacto WhatsApp -->
             <td style="padding:10px 12px;">
               ${wpCell}
-            </td>
-
-            <!-- Rol / Nivel -->
-            <td style="padding:10px 12px; text-align:center;">
-              ${rolBadge}
-            </td>
-
-            <!-- Estado -->
-            <td style="padding:10px 12px; text-align:center;">
-              ${esActivo
-        ? `<span style="background:#dcfce7; color:#15803d; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:750; border:1px solid #bbf7d0;">Activo</span>`
-        : `<span style="background:#fee2e2; color:#be123c; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:750; border:1px solid #fecaca;">Inactivo</span>`
-      }
             </td>
 
             <!-- Almuerzo Hoy -->
@@ -13706,7 +13930,13 @@ window.abrirModalMensajeIndividualWhatsApp = function (id) {
   // Aplicar plantilla por defecto de saludo si el mensaje está vacío
   const txtMsg = $('txtMensajeWaIndividual');
   if (txtMsg && !txtMsg.value.trim()) {
-    window.aplicarPlantillaWaIndividual('saludo');
+    const rawFN = (typeof obtenerFechaNacimientoEmpleado === 'function') ? obtenerFechaNacimientoEmpleado(emp) : '';
+    const stC = (typeof obtenerEstadoCumpleanos === 'function') ? obtenerEstadoCumpleanos(rawFN) : null;
+    if (stC && stC.esHoy) {
+      window.aplicarPlantillaWaIndividual('cumple');
+    } else {
+      window.aplicarPlantillaWaIndividual('saludo');
+    }
   } else {
     window.actualizarContadorCaracteresWa();
   }
@@ -13772,23 +14002,28 @@ window.actualizarContadorCaracteresWa = function () {
 
 window.aplicarPlantillaWaIndividual = function (tipo) {
   const emp = window._empWaIndividualActual || {};
-  const primerNombre = (emp.nombre || 'Colaborador').trim().split(' ')[0];
+  const nombreDest = (typeof obtenerPrimerNombreYPrimerApellido === 'function')
+    ? obtenerPrimerNombreYPrimerApellido(emp.nombre)
+    : ((emp.nombre || 'Colaborador').trim().split(' ')[0]);
   const ahora = new Date();
   const fechaStr = ahora.toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   let mensaje = '';
   switch (tipo) {
     case 'entrada':
-      mensaje = `Hola ${primerNombre}, te recordamos registrar tu marcación de *ENTRADA* en el sistema de asistencia T-Control correspondiente al día de hoy ${fechaStr}. ¡Que tengas una excelente jornada! ⏰`;
+      mensaje = `Hola ${nombreDest}, te recordamos registrar tu marcación de *ENTRADA* en el sistema de asistencia T-Control correspondiente al día de hoy ${fechaStr}. ¡Que tengas una excelente jornada! ⏰`;
       break;
     case 'salida':
-      mensaje = `Hola ${primerNombre}, por favor no olvides registrar tu marcación de *SALIDA* al finalizar tus actividades de hoy ${fechaStr}. ¡Buen descanso! 🚪`;
+      mensaje = `Hola ${nombreDest}, por favor no olvides registrar tu marcación de *SALIDA* al finalizar tus actividades de hoy ${fechaStr}. ¡Buen descanso! 🚪`;
       break;
     case 'ausencia':
-      mensaje = `Estimado(a) ${primerNombre}, te saludamos de T-Control. Notamos que no registras marcación el día de hoy ${fechaStr}. Por favor indícanos si tienes alguna novedad, justificación o permiso médico pendiente. 🩺`;
+      mensaje = `Estimado(a) ${nombreDest}, te saludamos de T-Control. Notamos que no registras marcación el día de hoy ${fechaStr}. Por favor indícanos si tienes alguna novedad, justificación o permiso médico pendiente. 🩺`;
       break;
     case 'saludo':
-      mensaje = `Hola ${primerNombre}, te saluda la administración de T-Control. ¿Cómo estás? Te contactamos referente a tu registro de asistencia laboral. 👋`;
+      mensaje = `Hola ${nombreDest}, te saluda la administración de T-Control. ¿Cómo estás? Te contactamos referente a tu registro de asistencia laboral. 👋`;
+      break;
+    case 'cumple':
+      mensaje = `¡Estimado(a) ${nombreDest}, te deseamos un muy Feliz Cumpleaños! 🎂🎉 De parte de todo el equipo de T-Control te enviamos un afectuoso saludo y los mejores deseos en tu día especial. ¡Que disfrutes al máximo! ✨`;
       break;
     case 'limpiar':
       mensaje = '';
