@@ -31,6 +31,22 @@
             "_Departamento de Talento Humano / Operaciones Tcontrol._\n" +
             "🔒 _Aviso Legal: Comunicación confidencial amparada por la LOPDP (Ecuador) para fines de gestión laboral._"
         ),
+        plantillaVacaciones: (
+            "🏖️ *REGISTRO DE VACACIONES — TCONTROL*\n\n" +
+            "Estimado/a *{nombre}*,\n\n" +
+            "Te recordamos que te encuentras gozando de tu período oficial de *VACACIONES* para el día de hoy (*{fecha}*).\n\n" +
+            "¡Deseamos que disfrutes de tu descanso!\n\n" +
+            "_Departamento de Talento Humano T-Control._\n" +
+            "🔒 _Aviso Legal: Notificación institucional emitida bajo la LOPDP._"
+        ),
+        plantillaPermiso: (
+            "📝 *REGISTRO DE PERMISO / LICENCIA — TCONTROL*\n\n" +
+            "Estimado/a *{nombre}*,\n\n" +
+            "Te informamos que se encuentra registrado tu *PERMISO LABORAL* ({razon}) para la jornada del día de hoy (*{fecha}*).\n\n" +
+            "Si tienes alguna duda o novedad sobre tu itinerario, por favor comunícate con tu supervisor.\n\n" +
+            "_Control de Asistencia T-Control._\n" +
+            "🔒 _Aviso Legal: Comunicación confidencial de gestión laboral bajo la LOPDP._"
+        ),
         plantillaSalidaFaltante: (
             "🚪 *RECORDATORIO DE REGISTRO DE SALIDA — TCONTROL*\n\n" +
             "Estimado/a *{nombre}*,\n\n" +
@@ -169,6 +185,8 @@
             if (!tipo) return 'no_registro';
             const t = String(tipo).toLowerCase().trim();
             if (t === 'sin_marcar' || t === 'no_registro' || t === 'entrada_faltante' || t === 'entrada') return 'no_registro';
+            if (t === 'vacaciones' || t === 'vacacion') return 'vacaciones';
+            if (t === 'permisos' || t === 'permiso') return 'permisos';
             if (t === 'ausente' || t === 'ausencia' || t === 'ausencia_laboral') return 'ausente';
             if (t === 'salida' || t === 'salida_faltante') return 'salida_faltante';
             if (t === 'emergencia' || t === 'alerta_emergencia') return 'emergencia';
@@ -729,7 +747,17 @@
             const tipo = this.normalizarTipoPlantilla(tipoRaw);
             let plantilla = '';
             if (tipo === 'ausente') {
-                plantilla = this.config.plantillaAusente || DEFAULT_CONFIG_WHATSAPP.plantillaAusente;
+                if (empleado && empleado._esVacaciones) {
+                    plantilla = this.config.plantillaVacaciones || DEFAULT_CONFIG_WHATSAPP.plantillaVacaciones;
+                } else if (empleado && empleado._esPermiso) {
+                    plantilla = this.config.plantillaPermiso || DEFAULT_CONFIG_WHATSAPP.plantillaPermiso;
+                } else {
+                    plantilla = this.config.plantillaAusente || DEFAULT_CONFIG_WHATSAPP.plantillaAusente;
+                }
+            } else if (tipo === 'vacaciones') {
+                plantilla = this.config.plantillaVacaciones || DEFAULT_CONFIG_WHATSAPP.plantillaVacaciones;
+            } else if (tipo === 'permisos' || tipo === 'permiso') {
+                plantilla = this.config.plantillaPermiso || DEFAULT_CONFIG_WHATSAPP.plantillaPermiso;
             } else if (tipo === 'salida_faltante') {
                 plantilla = this.config.plantillaSalidaFaltante || DEFAULT_CONFIG_WHATSAPP.plantillaSalidaFaltante;
             } else if (tipo === 'emergencia') {
@@ -754,9 +782,13 @@
             const mStr = ahora.getMinutes().toString().padStart(2, '0');
             const horaStr = variablesExtras.hora || `${hStr}:${mStr}`;
 
-            const nombreEmp = empleado?.nombre || variablesExtras.nombre || 'Colaborador';
+            const rawNombre = empleado?.nombre || variablesExtras.nombre || 'Colaborador';
+            const nombreEmp = (typeof window.obtenerPrimerNombreYPrimerApellido === 'function')
+                ? window.obtenerPrimerNombreYPrimerApellido(rawNombre)
+                : (typeof obtenerPrimerNombreYPrimerApellido === 'function' ? obtenerPrimerNombreYPrimerApellido(rawNombre) : rawNombre);
             const cargoEmp = empleado?.cargo || variablesExtras.cargo || 'Personal';
             const areaEmp = empleado?.area || variablesExtras.area || 'Operaciones';
+            const razonEmp = variablesExtras.razon || empleado?._razonAusencia || 'autorizado';
 
             return plantilla
                 .replace(/\{nombre\}/gi, nombreEmp)
@@ -764,7 +796,8 @@
                 .replace(/\{hora\}/gi, horaStr)
                 .replace(/\{link\}/gi, link)
                 .replace(/\{cargo\}/gi, cargoEmp)
-                .replace(/\{area\}/gi, areaEmp);
+                .replace(/\{area\}/gi, areaEmp)
+                .replace(/\{razon\}/gi, razonEmp);
         },
 
         // Alias retrocompatible
@@ -1226,6 +1259,8 @@
         OpenWAService.inicializar();
     }
 
+    OpenWAService.DEFAULT_CONFIG_WHATSAPP = DEFAULT_CONFIG_WHATSAPP;
     window.OpenWAService = OpenWAService;
+    window.DEFAULT_CONFIG_WHATSAPP = DEFAULT_CONFIG_WHATSAPP;
 
 })(window);

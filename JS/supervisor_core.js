@@ -1648,15 +1648,14 @@ function cargarAsistencia() {
     $('asisAlmuerzoPlantaSub').textContent = totalExtrasHoy > 0 ? `Incluye ${totalExtrasHoy} extras` : '';
   }
 
-  // Actualizar botones de notificación WhatsApp en barra de Asistencia
+  // Actualizar botón unificado de notificación WhatsApp en barra de Asistencia
+  const totalAlertasWhatsApp = countSinMarcar;
+  if ($('lblCountTotalPendientesWhatsApp')) $('lblCountTotalPendientesWhatsApp').textContent = totalAlertasWhatsApp;
+  if ($('btnNotificarWhatsAppUnificado')) $('btnNotificarWhatsAppUnificado').style.display = 'inline-flex';
+
   if ($('lblCountSinMarcarWhatsApp')) $('lblCountSinMarcarWhatsApp').textContent = countSinMarcar;
   if ($('lblCountAusentesWhatsApp')) $('lblCountAusentesWhatsApp').textContent = ausentes;
   if ($('lblCountSalidaWhatsApp')) $('lblCountSalidaWhatsApp').textContent = sinSalida;
-
-  if ($('btnNotificarWhatsAppSinMarcar')) $('btnNotificarWhatsAppSinMarcar').style.display = countSinMarcar > 0 ? 'inline-flex' : 'none';
-  if ($('btnNotificarWhatsAppAusentes')) $('btnNotificarWhatsAppAusentes').style.display = ausentes > 0 ? 'inline-flex' : 'none';
-  if ($('btnNotificarWhatsAppSalida')) $('btnNotificarWhatsAppSalida').style.display = sinSalida > 0 ? 'inline-flex' : 'none';
-  if ($('btnNotificarWhatsAppGeneral')) $('btnNotificarWhatsAppGeneral').style.display = 'inline-flex';
 
   window._asisData = empCache.map(e => {
     let eReg = (e.registros || []).find(r => r.tipo === 'ENTRADA' && r.fecha === hoy);
@@ -12933,6 +12932,8 @@ window._resolverTipoPlantillaWA = function (tipoRaw) {
   if (!tipoRaw) return 'no_registro';
   const t = String(tipoRaw).toLowerCase().trim();
   if (t === 'sin_marcar' || t === 'no_registro' || t === 'entrada_faltante' || t === 'entrada') return 'no_registro';
+  if (t === 'vacaciones' || t === 'vacacion') return 'vacaciones';
+  if (t === 'permisos' || t === 'permiso') return 'permisos';
   if (t === 'ausente' || t === 'ausencia' || t === 'ausencia_laboral') return 'ausente';
   if (t === 'salida' || t === 'salida_faltante') return 'salida_faltante';
   if (t === 'emergencia' || t === 'alerta_emergencia') return 'emergencia';
@@ -13352,6 +13353,8 @@ window.guardarConfiguracionWhatsAppDesdePanel = async function () {
   const tipo = window._waActiveTemplateType || 'no_registro';
   const texto = $('txtWhatsAppPlantilla')?.value || '';
   if (tipo === 'no_registro') cfg.plantillaNoRegistro = texto;
+  else if (tipo === 'vacaciones') cfg.plantillaVacaciones = texto;
+  else if (tipo === 'permisos' || tipo === 'permiso') cfg.plantillaPermiso = texto;
   else if (tipo === 'ausente') cfg.plantillaAusente = texto;
   else if (tipo === 'salida_faltante') cfg.plantillaSalidaFaltante = texto;
   else if (tipo === 'emergencia') cfg.plantillaEmergencia = texto;
@@ -13477,6 +13480,8 @@ window.cambiarTabPlantillaWhatsApp = function (tipo) {
   window._waActiveTemplateType = tipo;
   const buttons = [
     { id: 'btnTabPlantillaNoRegistro', tipo: 'no_registro' },
+    { id: 'btnTabPlantillaVacaciones', tipo: 'vacaciones' },
+    { id: 'btnTabPlantillaPermiso', tipo: 'permisos' },
     { id: 'btnTabPlantillaAusente', tipo: 'ausente' },
     { id: 'btnTabPlantillaSalida', tipo: 'salida_faltante' },
     { id: 'btnTabPlantillaEmergencia', tipo: 'emergencia' }
@@ -13495,6 +13500,8 @@ window.cambiarTabPlantillaWhatsApp = function (tipo) {
 
   const titulosMap = {
     no_registro: 'Plantilla: Entrada Faltante (Sin Marcar)',
+    vacaciones: 'Plantilla: Notificación de Vacaciones',
+    permisos: 'Plantilla: Permiso o Justificación Laboral',
     ausente: 'Plantilla: Ausencia Laboral',
     salida_faltante: 'Plantilla: Salida Faltante',
     emergencia: 'Plantilla: Alerta de Emergencia'
@@ -13510,12 +13517,15 @@ window.cambiarTabPlantillaWhatsApp = function (tipo) {
   }
 
   const cfg = window.OpenWAService ? window.OpenWAService.config : {};
+  const def = (window.DEFAULT_CONFIG_WHATSAPP || (window.OpenWAService ? window.OpenWAService.DEFAULT_CONFIG_WHATSAPP : null)) || {};
   let txt = '';
-  if (tipo === 'ausente') txt = cfg.plantillaAusente;
-  else if (tipo === 'salida_faltante') txt = cfg.plantillaSalidaFaltante;
-  else if (tipo === 'emergencia') txt = cfg.plantillaEmergencia;
+  if (tipo === 'ausente') txt = cfg.plantillaAusente || def.plantillaAusente;
+  else if (tipo === 'vacaciones') txt = cfg.plantillaVacaciones || def.plantillaVacaciones;
+  else if (tipo === 'permisos' || tipo === 'permiso') txt = cfg.plantillaPermiso || def.plantillaPermiso;
+  else if (tipo === 'salida_faltante') txt = cfg.plantillaSalidaFaltante || def.plantillaSalidaFaltante;
+  else if (tipo === 'emergencia') txt = cfg.plantillaEmergencia || def.plantillaEmergencia;
   else if (tipo.startsWith('custom_')) txt = window._plantillasPersonalizadas[tipo]?.texto || '';
-  else txt = cfg.plantillaNoRegistro;
+  else txt = cfg.plantillaNoRegistro || def.plantillaNoRegistro;
 
   if ($('txtWhatsAppPlantilla')) {
     $('txtWhatsAppPlantilla').value = txt || '';
@@ -13726,6 +13736,8 @@ window.cambiarCategoriaModalWhatsApp = function (categoria) {
   window._waModalCategoriaActual = categoria;
   const cats = [
     { id: 'btnModalCatSinMarcar', cat: 'sin_marcar' },
+    { id: 'btnModalCatVacaciones', cat: 'vacaciones' },
+    { id: 'btnModalCatPermisos', cat: 'permisos' },
     { id: 'btnModalCatAusentes', cat: 'ausente' },
     { id: 'btnModalCatSalida', cat: 'salida_faltante' },
     { id: 'btnModalCatEmergencia', cat: 'emergencia' }
@@ -13743,33 +13755,98 @@ window.cambiarCategoriaModalWhatsApp = function (categoria) {
   });
 
   const titulos = {
-    sin_marcar: 'Notificar Colaboradores Sin Marcar',
-    ausente: 'Notificar Ausencia a Colaboradores',
+    sin_marcar: 'Notificar Colaboradores Sin Marcar (Injustificados)',
+    vacaciones: 'Notificar Colaboradores en Vacaciones',
+    permisos: 'Notificar Colaboradores con Permiso / Justificativo',
+    ausente: 'Notificar a Todos los Ausentes',
     salida_faltante: 'Recordatorio de Marcación de Salida',
     emergencia: 'Alerta Operativa y de Seguridad'
   };
-  if ($('lblTituloModalWhatsApp')) $('lblTituloModalWhatsApp').textContent = titulos[categoria] || 'Notificar por WhatsApp';
+  const subtitulos = {
+    sin_marcar: 'Colaboradores sin marcación que NO tienen registradas vacaciones ni permisos autorizados',
+    vacaciones: 'Colaboradores que se encuentran en su período oficial de vacaciones el día de hoy',
+    permisos: 'Colaboradores con permiso, licencia o justificación médica/personal registrada para hoy',
+    ausente: 'Listado consolidado de todos los ausentes con el motivo de ausencia correspondiente',
+    salida_faltante: 'Colaboradores que marcaron su entrada pero aún no registran su marcación de salida',
+    emergencia: 'Envío masivo de alerta institucional o de seguridad a toda la nómina activa'
+  };
 
-  const empActivos = empCache.filter(e => {
+  if ($('lblTituloModalWhatsApp')) $('lblTituloModalWhatsApp').textContent = titulos[categoria] || 'Notificar por WhatsApp';
+  if ($('lblSubtituloModalWhatsApp')) $('lblSubtituloModalWhatsApp').textContent = subtitulos[categoria] || 'Despacho masivo directo vía OpenWA';
+
+  const hoy = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
+
+  const empActivos = (empCache || []).filter(e => {
     const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
     const excluido = (typeof esEmpleadoExcluidoAsistencia === 'function') ? esEmpleadoExcluidoAsistencia(e) : false;
-    return act && !excluido;
+    const isSinAsis = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+    return act && !excluido && !isSinAsis;
   });
+
+  // Clasificar rigurosamente cada colaborador según su condición de hoy
+  const enriquecidos = empActivos.map(e => {
+    const fReg = (e.registros || []).find(r => {
+      const t = String(r.tipo || '').toUpperCase();
+      return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
+    });
+    const rHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || fReg.razon_justificac || '') : '';
+    const rUpper = rHoy.toUpperCase();
+    const modoStr = (e.modo || '').toUpperCase();
+    const regCampo = (e.registros || []).some(reg => reg.modo === 'CAMPO' && reg.fecha === hoy);
+
+    const esVacaciones = rUpper.includes('VACACI') || (e.estado || '').toUpperCase() === 'VACACIONES';
+    const esCampo = rUpper.includes('CAMPO') || modoStr.includes('CAMPO') || regCampo;
+    const esPermiso = !esVacaciones && !esCampo && rUpper.length > 0;
+    const esSinMarcar = !e.entradaHoy && !esVacaciones && !esCampo && !esPermiso;
+    const esSalidaFaltante = !!(e.entradaHoy && !e.salidaHoy);
+
+    return {
+      ...e,
+      _esVacaciones: esVacaciones,
+      _esCampo: esCampo,
+      _esPermiso: esPermiso,
+      _esSinMarcar: esSinMarcar,
+      _esSalidaFaltante: esSalidaFaltante,
+      _razonAusencia: rHoy
+    };
+  });
+
+  const listaSinMarcar = enriquecidos.filter(e => e._esSinMarcar);
+  const listaVacaciones = enriquecidos.filter(e => e._esVacaciones);
+  const listaPermisos = enriquecidos.filter(e => e._esPermiso);
+  const listaAusentes = enriquecidos.filter(e => !e.entradaHoy && !e._esCampo);
+  const listaSalida = enriquecidos.filter(e => e._esSalidaFaltante);
+  const listaEmergencia = [...enriquecidos];
+
+  // Actualizar conteos dinámicos en las pestañas del modal
+  if ($('lblModalCountSinMarcar')) $('lblModalCountSinMarcar').textContent = listaSinMarcar.length;
+  if ($('lblModalCountVacaciones')) $('lblModalCountVacaciones').textContent = listaVacaciones.length;
+  if ($('lblModalCountPermisos')) $('lblModalCountPermisos').textContent = listaPermisos.length;
+  if ($('lblModalCountAusentes')) $('lblModalCountAusentes').textContent = listaAusentes.length;
+  if ($('lblModalCountSalida')) $('lblModalCountSalida').textContent = listaSalida.length;
 
   let destinatarios = [];
   if (categoria === 'sin_marcar') {
-    destinatarios = empActivos.filter(e => !e.entradaHoy && (e.cargo || '').toUpperCase() !== 'SIN ASISTENCIA');
+    destinatarios = listaSinMarcar;
+  } else if (categoria === 'vacaciones') {
+    destinatarios = listaVacaciones;
+  } else if (categoria === 'permisos') {
+    destinatarios = listaPermisos;
   } else if (categoria === 'ausente') {
-    destinatarios = empActivos.filter(e => !e.entradaHoy && (e.cargo || '').toUpperCase() !== 'SIN ASISTENCIA');
+    destinatarios = listaAusentes;
   } else if (categoria === 'salida_faltante') {
-    destinatarios = empActivos.filter(e => e.entradaHoy && !e.salidaHoy);
+    destinatarios = listaSalida;
   } else if (categoria === 'emergencia') {
-    destinatarios = [...empActivos];
+    destinatarios = listaEmergencia;
   }
 
   window._destinatariosWhatsAppActuales = destinatarios;
   const listContainer = $('listaColaboradoresSinMarcarWhatsApp');
   if (!listContainer) return;
+
+  if ($('lblTotalSinMarcarModal')) $('lblTotalSinMarcarModal').textContent = destinatarios.length;
+  const conTel = destinatarios.filter(e => !!(e.telefono || e.celular)).length;
+  if ($('lblInfoConTelefono')) $('lblInfoConTelefono').textContent = `${conTel} con teléfono registrado`;
 
   if (!destinatarios.length) {
     listContainer.innerHTML = `
@@ -13782,12 +13859,25 @@ window.cambiarCategoriaModalWhatsApp = function (categoria) {
     listContainer.innerHTML = destinatarios.map((e) => {
       const tel = e.telefono || e.celular || '';
       const tieneTel = !!tel;
+      let badgeRazon = '';
+      if (e._razonAusencia) {
+        badgeRazon = `<span style="font-size:10px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:1px 6px; border-radius:4px; margin-left:6px;"><i class="fas fa-file-medical"></i> ${escapeHtml(e._razonAusencia)}</span>`;
+      } else if (e._esVacaciones) {
+        badgeRazon = `<span style="font-size:10px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:1px 6px; border-radius:4px; margin-left:6px;">🏖️ Vacaciones</span>`;
+      } else if (e._esPermiso) {
+        badgeRazon = `<span style="font-size:10px; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:1px 6px; border-radius:4px; margin-left:6px;">📝 Permiso</span>`;
+      } else if (!e.entradaHoy && categoria === 'ausente') {
+        badgeRazon = `<span style="font-size:10px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:1px 6px; border-radius:4px; margin-left:6px;">⚠️ Sin justificar</span>`;
+      }
       return `
-            <label style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; cursor:pointer; margin:0;">
+            <label style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; cursor:pointer; margin:0;">
               <div style="display:flex; align-items:center; gap:10px;">
                 <input type="checkbox" class="chk-wa-emp" value="${e.id}" ${tieneTel ? 'checked' : 'disabled'} onchange="window.actualizarContadorModalWhatsApp()" style="accent-color:#16a34a; width:16px; height:16px;">
                 <div>
-                  <strong style="font-size:12.5px; color:#1e293b; display:block;">${escapeHtml(e.nombre)}</strong>
+                  <div style="display:flex; align-items:center;">
+                    <strong style="font-size:12.5px; color:#1e293b;">${escapeHtml(e.nombre)}</strong>
+                    ${badgeRazon}
+                  </div>
                   <span style="font-size:11px; color:#64748b;">${escapeHtml(e.area || 'Sin área')} • ${escapeHtml(e.cargo || 'Colaborador')}</span>
                 </div>
               </div>
@@ -13808,7 +13898,7 @@ window.cambiarCategoriaModalWhatsApp = function (categoria) {
   if ($('previewMensajeModalWhatsApp') && window.OpenWAService) {
     const templateKey = window._resolverTipoPlantillaWA(categoria);
     const msgSample = window.OpenWAService.formatearMensaje(templateKey, { nombre: 'Colaborador', area: 'Operaciones', cargo: 'Personal' });
-    const imgAdjunta = window._obtenerImagenPlantillaWA(templateKey) || window.OpenWAService.obtenerImagenPlantilla(templateKey);
+    const imgAdjunta = (typeof window._obtenerImagenPlantillaWA === 'function') ? window._obtenerImagenPlantillaWA(templateKey) : window.OpenWAService.obtenerImagenPlantilla(templateKey);
     let previewHtml = '';
     if (imgAdjunta) {
       previewHtml += `<div style="margin-bottom:10px; text-align:center;"><img src="${imgAdjunta}" style="max-height:140px; max-width:100%; border-radius:8px; object-fit:cover; border:1px solid #cbd5e1; display:inline-block; box-shadow:0 2px 6px rgba(0,0,0,0.08);" alt="Adjunto"><div style="font-size:11px; color:#16a34a; font-weight:700; margin-top:4px;"><i class="fas fa-image"></i> Imagen adjunta vinculada a esta plantilla</div></div>`;

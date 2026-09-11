@@ -1040,19 +1040,10 @@
             <div class="search-count-badge" id="searchCounterBadge" title="Empleados visibles en la tabla">
               <i class="fas fa-users"></i> <span id="searchResultCount">0</span>/<span id="searchTotalCount">0</span>
             </div>
-            <!-- Botones WhatsApp Dinámicos / Notificaciones -->
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button type="button" id="btnNotificarWhatsAppSinMarcar" class="btn" onclick="window.abrirModalNotificarWhatsApp('sin_marcar')" style="display:none; background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.25); white-space:nowrap; transition:all 0.2s;">
-                <i class="fab fa-whatsapp" style="font-size:14px;"></i> <span>Notificar Sin Marcar (<strong id="lblCountSinMarcarWhatsApp">0</strong>)</span>
-              </button>
-              <button type="button" id="btnNotificarWhatsAppAusentes" class="btn" onclick="window.abrirModalNotificarWhatsApp('ausente')" style="display:none; background:linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 6px rgba(220,38,38,0.25); white-space:nowrap; transition:all 0.2s;">
-                <i class="fab fa-whatsapp" style="font-size:14px;"></i> <span>Notificar Ausentes (<strong id="lblCountAusentesWhatsApp">0</strong>)</span>
-              </button>
-              <button type="button" id="btnNotificarWhatsAppSalida" class="btn" onclick="window.abrirModalNotificarWhatsApp('salida_faltante')" style="display:none; background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 6px rgba(2,132,199,0.25); white-space:nowrap; transition:all 0.2s;">
-                <i class="fab fa-whatsapp" style="font-size:14px;"></i> <span>Notificar Salida (<strong id="lblCountSalidaWhatsApp">0</strong>)</span>
-              </button>
-              <button type="button" id="btnNotificarWhatsAppGeneral" class="btn" onclick="window.abrirModalNotificarWhatsApp('sin_marcar')" style="display:none; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:12px; font-weight:700; border-radius:10px; padding:7px 12px; align-items:center; gap:6px; cursor:pointer; white-space:nowrap;" title="Abrir panel de envío de notificaciones WhatsApp">
-                <i class="fab fa-whatsapp" style="font-size:14px; color:#16a34a;"></i> <span>WhatsApp</span>
+            <!-- Botón Único Unificado de Notificaciones WhatsApp -->
+            <div>
+              <button type="button" id="btnNotificarWhatsAppUnificado" class="btn" onclick="window.abrirModalNotificarWhatsApp('sin_marcar')" style="display:inline-flex; background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:7px; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.25); white-space:nowrap; transition:all 0.2s;" title="Abrir centro de notificaciones WhatsApp">
+                <i class="fab fa-whatsapp" style="font-size:15px;"></i> <span>Notificar WhatsApp (<strong id="lblCountTotalPendientesWhatsApp">0</strong>)</span>
               </button>
             </div>
           </div>
@@ -2550,6 +2541,12 @@
                 <button type="button" class="btn" id="btnTabPlantillaNoRegistro" onclick="window.cambiarTabPlantillaWhatsApp('no_registro')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; border:1px solid #bbf7d0; background:#f0fdf4; color:#15803d; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
                   <i class="fas fa-bell"></i> 🔔 Entrada Faltante
                 </button>
+                <button type="button" class="btn" id="btnTabPlantillaVacaciones" onclick="window.cambiarTabPlantillaWhatsApp('vacaciones')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                  🏖️ Vacaciones
+                </button>
+                <button type="button" class="btn" id="btnTabPlantillaPermiso" onclick="window.cambiarTabPlantillaWhatsApp('permisos')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                  📝 Permisos
+                </button>
                 <button type="button" class="btn" id="btnTabPlantillaAusente" onclick="window.cambiarTabPlantillaWhatsApp('ausente')" style="padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
                   <i class="fas fa-user-slash"></i> 📋 Ausencia Laboral
                 </button>
@@ -3364,17 +3361,23 @@
 
       <!-- Selector de Categoría en el Modal -->
       <div style="background:#f1f5f9; padding:8px 16px; border-bottom:1px solid #e2e8f0; display:flex; gap:6px; overflow-x:auto;">
-        <button type="button" id="btnModalCatSinMarcar" onclick="window.cambiarCategoriaModalWhatsApp('sin_marcar')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:700; border:1px solid #bbf7d0; background:#f0fdf4; color:#15803d; cursor:pointer;">
-          🔔 Sin Marcar Entrada
+        <button type="button" id="btnModalCatSinMarcar" onclick="window.cambiarCategoriaModalWhatsApp('sin_marcar')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:700; border:1px solid #bbf7d0; background:#f0fdf4; color:#15803d; cursor:pointer; white-space:nowrap;">
+          🔔 Sin Marcar (<span id="lblModalCountSinMarcar">0</span>)
         </button>
-        <button type="button" id="btnModalCatAusentes" onclick="window.cambiarCategoriaModalWhatsApp('ausente')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer;">
-          📋 Ausentes
+        <button type="button" id="btnModalCatVacaciones" onclick="window.cambiarCategoriaModalWhatsApp('vacaciones')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; white-space:nowrap;">
+          🏖️ Vacaciones (<span id="lblModalCountVacaciones">0</span>)
         </button>
-        <button type="button" id="btnModalCatSalida" onclick="window.cambiarCategoriaModalWhatsApp('salida_faltante')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer;">
-          🚪 Salida Faltante
+        <button type="button" id="btnModalCatPermisos" onclick="window.cambiarCategoriaModalWhatsApp('permisos')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; white-space:nowrap;">
+          📝 Permisos (<span id="lblModalCountPermisos">0</span>)
         </button>
-        <button type="button" id="btnModalCatEmergencia" onclick="window.cambiarCategoriaModalWhatsApp('emergencia')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer;">
-          🚨 Emergencia
+        <button type="button" id="btnModalCatAusentes" onclick="window.cambiarCategoriaModalWhatsApp('ausente')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; white-space:nowrap;">
+          📋 Todos Ausentes (<span id="lblModalCountAusentes">0</span>)
+        </button>
+        <button type="button" id="btnModalCatSalida" onclick="window.cambiarCategoriaModalWhatsApp('salida_faltante')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; white-space:nowrap;">
+          🚪 Salida Faltante (<span id="lblModalCountSalida">0</span>)
+        </button>
+        <button type="button" id="btnModalCatEmergencia" onclick="window.cambiarCategoriaModalWhatsApp('emergencia')" class="btn" style="padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer; white-space:nowrap;">
+          🚨 General
         </button>
       </div>
       
@@ -3826,9 +3829,9 @@
     </div>
   </div>
 
-  <script src="./JS/openwa_service.js?v=20260911_04"></script>
-  <script src="./JS/tcontrol_core.js?v=20260911_04"></script>
-  <script src="./JS/supervisor_core.js?v=20260911_04"></script>
+  <script src="./JS/openwa_service.js?v=20260911_05"></script>
+  <script src="./JS/tcontrol_core.js?v=20260911_05"></script>
+  <script src="./JS/supervisor_core.js?v=20260911_05"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil
