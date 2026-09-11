@@ -12822,7 +12822,7 @@ window.inicializarPanelWhatsApp = async function () {
   await window.OpenWAService.inicializar();
   const cfg = window.OpenWAService.config || {};
 
-  if ($('txtWhatsAppServidorUrl')) $('txtWhatsAppServidorUrl').value = cfg.servidorUrl || 'https://trails-aids-spending-targeted.trycloudflare.com';
+  if ($('txtWhatsAppServidorUrl')) $('txtWhatsAppServidorUrl').value = cfg.servidorUrl || 'https://quote-bacteria-valve-lights.trycloudflare.com';
   if ($('txtWhatsAppApiKey')) $('txtWhatsAppApiKey').value = cfg.apiKey || '';
   if ($('chkWhatsAppActivo')) $('chkWhatsAppActivo').checked = (cfg.activo !== false);
 
@@ -13045,7 +13045,7 @@ window.probarEnvioWhatsApp = async function () {
 window.guardarConfiguracionWhatsAppDesdePanel = async function () {
   if (!window.OpenWAService) return;
   const cfg = {
-    servidorUrl: $('txtWhatsAppServidorUrl')?.value.trim() || 'https://trails-aids-spending-targeted.trycloudflare.com',
+    servidorUrl: $('txtWhatsAppServidorUrl')?.value.trim() || window.OpenWAService.config?.servidorUrl || 'https://quote-bacteria-valve-lights.trycloudflare.com',
     apiKey: $('txtWhatsAppApiKey')?.value.trim() || '',
     activo: $('chkWhatsAppActivo')?.checked ?? true,
     autoEnvioNoRegistro: $('chkWhatsAppAutoNoRegistro')?.checked ?? false,

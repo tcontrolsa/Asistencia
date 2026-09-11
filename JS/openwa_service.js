@@ -6,7 +6,7 @@
     'use strict';
 
     const DEFAULT_CONFIG_WHATSAPP = {
-        servidorUrl: 'https://trails-aids-spending-targeted.trycloudflare.com',
+        servidorUrl: 'https://quote-bacteria-valve-lights.trycloudflare.com',
         servidorUrlLocal: 'http://192.168.10.129:2785',
         apiKey: 'owa_k1_0b88a4ca047df765c8256adaa1607c60afb4db126e383187653b0f0d0828d6d7',
         activo: true,
@@ -103,8 +103,13 @@
                     this.config.imagenesPlantillas['no_registro'] = this.config.imagenesPlantillas['sin_marcar'];
                 }
 
-                // Auto-migración si el almacenamiento local aún tenía el puerto antiguo 8081 o URL HTTP no segura
-                if (this.config.servidorUrl && (this.config.servidorUrl.includes(':8081') || this.config.servidorUrl === 'http://192.168.10.129:8081' || this.config.servidorUrl === 'http://192.168.10.129:2785')) {
+                // Auto-migración si el almacenamiento local aún tenía el puerto antiguo 8081 o URL HTTP no segura o túnel previo
+                const esUrlObsoleta = this.config.servidorUrl && (
+                    this.config.servidorUrl.includes(':8081') ||
+                    this.config.servidorUrl.startsWith('http://192.168.10.129') ||
+                    (this.config.servidorUrl.includes('trycloudflare.com') && !this.config.servidorUrl.includes('quote-bacteria-valve-lights'))
+                );
+                if (esUrlObsoleta) {
                     this.config.servidorUrl = DEFAULT_CONFIG_WHATSAPP.servidorUrl;
                     try { localStorage.setItem('tcontrol_config_whatsapp', JSON.stringify(this.config)); } catch(e) {}
                 }
@@ -262,7 +267,11 @@
         // Obtener URL base segura para peticiones (maneja auto-upgrade a HTTPS para evitar bloqueo de Contenido Mixto en smartphones)
         _obtenerUrlBase(servidorUrl = null) {
             let url = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl || '').replace(/\/+$/, '');
-            // Si el cliente está corriendo bajo HTTPS (ej: en smartphones o tcontrol.ec) y la URL configurada es HTTP plano local,
+            // Si la URL guardada es de un túnel trycloudflare obsoleto, migrar al túnel configurado por defecto
+            if (url.includes('trycloudflare.com') && !url.includes('quote-bacteria-valve-lights')) {
+                url = DEFAULT_CONFIG_WHATSAPP.servidorUrl.replace(/\/+$/, '');
+            }
+            // Si el cliente está corriendo bajo HTTPS (ej: en smartphones o asistencia.tcontrolsa.com) y la URL configurada es HTTP plano local,
             // auto-upgradear a la URL con túnel HTTPS para evitar Mixed Content y Private Network Access blocks.
             if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && url.startsWith('http://')) {
                 if (DEFAULT_CONFIG_WHATSAPP.servidorUrl && DEFAULT_CONFIG_WHATSAPP.servidorUrl.startsWith('https://')) {
