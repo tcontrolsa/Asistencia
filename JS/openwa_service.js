@@ -6,7 +6,7 @@
     'use strict';
 
     const DEFAULT_CONFIG_WHATSAPP = {
-        servidorUrl: 'https://quote-bacteria-valve-lights.trycloudflare.com',
+        servidorUrl: 'http://192.168.10.129:2785',
         servidorUrlLocal: 'http://192.168.10.129:2785',
         apiKey: 'owa_k1_0b88a4ca047df765c8256adaa1607c60afb4db126e383187653b0f0d0828d6d7',
         activo: true,
@@ -119,11 +119,11 @@
                     this.config.imagenesPlantillas['no_registro'] = this.config.imagenesPlantillas['sin_marcar'];
                 }
 
-                // Auto-migración si el almacenamiento local aún tenía el puerto antiguo 8081 o URL HTTP no segura o túnel previo
+                // Auto-migración si el almacenamiento local aún tenía túneles temporales muertos conocidos o puerto antiguo 8081
                 const esUrlObsoleta = this.config.servidorUrl && (
                     this.config.servidorUrl.includes(':8081') ||
-                    this.config.servidorUrl.startsWith('http://192.168.10.129') ||
-                    (this.config.servidorUrl.includes('trycloudflare.com') && !this.config.servidorUrl.includes('quote-bacteria-valve-lights'))
+                    this.config.servidorUrl.includes('quote-bacteria-valve-lights') ||
+                    this.config.servidorUrl.includes('trails-aids-spending-targeted')
                 );
                 if (esUrlObsoleta) {
                     this.config.servidorUrl = DEFAULT_CONFIG_WHATSAPP.servidorUrl;
@@ -284,17 +284,10 @@
 
         // Obtener URL base segura para peticiones (maneja auto-upgrade a HTTPS para evitar bloqueo de Contenido Mixto en smartphones)
         _obtenerUrlBase(servidorUrl = null) {
-            let url = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl || '').replace(/\/+$/, '');
-            // Si la URL guardada es de un túnel trycloudflare obsoleto, migrar al túnel configurado por defecto
-            if (url.includes('trycloudflare.com') && !url.includes('quote-bacteria-valve-lights')) {
-                url = DEFAULT_CONFIG_WHATSAPP.servidorUrl.replace(/\/+$/, '');
-            }
-            // Si el cliente está corriendo bajo HTTPS (ej: en smartphones o asistencia.tcontrolsa.com) y la URL configurada es HTTP plano local,
-            // auto-upgradear a la URL con túnel HTTPS para evitar Mixed Content y Private Network Access blocks.
-            if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && url.startsWith('http://')) {
-                if (DEFAULT_CONFIG_WHATSAPP.servidorUrl && DEFAULT_CONFIG_WHATSAPP.servidorUrl.startsWith('https://')) {
-                    url = DEFAULT_CONFIG_WHATSAPP.servidorUrl.replace(/\/+$/, '');
-                }
+            let url = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl || '').trim().replace(/\/+$/, '');
+            // Si la URL guardada es de un túnel temporal obsoleto o cerrado, descartar y volver a la URL del servidor local
+            if (url.includes('quote-bacteria-valve-lights') || url.includes('trails-aids-spending-targeted')) {
+                url = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
             }
             return url;
         },
@@ -339,9 +332,21 @@
 
                 if (!esServidorVivo) {
                     if (timeoutId) clearTimeout(timeoutId);
+                    const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
+                    if (urlBase !== urlLocal && (!servidorUrl)) {
+                        try {
+                            const probeLocal = await fetch(`${urlLocal}/api/health`, { method: 'GET', mode: 'no-cors' });
+                            if (probeLocal) {
+                                return {
+                                    ok: false,
+                                    error: `La URL configurada (${urlBase}) no responde. Sin embargo, el servidor local en ${urlLocal} está activo. Cambia la URL a ${urlLocal} o levanta el túnel con iniciar_tunel_whatsapp.bat.`
+                                };
+                            }
+                        } catch(eLoc) {}
+                    }
                     return {
                         ok: false,
-                        error: `No se pudo conectar a ${urlBase}. Verifica que el servicio esté activo en el puerto 2785.`
+                        error: `No se pudo conectar a ${urlBase}. Verifica que el servicio esté activo en el servidor o levanta el túnel con iniciar_tunel_whatsapp.bat.`
                     };
                 }
 
@@ -450,6 +455,21 @@
                         }
                     }
                 } catch(e) {
+                    // Si falla por DNS o red, y no estábamos usando la IP local, intentar fallback local si estamos en HTTP/LAN
+                    const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
+                    if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
+                        try {
+                            const checkResLoc = await fetch(`${urlLocal}/api/sessions/${sessId}/contacts/check/${cleanDigits}`, {
+                                headers: this._obtenerHeaders()
+                            });
+                            if (checkResLoc.ok) {
+                                const checkDataLoc = await checkResLoc.json();
+                                if (checkDataLoc && checkDataLoc.exists && checkDataLoc.whatsappId) {
+                                    return { ok: true, chatId: checkDataLoc.whatsappId };
+                                }
+                            }
+                        } catch(eLoc) {}
+                    }
                     // Si falla el check de contacto, continuar con el toChatId normalizado
                 }
             }
@@ -532,11 +552,16 @@
                 }
             } catch (e) {
                 console.error("[OpenWA] Error enviando mensaje:", e);
+                const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
+                if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
+                    console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Intentando fallback automático a servidor local (${urlLocal})...`);
+                    return this.enviarMensajeTexto(numeroDestino, mensajeTexto, urlLocal);
+                }
                 const esCors = e.message && (e.message.includes('Failed to fetch') || e.name === 'TypeError');
                 return {
                     ok: false,
                     error: esCors
-                        ? `Bloqueado por CORS en el navegador. En OpenWA debes configurar los orígenes exactos en docker-compose: CORS_ORIGINS=http://127.0.0.1:5500,https://tcontrol.ec`
+                        ? `Error de conexión con el servidor WhatsApp (${urlBase}). Verifica si el servidor o túnel está activo.`
                         : `Fallo de conexión con el servidor WhatsApp (${e.message}).`
                 };
             }
@@ -720,6 +745,11 @@
                 }
             } catch (e) {
                 console.error("[OpenWA] Error enviando imagen:", e);
+                const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
+                if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
+                    console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Intentando fallback automático de imagen a servidor local (${urlLocal})...`);
+                    return this.enviarMensajeImagen(numeroDestino, mensajeTexto, base64Imagen, urlLocal);
+                }
                 try {
                     const fallbackRes = await this.enviarMensajeTexto(numeroDestino, mensajeTexto, servidorUrl);
                     if (fallbackRes.ok) {
@@ -736,7 +766,7 @@
                 return {
                     ok: false,
                     error: esCors
-                        ? `Bloqueado por CORS en el navegador.`
+                        ? `Error de conexión con el servidor WhatsApp (${urlBase}). Verifica si el servidor o túnel está activo.`
                         : `Fallo de conexión con el servidor WhatsApp (${e.message}).`
                 };
             }
