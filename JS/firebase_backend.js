@@ -795,7 +795,10 @@ window.FirebaseBackend = {
 
             // Filtrar archivados del empleado actual y mapearlos al formato esperado
             const empIdStr = String(empleadoId).trim();
-            const archivadosDelEmpleado = archivadosData.registros.filter(r => String(r.empleadoId).trim() === empIdStr).map(data => ({
+            const archivadosDelEmpleado = archivadosData.registros.filter(r => {
+                const rId = String(r.empleadoId || r.id_empleado || r.id || '').trim();
+                return rId === empIdStr || (Number(rId) && Number(empIdStr) && Number(rId) === Number(empIdStr));
+            }).map(data => ({
                 fecha: this._normFecha(data.fecha),
                 tipo: data.tipo,
                 hora: this._limpiarHora(data.hora),

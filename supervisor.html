@@ -2762,7 +2762,7 @@
             </div>
             <div style="flex:1;">
               <div id="editDirNombreBadge" style="font-weight:750; font-size:14px; color:#0f172a;">--</div>
-              <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Cédula / ID: <strong id="editDirIdBadge">--</strong></div>
+              <div style="font-size:11.5px; color:#64748b; margin-top:2px;">ID: <strong id="editDirIdBadge">--</strong></div>
               <button type="button" onclick="triggerPhotoUpload(document.getElementById('editDirEmpIdOriginal').value)" class="btn" style="margin-top:5px; padding:3px 8px; font-size:10.5px; font-weight:700; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; color:#334155; display:inline-flex; align-items:center; gap:4px;">
                 <i class="fas fa-camera" style="color:#2563eb;"></i> Cambiar Fotografía
               </button>
@@ -2771,12 +2771,12 @@
 
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
             <div class="form-group" style="margin:0;">
-              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Cédula / ID *</label>
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">ID *</label>
               <input type="text" id="editDirId" class="form-input" required readonly style="background:#f1f5f9; cursor:not-allowed; font-weight:700; color:#475569;" title="El ID es el identificador único en Firebase">
             </div>
             <div class="form-group" style="margin:0;">
-              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">PIN / Contraseña (4 dígitos) *</label>
-              <input type="text" id="editDirPin" class="form-input" maxlength="4" placeholder="Ej: 1234" required style="letter-spacing:2px; font-weight:700;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">PIN (Opcional - dejar en blanco para mantener)</label>
+              <input type="text" id="editDirPin" class="form-input" maxlength="4" placeholder="Ej: 1234" style="letter-spacing:2px; font-weight:700;">
             </div>
           </div>
 
@@ -2863,12 +2863,12 @@
         <form id="formNuevoEmpleadoDirectorio" onsubmit="event.preventDefault(); guardarNuevoEmpleadoDirectorio();">
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
             <div class="form-group" style="margin:0;">
-              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Cédula / ID *</label>
-              <input type="text" id="nuevoDirId" class="form-input" placeholder="Ej: 1712345678" required>
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">ID * <span style="font-size:10px; font-weight:600; color:#059669; background:#dcfce7; padding:1px 6px; border-radius:4px; margin-left:4px;">Siguiente disponible</span></label>
+              <input type="text" id="nuevoDirId" class="form-input" placeholder="ID del colaborador" required style="font-weight:700; color:#0f172a;">
             </div>
             <div class="form-group" style="margin:0;">
-              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">PIN (4 dígitos numéricos) *</label>
-              <input type="text" id="nuevoDirPin" class="form-input" maxlength="4" placeholder="Ej: 1234" required style="letter-spacing:2px; font-weight:700;">
+              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fab fa-whatsapp" style="color:#16a34a;"></i> WhatsApp / Teléfono</label>
+              <input type="tel" id="nuevoDirTelefono" class="form-input" placeholder="Ej: 0984660105">
             </div>
           </div>
 
@@ -2890,16 +2890,9 @@
 
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
             <div class="form-group" style="margin:0;">
-              <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fab fa-whatsapp" style="color:#16a34a;"></i> WhatsApp / Teléfono</label>
-              <input type="tel" id="nuevoDirTelefono" class="form-input" placeholder="Ej: 0984660105">
-            </div>
-            <div class="form-group" style="margin:0;">
               <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;"><i class="fas fa-cake-candles" style="color:#f59e0b;"></i> Fecha de Nacimiento</label>
               <input type="date" id="nuevoDirFechaNacimiento" class="form-input" title="Fecha de nacimiento opcional">
             </div>
-          </div>
-
-          <div style="margin-bottom:16px;">
             <div class="form-group" style="margin:0;">
               <label class="form-label" style="font-size:11.5px; font-weight:700; color:#334155;">Rol de Acceso</label>
               <select id="nuevoDirSupervisor" class="form-select">
@@ -2907,6 +2900,13 @@
                 <option value="SI">🛡️ Supervisor</option>
                 <option value="SUPERVISOR ADMIN">👑 Supervisor Admin</option>
               </select>
+            </div>
+          </div>
+
+          <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:11.5px; color:#166534; display:flex; align-items:flex-start; gap:8px;">
+            <i class="fab fa-whatsapp" style="font-size:16px; color:#16a34a; margin-top:2px;"></i>
+            <div>
+              <strong>Notificación y clave automática:</strong> Al registrar al colaborador se le enviará un mensaje de bienvenida con sus credenciales a su WhatsApp y podrá crear su propio PIN en su primer inicio de sesión.
             </div>
           </div>
 
@@ -3829,9 +3829,9 @@
     </div>
   </div>
 
-  <script src="./JS/openwa_service.js?v=20260915_02"></script>
-  <script src="./JS/tcontrol_core.js?v=20260915_02"></script>
-  <script src="./JS/supervisor_core.js?v=20260915_02"></script>
+  <script src="./JS/openwa_service.js?v=20260915_07"></script>
+  <script src="./JS/tcontrol_core.js?v=20260915_07"></script>
+  <script src="./JS/supervisor_core.js?v=20260915_07"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

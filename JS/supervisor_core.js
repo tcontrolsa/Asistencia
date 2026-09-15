@@ -3052,6 +3052,46 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   let regs = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN)
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+  // Cargar historial completo de registros archivados si es necesario (ej: periodos anteriores o rango personalizado)
+  if (!e._historialCompletoCargado && (window.FirebaseBackend || typeof jsonpRequest === 'function')) {
+    (async () => {
+      try {
+        let fullRegs = null;
+        if (window.FirebaseBackend && window.USE_FIREBASE) {
+          fullRegs = await window.FirebaseBackend.obtenerRegistros({ empleadoId: id, force: true, incluirArchivados: true });
+        } else if (typeof jsonpRequest === 'function') {
+          fullRegs = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: id, force: true, incluirArchivados: true });
+        }
+        if (Array.isArray(fullRegs) && fullRegs.length > 0) {
+          const existingKeys = new Set((e.registros || []).map(r => `${normalizarFechaStr(r.fecha) || r.fecha}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`));
+          let newAdded = 0;
+          fullRegs.forEach(r => {
+            const fNorm = normalizarFechaStr(r.fecha) || r.fecha;
+            const k = `${fNorm}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`;
+            if (!existingKeys.has(k)) {
+              if (!e.registros) e.registros = [];
+              e.registros.push({ ...r, fecha: fNorm });
+              existingKeys.add(k);
+              newAdded++;
+            }
+          });
+          e._historialCompletoCargado = true;
+          if (newAdded > 0 && window.idDetalleActual === id) {
+            todosRegs = (e.registros || []).map(r => {
+              const fNorm = normalizarFechaStr(r.fecha);
+              return fNorm ? { ...r, fecha: fNorm } : r;
+            });
+            regs = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN)
+              .sort((a, b) => b.fecha.localeCompare(a.fecha));
+            rebuildTable();
+          }
+        }
+      } catch (err) {
+        console.warn("Aviso cargando registros históricos en segundo plano:", err);
+      }
+    })();
+  }
+
   let entT = regs.filter(r => r.tipo === 'ENTRADA').length;
   let salT = regs.filter(r => r.tipo === 'SALIDA').length;
   const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
@@ -5034,13 +5074,17 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
   const cultura = $('editDirCultura') ? $('editDirCultura').value : 'SI';
   const fechaNacimiento = $('editDirFechaNacimiento') ? $('editDirFechaNacimiento').value.trim() : '';
 
-  if (!id || !nombre || !area || !cargo || !pin) {
+  if (!id || !nombre || !area || !cargo) {
     mostrarToast('Por favor, completa los campos obligatorios (*)', 'warning');
     return;
   }
 
-  if (pin.length !== 4 || isNaN(pin)) {
-    mostrarToast('El PIN debe tener exactamente 4 dígitos numéricos', 'warning');
+  const empActual = (empCache || []).find(e => String(e.id).trim() === String(id).trim());
+  let pinFinal = pin;
+  if (!pinFinal && empActual) {
+    pinFinal = empActual.pin || '';
+  } else if (pinFinal && (pinFinal.length !== 4 || isNaN(pinFinal))) {
+    mostrarToast('Si ingresas un PIN, debe tener exactamente 4 dígitos numéricos', 'warning');
     return;
   }
 
@@ -5049,7 +5093,7 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
     area: area,
     cargo: cargo,
     telefono: telefono,
-    pin: pin,
+    pin: pinFinal,
     supervisor: supervisor,
     activo: activo,
     cultura_habilitada: (cultura === 'SI'),
@@ -5100,10 +5144,40 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
   }
 };
 
+window.obtenerSiguienteIdDisponible = function () {
+  const todos = [...(empCache || []), ...(window.empEliminadosCache || [])];
+  const idsNumericos = todos
+    .map(e => {
+      const clean = String(e.id || '').trim();
+      if (/^\d+$/.test(clean)) {
+        return parseInt(clean, 10);
+      }
+      return null;
+    })
+    .filter(num => num !== null && num > 0);
+
+  if (idsNumericos.length === 0) return '1';
+
+  const ocupados = new Set(todos.map(e => String(e.id || '').trim()));
+  let maxId = Math.max(...idsNumericos);
+  let siguiente = maxId + 1;
+  while (ocupados.has(String(siguiente))) {
+    siguiente++;
+  }
+  return String(siguiente);
+};
+
 window.abrirModalNuevoEmpleadoDirectorio = function () {
   const form = $('formNuevoEmpleadoDirectorio');
   if (form) form.reset();
   if ($('nuevoDirFechaNacimiento')) $('nuevoDirFechaNacimiento').value = '';
+
+  // Autocalcular y rellenar el siguiente ID disponible
+  const siguienteId = window.obtenerSiguienteIdDisponible();
+  if ($('nuevoDirId')) {
+    $('nuevoDirId').value = siguienteId;
+  }
+
   const modal = $('modalNuevoEmpleadoDirectorio');
   if (modal) modal.classList.remove('hidden');
 };
@@ -5115,7 +5189,6 @@ window.cerrarModalNuevoEmpleadoDirectorio = function () {
 
 window.guardarNuevoEmpleadoDirectorio = async function () {
   const id = $('nuevoDirId') ? $('nuevoDirId').value.trim() : '';
-  const pin = $('nuevoDirPin') ? $('nuevoDirPin').value.trim() : '';
   const nombre = $('nuevoDirNombre') ? $('nuevoDirNombre').value.trim() : '';
   const area = $('nuevoDirArea') ? $('nuevoDirArea').value.trim().toUpperCase() : '';
   const cargo = $('nuevoDirCargo') ? $('nuevoDirCargo').value.trim() : '';
@@ -5123,19 +5196,14 @@ window.guardarNuevoEmpleadoDirectorio = async function () {
   const fechaNacimiento = $('nuevoDirFechaNacimiento') ? $('nuevoDirFechaNacimiento').value.trim() : '';
   const supervisor = $('nuevoDirSupervisor') ? $('nuevoDirSupervisor').value : 'NO';
 
-  if (!id || !nombre || !area || !cargo || !pin) {
+  if (!id || !nombre || !area || !cargo) {
     mostrarToast('Por favor, completa todos los campos requeridos (*)', 'warning');
     return;
   }
 
-  if (pin.length !== 4 || isNaN(pin)) {
-    mostrarToast('El PIN debe contener exactamente 4 números', 'warning');
-    return;
-  }
-
   // Validar si ya existe el ID
-  if (empCache && empCache.some(e => String(e.id) === String(id))) {
-    mostrarToast(`Ya existe un colaborador con la cédula/ID ${id}`, 'error');
+  if (empCache && empCache.some(e => String(e.id).trim() === String(id).trim())) {
+    mostrarToast(`Ya existe un colaborador con el ID ${id}`, 'error');
     return;
   }
 
@@ -5144,7 +5212,7 @@ window.guardarNuevoEmpleadoDirectorio = async function () {
     nombre: nombre,
     area: area,
     cargo: cargo,
-    pin: pin,
+    pin: '', // Clave vacía: el usuario creará su propio PIN/contraseña en su primer inicio de sesión
     telefono: telefono,
     supervisor: supervisor,
     activo: 'SI',
@@ -5178,6 +5246,35 @@ window.guardarNuevoEmpleadoDirectorio = async function () {
 
       cerrarModalNuevoEmpleadoDirectorio();
       mostrarToast(`¡Colaborador ${nombre} registrado con éxito!`, 'success');
+
+      // Identificar al supervisor en sesión para el reporte
+      let creadorNombre = 'Supervisor';
+      try {
+        const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+        if (sessionStr) {
+          const sess = JSON.parse(sessionStr);
+          const supEmp = (empCache || []).find(x => String(x.id).trim() === String(sess.id).trim());
+          creadorNombre = supEmp?.nombre || sess.nombre || `Supervisor (${sess.id})`;
+        }
+      } catch(e) {}
+
+      // Enviar notificación con enlace al nuevo colaborador y alerta a supervisores
+      if (window.OpenWAService && typeof window.OpenWAService.notificarNuevoEmpleadoRegistrado === 'function') {
+        window.OpenWAService.notificarNuevoEmpleadoRegistrado(empObj, creadorNombre).then(waRes => {
+          if (waRes && waRes.ok) {
+            if (waRes.enviadoColaborador) {
+              mostrarToast(`📲 Notificación y enlace enviados al WhatsApp de ${nombre}`, 'success');
+            } else if (telefono) {
+              mostrarToast(`Colaborador guardado. (Nota WhatsApp: no se pudo entregar al colaborador)`, 'info');
+            }
+            if (waRes.supervisoresNotificados > 0) {
+              console.log(`[OpenWA] ${waRes.supervisoresNotificados} supervisores alertados sobre el nuevo usuario.`);
+            }
+          }
+        }).catch(errWa => {
+          console.warn("Error enviando notificaciones WhatsApp:", errWa);
+        });
+      }
 
       cargarDirectorio();
     } else {
@@ -7641,7 +7738,17 @@ window.addEventListener('archivadosActualizados', async () => {
           });
         }
       });
-      cargarPanelActual();
+      if (res.empleadosEliminados) {
+        window.empEliminadosCache = res.empleadosEliminados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+      }
+      if (res.almuerzosExtra) window.almuerzosExtra = res.almuerzosExtra;
+      if (res.solicitudesInvitados) window.solicitudesInvitados = res.solicitudesInvitados;
+
+      if (panelActual === 'detalle' && window.idDetalleActual) {
+        mostrarDetalle(window.idDetalleActual, window.indexPeriodoDetalleActual || 0, window.customInicioDetalleActual, window.customFinDetalleActual);
+      } else {
+        cargarPanelActual();
+      }
     }
   }
 });

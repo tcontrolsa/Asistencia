@@ -1268,6 +1268,101 @@
                 console.warn("[OpenWA] Error en notificarSupAdminsCancelacionInvitado:", err);
                 return { ok: false, error: err.message };
             }
+        },
+
+        // Notificar al nuevo colaborador con el link de acceso y avisar a los Supervisores Administradores
+        async notificarNuevoEmpleadoRegistrado(empInfo = {}, creadorNombre = 'Supervisor') {
+            try {
+                // URL oficial de acceso a la app
+                const appUrl = 'https://asistencia.tcontrolsa.com/index.html';
+                const supUrl = 'https://asistencia.tcontrolsa.com/supervisor.html';
+
+                const nombre = empInfo.nombre || 'Colaborador';
+                const id = empInfo.id || '';
+                const area = empInfo.area || 'General';
+                const cargo = empInfo.cargo || 'Personal';
+                const telefono = empInfo.telefono || '';
+                const rol = empInfo.supervisor === 'SUPERVISOR ADMIN' ? '👑 Supervisor Admin' : (empInfo.supervisor === 'SI' ? '🛡️ Supervisor' : '👤 Empleado regular');
+
+                // 1. Enviar mensaje de bienvenida al nuevo colaborador (si tiene teléfono)
+                let resColaborador = { ok: false };
+                if (telefono) {
+                    const msgBienvenida = 
+                        `👋 *¡Hola, ${nombre}! Bienvenido/a a TCONTROL.*\n\n` +
+                        `Te informamos que has sido registrado/a en el sistema de control de asistencia.\n\n` +
+                        `👤 *Tus Datos de Acceso:*\n` +
+                        `🆔 *ID:* ${id}\n` +
+                        `🏢 *Área:* ${area}\n` +
+                        `💼 *Cargo:* ${cargo}\n\n` +
+                        `🌐 *Enlace de Ingreso a la App:*\n` +
+                        `👉 ${appUrl}\n\n` +
+                        `📱 *Instrucciones para tu primer ingreso:*\n` +
+                        `1. Abre el enlace arriba desde tu teléfono o computador.\n` +
+                        `2. Digita tu número de ID (${id}).\n` +
+                        `3. El sistema te solicitará crear y registrar tu contraseña o PIN personal de 4 dígitos.\n\n` +
+                        `_¡Muchos éxitos y bienvenido/a al equipo!_ ✨`;
+
+                    resColaborador = await this.enviarMensajeTexto(telefono, msgBienvenida);
+                    if (resColaborador.ok && this.registrarLogEnvio) {
+                        this.registrarLogEnvio({
+                            tipo: 'BIENVENIDA_NUEVO_EMPLEADO',
+                            empleadoId: id,
+                            empleadoNombre: nombre,
+                            telefono: telefono,
+                            mensaje: msgBienvenida,
+                            estado: 'ENVIADO'
+                        });
+                    }
+                }
+
+                // 2. Notificar a los Supervisores / Supervisor Admins
+                let destinatarios = [];
+                if (typeof db !== 'undefined' && db) {
+                    try {
+                        const snap = await db.collection('empleados').get();
+                        snap.forEach(doc => {
+                            const d = doc.data() || {};
+                            const docId = String(d.id || doc.id).trim();
+                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
+                            if ((docId === '1058' || supVal.includes('ADMIN') || supVal === 'SI') && d.telefono && docId !== id) {
+                                destinatarios.push({
+                                    id: docId,
+                                    nombre: d.nombre || 'Supervisor',
+                                    telefono: d.telefono
+                                });
+                            }
+                        });
+                    } catch (e) {}
+                }
+                if (destinatarios.length === 0) {
+                    destinatarios = [
+                        { id: '1058', nombre: 'Fernando Sanmartin', telefono: '0984660105' },
+                        { id: '8', nombre: 'Martina Rodriguez', telefono: '0962707809' }
+                    ];
+                }
+
+                const fechaHoraStr = new Date().toLocaleString('es-EC', { timeZone: 'America/Guayaquil' });
+                const msgSup = 
+                    `🔔 *[TCONTROL] Nuevo Colaborador Registrado*\n\n` +
+                    `Se ha registrado un nuevo usuario en la plataforma:\n\n` +
+                    `👤 *Colaborador:* ${nombre}\n` +
+                    `🆔 *ID:* ${id}\n` +
+                    `🏢 *Área:* ${area}\n` +
+                    `💼 *Cargo:* ${cargo}\n` +
+                    `📱 *WhatsApp:* ${telefono || 'No registrado'}\n` +
+                    `🛡️ *Rol:* ${rol}\n` +
+                    `✍️ *Registrado por:* ${creadorNombre}\n` +
+                    `📅 *Fecha:* ${fechaHoraStr}\n\n` +
+                    `🌐 *Panel Supervisor:* ${supUrl}`;
+
+                const enviosSup = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, msgSup));
+                await Promise.allSettled(enviosSup);
+
+                return { ok: true, enviadoColaborador: resColaborador.ok, supervisoresNotificados: destinatarios.length };
+            } catch (err) {
+                console.warn("[OpenWA] Error en notificarNuevoEmpleadoRegistrado:", err);
+                return { ok: false, error: err.message };
+            }
         }
     };
 
