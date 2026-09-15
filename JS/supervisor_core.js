@@ -634,6 +634,178 @@ function normalizarFechaStr(val) {
 }
 window.normalizarFechaStr = normalizarFechaStr;
 
+// ============================================================
+// HELPERS DE CONSOLIDACIÓN DE INVITADOS Y ALMUERZOS EXTRA
+// ============================================================
+function desglosarObservacionesInvitado(rawObs) {
+  let obs = String(rawObs || '').trim();
+  let horaReq = '';
+  let area = '';
+  let sol = '';
+
+  const matchHora = obs.match(/\[Hora\s*req:\s*([^\]]+)\]/i);
+  if (matchHora) {
+    horaReq = matchHora[1].trim();
+    obs = obs.replace(matchHora[0], '').trim();
+  }
+
+  const matchArea = obs.match(/\[Área:\s*([^\]]+)\]/i) || obs.match(/\[Area:\s*([^\]]+)\]/i);
+  if (matchArea) {
+    area = matchArea[1].trim();
+    obs = obs.replace(matchArea[0], '').trim();
+  }
+
+  const matchSol = obs.match(/\(Sol:\s*([^\)]+)\)/i);
+  if (matchSol) {
+    sol = matchSol[1].trim();
+    obs = obs.replace(matchSol[0], '').trim();
+  }
+
+  obs = obs.replace(/\s{2,}/g, ' ').trim();
+  return { obsLimpia: obs, horaReq, area, sol };
+}
+window.desglosarObservacionesInvitado = desglosarObservacionesInvitado;
+
+function esAlmuerzoExtraItem(ae) {
+  if (!ae) return false;
+  if (ae.estado === 'CANCELADO') return false;
+  const t = String(ae.subtipo || ae.tipoSolicitud || ae.tipo || '').toUpperCase();
+  return !t.includes('REFRIGERIO') && !t.includes('SANDUCHE') && !t.includes('GALLETA');
+}
+window.esAlmuerzoExtraItem = esAlmuerzoExtraItem;
+
+window.obtenerListaConsolidadaInvitados = function () {
+  const lista = [];
+  const usedSheetRowKeys = new Set();
+
+  // 1. Prioridad: Documentos en Firestore (solicitudesInvitados)
+  (window.solicitudesInvitados || []).forEach(s => {
+    if (s.estado === 'CANCELADO') return;
+    const id = s.id || `inv_${s.fecha}_${s.hora}_${s.empleadoId}`;
+    const fNorm = normalizarFechaStr(s.fecha) || s.fecha;
+
+    let invitadoLimpio = (s.invitado || '').trim() || 'Invitado';
+    let solicitanteDetectado = s.empleadoNombre || 'Colaborador';
+    const matchInvS = invitadoLimpio.match(/^(.*?)\s*\(Inv\.\s*de\s*(.*?)\)$/i);
+    if (matchInvS) {
+      invitadoLimpio = matchInvS[1].trim();
+      if (!s.empleadoNombre || s.empleadoNombre === 'Colaborador') solicitanteDetectado = matchInvS[2].trim();
+    }
+
+    const desg = desglosarObservacionesInvitado(s.observaciones || s.observacionesCompletas || '');
+    const invNorm = invitadoLimpio.toLowerCase();
+
+    let matchFilaIndex = null;
+    const aeList = window.almuerzosExtra || [];
+    for (let idx = 0; idx < aeList.length; idx++) {
+      const ae = aeList[idx];
+      const sheetRowKey = ae.filaIndex || (idx + 1);
+      if (usedSheetRowKeys.has(sheetRowKey)) continue;
+
+      const aeFecha = normalizarFechaStr(ae.fecha);
+      if (aeFecha !== fNorm) continue;
+
+      let aeInvLimpio = (ae.nombre || '').trim();
+      const mInv = aeInvLimpio.match(/^(.*?)\s*\(Inv\.\s*de\s*(.*?)\)$/i);
+      if (mInv) aeInvLimpio = mInv[1].trim();
+      const aeInvNorm = aeInvLimpio.toLowerCase();
+
+      if (invNorm && aeInvNorm && (invNorm === aeInvNorm || (invNorm.length >= 3 && aeInvNorm.length >= 3 && (invNorm.includes(aeInvNorm) || aeInvNorm.includes(invNorm))))) {
+        matchFilaIndex = sheetRowKey;
+        usedSheetRowKeys.add(sheetRowKey);
+        break;
+      }
+    }
+
+    lista.push({
+      id: id,
+      fecha: fNorm,
+      hora: s.hora || '',
+      solicitante: solicitanteDetectado || desg.sol || 'Colaborador',
+      empleadoId: s.empleadoId || '',
+      area: s.empleadoArea || desg.area || '',
+      tipoSolicitud: s.tipoSolicitud || 'ALMUERZO_EXTRA',
+      subtipo: s.subtipo || s.tipoSolicitud || 'ALMUERZO_EXTRA',
+      cantidad: parseInt(s.cantidad) || 1,
+      invitado: invitadoLimpio,
+      empresa: s.empresa || 'TCONTROL',
+      horaServicio: s.horaServicio || desg.horaReq || '',
+      observaciones: desg.obsLimpia || '',
+      estado: s.estado || 'SOLICITADO',
+      origen: 'FIRESTORE',
+      filaIndex: matchFilaIndex
+    });
+  });
+
+  // 2. Registros de Google Sheets (almuerzosExtra) que no fueron emparejados con un documento de Firestore
+  (window.almuerzosExtra || []).forEach((ae, idx) => {
+    const sheetRowKey = ae.filaIndex || (idx + 1);
+    if (usedSheetRowKeys.has(sheetRowKey)) return;
+
+    const fNorm = normalizarFechaStr(ae.fecha);
+    const tUpper = String(ae.tipo || '').toUpperCase();
+    let subtipo = 'ALMUERZO_EXTRA';
+    if (tUpper.includes('SANDUCHE')) subtipo = 'REFRIGERIO_SANDUCHE';
+    else if (tUpper.includes('GALLETA')) subtipo = 'REFRIGERIO_GALLETAS';
+    else if (tUpper.includes('REFRIGERIO')) subtipo = 'REFRIGERIO_SANDUCHE';
+
+    let invitadoLimpio = (ae.nombre || '').trim() || 'Almuerzo Extra';
+    let solicitanteDetectado = '';
+    const matchInv = invitadoLimpio.match(/^(.*?)\s*\(Inv\.\s*de\s*(.*?)\)$/i);
+    if (matchInv) {
+      invitadoLimpio = matchInv[1].trim();
+      solicitanteDetectado = matchInv[2].trim();
+    }
+
+    const desg = desglosarObservacionesInvitado(ae.observaciones || '');
+
+    lista.push({
+      id: `sheet_extra_${fNorm}_${sheetRowKey}`,
+      fecha: fNorm,
+      hora: ae.horaRegistro || '--:--',
+      solicitante: solicitanteDetectado || desg.sol || (ae.supervisorId ? (empCache.find(e => String(e.id) === String(ae.supervisorId))?.nombre || `ID: ${ae.supervisorId}`) : 'Supervisor'),
+      empleadoId: ae.supervisorId || '',
+      area: ae.supervisorId ? (empCache.find(e => String(e.id) === String(ae.supervisorId))?.area || '') : desg.area,
+      tipoSolicitud: subtipo.includes('REFRIGERIO') ? 'REFRIGERIO' : 'ALMUERZO_EXTRA',
+      subtipo: subtipo,
+      cantidad: parseInt(ae.cantidad) || 1,
+      invitado: invitadoLimpio,
+      empresa: ae.empresa || 'TCONTROL',
+      horaServicio: desg.horaReq || '',
+      observaciones: desg.obsLimpia || '',
+      estado: 'CONFIRMADO',
+      origen: 'SHEETS',
+      filaIndex: sheetRowKey
+    });
+  });
+
+  lista.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
+  return lista;
+};
+
+window.obtenerAlmuerzosExtraConsolidados = function (fechaInicio = null, fechaFin = null) {
+  const lista = (typeof window.obtenerListaConsolidadaInvitados === 'function')
+    ? window.obtenerListaConsolidadaInvitados()
+    : [
+        ...(window.solicitudesInvitados || []),
+        ...(window.almuerzosExtra || [])
+      ];
+
+  const fIniNorm = fechaInicio ? normalizarFechaStr(fechaInicio) : null;
+  const fFinNorm = fechaFin ? normalizarFechaStr(fechaFin) : null;
+
+  return (lista || []).filter(item => {
+    if (item.estado === 'CANCELADO') return false;
+    if (!esAlmuerzoExtraItem(item)) return false;
+
+    const fNorm = normalizarFechaStr(item.fecha);
+    if (!fNorm) return false;
+    if (fIniNorm && fNorm < fIniNorm) return false;
+    if (fFinNorm && fNorm > fFinNorm) return false;
+    return true;
+  });
+};
+
 function obtenerDiasHabiles(inicio, fin) {
   let dias = [];
   let fecha = new Date(inicio + 'T12:00:00');
@@ -1424,11 +1596,8 @@ function cargarDashboard() {
     }
 
     // Subtítulo de almuerzo de planta con extras (excluyendo refrigerios)
-    let extrasPeriodo = (window.almuerzosExtra || []).filter(ae => {
-      let fNorm = normalizarFechaStr(ae.fecha);
-      return (typeof esAlmuerzoExtraItem === 'function' ? esAlmuerzoExtraItem(ae) : !String(ae.tipo || '').toUpperCase().includes('REFRIGERIO')) && fNorm >= periodo.inicio && fNorm <= hoy_;
-    });
-    let totalExtrasPeriodo = extrasPeriodo.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+    let extrasPeriodo = window.obtenerAlmuerzosExtraConsolidados(periodo.inicio, hoy_);
+    let totalExtrasPeriodo = extrasPeriodo.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
     let totalLunchesPeriodo = almP + totalExtrasPeriodo;
     if ($('dashAlmPlantaSub')) {
       $('dashAlmPlantaSub').innerHTML = `<span style="font-weight:600; color:var(--blue)">${almP}</span> emp. + <span style="font-weight:600; color:var(--indigo)">${totalExtrasPeriodo}</span> ext. = <strong>${totalLunchesPeriodo}</strong> total`;
@@ -1470,11 +1639,8 @@ function filtrarResumenMensual() {
     const R_INI = fechaFiltro ? fechaFiltro : periodoSel.inicio;
     const R_FIN = fechaFiltro ? fechaFiltro : periodoSel.fin;
 
-    let extrasPeriodo = (window.almuerzosExtra || []).filter(ae => {
-      let fNorm = normalizarFechaStr(ae.fecha);
-      return (typeof esAlmuerzoExtraItem === 'function' ? esAlmuerzoExtraItem(ae) : !String(ae.tipo || '').toUpperCase().includes('REFRIGERIO')) && fNorm >= R_INI && fNorm <= R_FIN;
-    });
-    let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+    let extrasPeriodo = window.obtenerAlmuerzosExtraConsolidados(R_INI, R_FIN);
+    let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
 
     if (totalAlmExt > 0) {
       let rowHtml = `<tr style="background-color:rgba(99,102,241,0.05); font-style:italic;">
@@ -1575,15 +1741,15 @@ function cargarAsistencia() {
   let salieron = empCache.filter(e => e.salidaHoy).length;
   let sinSalida = pres - salieron;
 
-  let extrasHoy = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy && (typeof esAlmuerzoExtraItem === 'function' ? esAlmuerzoExtraItem(ae) : !String(ae.tipo || '').toUpperCase().includes('REFRIGERIO')));
-  let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+  let extrasHoy = window.obtenerAlmuerzosExtraConsolidados(hoy, hoy);
+  let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
 
   let almPlanta = empCache.filter(e => {
-    const esPresenteOAlm = e.entradaHoy || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+    const esPresenteOAlm = e.entradaHoy || (typeof esEmpleadoSoloAlmuerzo === 'function' && esEmpleadoSoloAlmuerzo(e)) || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
     return esPresenteOAlm && (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA');
   }).length + totalExtrasHoy;
   let almFuera = empCache.filter(e => {
-    const esPresenteOAlm = e.entradaHoy || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+    const esPresenteOAlm = e.entradaHoy || (typeof esEmpleadoSoloAlmuerzo === 'function' && esEmpleadoSoloAlmuerzo(e)) || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
     return esPresenteOAlm && (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA');
   }).length;
 
@@ -1756,20 +1922,20 @@ function cargarAsistencia() {
     return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, _razonAusenciaHoy: razonAusenciaHoy, id: e.id, isSinAsistencia };
   });
 
-  let extrasHoyTb = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoy && (typeof esAlmuerzoExtraItem === 'function' ? esAlmuerzoExtraItem(ae) : !String(ae.tipo || '').toUpperCase().includes('REFRIGERIO')));
+  let extrasHoyTb = window.obtenerAlmuerzosExtraConsolidados(hoy, hoy);
   extrasHoyTb.forEach((extra, idx) => {
     window._asisData.push({
-      id: `extra_${idx}`,
-      nombre: `Visitante/Extra (${extra.observaciones || 'Sin detalle'})`,
-      area: 'Visita/Extra',
+      id: extra.id || `extra_${idx}`,
+      nombre: `Visitante/Extra (${extra.invitado || extra.nombre || extra.observaciones || 'Sin detalle'})`,
+      area: extra.area || 'Visita/Extra',
       foto_url: '',
-      _eH: `<span class="pill dim" style="opacity:0.5; font-size:10px;">--:--</span>`,
+      _eH: `<span class="pill dim" style="opacity:0.5; font-size:10px;">${extra.hora || '--:--'}</span>`,
       _sH: `<span class="pill dim" style="opacity:0.5; font-size:10px;">--:--</span>`,
       _modo: `<span class="pill dim" style="opacity:0.5; font-size:10px;">N/A</span>`,
       _extras: `<span class="pill dim" style="opacity:0.5; font-size:10px;">N/A</span>`,
-      _est: `<span class="pill" style="background:#f3f4f6; color:#6b7280; font-size:10px; border:1px dashed #cbd5e1;"><i class="fas fa-id-badge"></i> Visitante</span>`,
+      _est: `<span class="pill" style="background:#f3f4f6; color:#6b7280; font-size:10px; border:1px dashed #cbd5e1;"><i class="fas fa-id-badge"></i> Invitado</span>`,
       _ausencia: `<span class="pill dim" style="opacity:0.5; font-size:10px;">—</span>`,
-      _toggle: `<span class="pill" style="background:#dbeafe; color:#1e40af; font-size:11px; font-weight:600;"><i class="fas fa-building" style="margin-right:4px;"></i> +${extra.cantidad} Extra(s)</span>`,
+      _toggle: `<span class="pill" style="background:#dbeafe; color:#1e40af; font-size:11px; font-weight:600;"><i class="fas fa-building" style="margin-right:4px;"></i> +${extra.cantidad || 1} Extra(s)</span>`,
       _entradaHoy: false,
       _salidaHoy: false,
       _tard: false,
@@ -1879,10 +2045,14 @@ function filtrarAsistenciaTabla() {
   let totalVisible = data.length;
   let countEntradas = data.filter(e => e._entradaHoy).length;
   let countSalidas = data.filter(e => e._salidaHoy).length;
-  let countAlmPlanta = data.filter(e => {
-    const esPresenteOAlm = e._entradaHoy || e.isSinAsistencia;
-    return esPresenteOAlm && (e._almuerzoHoy === 'SI' || e._almuerzoHoy === 'PLANTA');
-  }).length;
+  let countAlmPlanta = data.reduce((acc, e) => {
+    if (e.isVisitante) return acc + (parseInt(e.cantidad, 10) || 1);
+    const esPresenteOAlm = e._entradaHoy || (typeof esEmpleadoSoloAlmuerzo === 'function' && esEmpleadoSoloAlmuerzo(e)) || e.isSinAsistencia;
+    if (esPresenteOAlm && (e._almuerzoHoy === 'SI' || e._almuerzoHoy === 'PLANTA')) {
+      return acc + 1;
+    }
+    return acc;
+  }, 0);
   let countCampoVis = data.filter(e => {
     let modoStr = (e._modo || '').toUpperCase();
     return modoStr.includes('CAMPO') || (e.registros || []).some(r => r.modo === 'CAMPO' && r.fecha === hoy);
@@ -2564,11 +2734,8 @@ function cargarReportes() {
   // Almuerzos reporte
   let totalAlmPlanta = stats.reduce((s, r) => s + r.almPlanta, 0);
   let totalAlmFuera = stats.reduce((s, r) => s + r.almFuera, 0);
-  let extrasPeriodo = (window.almuerzosExtra || []).filter(ae => {
-    let fNorm = normalizarFechaStr(ae.fecha);
-    return (typeof esAlmuerzoExtraItem === 'function' ? esAlmuerzoExtraItem(ae) : !String(ae.tipo || '').toUpperCase().includes('REFRIGERIO')) && fNorm >= R_INI && fNorm <= R_FIN;
-  });
-  let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+  let extrasPeriodo = window.obtenerAlmuerzosExtraConsolidados(R_INI, R_FIN);
+  let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
   let totalAlmLunch = totalAlmPlanta + totalAlmExt;
 
   if ($('repAlmuerzosEmp')) $('repAlmuerzosEmp').textContent = totalAlmPlanta;
@@ -7932,17 +8099,14 @@ window.filtrarReporteInteractivo = function () {
     let pInicio = periodo ? periodo.inicio : '';
     let pFin = periodo ? periodo.fin : '';
 
-    let extras = (window.almuerzosExtra || []).filter(ae => {
-      let fNorm = normalizarFechaStr(ae.fecha);
-      return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
-    });
+    let extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
 
     if (q) {
       extras = extras.filter(ae =>
-        (ae.nombre || '').toLowerCase().includes(q) ||
+        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
         (ae.observaciones || '').toLowerCase().includes(q) ||
         (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || '').toLowerCase().includes(q)
+        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
       );
     }
 
@@ -8626,16 +8790,13 @@ window.exportarExcelReporteCustom = function () {
   if (fCargo === 'almuerzos extra') {
     let pInicio = periodo ? periodo.inicio : '';
     let pFin = periodo ? periodo.fin : '';
-    extras = (window.almuerzosExtra || []).filter(ae => {
-      let fNorm = normalizarFechaStr(ae.fecha);
-      return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
-    });
+    extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
     if (q) {
       extras = extras.filter(ae =>
-        (ae.nombre || '').toLowerCase().includes(q) ||
+        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
         (ae.observaciones || '').toLowerCase().includes(q) ||
         (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || '').toLowerCase().includes(q)
+        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
       );
     }
     hasData = extras.length > 0;
@@ -8777,16 +8938,13 @@ window.exportarGoogleSheetsReporteCustom = async function () {
   if (fCargo === 'almuerzos extra') {
     let pInicio = periodo ? periodo.inicio : '';
     let pFin = periodo ? periodo.fin : '';
-    extras = (window.almuerzosExtra || []).filter(ae => {
-      let fNorm = normalizarFechaStr(ae.fecha);
-      return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
-    });
+    extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
     if (q) {
       extras = extras.filter(ae =>
-        (ae.nombre || '').toLowerCase().includes(q) ||
+        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
         (ae.observaciones || '').toLowerCase().includes(q) ||
         (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || '').toLowerCase().includes(q)
+        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
       );
     }
     hasData = extras.length > 0;
@@ -8890,16 +9048,13 @@ window.imprimirReporteCustom = function () {
   if (fCargo === 'almuerzos extra') {
     let pInicio = periodo ? periodo.inicio : '';
     let pFin = periodo ? periodo.fin : '';
-    extras = (window.almuerzosExtra || []).filter(ae => {
-      let fNorm = normalizarFechaStr(ae.fecha);
-      return (!pInicio || fNorm >= pInicio) && (!pFin || fNorm <= pFin);
-    });
+    extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
     if (q) {
       extras = extras.filter(ae =>
-        (ae.nombre || '').toLowerCase().includes(q) ||
+        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
         (ae.observaciones || '').toLowerCase().includes(q) ||
         (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || '').toLowerCase().includes(q)
+        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
       );
     }
     hasData = extras.length > 0;
@@ -14777,8 +14932,8 @@ window.renderMapaAsistencia = function () {
   });
 
   // Sumar almuerzos extra de visitantes hoy (excluyendo refrigerios)
-  let extrasHoy = (window.almuerzosExtra || []).filter(ae => normalizarFechaStr(ae.fecha) === hoyStr && (typeof esAlmuerzoExtraItem === 'function' ? esAlmuerzoExtraItem(ae) : !String(ae.tipo || '').toUpperCase().includes('REFRIGERIO')));
-  let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+  let extrasHoy = window.obtenerAlmuerzosExtraConsolidados(hoyStr, hoyStr);
+  let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
   kpiAlmPlanta += totalExtrasHoy;
 
   if ($('mapaKpiTotal')) $('mapaKpiTotal').textContent = kpiTotal;
@@ -15312,121 +15467,71 @@ function desglosarObservacionesInvitado(rawObs) {
   return { obsLimpia: obs, horaReq, area, sol };
 }
 
-window.obtenerListaConsolidadaInvitados = function () {
-  const lista = [];
-  const usedSheetRowKeys = new Set();
+window.mostrarDetalleCalculoCard = function (tipo) {
+  let periodo = periodos[parseInt($('periodoMensual')?.value || 0)];
+  const fechaInicio = $('filtroFechaReportesInicio')?.value;
+  const fechaFin = $('filtroFechaReportesFinalizacion')?.value;
+  const R_INI = fechaInicio ? fechaInicio : (periodo ? periodo.inicio : '');
+  const R_FIN = fechaFin ? fechaFin : (periodo ? periodo.fin : '');
 
-  // 1. Prioridad: Documentos en Firestore (solicitudesInvitados)
-  (window.solicitudesInvitados || []).forEach(s => {
-    const id = s.id || `inv_${s.fecha}_${s.hora}_${s.empleadoId}`;
-    const fNorm = normalizarFechaStr(s.fecha) || s.fecha;
+  let stats = window._reportesData || [];
+  let totalAlmPlanta = stats.reduce((s, r) => s + (r.almPlanta || 0), 0);
+  let totalAlmFuera = stats.reduce((s, r) => s + (r.almFuera || 0), 0);
+  let extrasPeriodo = (typeof window.obtenerAlmuerzosExtraConsolidados === 'function') ? window.obtenerAlmuerzosExtraConsolidados(R_INI, R_FIN) : [];
+  let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
+  let totalAlmLunch = totalAlmPlanta + totalAlmExt;
 
-    // Extraer nombre del invitado limpio si tiene formato "Invitado (Inv. de Solicitante)"
-    let invitadoLimpio = (s.invitado || '').trim() || 'Invitado';
-    let solicitanteDetectado = s.empleadoNombre || 'Colaborador';
-    const matchInvS = invitadoLimpio.match(/^(.*?)\s*\(Inv\.\s*de\s*(.*?)\)$/i);
-    if (matchInvS) {
-      invitadoLimpio = matchInvS[1].trim();
-      if (!s.empleadoNombre || s.empleadoNombre === 'Colaborador') solicitanteDetectado = matchInvS[2].trim();
+  if (tipo === 'almTotal' || tipo === 'almPlanta' || tipo === 'almExtras' || tipo === 'almFuera') {
+    let titulo = "Detalle de Almuerzos en Planta";
+    let contenido = `
+      <div style="text-align:left; font-size:13px; color:#1e293b; line-height:1.6;">
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span>🍽️ <strong>Almuerzos Colaboradores:</strong></span>
+            <strong style="color:#10b981; font-size:14px;">${totalAlmPlanta}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span>➕ <strong>Almuerzos Extras (Invitados/Visitas):</strong></span>
+            <strong style="color:#0284c7; font-size:14px;">${totalAlmExt}</strong>
+          </div>
+          <hr style="border:0; border-top:1px dashed #cbd5e1; margin:8px 0;">
+          <div style="display:flex; justify-content:space-between; font-size:14px;">
+            <span>🏢 <strong>TOTAL ALMUERZOS EN PLANTA:</strong></span>
+            <strong style="color:#059669; font-size:16px;">${totalAlmLunch}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:12px; color:#64748b; margin-top:6px;">
+            <span>🏠 Almuerzos marcados Fuera:</span>
+            <span>${totalAlmFuera}</span>
+          </div>
+        </div>
+        ${extrasPeriodo.length > 0 ? `
+          <div style="font-weight:700; margin-bottom:6px; font-size:12px; color:#475569;">Desglose de Extras / Invitados (${extrasPeriodo.length} registros):</div>
+          <div style="max-height:180px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; padding:6px; background:#ffffff; font-size:11.5px;">
+            ${extrasPeriodo.map(e => `
+              <div style="display:flex; justify-content:space-between; padding:4px 6px; border-bottom:1px solid #f1f5f9;">
+                <span><strong>${escapeHtml(e.fecha)}</strong> - ${escapeHtml(e.invitado || e.nombre || 'Visita')} <small style="color:#64748b;">(${escapeHtml(e.solicitante || 'Supervisor')})</small></span>
+                <span style="font-weight:700; color:#0284c7;">+${e.cantidad || 1}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div style="font-size:11.5px; color:#94a3b8;">No se registraron solicitudes de almuerzos extra en este rango.</div>'}
+      </div>
+    `;
+
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: titulo,
+        html: contenido,
+        icon: 'info',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#2563eb'
+      });
+    } else {
+      mostrarToast(`Total Planta: ${totalAlmLunch} (${totalAlmPlanta} emp. + ${totalAlmExt} extras)`, 'info');
     }
-
-    const desg = desglosarObservacionesInvitado(s.observaciones || s.observacionesCompletas || '');
-    const invNorm = invitadoLimpio.toLowerCase();
-
-    // Buscar una fila coincidente NO usada en almuerzosExtra para enlazar filaIndex de Google Sheets
-    let matchFilaIndex = null;
-    const aeList = window.almuerzosExtra || [];
-    for (let idx = 0; idx < aeList.length; idx++) {
-      const ae = aeList[idx];
-      const sheetRowKey = ae.filaIndex || (idx + 1);
-      if (usedSheetRowKeys.has(sheetRowKey)) continue;
-
-      const aeFecha = normalizarFechaStr(ae.fecha);
-      if (aeFecha !== fNorm) continue;
-
-      // Limpiar nombre del invitado en Sheets
-      let aeInvLimpio = (ae.nombre || '').trim();
-      const mInv = aeInvLimpio.match(/^(.*?)\s*\(Inv\.\s*de\s*(.*?)\)$/i);
-      if (mInv) aeInvLimpio = mInv[1].trim();
-      const aeInvNorm = aeInvLimpio.toLowerCase();
-
-      // Emparejar únicamente si los nombres de los invitados coinciden
-      if (invNorm && aeInvNorm && (invNorm === aeInvNorm || (invNorm.length >= 3 && aeInvNorm.length >= 3 && (invNorm.includes(aeInvNorm) || aeInvNorm.includes(invNorm))))) {
-        matchFilaIndex = sheetRowKey;
-        usedSheetRowKeys.add(sheetRowKey);
-        break;
-      }
-    }
-
-    lista.push({
-      id: id,
-      fecha: fNorm,
-      hora: s.hora || '',
-      solicitante: solicitanteDetectado || desg.sol || 'Colaborador',
-      empleadoId: s.empleadoId || '',
-      area: s.empleadoArea || desg.area || '',
-      tipoSolicitud: s.tipoSolicitud || 'ALMUERZO_EXTRA',
-      subtipo: s.subtipo || s.tipoSolicitud || 'ALMUERZO_EXTRA',
-      cantidad: parseInt(s.cantidad) || 1,
-      invitado: invitadoLimpio,
-      empresa: s.empresa || 'TCONTROL',
-      horaServicio: s.horaServicio || desg.horaReq || '',
-      observaciones: desg.obsLimpia || '',
-      estado: s.estado || 'SOLICITADO',
-      origen: 'FIRESTORE',
-      filaIndex: matchFilaIndex
-    });
-  });
-
-  // 2. Registros de Google Sheets (almuerzosExtra) que no fueron emparejados con un documento de Firestore
-  (window.almuerzosExtra || []).forEach((ae, idx) => {
-    const sheetRowKey = ae.filaIndex || (idx + 1);
-    if (usedSheetRowKeys.has(sheetRowKey)) {
-      // Ya está incluido en la lista mediante el documento de Firestore emparejado
-      return;
-    }
-
-    const fNorm = normalizarFechaStr(ae.fecha);
-    const tUpper = String(ae.tipo || '').toUpperCase();
-    let subtipo = 'ALMUERZO_EXTRA';
-    if (tUpper.includes('SANDUCHE')) subtipo = 'REFRIGERIO_SANDUCHE';
-    else if (tUpper.includes('GALLETA')) subtipo = 'REFRIGERIO_GALLETAS';
-    else if (tUpper.includes('REFRIGERIO')) subtipo = 'REFRIGERIO_SANDUCHE';
-
-    // Extraer nombre del invitado limpio si viene con formato "Invitado (Inv. de Nombre)"
-    let invitadoLimpio = (ae.nombre || '').trim() || 'Almuerzo Extra';
-    let solicitanteDetectado = '';
-    const matchInv = invitadoLimpio.match(/^(.*?)\s*\(Inv\.\s*de\s*(.*?)\)$/i);
-    if (matchInv) {
-      invitadoLimpio = matchInv[1].trim();
-      solicitanteDetectado = matchInv[2].trim();
-    }
-
-    const desg = desglosarObservacionesInvitado(ae.observaciones || '');
-
-    lista.push({
-      id: `sheet_extra_${fNorm}_${sheetRowKey}`,
-      fecha: fNorm,
-      hora: ae.horaRegistro || '--:--',
-      solicitante: solicitanteDetectado || desg.sol || (ae.supervisorId ? (empCache.find(e => String(e.id) === String(ae.supervisorId))?.nombre || `ID: ${ae.supervisorId}`) : 'Supervisor'),
-      empleadoId: ae.supervisorId || '',
-      area: ae.supervisorId ? (empCache.find(e => String(e.id) === String(ae.supervisorId))?.area || '') : desg.area,
-      tipoSolicitud: subtipo.includes('REFRIGERIO') ? 'REFRIGERIO' : 'ALMUERZO_EXTRA',
-      subtipo: subtipo,
-      cantidad: parseInt(ae.cantidad) || 1,
-      invitado: invitadoLimpio,
-      empresa: ae.empresa || 'TCONTROL',
-      horaServicio: desg.horaReq || '',
-      observaciones: desg.obsLimpia || '',
-      estado: 'CONFIRMADO',
-      origen: 'SHEETS',
-      filaIndex: sheetRowKey
-    });
-  });
-
-  // Ordenar por fecha y hora descendente
-  lista.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.hora || '').localeCompare(a.hora || ''));
-  return lista;
+  } else {
+    mostrarToast(`Métrica: ${tipo}`, 'info');
+  }
 };
 
 window.setFiltroKpiInvitados = function (tipo) {
