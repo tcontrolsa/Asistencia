@@ -3054,13 +3054,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
   // Cargar historial completo de registros archivados si es necesario (ej: periodos anteriores o rango personalizado)
   if (!e._historialCompletoCargado && (window.FirebaseBackend || typeof jsonpRequest === 'function')) {
+    e._historialCompletoCargado = true;
     (async () => {
       try {
         let fullRegs = null;
         if (window.FirebaseBackend && window.USE_FIREBASE) {
-          fullRegs = await window.FirebaseBackend.obtenerRegistros({ empleadoId: id, force: true, incluirArchivados: true });
+          fullRegs = await window.FirebaseBackend.obtenerRegistros({ empleadoId: id, force: false, incluirArchivados: true });
         } else if (typeof jsonpRequest === 'function') {
-          fullRegs = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: id, force: true, incluirArchivados: true });
+          fullRegs = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: id, force: false, incluirArchivados: true });
         }
         if (Array.isArray(fullRegs) && fullRegs.length > 0) {
           const existingKeys = new Set((e.registros || []).map(r => `${normalizarFechaStr(r.fecha) || r.fecha}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`));
@@ -3075,7 +3076,6 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
               newAdded++;
             }
           });
-          e._historialCompletoCargado = true;
           if (newAdded > 0 && window.idDetalleActual === id) {
             todosRegs = (e.registros || []).map(r => {
               const fNorm = normalizarFechaStr(r.fecha);
@@ -3933,6 +3933,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         <div class="metric-title" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; align-items:center; gap:8px;">
             <span><i class="fas fa-history"></i> Historial del período</span>
+            <button class="btn btn-primary" onclick="window.mostrarModalManual('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:#2563eb; border-color:#2563eb; color:white; cursor:pointer;" title="Crear Registro Manual de Asistencia para ${escapeHtml(e.nombre)}">
+              <i class="fas fa-plus-circle"></i> Registro Manual
+            </button>
             <button class="btn btn-success" onclick="exportarExcelDetalleEmpleado('${e.id}', ${indexPeriodo}, '${R_INI}', '${R_FIN}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px;">
               <i class="fas fa-file-excel"></i> Exportar Excel
             </button>
@@ -6506,18 +6509,42 @@ async function iniciarArchivadoFirebase() {
 }
 window.iniciarArchivadoFirebase = iniciarArchivadoFirebase;
 
-function mostrarModalManual() {
+function mostrarModalManual(empleadoIdDefault = null, fechaDefault = null) {
   const modal = $('manualRegistroModal');
+  if (!modal) return;
   const sel = $('manEmpleadoId');
-  sel.innerHTML = empCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (${e.id})</option>`).join('');
-  $('manFecha').value = hoy;
-  $('manHora').value = "07:30:00";
+  if (sel) {
+    sel.innerHTML = empCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (ID: ${e.id})</option>`).join('');
+    if (empleadoIdDefault) {
+      sel.value = String(empleadoIdDefault).trim();
+    }
+  }
+  const hoyLocal = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr(new Date()) : new Date().toISOString().slice(0, 10);
+  if ($('manFecha')) $('manFecha').value = fechaDefault || hoyLocal;
+  
+  const ahora = new Date();
+  const hh = String(ahora.getHours()).padStart(2, '0');
+  const mm = String(ahora.getMinutes()).padStart(2, '0');
+  const ss = String(ahora.getSeconds()).padStart(2, '0');
+  if ($('manHora')) $('manHora').value = `${hh}:${mm}:${ss}`;
+
+  if ($('manTipo')) $('manTipo').value = 'ENTRADA';
+  if ($('manModo')) $('manModo').value = 'EMPRESA';
+  if ($('manAlmuerzo')) $('manAlmuerzo').value = '';
+  if ($('manHorasExtra')) $('manHorasExtra').value = '';
+  if ($('manObservacion')) $('manObservacion').value = '';
+
   modal.classList.remove('hidden');
 }
 
 function cerrarModalManual() {
-  $('manualRegistroModal').classList.add('hidden');
+  const modal = $('manualRegistroModal');
+  if (modal) modal.classList.add('hidden');
 }
+
+window.mostrarModalManual = mostrarModalManual;
+window.cerrarModalManual = cerrarModalManual;
+window.guardarRegistroManual = guardarRegistroManual;
 
 async function guardarRegistroManual() {
   if (!tienePermisoAdmin()) { mostrarToast('Solo Administradores y Supervisores Admin pueden realizar esta acción.', 'error'); return; }
@@ -7723,32 +7750,55 @@ if ($('supPin')) {
 }
 
 // Escuchar actualización de datos en segundo plano
+let _actualizandoArchivadosSup = false;
 window.addEventListener('archivadosActualizados', async () => {
   const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
-  if (sessionStr) {
-    console.log("🔄 Actualizando dashboard con nuevos datos históricos...");
-    // Cargar sin mostrar loader para que sea transparente al usuario
-    const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor' });
-    if (res && res.empleados) {
-      empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
-      empCache.forEach(emp => {
-        if (emp.registros && emp.registros.length) {
-          emp.registros.forEach(r => {
-            if (r.fecha) r.fecha = normalizarFechaStr(r.fecha) || r.fecha;
-          });
-        }
-      });
-      if (res.empleadosEliminados) {
-        window.empEliminadosCache = res.empleadosEliminados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
-      }
-      if (res.almuerzosExtra) window.almuerzosExtra = res.almuerzosExtra;
-      if (res.solicitudesInvitados) window.solicitudesInvitados = res.solicitudesInvitados;
+  if (sessionStr && !_actualizandoArchivadosSup && !estaActualizando) {
+    _actualizandoArchivadosSup = true;
+    try {
+      console.log("🔄 Actualizando dashboard con nuevos datos históricos...");
+      // Cargar sin mostrar loader para que sea transparente al usuario
+      const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor', force: false });
+      if (res && res.empleados) {
+        // Preservar historial previamente cargado de colaboradores ya abiertos
+        const mapHistCargado = new Map();
+        const mapRegsCargados = new Map();
+        (empCache || []).forEach(emp => {
+          if (emp._historialCompletoCargado) {
+            mapHistCargado.set(String(emp.id).trim(), true);
+            mapRegsCargados.set(String(emp.id).trim(), emp.registros);
+          }
+        });
 
-      if (panelActual === 'detalle' && window.idDetalleActual) {
-        mostrarDetalle(window.idDetalleActual, window.indexPeriodoDetalleActual || 0, window.customInicioDetalleActual, window.customFinDetalleActual);
-      } else {
-        cargarPanelActual();
+        empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+        empCache.forEach(emp => {
+          const empIdKey = String(emp.id).trim();
+          if (mapHistCargado.has(empIdKey)) {
+            emp._historialCompletoCargado = true;
+            emp.registros = mapRegsCargados.get(empIdKey) || emp.registros;
+          }
+          if (emp.registros && emp.registros.length) {
+            emp.registros.forEach(r => {
+              if (r.fecha) r.fecha = normalizarFechaStr(r.fecha) || r.fecha;
+            });
+          }
+        });
+        if (res.empleadosEliminados) {
+          window.empEliminadosCache = res.empleadosEliminados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+        }
+        if (res.almuerzosExtra) window.almuerzosExtra = res.almuerzosExtra;
+        if (res.solicitudesInvitados) window.solicitudesInvitados = res.solicitudesInvitados;
+
+        if (panelActual === 'detalle' && window.idDetalleActual) {
+          mostrarDetalle(window.idDetalleActual, window.indexPeriodoDetalleActual || 0, window.customInicioDetalleActual, window.customFinDetalleActual);
+        } else {
+          cargarPanelActual();
+        }
       }
+    } catch (e) {
+      console.warn("Aviso actualizando datos de supervisor tras archivados:", e);
+    } finally {
+      setTimeout(() => { _actualizandoArchivadosSup = false; }, 5000);
     }
   }
 });

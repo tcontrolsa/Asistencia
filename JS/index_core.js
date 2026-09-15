@@ -983,6 +983,7 @@ async function desvincularDispositivoAPI(empleadoId, deviceToken) {
 }
 
 // ========== FUNCIONES DE REGISTRO ==========
+let _ultimaAutoSanacionFaltas = 0;
 async function obtenerRegistrosEmpleado(force = false) {
     if (!empleado.id) return;
     cargandoRegistros = true;
@@ -1015,9 +1016,11 @@ async function obtenerRegistrosEmpleado(force = false) {
 
         cargandoRegistros = false;
 
-        // MECANISMO DE AUTO-SANACIÓN en segundo plano
+        // MECANISMO DE AUTO-SANACIÓN en segundo plano (máximo una vez cada 2 minutos para evitar bucles)
         let faltas = obtenerDiasFaltantes();
-        if (faltas.length > 0 && !force) {
+        const ahora = Date.now();
+        if (faltas.length > 0 && !force && (ahora - _ultimaAutoSanacionFaltas > 120000)) {
+            _ultimaAutoSanacionFaltas = ahora;
             console.log("⚠️ Detectadas faltas. Re-verificando en segundo plano con refresco forzado...");
             await obtenerRegistrosEmpleado(true);
             return;
@@ -7389,18 +7392,26 @@ function toggleFirebase() {
 })();
 
 // Escuchar actualización de archivados en segundo plano (actualización silenciosa)
+let _sincronizandoArchivadosIndex = false;
 window.addEventListener('archivadosActualizados', async () => {
-    if (typeof isAuthenticated !== 'undefined' && isAuthenticated) {
-        console.log("🔄 Sincronizando registros históricos en segundo plano...");
-        await obtenerRegistrosEmpleado();
-        if (currentPage === 'home') {
-            renderHomePage();
-            if (typeof obtenerDiasFaltantes === 'function') {
-                let faltas = obtenerDiasFaltantes();
-                if (faltas.length > 0 && sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
-                    mostrarModalFaltasPasadas(faltas);
+    if (typeof isAuthenticated !== 'undefined' && isAuthenticated && !_sincronizandoArchivadosIndex && !cargandoRegistros) {
+        _sincronizandoArchivadosIndex = true;
+        try {
+            console.log("🔄 Sincronizando registros históricos en segundo plano...");
+            await obtenerRegistrosEmpleado(false);
+            if (currentPage === 'home') {
+                renderHomePage();
+                if (typeof obtenerDiasFaltantes === 'function') {
+                    let faltas = obtenerDiasFaltantes();
+                    if (faltas.length > 0 && sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
+                        mostrarModalFaltasPasadas(faltas);
+                    }
                 }
             }
+        } catch (e) {
+            console.warn("Aviso al refrescar registros tras actualización de archivados:", e);
+        } finally {
+            setTimeout(() => { _sincronizandoArchivadosIndex = false; }, 5000);
         }
     }
 });

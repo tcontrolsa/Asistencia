@@ -782,7 +782,6 @@ window.FirebaseBackend = {
                         try {
                             localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
                             console.log("✅ Registros archivados de Sheets actualizados para el empleado.");
-                            window.dispatchEvent(new Event('archivadosActualizados'));
                         } catch (e) { }
                     }
                 } catch (e) { console.warn("Error consultando archivados:", e); }
@@ -2667,7 +2666,10 @@ window.FirebaseBackend = {
                         } catch (e) {
                             console.warn("Aviso guardando caché archivados en localStorage:", e);
                         }
-                        window.dispatchEvent(new Event('archivadosActualizados'));
+                        // Solo notificar si la descarga fue asíncrona en segundo plano (para refresco transparente de UI)
+                        if (!params.force && !params.forceSheets && !params.forceAll) {
+                            window.dispatchEvent(new Event('archivadosActualizados'));
+                        }
                     }
                 } catch (e) { console.warn("Aviso consultando archivados:", e); }
             };

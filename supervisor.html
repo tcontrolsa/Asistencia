@@ -340,7 +340,8 @@
         <a class="nav-item" href="visor_empleado.html" target="_blank" style="text-decoration: none;"><i class="fas fa-mobile-alt"></i><span>Simulador de Vista</span></a>
       </nav>
       <div class="sidebar-footer">
-        <button class="btn-extra-lunch" id="btnExtraLunch"><i class="fas fa-plus-circle"></i> Almuerzo Extra</button>
+        <button class="btn-extra-lunch" onclick="window.mostrarModalManual()" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; border: none; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(37,99,235,0.3); font-weight: 750;"><i class="fas fa-plus-circle"></i> Registro Manual</button>
+        <button class="btn-extra-lunch" id="btnExtraLunch"><i class="fas fa-utensils"></i> Almuerzo Extra</button>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i> Actualizar</button>
         <button type="button" onclick="window.abrirModalAvisoPrivacidad()" style="width:100%; margin-top:8px; background:transparent; border:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:700; padding:6px 10px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:all 0.15s;" title="Aviso Legal y Protección de Datos Personales (LOPDP Ecuador)">
           <i class="fas fa-shield-halved" style="color:#0284c7;"></i> Aviso Legal LOPDP
@@ -1044,6 +1045,12 @@
             <div>
               <button type="button" id="btnNotificarWhatsAppUnificado" class="btn" onclick="window.abrirModalNotificarWhatsApp('sin_marcar')" style="display:inline-flex; background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:7px; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.25); white-space:nowrap; transition:all 0.2s;" title="Abrir centro de notificaciones WhatsApp">
                 <i class="fab fa-whatsapp" style="font-size:15px;"></i> <span>Notificar WhatsApp (<strong id="lblCountTotalPendientesWhatsApp">0</strong>)</span>
+              </button>
+            </div>
+            <!-- Botón Registro Manual de Asistencia -->
+            <div>
+              <button type="button" id="btnRegistroManualAsistencia" class="btn" onclick="window.mostrarModalManual()" style="display:inline-flex; background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color:white; font-size:12px; font-weight:700; border:none; border-radius:10px; padding:7px 14px; align-items:center; gap:7px; cursor:pointer; box-shadow:0 2px 6px rgba(37,99,235,0.25); white-space:nowrap; transition:all 0.2s;" title="Crear un nuevo registro manual de asistencia">
+                <i class="fas fa-plus-circle" style="font-size:14px;"></i> <span>Registro Manual</span>
               </button>
             </div>
           </div>
@@ -3011,53 +3018,84 @@
 
   <!-- MODAL REGISTRO MANUAL -->
   <div id="manualRegistroModal" class="modal-overlay hidden">
-    <div class="modal-container">
-      <div class="modal-header">
-        <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Nuevo Registro Manual</h3><button class="modal-close"
-          onclick="cerrarModalManual()">&times;</button>
+    <div class="modal-container" style="max-width: 520px; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2), 0 10px 10px -5px rgba(0,0,0,0.1);">
+      <div class="modal-header" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 16px 20px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="background:rgba(255,255,255,0.2); width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px;">
+            <i class="fas fa-plus-circle"></i>
+          </div>
+          <div>
+            <h3 class="modal-title" style="color:white; margin:0; font-size:16px; font-weight:800;">Crear Registro Manual de Asistencia</h3>
+            <p style="margin:2px 0 0 0; font-size:11px; opacity:0.85; font-weight:500;">Registra marcaciones personalizadas para cualquier colaborador</p>
+          </div>
+        </div>
+        <button class="modal-close" onclick="cerrarModalManual()" style="color:white; opacity:0.8; font-size:20px;">&times;</button>
       </div>
-      <div class="modal-body">
-        <div class="form-group"><label class="form-label">Empleado *</label>
-          <select id="manEmpleadoId" class="form-select"></select>
+      <div class="modal-body" style="padding: 20px; background: #ffffff; display: flex; flex-direction: column; gap: 14px;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-user" style="color:#2563eb;"></i> Colaborador *</label>
+          <select id="manEmpleadoId" class="form-select" style="font-size:13px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;"></select>
         </div>
-        <div class="form-group"><label class="form-label">Fecha *</label><input type="date" id="manFecha"
-            class="form-input"></div>
-        <div class="form-group"><label class="form-label">Tipo *</label>
-          <select id="manTipo" class="form-select">
-            <option value="ENTRADA">ENTRADA</option>
-            <option value="SALIDA">SALIDA</option>
-          </select>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-calendar-day" style="color:#2563eb;"></i> Fecha *</label>
+            <input type="date" id="manFecha" class="form-input" style="font-size:13px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-clock" style="color:#2563eb;"></i> Hora *</label>
+            <input type="time" id="manHora" class="form-input" step="1" style="font-size:13px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;">
+          </div>
         </div>
-        <div class="form-group"><label class="form-label">Hora *</label><input type="time" id="manHora"
-            class="form-input" step="1"></div>
-        <div class="form-group"><label class="form-label">Modo</label>
-          <select id="manModo" class="form-select">
-            <option value="EMPRESA">EMPRESA</option>
-            <option value="OFICINA">OFICINA</option>
-            <option value="CAMPO">CAMPO</option>
-          </select>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-fingerprint" style="color:#2563eb;"></i> Tipo de Marcación *</label>
+            <select id="manTipo" class="form-select" style="font-size:12.5px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;">
+              <option value="ENTRADA">🟢 ENTRADA</option>
+              <option value="SALIDA">🔴 SALIDA</option>
+              <option value="SOLO_ALMUERZO">🍽️ SOLO ALMUERZO</option>
+              <option value="ENTRADA_CAMPO">🏗️ ENTRADA CAMPO</option>
+              <option value="SALIDA_CAMPO">🚗 SALIDA CAMPO</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-building" style="color:#2563eb;"></i> Modo de Trabajo</label>
+            <select id="manModo" class="form-select" style="font-size:12.5px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;">
+              <option value="EMPRESA">🏢 PLANTA / EMPRESA</option>
+              <option value="OFICINA">💻 OFICINA</option>
+              <option value="CAMPO">🏗️ CAMPO</option>
+            </select>
+          </div>
         </div>
-        <div class="form-group"><label class="form-label">Almuerzo en Planta</label>
-          <select id="manAlmuerzo" class="form-select">
-            <option value="">(No aplica / Blanco)</option>
-            <option value="SI">SI</option>
-            <option value="NO">NO</option>
-          </select>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-utensils" style="color:#2563eb;"></i> Almuerzo en Planta</label>
+            <select id="manAlmuerzo" class="form-select" style="font-size:12.5px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;">
+              <option value="">(Sin almuerzo / No aplica)</option>
+              <option value="SI">SI (En Planta)</option>
+              <option value="NO">NO (Fuera)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-business-time" style="color:#2563eb;"></i> Horas Extras</label>
+            <select id="manHorasExtra" class="form-select" style="font-size:12.5px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;">
+              <option value="">(No aplica)</option>
+              <option value="SI">SI (Autorizadas)</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
         </div>
-        <div class="form-group"><label class="form-label">Horas Extras</label>
-          <select id="manHorasExtra" class="form-select">
-            <option value="">(No aplica / Blanco)</option>
-            <option value="SI">SI</option>
-            <option value="NO">NO</option>
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Razón / Observación</label>
-          <input type="text" id="manObservacion" class="form-input" placeholder="Justificación o detalle...">
+
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-weight:700; font-size:12px; color:#1e293b; display:flex; align-items:center; gap:6px;"><i class="fas fa-comment-alt" style="color:#2563eb;"></i> Razón / Observación</label>
+          <input type="text" id="manObservacion" class="form-input" placeholder="Ej: Olvido de marcación, Registro autorizado por supervisor..." style="font-size:12.5px; padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1;">
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn-secondary-modal" onclick="cerrarModalManual()">Cancelar</button>
-        <button class="btn-primary-modal" onclick="guardarRegistroManual()">Guardar Registro</button>
+      <div class="modal-footer" style="background:#f8fafc; padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="cerrarModalManual()" style="padding:8px 16px; border-radius:8px; font-size:12.5px; font-weight:700; border:1px solid #cbd5e1; background:#ffffff; color:#475569; cursor:pointer;">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="guardarRegistroManual()" style="padding:8px 18px; border-radius:8px; font-size:12.5px; font-weight:700; background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color:white; border:none; cursor:pointer; box-shadow:0 2px 4px rgba(37,99,235,0.25);"><i class="fas fa-save"></i> Guardar Registro</button>
       </div>
     </div>
   </div>
@@ -3829,9 +3867,9 @@
     </div>
   </div>
 
-  <script src="./JS/openwa_service.js?v=20260915_07"></script>
-  <script src="./JS/tcontrol_core.js?v=20260915_07"></script>
-  <script src="./JS/supervisor_core.js?v=20260915_07"></script>
+  <script src="./JS/openwa_service.js?v=20260915_09"></script>
+  <script src="./JS/tcontrol_core.js?v=20260915_09"></script>
+  <script src="./JS/supervisor_core.js?v=20260915_09"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil
