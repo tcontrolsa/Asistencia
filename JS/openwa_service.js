@@ -997,6 +997,20 @@
         },
 
         // Registrar log individual de auditoría en Google Sheets (Hoja LOGS_WHATSAPP)
+        _obtenerNombreSupervisorActual() {
+            try {
+                if (window.currentUser && (window.currentUser.nombre || window.currentUser.id)) {
+                    return window.currentUser.nombre || window.currentUser.id;
+                }
+                const sess = localStorage.getItem('SUPERVISOR_SESSION');
+                if (sess) {
+                    const parsed = JSON.parse(sess);
+                    return parsed.nombre || parsed.usuario || parsed.id || 'Supervisor';
+                }
+            } catch (e) { }
+            return 'Sistema';
+        },
+
         async registrarLogEnvio(logData) {
             try {
                 const ahora = new Date();
@@ -1004,20 +1018,29 @@
                 const mesStr = (ahora.getMonth() + 1).toString().padStart(2, '0');
                 const fechaStr = `${ahora.getFullYear()}-${mesStr}-${diaStr}`;
                 const horaStr = `${ahora.getHours().toString().padStart(2, '0')}:${ahora.getMinutes().toString().padStart(2, '0')}:${ahora.getSeconds().toString().padStart(2, '0')}`;
+                const sup = this._obtenerNombreSupervisorActual();
 
                 const payload = {
                     accion: 'registrarLogWhatsApp',
-                    fecha: fechaStr,
-                    hora: horaStr,
-                    timestamp: ahora.toISOString(),
-                    supervisor: (window.currentUser && (window.currentUser.nombre || window.currentUser.id)) || 'Sistema',
+                    fecha: logData.fecha || fechaStr,
+                    hora: logData.hora || horaStr,
+                    timestamp: logData.timestamp || ahora.toISOString(),
+                    supervisor: logData.supervisor || sup,
+                    nombreEmpleado: logData.nombreEmpleado || logData.destinatario || logData.nombre || '',
+                    idEmpleado: logData.idEmpleado || logData.empleadoId || logData.id || '',
+                    telefono: logData.telefono || '',
+                    tipoNotificacion: logData.tipoNotificacion || logData.tipo || 'GENERAL',
+                    estado: logData.estado || 'ENVIADO',
+                    mensaje: logData.mensaje || logData.mensajeEnviado || '',
+                    detalleRespuesta: logData.detalleRespuesta || logData.detalle || logData.error || 'OK',
+                    origen: logData.origen || 'MANUAL',
                     ...logData
                 };
 
                 if (window.FirebaseBackend && window.FirebaseBackend.registrarLogWhatsApp) {
-                    window.FirebaseBackend.registrarLogWhatsApp(payload).catch(e => console.warn(e));
+                    await window.FirebaseBackend.registrarLogWhatsApp(payload);
                 } else if (typeof jsonpRequest === 'function') {
-                    jsonpRequest(payload).catch(e => console.warn(e));
+                    await jsonpRequest(payload);
                 }
             } catch (e) {
                 console.warn("[OpenWA] No se pudo registrar log individual de WhatsApp:", e);
@@ -1033,13 +1056,21 @@
                 const mesStr = (ahora.getMonth() + 1).toString().padStart(2, '0');
                 const fechaStr = `${ahora.getFullYear()}-${mesStr}-${diaStr}`;
                 const horaStr = `${ahora.getHours().toString().padStart(2, '0')}:${ahora.getMinutes().toString().padStart(2, '0')}:${ahora.getSeconds().toString().padStart(2, '0')}`;
-                const sup = (window.currentUser && (window.currentUser.nombre || window.currentUser.id)) || 'Sistema';
+                const sup = this._obtenerNombreSupervisorActual();
 
                 const logsFormateados = logsArray.map(l => ({
                     fecha: l.fecha || fechaStr,
                     hora: l.hora || horaStr,
                     timestamp: l.timestamp || ahora.toISOString(),
                     supervisor: l.supervisor || sup,
+                    nombreEmpleado: l.nombreEmpleado || l.destinatario || l.nombre || '',
+                    idEmpleado: l.idEmpleado || l.empleadoId || l.id || '',
+                    telefono: l.telefono || '',
+                    tipoNotificacion: l.tipoNotificacion || l.tipo || 'GENERAL',
+                    estado: l.estado || 'ENVIADO',
+                    mensaje: l.mensaje || l.mensajeEnviado || '',
+                    detalleRespuesta: l.detalleRespuesta || l.detalle || l.error || 'OK',
+                    origen: l.origen || 'AUTOMATICO_RECORDATORIO',
                     ...l
                 }));
 

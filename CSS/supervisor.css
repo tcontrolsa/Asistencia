@@ -827,6 +827,11 @@
       color: var(--amber) !important;
       box-shadow: inset 3px 0 0 var(--amber) !important;
     }
+    .nav-item.active[data-panel="servicios"] {
+      background: #fff7ed !important;
+      color: #ea580c !important;
+      box-shadow: inset 3px 0 0 #ea580c !important;
+    }
 
 
     .sidebar-footer {

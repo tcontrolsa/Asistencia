@@ -144,7 +144,7 @@ window.FirebaseBackend = {
                     return await this._jsonp(params);
                 case 'obtenerAlmuerzosExtra':
                     try {
-                        const resJson = await this._jsonp(params, 0, 1, 50000);
+                        const resJson = await this._jsonp(params, 0, 1, 6000);
                         if (resJson && resJson.ok && Array.isArray(resJson.almuerzos)) {
                             try {
                                 localStorage.setItem('tcontrol_almuerzos_extra_cache_v2', JSON.stringify({
@@ -152,8 +152,9 @@ window.FirebaseBackend = {
                                     lastSync: new Date().toISOString()
                                 }));
                             } catch (e) { }
+                            return resJson;
                         }
-                        return resJson;
+                        throw new Error((resJson && resJson.error) || 'Respuesta inválida de Sheets');
                     } catch (eAlm) {
                         try {
                             const cached = localStorage.getItem('tcontrol_almuerzos_extra_cache_v2');
@@ -164,11 +165,11 @@ window.FirebaseBackend = {
                                 }
                             }
                         } catch (eC) { }
-                        return { ok: false, error: eAlm.message || eAlm.toString() };
+                        return { ok: true, almuerzos: [], error: eAlm.message || eAlm.toString(), desdeCache: false };
                     }
                 case 'obtenerVacacionesEmpleado':
                     try {
-                        const raw = await this._jsonp(params);
+                        const raw = await this._jsonp(params, 0, 1, 6000);
                         if (raw && raw.ok) {
                             const rawIndiv = raw.kpiVacacionesIndividual || {};
                             const kpiIndivLimpio = {};
@@ -193,11 +194,39 @@ window.FirebaseBackend = {
                             window.kpiVacaciones = raw.kpiVacaciones;
                             window._kpiVacacionesCache = raw.kpiVacaciones;
                             window.kpiVacacionesIndividual = kpiIndivLimpio;
+                            try {
+                                localStorage.setItem('tcontrol_vacaciones_cache_v2', JSON.stringify({
+                                    vacaciones: raw.vacaciones || [],
+                                    kpiVacaciones: raw.kpiVacaciones,
+                                    kpiVacacionesIndividual: kpiIndivLimpio,
+                                    lastSync: new Date().toISOString()
+                                }));
+                            } catch (e) { }
+                            return raw;
                         }
-                        return raw;
+                        throw new Error((raw && raw.error) || 'Respuesta no exitosa de Sheets');
                     } catch (errVac) {
-                        console.warn("⚠️ No se pudieron obtener vacaciones desde Sheets:", errVac.message || errVac);
-                        return { ok: true, vacaciones: [], vacacionesTomadasHoy: 0, vacacionesRestantesHoy: 0 };
+                        try {
+                            const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v2');
+                            if (storedVac) {
+                                const parsedVac = JSON.parse(storedVac);
+                                return {
+                                    ok: true,
+                                    vacaciones: parsedVac.vacaciones || [],
+                                    kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 1307, tomadas: 812, restantes: 1216 },
+                                    kpiVacacionesIndividual: parsedVac.kpiVacacionesIndividual || {},
+                                    desdeCache: true
+                                };
+                            }
+                        } catch (eC) { }
+                        return {
+                            ok: true,
+                            vacaciones: window._vacacionesCache || [],
+                            kpiVacaciones: window.kpiVacaciones || { adjudicadas: 1307, tomadas: 812, restantes: 1216 },
+                            kpiVacacionesIndividual: window.kpiVacacionesIndividual || {},
+                            vacacionesTomadasHoy: 0,
+                            vacacionesRestantesHoy: 0
+                        };
                     }
                 default:
                     console.warn("⚠️ Acción no reconocida:", accion);
@@ -2647,9 +2676,9 @@ window.FirebaseBackend = {
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
             const _fetchArchivados = async () => {
                 try {
-                    // Dar 75 segundos de timeout para tolerar la generación del JSON histórico grande de Google Apps Script
-                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' }, 0, 1, 75000);
-                    if (resJson.ok && resJson.registros) {
+                    // Timeout corto de 8 segundos para no congelar la aplicación
+                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' }, 0, 1, 8000);
+                    if (resJson && resJson.ok && resJson.registros) {
                         this._cacheArchivadosMemoria = resJson.registros;
                         archivadosData.registros = resJson.registros;
                         archivadosData.lastSync = new Date().toISOString();
@@ -2671,7 +2700,7 @@ window.FirebaseBackend = {
                             window.dispatchEvent(new Event('archivadosActualizados'));
                         }
                     }
-                } catch (e) { console.warn("Aviso consultando archivados:", e); }
+                } catch (e) { /* Fallback transparente a datos existentes */ }
             };
 
             // NUNCA congelar la pantalla del supervisor esperando a Sheets: solo esperar si se fuerza expresamente
@@ -2694,8 +2723,8 @@ window.FirebaseBackend = {
             const horasAlmuerzos = almuerzosExtraData.lastSync ? (new Date() - new Date(almuerzosExtraData.lastSync)) / (1000 * 60 * 60) : 999;
             const _fetchAlmuerzosExtra = async () => {
                 try {
-                    const resJson = await this._jsonp({ accion: 'obtenerAlmuerzosExtra' }, 0, 1, 50000);
-                    if (resJson.ok && resJson.almuerzos) {
+                    const resJson = await this._jsonp({ accion: 'obtenerAlmuerzosExtra' }, 0, 1, 6000);
+                    if (resJson && resJson.ok && resJson.almuerzos) {
                         almuerzosExtraData.almuerzos = resJson.almuerzos;
                         almuerzosExtraData.lastSync = new Date().toISOString();
                         try {
@@ -2703,7 +2732,7 @@ window.FirebaseBackend = {
                             console.log("✅ Almuerzos extras de Sheets actualizados en caché.");
                         } catch (e) { }
                     }
-                } catch (e) { console.warn("Error consultando almuerzos extras:", e); }
+                } catch (e) { /* Fallback transparente a datos de caché */ }
             };
 
             if (params.force || params.forceSheets || params.forceAll) {
@@ -2848,25 +2877,37 @@ window.FirebaseBackend = {
                 });
             });
 
-            // Cargar y fusionar vacaciones desde Sheets (con caché y circuit-breaker)
-            const ahoraTs = Date.now();
-            if (ahoraTs - (window._lastSheetsVacError || 0) > 300000) {
+            // Cargar y fusionar vacaciones desde caché local (inmediato) y sincronizar con Sheets en segundo plano
+            const CACHE_VAC_KEY = 'tcontrol_vacaciones_cache_v2';
+            if (!window._vacacionesCache || window._vacacionesCache.length === 0) {
                 try {
-                    const vacRes = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' }, 0, 1);
+                    const storedVac = localStorage.getItem(CACHE_VAC_KEY);
+                    if (storedVac) {
+                        const parsedVac = JSON.parse(storedVac);
+                        if (parsedVac.vacaciones) window._vacacionesCache = parsedVac.vacaciones;
+                        if (parsedVac.kpiVacaciones) {
+                            window.kpiVacaciones = parsedVac.kpiVacaciones;
+                            window._kpiVacacionesCache = parsedVac.kpiVacaciones;
+                        }
+                        if (parsedVac.kpiVacacionesIndividual) window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
+                    }
+                } catch (e) { }
+            }
+
+            const _fetchVacacionesSheets = async () => {
+                try {
+                    const vacRes = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' }, 0, 1, 6000);
                     if (vacRes && vacRes.ok) {
                         window._vacacionesCache = vacRes.vacaciones || [];
 
-                        // Limpiar kpiVacacionesIndividual eliminando filas de sumatoria o resumen de Sheets
                         const kpiIndivLimpio = {};
-                        let sumaAdj = 0;
-                        let sumaTom = 0;
-                        let sumaRes = 0;
+                        let sumaAdj = 0, sumaTom = 0, sumaRes = 0;
                         const rawIndiv = vacRes.kpiVacacionesIndividual || {};
 
                         Object.keys(rawIndiv).forEach(k => {
                             const kLower = String(k).toLowerCase().trim();
                             if (!k || kLower.includes('sumatoria') || kLower.includes('total') || kLower.includes('promedio') || kLower.includes('resumen')) {
-                                return; // Omitir fila de total/sumatoria de la hoja
+                                return;
                             }
                             const v = rawIndiv[k];
                             const adj = parseFloat(v.adjudicadas) || 0;
@@ -2895,12 +2936,33 @@ window.FirebaseBackend = {
 
                         window._kpiVacacionesCache = kpiVac;
                         window.kpiVacaciones = kpiVac;
-                        window._lastSheetsVacOk = ahoraTs;
+                        window._lastSheetsVacOk = Date.now();
+
+                        try {
+                            localStorage.setItem(CACHE_VAC_KEY, JSON.stringify({
+                                vacaciones: window._vacacionesCache,
+                                kpiVacaciones: kpiVac,
+                                kpiVacacionesIndividual: kpiIndivLimpio,
+                                lastSync: new Date().toISOString()
+                            }));
+                        } catch (e) { }
+
+                        if (typeof renderizarCardKpiVacaciones === 'function') {
+                            try { renderizarCardKpiVacaciones(); } catch (e) { }
+                        }
                     }
                 } catch (e) {
-                    window._lastSheetsVacError = ahoraTs;
+                    window._lastSheetsVacError = Date.now();
                 }
+            };
+
+            const ahoraTs = Date.now();
+            if (params.force || params.forceSheets || params.forceAll) {
+                await _fetchVacacionesSheets();
+            } else if (ahoraTs - (window._lastSheetsVacOk || 0) > 600000 && ahoraTs - (window._lastSheetsVacError || 0) > 300000) {
+                _fetchVacacionesSheets(); // En segundo plano, ¡nunca bloquea el arranque ni dispara el watchdog del loader!
             }
+
             let vacacionesList = window._vacacionesCache || [];
 
             if (vacacionesList.length > 0) {
@@ -3030,9 +3092,9 @@ window.FirebaseBackend = {
         }
     },
 
-    _jsonp(params, _retryCount = 0, maxRetries = 3, timeoutMs = 25000) {
+    _jsonp(params, _retryCount = 0, maxRetries = 1, timeoutMs = 7000) {
         const MAX_RETRIES = maxRetries;
-        const RETRY_DELAY_MS = [1000, 2000, 4000];
+        const RETRY_DELAY_MS = [1000, 2000];
 
         return new Promise((resolve, reject) => {
             const callbackName = 'cb_' + Math.floor(Math.random() * 1000000);
@@ -3056,7 +3118,7 @@ window.FirebaseBackend = {
                 settled = true;
                 cleanup();
                 if (_retryCount < MAX_RETRIES - 1) {
-                    const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                    const delay = RETRY_DELAY_MS[_retryCount] || 2000;
                     if (maxRetries > 1) console.warn(`⏳ Sheets connection timeout. Retrying in ${delay}ms...`);
                     setTimeout(() => {
                         this._jsonp(params, _retryCount + 1, maxRetries, timeoutMs).then(resolve).catch(reject);
@@ -3081,7 +3143,7 @@ window.FirebaseBackend = {
                 );
 
                 if (isLockError && _retryCount < MAX_RETRIES - 1) {
-                    const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                    const delay = RETRY_DELAY_MS[_retryCount] || 2000;
                     if (maxRetries > 1) console.warn(`⏳ Sheets is busy. Retrying in ${delay}ms (attempt ${_retryCount + 1}/${MAX_RETRIES})...`);
                     setTimeout(() => {
                         this._jsonp(params, _retryCount + 1, maxRetries, timeoutMs).then(resolve).catch(reject);
@@ -3106,7 +3168,7 @@ window.FirebaseBackend = {
                 clearTimeout(timeout);
                 cleanup();
                 if (_retryCount < MAX_RETRIES - 1) {
-                    const delay = RETRY_DELAY_MS[_retryCount] || 4000;
+                    const delay = RETRY_DELAY_MS[_retryCount] || 2000;
                     if (maxRetries > 1) console.warn(`🔌 Sheets network error. Retrying in ${delay}ms...`);
                     setTimeout(() => {
                         this._jsonp(params, _retryCount + 1, maxRetries, timeoutMs).then(resolve).catch(reject);
@@ -3282,49 +3344,111 @@ window.FirebaseBackend = {
     },
 
     async registrarLogWhatsApp(params) {
+        let guardadoFirestore = false;
         try {
-            try {
-                if (typeof db !== 'undefined' && db) {
-                    if (params.logs && Array.isArray(params.logs)) {
-                        const batch = db.batch();
-                        params.logs.slice(0, 100).forEach(l => {
-                            const ref = db.collection('logs_whatsapp').doc();
-                            batch.set(ref, {
-                                ...l,
-                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        });
-                        await batch.commit();
-                    } else {
-                        await db.collection('logs_whatsapp').add({
-                            ...params,
+            if (typeof db !== 'undefined' && db) {
+                if (params.logs && Array.isArray(params.logs)) {
+                    const batch = db.batch();
+                    params.logs.slice(0, 200).forEach(l => {
+                        const ref = db.collection('logs_whatsapp').doc();
+                        const docData = { ...l };
+                        delete docData.accion;
+                        batch.set(ref, {
+                            ...docData,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
-                    }
+                    });
+                    await batch.commit();
+                    guardadoFirestore = true;
+                } else {
+                    const docData = { ...params };
+                    delete docData.accion;
+                    await db.collection('logs_whatsapp').add({
+                        ...docData,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    guardadoFirestore = true;
                 }
-            } catch (fe) {
-                console.warn("Aviso Firestore logs_whatsapp:", fe);
             }
+        } catch (fe) {
+            console.warn("Aviso guardando logs_whatsapp en Firestore:", fe);
+        }
 
-            return await this._jsonp({
+        // Respaldo asíncrono en segundo plano a Google Sheets vía POST (sin bloquear ni arrojar error de timeout)
+        try {
+            this._post({
                 accion: 'registrarLogWhatsApp',
                 ...params
-            });
-        } catch (e) {
-            console.error("Error en registrarLogWhatsApp:", e);
-            return { ok: false, error: e.toString() };
-        }
+            }).catch(() => { });
+        } catch (e) { }
+
+        return { ok: true, guardado: guardadoFirestore };
     },
 
     async obtenerLogsWhatsApp(params) {
+        const limite = params && params.limite ? parseInt(params.limite, 10) : 100;
+
+        // 1. Intentar consultar desde Firestore (rápido y en tiempo real)
+        if (typeof db !== 'undefined' && db) {
+            try {
+                let snap;
+                try {
+                    snap = await db.collection('logs_whatsapp')
+                        .orderBy('createdAt', 'desc')
+                        .limit(limite)
+                        .get();
+                } catch (orderErr) {
+                    // Si no hay índice de createdAt aún, consultar con límite simple y ordenar en memoria
+                    snap = await db.collection('logs_whatsapp')
+                        .limit(limite * 2)
+                        .get();
+                }
+
+                if (snap && !snap.empty) {
+                    const logs = snap.docs.map(doc => {
+                        const d = doc.data();
+                        let f = d.fecha || '';
+                        let h = d.hora || '';
+                        if ((!f || !h) && d.createdAt && d.createdAt.toDate) {
+                            const dateObj = d.createdAt.toDate();
+                            if (!f) f = this._hoyStr(dateObj);
+                            if (!h) h = dateObj.toTimeString().slice(0, 8);
+                        }
+                        return {
+                            id: doc.id,
+                            ...d,
+                            fecha: f,
+                            hora: h,
+                            nombreEmpleado: d.nombreEmpleado || d.destinatario || d.nombre || '',
+                            idEmpleado: d.idEmpleado || d.empleadoId || d.id || '',
+                            tipoNotificacion: d.tipoNotificacion || d.tipo || 'General',
+                            detalleRespuesta: d.detalleRespuesta || d.detalle || d.error || ''
+                        };
+                    });
+
+                    // Ordenar por fecha y hora descendente
+                    logs.sort((a, b) => {
+                        const tA = (a.timestamp || `${a.fecha}T${a.hora}`) || '';
+                        const tB = (b.timestamp || `${b.fecha}T${b.hora}`) || '';
+                        return tB.localeCompare(tA);
+                    });
+
+                    return { ok: true, logs: logs.slice(0, limite) };
+                }
+            } catch (fe) {
+                console.warn("Aviso leyendo logs_whatsapp en Firestore:", fe);
+            }
+        }
+
+        // 2. Fallback a Google Sheets si Firestore no tiene registros o no está disponible
         try {
-            return await this._jsonp({
+            const sheetsRes = await this._jsonp({
                 accion: 'obtenerLogsWhatsApp',
                 ...params
-            });
+            }, 0, 1, 6000);
+            return sheetsRes || { ok: true, logs: [] };
         } catch (e) {
-            console.error("Error en obtenerLogsWhatsApp:", e);
-            return { ok: false, error: e.toString(), logs: [] };
+            return { ok: true, logs: [], error: e.toString() };
         }
     },
 

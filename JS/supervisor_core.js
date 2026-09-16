@@ -192,10 +192,15 @@ function mostrarToast(msg, tipo) {
   setTimeout(() => el.remove(), 5000);
 }
 
+let _loaderWatchdogTimer = null;
 function mostrarLoader(show, msg = 'Cargando datos...', subtext = 'Sincronizando información en tiempo real') {
   const loader = document.getElementById('loader');
   const txt = document.getElementById('loaderText') || (loader ? loader.querySelector('.loader-text, .loading-text') : null);
   const sub = document.getElementById('loaderSubtext');
+  if (_loaderWatchdogTimer) {
+    clearTimeout(_loaderWatchdogTimer);
+    _loaderWatchdogTimer = null;
+  }
   if (loader) {
     if (show) {
       if (txt && msg) txt.textContent = msg;
@@ -204,6 +209,13 @@ function mostrarLoader(show, msg = 'Cargando datos...', subtext = 'Sincronizando
         sub.style.display = subtext ? 'block' : 'none';
       }
       loader.classList.remove('hidden');
+      // Watchdog de seguridad: auto-cerrar si excede 12 segundos para nunca congelar al usuario
+      _loaderWatchdogTimer = setTimeout(() => {
+        if (loader && !loader.classList.contains('hidden')) {
+          console.warn("⚠️ Loader ocultado automáticamente por temporizador de seguridad.");
+          loader.classList.add('hidden');
+        }
+      }, 12000);
     } else {
       loader.classList.add('hidden');
     }
@@ -5804,9 +5816,133 @@ window.editarCeldaTiempo = function (uid, empId, fecha, tipoInicial = 'justifica
 
 
 
-// NAVEGACIÓN
+// ============================================================
+// CONTROLADORES DE SUBPESTAÑAS (ASISTENCIA & GESTIÓN/SERVICIOS)
+// ============================================================
+window.subtabAsistenciaActual = 'control';
+window.subtabServiciosActual = 'emergencias';
+
+window.cambiarSubtabAsistencia = function (subtab) {
+  window.subtabAsistenciaActual = subtab || 'control';
+
+  // 1. Actualizar botones de subpestañas
+  const subtabsBar = $('subtabsBarAsistencia');
+  if (subtabsBar) {
+    subtabsBar.querySelectorAll('.btn-subtab').forEach(b => b.classList.remove('active'));
+    if (subtab === 'directorio') $('subtab-btn-asis-directorio')?.classList.add('active');
+    else if (subtab === 'mapa') $('subtab-btn-asis-mapa')?.classList.add('active');
+    else $('subtab-btn-asis-control')?.classList.add('active');
+  }
+
+  // 2. Actualizar paneles visibles
+  const subControl = $('subpanel-asistencia-control');
+  const subDir = $('subpanel-asistencia-directorio');
+  const subMapa = $('subpanel-asistencia-mapa');
+
+  if (subControl) subControl.style.display = (subtab === 'control' || !subtab) ? 'block' : 'none';
+  if (subDir) subDir.style.display = (subtab === 'directorio') ? 'block' : 'none';
+  if (subMapa) subMapa.style.display = (subtab === 'mapa') ? 'block' : 'none';
+
+  // 3. Títulos y Breadcrumbs
+  let title = 'Control de Asistencia';
+  if (subtab === 'directorio') title = 'Asistencia — Directorio de Colaboradores';
+  else if (subtab === 'mapa') title = 'Asistencia — Mapa y Disponibilidad';
+
+  if ($('pageTitle')) $('pageTitle').textContent = title;
+  if ($('breadcrumbCurrentItem')) $('breadcrumbCurrentItem').textContent = title;
+
+  // 4. Cargar datos según corresponda
+  if (subtab === 'directorio') {
+    cargarDirectorio();
+  } else if (subtab === 'mapa') {
+    if (typeof window.inicializarMapaAsistencia === 'function') window.inicializarMapaAsistencia();
+  } else {
+    cargarAsistencia();
+  }
+};
+
+window.cambiarSubtabServicios = function (subtab) {
+  window.subtabServiciosActual = subtab || 'emergencias';
+
+  // 1. Actualizar botones de subpestañas
+  const subtabsBar = $('subtabsBarServicios');
+  if (subtabsBar) {
+    subtabsBar.querySelectorAll('.btn-subtab').forEach(b => b.classList.remove('active'));
+    if (subtab === 'menu') $('subtab-btn-serv-menu')?.classList.add('active');
+    else if (subtab === 'cultura') $('subtab-btn-serv-cultura')?.classList.add('active');
+    else if (subtab === 'invitados') $('subtab-btn-serv-invitados')?.classList.add('active');
+    else $('subtab-btn-serv-emergencias')?.classList.add('active');
+  }
+
+  // 2. Actualizar subpaneles visibles
+  const subEm = $('subpanel-servicios-emergencias');
+  const subMenu = $('subpanel-servicios-menu');
+  const subCultura = $('subpanel-servicios-cultura');
+  const subInv = $('subpanel-servicios-invitados');
+
+  if (subEm) subEm.style.display = (subtab === 'emergencias' || !subtab) ? 'block' : 'none';
+  if (subMenu) subMenu.style.display = (subtab === 'menu') ? 'block' : 'none';
+  if (subCultura) subCultura.style.display = (subtab === 'cultura') ? 'block' : 'none';
+  if (subInv) subInv.style.display = (subtab === 'invitados') ? 'block' : 'none';
+
+  // 3. Títulos y Breadcrumbs
+  let title = 'Gestión & Servicios';
+  if (subtab === 'emergencias') title = 'Gestión & Servicios — Simulacros y Emergencias';
+  else if (subtab === 'menu') title = 'Gestión & Servicios — Menú Semanal';
+  else if (subtab === 'cultura') title = 'Gestión & Servicios — Cultura Tcontrol';
+  else if (subtab === 'invitados') title = 'Gestión & Servicios — Invitados & Catering';
+
+  if ($('pageTitle')) $('pageTitle').textContent = title;
+  if ($('breadcrumbCurrentItem')) $('breadcrumbCurrentItem').textContent = title;
+
+  // 4. Cargar datos según corresponda
+  if (subtab === 'emergencias') {
+    cargarEmergenciasSupervisor();
+  } else if (subtab === 'menu') {
+    cargarMenuSemanal();
+  } else if (subtab === 'cultura') {
+    if (typeof window.cargarBancoPreguntasCultura === 'function') window.cargarBancoPreguntasCultura();
+  } else if (subtab === 'invitados') {
+    if (typeof window.cargarPanelInvitados === 'function') window.cargarPanelInvitados();
+  }
+};
+
+// ============================================================
+// NAVEGACIÓN PRINCIPAL
 // ============================================================
 function cambiarPanel(panel) {
+  // Enrutamiento inteligente de alias / subpestañas históricas
+  if (panel === 'directorio') {
+    cambiarPanel('asistencia');
+    window.cambiarSubtabAsistencia('directorio');
+    return;
+  }
+  if (panel === 'mapa') {
+    cambiarPanel('asistencia');
+    window.cambiarSubtabAsistencia('mapa');
+    return;
+  }
+  if (panel === 'emergencias') {
+    cambiarPanel('servicios');
+    window.cambiarSubtabServicios('emergencias');
+    return;
+  }
+  if (panel === 'menu') {
+    cambiarPanel('servicios');
+    window.cambiarSubtabServicios('menu');
+    return;
+  }
+  if (panel === 'cultura') {
+    cambiarPanel('servicios');
+    window.cambiarSubtabServicios('cultura');
+    return;
+  }
+  if (panel === 'invitados') {
+    cambiarPanel('servicios');
+    window.cambiarSubtabServicios('invitados');
+    return;
+  }
+
   panelActual = panel;
   document.querySelectorAll('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.panel === panel));
   document.querySelectorAll('.panel').forEach(x => x.classList.toggle('active', x.id === 'panel-' + panel));
@@ -5814,14 +5950,9 @@ function cambiarPanel(panel) {
     dashboard: 'Dashboard',
     reportes: 'Reporte Interactivo',
     asistencia: 'Control de Asistencia',
-    directorio: 'Directorio de Colaboradores',
-    mapa: 'Mapa de Asistencia y Disponibilidad',
+    servicios: 'Gestión & Servicios',
     detalle: 'Detalle de Empleado',
     opciones: 'Opciones adicionales',
-    emergencias: 'Simulacros y Emergencias',
-    menu: 'Menú del Comedor',
-    cultura: 'Cultura Tcontrol',
-    invitados: 'Almuerzos Extra & Refrigerios para Invitados',
     whatsapp: 'Notificaciones WhatsApp'
   };
   const titleText = titles[panel] || 'Supervisor';
@@ -5836,29 +5967,14 @@ function cambiarPanel(panel) {
     if (panel === 'dashboard') {
       cargarDashboard();
     }
-    else if (panel === 'directorio') {
-      cargarDirectorio();
-    }
     else if (panel === 'reportes') {
       inicializarReporteInteractivo();
     }
-    else if (panel === 'emergencias') {
-      cargarEmergenciasSupervisor();
-    }
     else if (panel === 'asistencia') {
-      cargarAsistencia();
+      window.cambiarSubtabAsistencia(window.subtabAsistenciaActual || 'control');
     }
-    else if (panel === 'mapa') {
-      if (typeof window.inicializarMapaAsistencia === 'function') window.inicializarMapaAsistencia();
-    }
-    else if (panel === 'menu') {
-      cargarMenuSemanal();
-    }
-    else if (panel === 'cultura') {
-      if (typeof window.cargarBancoPreguntasCultura === 'function') window.cargarBancoPreguntasCultura();
-    }
-    else if (panel === 'invitados') {
-      if (typeof window.cargarPanelInvitados === 'function') window.cargarPanelInvitados();
+    else if (panel === 'servicios') {
+      window.cambiarSubtabServicios(window.subtabServiciosActual || 'emergencias');
     }
     else if (panel === 'whatsapp') {
       if (typeof window.inicializarPanelWhatsApp === 'function') window.inicializarPanelWhatsApp();
@@ -7165,17 +7281,16 @@ window.guardarJustificacion = async function () {
 async function cargarDatosCompletos(force = false, silencioso = false, forceSheets = false) {
   if (estaActualizando) return;
   estaActualizando = true;
-  if (!silencioso) {
+
+  // Si ya disponemos de datos en memoria, sincronizar siempre de forma no bloqueante (en segundo plano)
+  const tieneDatosPrevios = Array.isArray(empCache) && empCache.length > 0;
+  const usarLoaderPantallaCompleta = !silencioso && !tieneDatosPrevios;
+
+  if (usarLoaderPantallaCompleta) {
     mostrarLoader(true);
   } else {
     const bgSync = $('bgSyncIndicator');
     if (bgSync) bgSync.classList.remove('hidden');
-    const detContent = $('detalleContent');
-    if (detContent && panelActual === 'detalle') {
-      detContent.style.opacity = '0.6';
-      detContent.style.pointerEvents = 'none';
-      detContent.style.transition = 'opacity 0.2s ease';
-    }
   }
   try {
     const res = await jsonpRequest({
@@ -7183,19 +7298,14 @@ async function cargarDatosCompletos(force = false, silencioso = false, forceShee
       force: force,
       forceSheets: forceSheets
     });
-    if (!silencioso) mostrarLoader(false);
+    if (usarLoaderPantallaCompleta) mostrarLoader(false);
     estaActualizando = false;
 
     const bgSync = $('bgSyncIndicator');
     if (bgSync) bgSync.classList.add('hidden');
-    const detContent = $('detalleContent');
-    if (detContent) {
-      detContent.style.opacity = '1';
-      detContent.style.pointerEvents = 'auto';
-    }
 
     if (!res || res.error) {
-      if (!silencioso) mostrarToast(res?.error || 'Error al cargar datos', 'error');
+      if (!silencioso && !tieneDatosPrevios) mostrarToast(res?.error || 'Error al cargar datos', 'error');
       return;
     }
     empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
@@ -7312,20 +7422,25 @@ function cargarPanelActual() {
   else if (panelActual === 'reportes') {
     inicializarReporteInteractivo();
   }
-  else if (panelActual === 'emergencias') {
-    cargarEmergenciasSupervisor(true);
-  }
   else if (panelActual === 'asistencia') {
-    cargarAsistencia();
+    if (window.subtabAsistenciaActual === 'directorio') {
+      cargarDirectorio();
+    } else if (window.subtabAsistenciaActual === 'mapa') {
+      if (typeof window.inicializarMapaAsistencia === 'function') window.inicializarMapaAsistencia();
+    } else {
+      cargarAsistencia();
+    }
   }
-  else if (panelActual === 'directorio') {
-    cargarDirectorio();
-  }
-  else if (panelActual === 'mapa') {
-    if (typeof window.inicializarMapaAsistencia === 'function') window.inicializarMapaAsistencia();
-  }
-  else if (panelActual === 'cultura') {
-    if (typeof window.cargarBancoPreguntasCultura === 'function') window.cargarBancoPreguntasCultura();
+  else if (panelActual === 'servicios') {
+    if (window.subtabServiciosActual === 'menu') {
+      cargarMenuSemanal();
+    } else if (window.subtabServiciosActual === 'cultura') {
+      if (typeof window.cargarBancoPreguntasCultura === 'function') window.cargarBancoPreguntasCultura();
+    } else if (window.subtabServiciosActual === 'invitados') {
+      if (typeof window.cargarPanelInvitados === 'function') window.cargarPanelInvitados();
+    } else {
+      cargarEmergenciasSupervisor(true);
+    }
   }
   else if (panelActual === 'whatsapp') {
     if (typeof window.inicializarPanelWhatsApp === 'function') window.inicializarPanelWhatsApp();
@@ -7687,9 +7802,19 @@ setInterval(() => {
 }, 120000);
 
 $('btnRefresh').addEventListener('click', async () => {
+  const btn = $('btnRefresh');
+  const icon = btn ? btn.querySelector('i') : null;
+  if (icon) icon.classList.add('fa-spin');
   limpiarCachesLocales();
-  mostrarToast('Borrando caché local de registros...', 'info');
-  await cargarDatosCompletos(true, false, true);
+  mostrarToast('Sincronizando datos frescos en segundo plano...', 'info');
+  try {
+    await cargarDatosCompletos(true, true, true);
+    mostrarToast('✅ Datos actualizados correctamente', 'success');
+  } catch (err) {
+    mostrarToast('Error al sincronizar: ' + err.message, 'error');
+  } finally {
+    if (icon) icon.classList.remove('fa-spin');
+  }
 });
 $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
 if ($('btnNuevoRegistroManual')) $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
@@ -13626,8 +13751,8 @@ window.probarEnvioWhatsApp = async function () {
           error: ''
         });
       }
-      if (typeof window.cargarLogsAuditoriaWhatsApp === 'function') {
-        setTimeout(() => window.cargarLogsAuditoriaWhatsApp(true), 1200);
+      if (typeof window.cargarLogsWhatsApp === 'function') {
+        setTimeout(() => window.cargarLogsWhatsApp(), 800);
       }
     } else {
       mostrarToast((res && res.error) || 'Error al enviar mensaje de prueba', 'error');
@@ -13641,6 +13766,9 @@ window.probarEnvioWhatsApp = async function () {
           estado: 'ERROR',
           error: (res && res.error) || 'Fallo de entrega'
         });
+      }
+      if (typeof window.cargarLogsWhatsApp === 'function') {
+        setTimeout(() => window.cargarLogsWhatsApp(), 800);
       }
     }
   } catch (e) {
@@ -13978,6 +14106,7 @@ window.cargarLogsWhatsApp = async function () {
     tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--red);">Error cargando logs: ${e.message}</td></tr>`;
   }
 };
+window.cargarLogsAuditoriaWhatsApp = window.cargarLogsWhatsApp;
 
 window.renderLogsWhatsApp = function (logs) {
   const tbody = $('tbodyLogsWhatsApp');
@@ -16145,22 +16274,39 @@ window.actualizarNotificacionesSupAdminInvitados = function () {
     }
   }
 
-  if (badgeNav) {
+  const badgeSubtab = $('badgeSubtabInvitadosCount');
+
+  if (badgeNav || badgeSubtab) {
     if (pendientes.length > 0) {
-      badgeNav.textContent = pendientes.length;
-      badgeNav.style.display = 'inline-block';
-      badgeNav.style.background = '#ea580c';
-      badgeNav.title = `${pendientes.length} solicitudes de invitados pendientes de revisión`;
+      if (badgeNav) {
+        badgeNav.textContent = pendientes.length;
+        badgeNav.style.display = 'inline-block';
+        badgeNav.style.background = '#ea580c';
+        badgeNav.title = `${pendientes.length} solicitudes de invitados pendientes de revisión`;
+      }
+      if (badgeSubtab) {
+        badgeSubtab.textContent = pendientes.length;
+        badgeSubtab.style.display = 'inline-block';
+        badgeSubtab.style.background = '#ea580c';
+      }
     } else {
       const hoyStrLocal = normalizarFechaStr(new Date().toISOString().slice(0, 10));
       const pedidosHoy = todos.filter(i => i.fecha === hoyStrLocal && i.estado !== 'CANCELADO');
       if (pedidosHoy.length > 0) {
-        badgeNav.textContent = pedidosHoy.length;
-        badgeNav.style.display = 'inline-block';
-        badgeNav.style.background = '#2563eb';
-        badgeNav.title = `${pedidosHoy.length} pedidos para hoy`;
+        if (badgeNav) {
+          badgeNav.textContent = pedidosHoy.length;
+          badgeNav.style.display = 'inline-block';
+          badgeNav.style.background = '#2563eb';
+          badgeNav.title = `${pedidosHoy.length} pedidos para hoy`;
+        }
+        if (badgeSubtab) {
+          badgeSubtab.textContent = pedidosHoy.length;
+          badgeSubtab.style.display = 'inline-block';
+          badgeSubtab.style.background = '#2563eb';
+        }
       } else {
-        badgeNav.style.display = 'none';
+        if (badgeNav) badgeNav.style.display = 'none';
+        if (badgeSubtab) badgeSubtab.style.display = 'none';
       }
     }
   }
