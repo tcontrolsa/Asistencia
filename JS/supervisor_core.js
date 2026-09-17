@@ -3215,7 +3215,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     }
 
     const chipsHtml = listaFechas.map(it => `
-      <button type="button" onclick="window.enfocarFechaEnDetalle('${it.fecha}')" class="btn-chip-regularizar-detalle" style="background: #ffffff; border: 1.5px solid #f97316; color: #9a3412; padding: 4px 10px; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.15s ease;" title="Clic para ir directamente al registro del ${it.fecha}">
+      <button type="button" onclick="window.enfocarFechaEnDetalle('${it.fecha}')" class="btn-chip-regularizar-detalle" style="background: #ffffff; border: 1.5px solid #f97316; color: #9a3412; padding: 4px 10px; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.15s ease;" title="Clic para ir directamente al registro del ${it.fecha}${it.minutos ? ' (' + it.minutos + ' min pendientes)' : ''}">
         <i class="fas fa-calendar-day" style="color: #ea580c; font-size: 11px;"></i>
         <span>${it.label}</span>
         <span style="background: #ffedd5; color: #c2410c; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700; border: 1px solid #fed7aa;">${it.motivo}</span>
@@ -3781,8 +3781,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Salida', tipo: 'incompleto' });
         } else if (faltaMarcacionEntrada) {
           fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Entrada', tipo: 'incompleto' });
-        } else if (tiempoPorJustificar > 0) {
-          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo' });
+        } else if (tiempoPorJustificar > 15) {
+          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo', minutos: tiempoPorJustificar });
         }
       }
 
