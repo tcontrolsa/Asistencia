@@ -173,7 +173,7 @@ window.FirebaseBackend = {
                     }
                 case 'obtenerVacacionesEmpleado':
                     try {
-                        const raw = await this._jsonp(params, 0, 1, 6000);
+                        const raw = await this._jsonp(params, 0, 2, 35000);
                         if (raw && raw.ok) {
                             const rawIndiv = raw.kpiVacacionesIndividual || {};
                             const kpiIndivLimpio = {};
@@ -190,16 +190,17 @@ window.FirebaseBackend = {
                                 sR += r;
                             }
                             raw.kpiVacacionesIndividual = kpiIndivLimpio;
+                            const globalSheets = raw.kpiVacaciones || {};
                             raw.kpiVacaciones = {
-                                adjudicadas: (sA > 0 && sA < 2000) ? sA : 1307,
-                                tomadas: (sT > 0 && sT < 1200) ? sT : 812,
-                                restantes: (sR > 0 && sR < 1800) ? sR : 1216
+                                adjudicadas: sA > 0 ? sA : (parseFloat(globalSheets.adjudicadas) || 0),
+                                tomadas: sT > 0 ? sT : (parseFloat(globalSheets.tomadas) || 0),
+                                restantes: sR !== 0 ? sR : (parseFloat(globalSheets.restantes) || 0)
                             };
                             window.kpiVacaciones = raw.kpiVacaciones;
                             window._kpiVacacionesCache = raw.kpiVacaciones;
                             window.kpiVacacionesIndividual = kpiIndivLimpio;
                             try {
-                                localStorage.setItem('tcontrol_vacaciones_cache_v2', JSON.stringify({
+                                localStorage.setItem('tcontrol_vacaciones_cache_v3', JSON.stringify({
                                     vacaciones: raw.vacaciones || [],
                                     kpiVacaciones: raw.kpiVacaciones,
                                     kpiVacacionesIndividual: kpiIndivLimpio,
@@ -211,13 +212,13 @@ window.FirebaseBackend = {
                         throw new Error((raw && raw.error) || 'Respuesta no exitosa de Sheets');
                     } catch (errVac) {
                         try {
-                            const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v2');
+                            const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v3');
                             if (storedVac) {
                                 const parsedVac = JSON.parse(storedVac);
                                 return {
                                     ok: true,
                                     vacaciones: parsedVac.vacaciones || [],
-                                    kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 1307, tomadas: 812, restantes: 1216 },
+                                    kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
                                     kpiVacacionesIndividual: parsedVac.kpiVacacionesIndividual || {},
                                     desdeCache: true
                                 };
@@ -226,7 +227,7 @@ window.FirebaseBackend = {
                         return {
                             ok: true,
                             vacaciones: window._vacacionesCache || [],
-                            kpiVacaciones: window.kpiVacaciones || { adjudicadas: 1307, tomadas: 812, restantes: 1216 },
+                            kpiVacaciones: window.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
                             kpiVacacionesIndividual: window.kpiVacacionesIndividual || {},
                             vacacionesTomadasHoy: 0,
                             vacacionesRestantesHoy: 0
@@ -3017,7 +3018,7 @@ window.FirebaseBackend = {
 
             const _fetchVacacionesSheets = async () => {
                 try {
-                    const vacRes = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' }, 0, 1, 6000);
+                    const vacRes = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' }, 0, 2, 35000);
                     if (vacRes && vacRes.ok) {
                         window._vacacionesCache = vacRes.vacaciones || [];
 
@@ -3049,10 +3050,8 @@ window.FirebaseBackend = {
                                 tomadas: sumaTom,
                                 restantes: sumaRes
                             };
-                        } else if (kpiVac && kpiVac.adjudicadas === 2614 && kpiVac.tomadas === 1624) {
-                            kpiVac.adjudicadas = 1307;
-                            kpiVac.tomadas = 812;
-                            kpiVac.restantes = 1216;
+                        } else if (!kpiVac) {
+                            kpiVac = { adjudicadas: 0, tomadas: 0, restantes: 0 };
                         }
 
                         window._kpiVacacionesCache = kpiVac;

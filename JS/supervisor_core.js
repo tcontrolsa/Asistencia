@@ -1253,18 +1253,6 @@ function cargarDashboard() {
         restantes = parseFloat(kpiVac.restantes) || 0;
       }
 
-      // Blindaje estricto: Si por cualquier motivo los valores vienen duplicados desde Sheets (sumatoria incluida)
-      if (adjudicadas >= 2000 || (adjudicadas === 2614 && tomadas === 1624)) {
-        adjudicadas = 1307;
-        tomadas = 812;
-        restantes = 1216;
-      }
-      if (adjudicadas === 0 && tomadas === 0) {
-        adjudicadas = 1307;
-        tomadas = 812;
-        restantes = 1216;
-      }
-
       window.kpiVacaciones = { adjudicadas, tomadas, restantes };
       window._kpiVacacionesCache = window.kpiVacaciones;
 
@@ -1277,7 +1265,8 @@ function cargarDashboard() {
       let colabsConVac = 0;
 
       empAsistencia.forEach(e => {
-        const vInfo = kpiVacIndiv[e.id] || (e.cedula && kpiVacIndiv[e.cedula]);
+        const empKey = String(e.id).trim();
+        const vInfo = kpiVacIndiv[empKey] || (e.cedula && kpiVacIndiv[String(e.cedula).trim()]) || kpiVacIndiv[e.id];
         if (vInfo && (parseFloat(vInfo.adjudicadas) > 0 || parseFloat(vInfo.tomadas) > 0)) {
           const a = parseFloat(vInfo.adjudicadas) || 0;
           const t = parseFloat(vInfo.tomadas) || 0;
@@ -1339,10 +1328,11 @@ function cargarDashboard() {
             sumR += r;
           }
           window.kpiVacacionesIndividual = limpio;
+          const globalVac = vacRes.kpiVacaciones || {};
           window.kpiVacaciones = {
-            adjudicadas: (sumA > 0 && sumA < 2000) ? sumA : 1307,
-            tomadas: (sumT > 0 && sumT < 1200) ? sumT : 812,
-            restantes: (sumR > 0 && sumR < 1800) ? sumR : 1216
+            adjudicadas: sumA > 0 ? sumA : (parseFloat(globalVac.adjudicadas) || 0),
+            tomadas: sumT > 0 ? sumT : (parseFloat(globalVac.tomadas) || 0),
+            restantes: sumR !== 0 ? sumR : (parseFloat(globalVac.restantes) || 0)
           };
           window._kpiVacacionesCache = window.kpiVacaciones;
           renderizarCardKpiVacaciones();
@@ -12805,21 +12795,31 @@ window.abrirModalDesgloseVacaciones = function () {
     let totalTomadas = 0;
     let totalRestantes = 0;
     let sumaKpis = 0;
+    let colabsConVac = 0;
     let datosTabla = [];
 
     empAsistencia.forEach(e => {
-      const vInfo = kpiVacIndiv[e.id] || (e.cedula && kpiVacIndiv[e.cedula]) || { adjudicadas: 0, tomadas: 0, restantes: 0 };
+      const empKey = String(e.id).trim();
+      const vInfo = kpiVacIndiv[empKey] || (e.cedula && kpiVacIndiv[String(e.cedula).trim()]) || kpiVacIndiv[e.id] || { adjudicadas: 0, tomadas: 0, restantes: 0 };
       const adj = parseFloat(vInfo.adjudicadas) || 0;
       const tom = parseFloat(vInfo.tomadas) || 0;
       const res = parseFloat(vInfo.restantes) || 0;
 
-      let pct = adj > 0 ? ((tom / adj) * 100) : 100;
-      if (pct > 100) pct = 100;
+      const tieneDatosVac = (adj > 0 || tom > 0 || res !== 0);
+      let pct = 0;
+      if (adj > 0) {
+        pct = Math.min(100, (tom / adj) * 100);
+        sumaKpis += pct;
+        colabsConVac++;
+      } else if (tom > 0) {
+        pct = 100;
+        sumaKpis += 100;
+        colabsConVac++;
+      }
 
       totalAdjudicadas += adj;
       totalTomadas += tom;
       totalRestantes += res;
-      sumaKpis += pct;
 
       datosTabla.push({
         id: e.id,
@@ -12829,26 +12829,20 @@ window.abrirModalDesgloseVacaciones = function () {
         adjudicadas: adj,
         tomadas: tom,
         restantes: res,
-        pct: pct
+        pct: pct,
+        tieneDatosVac: tieneDatosVac
       });
     });
 
-    // Usar los totales globales limpios si están disponibles en window.kpiVacaciones
-    const kpiVacGlobal = window.kpiVacaciones || window._kpiVacacionesCache;
-    if (kpiVacGlobal && parseFloat(kpiVacGlobal.adjudicadas) > 0) {
-      totalAdjudicadas = parseFloat(kpiVacGlobal.adjudicadas);
-      totalTomadas = parseFloat(kpiVacGlobal.tomadas);
-      totalRestantes = parseFloat(kpiVacGlobal.restantes);
-    }
-
-    // Ordenar de menor % de goce a mayor
+    // Ordenar: primero colaboradores con vacaciones (de menor % de goce a mayor), luego sin asignar
     datosTabla.sort((a, b) => {
+      if (a.tieneDatosVac !== b.tieneDatosVac) return a.tieneDatosVac ? -1 : 1;
       if (a.pct !== b.pct) return a.pct - b.pct;
       return b.restantes - a.restantes;
     });
 
     const tasaGlobal = totalAdjudicadas > 0 ? ((totalTomadas / totalAdjudicadas) * 100).toFixed(1) : '100.0';
-    const promedioIndiv = datosTabla.length > 0 ? (sumaKpis / datosTabla.length).toFixed(1) : '100.0';
+    const promedioIndiv = colabsConVac > 0 ? (sumaKpis / colabsConVac).toFixed(1) : tasaGlobal;
 
     const formatDias = (n) => (n % 1 === 0 ? n : n.toFixed(1));
 
@@ -12891,7 +12885,10 @@ window.renderFilasVacaciones = function (lista) {
     let colorPct = '#0284c7';
     let badgeEstado = '';
 
-    if (item.pct >= 100) {
+    if (!item.tieneDatosVac) {
+      colorPct = '#94a3b8';
+      badgeEstado = `<span style="background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; border: 1px solid #e2e8f0;"><i class="fas fa-minus"></i> Sin Asignar</span>`;
+    } else if (item.pct >= 100) {
       colorPct = '#10b981';
       badgeEstado = `<span style="background: #dcfce7; color: #15803d; padding: 2px 8px; border-radius: 10px; font-weight: 800; font-size: 11px; border: 1px solid #bbf7d0;"><i class="fas fa-check-circle"></i> Completo</span>`;
     } else if (item.pct >= 50) {
@@ -13047,20 +13044,31 @@ window.renderDetailedKPIs = function () {
     if (kpiAsistPct > 100) kpiAsistPct = 100;
     sumaKpiAsist += kpiAsistPct;
 
-    const vInfo = kpiVacData[emp.id] || (emp.cedula && kpiVacData[emp.cedula]) || { adjudicadas: 0, tomadas: 0, restantes: 0 };
+    const empKey = String(emp.id).trim();
+    const vInfo = kpiVacData[empKey] || (emp.cedula && kpiVacData[String(emp.cedula).trim()]) || kpiVacData[emp.id] || { adjudicadas: 0, tomadas: 0, restantes: 0 };
     const vacAdj = parseFloat(vInfo.adjudicadas) || 0;
     const vacTom = parseFloat(vInfo.tomadas) || 0;
     const vacRes = parseFloat(vInfo.restantes) || 0;
-    let kpiVacPct = vacAdj > 0 ? ((vacTom / vacAdj) * 100) : 100;
-    if (kpiVacPct > 100) kpiVacPct = 100;
+
+    let kpiVacPct = 0;
+    let txtVacPct = '-';
+    let colVac = '#94a3b8';
+
+    if (vacAdj > 0) {
+      kpiVacPct = Math.min(100, (vacTom / vacAdj) * 100);
+      txtVacPct = `${kpiVacPct.toFixed(1)}%`;
+      if (kpiVacPct >= 85) colVac = '#10b981';
+      else if (kpiVacPct >= 50) colVac = '#f59e0b';
+      else colVac = '#0284c7';
+    } else if (vacTom > 0) {
+      kpiVacPct = 100;
+      txtVacPct = '100.0%';
+      colVac = '#10b981';
+    }
 
     let colAsist = '#ef4444';
     if (kpiAsistPct >= 95) colAsist = '#10b981';
     else if (kpiAsistPct >= 85) colAsist = '#f59e0b';
-
-    let colVac = '#0284c7';
-    if (kpiVacPct >= 85) colVac = '#10b981';
-    else if (kpiVacPct >= 50) colVac = '#f59e0b';
 
     html += `
           <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" onclick="mostrarDetalle('${emp.id}')" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='#ffffff'">
@@ -13073,7 +13081,7 @@ window.renderDetailedKPIs = function () {
             <td style="padding: 10px 12px; text-align: center;">${formatDias(vacAdj)}</td>
             <td style="padding: 10px 12px; text-align: center; color: #0d9488; font-weight: 700;">${formatDias(vacTom)}</td>
             <td style="padding: 10px 12px; text-align: center; color: ${vacRes > 0 ? '#ef4444' : '#10b981'}; font-weight: 700;">${formatDias(vacRes)}</td>
-            <td style="padding: 10px 12px; text-align: center; font-weight: 800; color: ${colVac};">${kpiVacPct.toFixed(1)}%</td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: 800; color: ${colVac};">${txtVacPct}</td>
           </tr>
         `;
   });
