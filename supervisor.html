@@ -9,7 +9,7 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260917_08">
+  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260917_09">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
@@ -1002,6 +1002,16 @@
                   <span class="kpi-label">Ya Salieron</span>
                 </div>
                 <div class="kpi-value" id="asisSalieron">--</div>
+              </div>
+
+              <!-- CARD: POR REGULARIZAR -->
+              <div class="kpi-card" data-filter="por_regularizar" onclick="setFiltroAsistencia('por_regularizar')" style="--card-color: #ea580c; --active-bg: #fff7ed; --active-text: #c2410c; --shadow-color: rgba(234, 88, 12, 0.15);">
+                <span class="kpi-badge-alert" id="asisPorRegularizarDot" style="display:none; background:#ea580c;"></span>
+                <div class="kpi-header">
+                  <div class="kpi-icon" style="background: #ffedd5; color: #ea580c;"><i class="fas fa-calendar-times"></i></div>
+                  <span class="kpi-label">Por Regularizar</span>
+                </div>
+                <div class="kpi-value" id="asisPorRegularizar">--</div>
               </div>
             </div>
 
@@ -3959,7 +3969,7 @@
 
   <script src="./JS/openwa_service.js?v=20260917_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260916_02"></script>
-  <script src="./JS/supervisor_core.js?v=20260917_13"></script>
+  <script src="./JS/supervisor_core.js?v=20260917_14"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260917_05"></script>
