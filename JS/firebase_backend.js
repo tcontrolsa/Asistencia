@@ -2766,54 +2766,69 @@ window.FirebaseBackend = {
                 localStorage.setItem(CACHE_KEY, JSON.stringify(cacheToSave));
             } catch (e) { console.warn("Error guardando caché (posible límite de localStorage):", e); }
 
-            // 2.5 Caching y obtención de Registros Archivados en Sheets
+            // 2.5 Caching y obtención de Registros Archivados en Sheets (Con soporte IndexedDB para > 5MB)
             const CACHE_ARCHIVADOS_KEY = 'tcontrol_archivados_cache_v2';
             let archivadosData = { registros: [], lastSync: null };
-            try {
-                const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
-                if (storedArch) archivadosData = JSON.parse(storedArch);
-            } catch (e) { console.warn("Error leyendo caché archivados:", e); }
 
-            // Usar caché en memoria si ya fue descargada en la sesión actual
-            if (this._cacheArchivadosMemoria && (!archivadosData.registros || archivadosData.registros.length === 0)) {
-                archivadosData.registros = this._cacheArchivadosMemoria;
+            // 1. Intentar leer de IndexedDB primero (soporta los 12MB completos sin límite de cuota)
+            try {
+                const idbArch = await this._leerIDB('tcontrol_archivados_cache_idb');
+                if (idbArch && Array.isArray(idbArch.registros) && idbArch.registros.length > 0) {
+                    archivadosData = idbArch;
+                    this._cacheArchivadosMemoria = idbArch.registros;
+                    console.log(`⚡ ${idbArch.registros.length} registros archivados cargados desde IndexedDB`);
+                }
+            } catch (e) { console.warn("Error leyendo IndexedDB archivados:", e); }
+
+            // 2. Si no estaba en IndexedDB, fallback a memoria o localStorage
+            if (!archivadosData.registros || archivadosData.registros.length === 0) {
+                if (this._cacheArchivadosMemoria && this._cacheArchivadosMemoria.length > 0) {
+                    archivadosData.registros = this._cacheArchivadosMemoria;
+                } else {
+                    try {
+                        const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+                        if (storedArch) archivadosData = JSON.parse(storedArch);
+                    } catch (e) { console.warn("Error leyendo caché archivados localStorage:", e); }
+                }
             }
 
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
             const _fetchArchivados = async () => {
                 try {
-                    // Timeout de 20 segundos con reintentos para soportar respuestas pesadas de Sheets
-                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' }, 0, 2, 20000);
+                    // Timeout de 75 segundos con reintentos para soportar respuestas pesadas de Sheets (~12MB)
+                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' }, 0, 2, 75000);
                     if (resJson && resJson.ok && resJson.registros) {
                         this._cacheArchivadosMemoria = resJson.registros;
                         archivadosData.registros = resJson.registros;
                         archivadosData.lastSync = new Date().toISOString();
+                        
+                        // Guardar en IndexedDB (sin límite de 5MB)
                         try {
-                            // Si el dataset excede los 3.5MB, almacenar los más recientes para no romper la cuota de localStorage (5MB)
-                            let toStore = archivadosData;
-                            const jsonStr = JSON.stringify(toStore);
-                            if (jsonStr.length > 3500000) {
-                                const regsRecientes = [...resJson.registros].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 3000);
-                                toStore = { registros: regsRecientes, lastSync: archivadosData.lastSync };
-                            }
-                            localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(toStore));
-                            console.log("✅ Registros archivados de Sheets actualizados en caché.");
+                            await this._guardarIDB('tcontrol_archivados_cache_idb', { registros: resJson.registros, lastSync: archivadosData.lastSync });
+                            console.log(`✅ Registros archivados de Sheets (${resJson.registros.length}) guardados en IndexedDB.`);
                         } catch (e) {
-                            console.warn("Aviso guardando caché archivados en localStorage:", e);
+                            console.warn("Aviso guardando en IndexedDB:", e);
                         }
-                        // Solo notificar si la descarga fue asíncrona en segundo plano (para refresco transparente de UI)
-                        if (!params.force && !params.forceSheets && !params.forceAll) {
-                            window.dispatchEvent(new Event('archivadosActualizados'));
-                        }
+
+                        // Guardar un subconjunto reciente en localStorage como respaldo
+                        try {
+                            const regsRecientes = [...resJson.registros].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 2500);
+                            localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify({ registros: regsRecientes, lastSync: archivadosData.lastSync }));
+                        } catch (e) { }
+
+                        // Notificar a la interfaz que los datos históricos completos están listos
+                        window.dispatchEvent(new CustomEvent('archivadosActualizados', { detail: { registros: resJson.registros } }));
                     }
-                } catch (e) { /* Fallback transparente a datos existentes */ }
+                } catch (e) {
+                    console.warn("Aviso en _fetchArchivados:", e);
+                }
             };
 
             // NUNCA congelar la pantalla del supervisor esperando a Sheets: solo esperar si se fuerza expresamente
             if (params.force || params.forceSheets || params.forceAll) {
                 console.log("📥 Forzando actualización de registros archivados de Sheets...");
                 await _fetchArchivados();
-            } else if (!archivadosData.registros || archivadosData.registros.length === 0 || horasArchivados > 1) {
+            } else if (!archivadosData.registros || archivadosData.registros.length === 0 || horasArchivados > 24) {
                 console.log("🔄 Sincronizando registros archivados de Sheets en segundo plano...");
                 _fetchArchivados(); // En segundo plano, la interfaz abre de inmediato
             }
@@ -2893,7 +2908,7 @@ window.FirebaseBackend = {
 
             // 3. Procesar todos los registros combinados
             registrosCompletos.forEach(reg => {
-                const eid = String(reg.empleadoId || reg.id_empleado || (reg.id && !String(reg.id).includes('_') ? reg.id : '')).trim();
+                const eid = String(reg.empleadoId || reg.id_empleado || (reg.id && !String(reg.id).includes('_') ? reg.id : (reg.id ? String(reg.id).split('_')[0] : ''))).trim();
                 if (!eid) return;
 
                 // Normalizar almuerzo: solo SI/NO si tiene valor, vacío si no
@@ -3301,6 +3316,58 @@ window.FirebaseBackend = {
             };
             document.body.appendChild(script);
         });
+    },
+
+    // ==========================================
+    // INDEXEDDB HELPER (Para datasets pesados > 5MB sin límite de localStorage)
+    // ==========================================
+    _abrirIDB() {
+        return new Promise((resolve) => {
+            if (typeof indexedDB === 'undefined') return resolve(null);
+            try {
+                const req = indexedDB.open('TControlLocalDB', 1);
+                req.onupgradeneeded = (e) => {
+                    const idb = e.target.result;
+                    if (!idb.objectStoreNames.contains('heavy_cache')) {
+                        idb.createObjectStore('heavy_cache');
+                    }
+                };
+                req.onsuccess = (e) => resolve(e.target.result);
+                req.onerror = () => resolve(null);
+            } catch (e) {
+                resolve(null);
+            }
+        });
+    },
+
+    async _guardarIDB(clave, valor) {
+        try {
+            const db = await this._abrirIDB();
+            if (!db) return false;
+            return new Promise((resolve) => {
+                const tx = db.transaction('heavy_cache', 'readwrite');
+                tx.objectStore('heavy_cache').put(valor, clave);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => resolve(false);
+            });
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async _leerIDB(clave) {
+        try {
+            const db = await this._abrirIDB();
+            if (!db) return null;
+            return new Promise((resolve) => {
+                const tx = db.transaction('heavy_cache', 'readonly');
+                const req = tx.objectStore('heavy_cache').get(clave);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => resolve(null);
+            });
+        } catch (e) {
+            return null;
+        }
     },
 
     _hoyStr(dateObj = new Date()) {

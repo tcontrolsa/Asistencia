@@ -12129,27 +12129,24 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
         }
       });
 
-      // Regla clave: el rango de evaluación debe ser desde el primer registro que exista en la base
-      const esVistaConsolidada = (opcionPeriodo === 'ANUAL' || opcionPeriodo.startsWith('ANIO_') || opcionPeriodo === 'HISTORICO_BASE' || opcionPeriodo === 'ULTIMOS_365' || opcionPeriodo === 'ANIO_MOVIL');
-      let evalIni = hoy_;
-
-      if (esVistaConsolidada) {
-        if (opcionPeriodo === 'ANUAL' || opcionPeriodo.startsWith('ANIO_')) {
-          evalIni = primerRegistroEmpPeriodo || primerRegistroEmpValido || rangoIni || hoy_;
-          if (rangoIni && evalIni < rangoIni) evalIni = rangoIni;
-        } else {
-          evalIni = primerRegistroEmpValido || rangoIni || hoy_;
-          if (rangoIni && evalIni < rangoIni) evalIni = rangoIni;
-        }
-      } else {
-        // Períodos mensuales (corte al 25)
-        if (primerRegistroEmpValido && primerRegistroEmpValido > rangoIni) {
-          evalIni = primerRegistroEmpValido;
-        } else {
-          evalIni = rangoIni || hoy_;
-        }
+      // Regla de inicio de evaluación por colaborador:
+      // 1. Si el colaborador tiene fecha_ingreso válida y es posterior a rangoIni, se evalúa desde su ingreso (nuevo ingreso).
+      // 2. Si no tiene fecha_ingreso, verificamos su primer registro histórico en la base (primerRegistroEmpValido).
+      //    Si ese primer registro es posterior a rangoIni, se toma como inicio aproximado.
+      // 3. De lo contrario, se evalúa desde el inicio del período (rangoIni).
+      // 4. CRÍTICO: NUNCA usar primerRegistroEmpPeriodo, ya que reducía el período anual a 1 día para quienes marcaron recién.
+      let fechaIngresoValida = null;
+      if (e.fecha_ingreso && String(e.fecha_ingreso).trim().length >= 10) {
+        const fi = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(e.fecha_ingreso) : String(e.fecha_ingreso).slice(0, 10);
+        if (fi && fi >= '2020-01-01') fechaIngresoValida = fi;
       }
 
+      let inicioColaborador = fechaIngresoValida;
+      if (!inicioColaborador && primerRegistroEmpValido && primerRegistroEmpValido > rangoIni) {
+        inicioColaborador = primerRegistroEmpValido;
+      }
+
+      let evalIni = (inicioColaborador && inicioColaborador > rangoIni) ? inicioColaborador : (rangoIni || hoy_);
       let evalFin = rangoFin <= hoy_ ? rangoFin : hoy_;
 
       let diasHabEmp = [];
@@ -12226,12 +12223,16 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
 
       const ordinarias = diasOrdinariosEfectivos.size;
       const extras = diasExtrasEfectivos.size;
-      const diferencia = fechasDiferencia.length;
 
       // Vacaciones tomadas según requerimiento oficial
       const vInfo = kpiVacIndiv[e.id] || (e.cedula && kpiVacIndiv[e.cedula]) || null;
       const tomadasOficial = (vInfo && vInfo.tomadas != null && !isNaN(parseFloat(vInfo.tomadas))) ? parseFloat(vInfo.tomadas) : null;
       const vacaciones = (esVistaConsolidada && tomadasOficial !== null) ? tomadasOficial : diasVacaciones.size;
+
+      // Proteger vacaciones oficiales: si en RRHH tiene registradas más vacaciones que las detectadas en marcas de asistencia,
+      // la diferencia no debe imputarse como falta injustificada
+      const vacsSinFechaMarcada = Math.max(0, vacaciones - diasVacaciones.size);
+      const diferencia = Math.max(0, fechasDiferencia.length - vacsSinFechaMarcada);
 
       // Cumplimiento (%): Los permisos médicos, vacaciones y faltas justificadas están protegidos y no descuentan cumplimiento
       let pct = esperadas > 0 ? (((esperadas - diferencia) / esperadas) * 100) : 100;
@@ -12277,7 +12278,10 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
 
     datosTabla.sort((a, b) => b.diferencia - a.diferencia || a.pct - b.pct);
 
-    const promedioGral = datosTabla.length > 0 ? (sumaKpis / datosTabla.length).toFixed(1) : '0.0';
+    // Cumplimiento Global Ponderado: (Total Esperadas - Total Diferencias) / Total Esperadas
+    const promedioGral = totalEsperadas > 0
+      ? (Math.max(0, ((totalEsperadas - totalDiferencias) / totalEsperadas) * 100)).toFixed(1)
+      : '100.0';
 
     if (document.getElementById('lblModalHistOrdinarias')) document.getElementById('lblModalHistOrdinarias').textContent = totalOrdinarias.toLocaleString();
     if (document.getElementById('lblModalHistEsperadas')) document.getElementById('lblModalHistEsperadas').textContent = totalEsperadas.toLocaleString();
@@ -12470,6 +12474,104 @@ window.exportarTablaHistoricoBaseExcel = window.exportarDiferenciasExcel = async
   } catch (e) {
     console.error('Error exportando excel diferencias:', e);
     if (typeof mostrarToast === 'function') mostrarToast('Error al exportar Excel: ' + e.message, 'error');
+  }
+};
+
+// ==========================================
+// EVENTO: ACTUALIZACIÓN REACTIVA DE REGISTROS ARCHIVADOS (SHEETS / INDEXEDDB)
+// ==========================================
+window.addEventListener('archivadosActualizados', function (ev) {
+  console.log('🔄 Registros archivados sincronizados, refrescando datos de supervisión...');
+  const archivados = (ev && ev.detail && ev.detail.registros) ? ev.detail.registros : [];
+  if (archivados && archivados.length && Array.isArray(empCache)) {
+    const empMap = {};
+    empCache.forEach(e => {
+      empMap[String(e.id).trim()] = e;
+      if (e.cedula) empMap[String(e.cedula).trim()] = e;
+    });
+
+    archivados.forEach(r => {
+      const eid = String(r.empleadoId || r.id_empleado || (r.id ? String(r.id).split('_')[0] : '')).trim();
+      if (eid && empMap[eid]) {
+        const emp = empMap[eid];
+        if (!emp.registros) emp.registros = [];
+        const f = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(r.fecha) : r.fecha;
+        const tipo = (r.tipo || '').toUpperCase();
+        const yaExiste = emp.registros.some(er => er.fecha === f && er.tipo === tipo);
+        if (!yaExiste) {
+          emp.registros.push({
+            id: r.id || `arch_${eid}_${f}_${tipo}`,
+            fecha: f,
+            tipo: tipo,
+            hora: r.hora || '00:00:00',
+            almuerzo: r.almuerzo || '',
+            modo: r.modo || 'OFICINA',
+            horasExtra: r.horasExtra || 'NO',
+            justificado: r.justificado || '',
+            razon_justificac: r.razon_justificac || '',
+            razon_ausencia: r.razon_ausencia || ''
+          });
+        }
+      }
+    });
+  }
+
+  // Ocultar banner de sincronización
+  const banner = document.getElementById('bannerSincronizandoHistorico');
+  if (banner) banner.style.display = 'none';
+
+  // Si el modal de desglose histórico está visible, recalcularlo inmediatamente
+  const modal = document.getElementById('modalDesgloseHistoricoBase');
+  if (modal && modal.style.display !== 'none' && !modal.classList.contains('hidden')) {
+    const selModal = document.getElementById('selPeriodoModalHistorico');
+    const valorSel = selModal ? selModal.value : 'ANUAL';
+    if (typeof window.procesarYRenderizarHistoricoBase === 'function') {
+      window.procesarYRenderizarHistoricoBase(valorSel);
+    }
+  }
+});
+
+window.forzarSincronizacionHistorica = async function () {
+  try {
+    const banner = document.getElementById('bannerSincronizandoHistorico');
+    if (banner) banner.style.display = 'flex';
+    const btnIcon = document.getElementById('iconoSyncHistorico');
+    if (btnIcon) btnIcon.classList.add('fa-spin');
+
+    if (typeof mostrarToast === 'function') {
+      mostrarToast('Sincronizando histórico completo desde Sheets (esto puede tomar ~40s)...', 'info');
+    }
+
+    if (window.USE_FIREBASE && window.FirebaseBackend && typeof window.FirebaseBackend.obtenerDatosSupervisor === 'function') {
+      const res = await window.FirebaseBackend.obtenerDatosSupervisor({ force: true, forceSheets: true });
+      if (res && res.empleados) {
+        empCache = res.empleados;
+      }
+    } else if (typeof jsonpRequest === 'function') {
+      const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor', force: true, forceSheets: true });
+      if (res && res.empleados) {
+        empCache = res.empleados;
+      }
+    }
+
+    if (btnIcon) btnIcon.classList.remove('fa-spin');
+    if (banner) banner.style.display = 'none';
+    if (typeof mostrarToast === 'function') {
+      mostrarToast('¡Sincronización histórica completada exitosamente!', 'success');
+    }
+
+    const selModal = document.getElementById('selPeriodoModalHistorico');
+    const valorSel = selModal ? selModal.value : 'ANUAL';
+    window.procesarYRenderizarHistoricoBase(valorSel);
+  } catch (err) {
+    console.error('Error al forzar sincronización histórica:', err);
+    const btnIcon = document.getElementById('iconoSyncHistorico');
+    if (btnIcon) btnIcon.classList.remove('fa-spin');
+    const banner = document.getElementById('bannerSincronizandoHistorico');
+    if (banner) banner.style.display = 'none';
+    if (typeof mostrarToast === 'function') {
+      mostrarToast('Error en la sincronización: ' + err.message, 'error');
+    }
   }
 };
 

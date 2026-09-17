@@ -13,7 +13,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260917_03"></script>
+  <script src="./JS/firebase_backend.js?v=20260917_06"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -3752,6 +3752,9 @@
           <div>
             <h3 style="margin: 0; font-size: 15.5px; font-weight: 800; color: #1e293b;">Desglose Histórico de Asistencia y Diferencias</h3>
             <p id="subtituloModalHistorico" style="margin: 2px 0 0; font-size: 11.5px; color: #64748b;">Auditoría: Asistencias Ordinarias + Vacaciones vs. Esperadas por Colaborador</p>
+            <div id="bannerSincronizandoHistorico" style="display: none; margin-top: 5px; padding: 4px 10px; border-radius: 6px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-size: 11px; align-items: center; gap: 6px;">
+              <i class="fas fa-spinner fa-spin"></i> Sincronizando asistencias históricas consolidadas (2026)... Los cálculos se actualizarán automáticamente al finalizar.
+            </div>
           </div>
         </div>
         <button type="button" onclick="window.cerrarModalDesgloseHistoricoBase()" style="background: none; border: none; font-size: 20px; color: #94a3b8; cursor: pointer; padding: 4px 8px; border-radius: 6px;" onmouseover="this.style.color='#1e293b'" onmouseout="this.style.color='#94a3b8'">&times;</button>
@@ -3808,6 +3811,9 @@
             <select id="selPeriodoModalHistorico" onchange="window.cambiarPeriodoModalHistorico(this.value)" style="border: none; background: transparent; font-size: 11.5px; font-weight: 700; color: #1e293b; outline: none; cursor: pointer; max-width: 270px;">
             </select>
           </div>
+          <button type="button" class="btn btn-outline" id="btnSincronizarHistoricoModal" onclick="window.forzarSincronizacionHistorica()" title="Sincronizar histórico completo desde Sheets" style="padding: 5px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; background: #ffffff; border-radius: 8px; font-weight: 600; color: #475569;">
+            <i class="fas fa-sync-alt" id="iconoSyncHistorico" style="color: #2563eb;"></i> Sincronizar
+          </button>
           <button type="button" class="btn btn-outline" onclick="window.exportarTablaHistoricoBaseExcel()" style="padding: 5px 12px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; background: #ffffff; border-radius: 8px; font-weight: 600;">
             <i class="fas fa-file-excel" style="color: #10b981;"></i> Exportar Excel
           </button>
@@ -3945,7 +3951,7 @@
 
   <script src="./JS/openwa_service.js?v=20260917_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260916_02"></script>
-  <script src="./JS/supervisor_core.js?v=20260917_05"></script>
+  <script src="./JS/supervisor_core.js?v=20260917_06"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260917_05"></script>
