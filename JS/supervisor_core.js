@@ -3078,7 +3078,7 @@ window.volverAAsistencia = volverAAsistencia;
 // ============================================================
 // DETALLE
 // ============================================================
-async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customFin = null) {
+async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customFin = null, fechaEnfocar = null) {
   if (panelActual !== 'detalle') {
     panelOrigenDetalle = panelActual;
   }
@@ -3087,6 +3087,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   window.indexPeriodoDetalleActual = indexPeriodo;
   window.customInicioDetalleActual = customInicio;
   window.customFinDetalleActual = customFin;
+  window.fechaEnfocarDetalleActual = fechaEnfocar || window.fechaEnfocarDetalleActual || null;
   const ADMIN_ID = "1058";
   let sessionData = {};
   try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
@@ -3192,6 +3193,42 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0;
   let thH = 0, thM = 0;
 
+  function generarBannerRegularizarHTML(listaFechas) {
+    if (!listaFechas || listaFechas.length === 0) {
+      return `
+        <div id="bannerFechasRegularizar" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 5px solid #16a34a; border-radius: 10px; padding: 7px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #166534; font-weight: 600;">
+          <i class="fas fa-check-circle" style="color: #16a34a; font-size: 14px;"></i>
+          <span>Asistencia al día: No hay fechas pendientes de regularizar en este período.</span>
+        </div>`;
+    }
+
+    const chipsHtml = listaFechas.map(it => `
+      <button type="button" onclick="window.enfocarFechaEnDetalle('${it.fecha}')" class="btn-chip-regularizar-detalle" style="background: #ffffff; border: 1.5px solid #f97316; color: #9a3412; padding: 4px 10px; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.15s ease;" title="Clic para ir directamente al registro del ${it.fecha}">
+        <i class="fas fa-calendar-day" style="color: #ea580c; font-size: 11px;"></i>
+        <span>${it.label}</span>
+        <span style="background: #ffedd5; color: #c2410c; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700; border: 1px solid #fed7aa;">${it.motivo}</span>
+      </button>
+    `).join('');
+
+    return `
+      <div id="bannerFechasRegularizar" style="background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border: 1.5px solid #fb923c; border-left: 5px solid #ea580c; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 2px 6px rgba(234,88,12,0.08);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-calendar-times" style="color: #ea580c; font-size: 15px;"></i>
+            <span style="font-weight: 800; font-size: 12.5px; color: #9a3412;">
+              Fechas que deben regularizarse (${listaFechas.length}):
+            </span>
+          </div>
+          <span style="font-size: 11px; color: #c2410c; font-weight: 600;">
+            <i class="fas fa-hand-pointer"></i> Haz clic en una fecha para ir directamente a su fila en la tabla
+          </span>
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; max-height: 120px; overflow-y: auto; padding: 2px;">
+          ${chipsHtml}
+        </div>
+      </div>`;
+  }
+
   function rebuildTable() {
     let porDia = {};
     // Asegurar que los registros estén ordenados cronológicamente para el emparejamiento
@@ -3230,6 +3267,23 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
     });
 
+    // Asegurar que todos los días laborables del rango (desde fecha de ingreso hasta hoy) existan en porDia
+    const hoyStrLocal = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
+    const limiteFinLocal = (R_FIN && R_FIN < hoyStrLocal) ? R_FIN : hoyStrLocal;
+    let inicioEvalEmp = R_INI;
+    if (e.fecha_ingreso && String(e.fecha_ingreso).trim().length >= 10) {
+      const fi = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(e.fecha_ingreso) : String(e.fecha_ingreso).slice(0, 10);
+      if (fi && fi > R_INI) inicioEvalEmp = fi;
+    }
+    if (inicioEvalEmp && limiteFinLocal && inicioEvalEmp <= limiteFinLocal) {
+      const diasHabilesRango = (typeof obtenerDiasHabiles === 'function') ? obtenerDiasHabiles(inicioEvalEmp, limiteFinLocal) : [];
+      diasHabilesRango.forEach(fHab => {
+        if (!porDia[fHab]) {
+          porDia[fHab] = { registros: [], almuerzo: null, faltaInasistencia: true };
+        }
+      });
+    }
+
     // Ordenar de más reciente a más antiguo (YYYY-MM-DD → comparación de string correcta)
     let fechasOrdenadas = Object.keys(porDia).filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f)).sort((a, b) => b.localeCompare(a));
 
@@ -3241,6 +3295,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0;
     let totDescuentoBruto = 0;
     const esSuperPermiso = ['7', '1058'].includes(String(sessionData.id || ''));
+    let fechasARegularizar = [];
 
     let filas = fechasOrdenadas.map(f => {
       let d = porDia[f];
@@ -3297,7 +3352,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           const tsVal = formatearTimestampCompleto(p.entrada.timestamp);
           return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
         }
-        if (esMaster && !p.entrada && !esFalta) {
+        if (esMaster && !p.entrada && (!esFalta || (d.registros && d.registros.length === 0))) {
           let defEntStr = esFestivo ? '07:00:00' : '07:30:00';
           let defEntLbl = esFestivo ? '07:00' : '07:30';
           return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'ENTRADA', '${defEntStr}', '${f}')"><i class="fas fa-plus"></i> ${defEntLbl}</button>`;
@@ -3311,7 +3366,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           const tsVal = formatearTimestampCompleto(p.salida.timestamp);
           return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
         }
-        if (esMaster && !p.salida && !esFalta) {
+        if (esMaster && !p.salida && (!esFalta || (d.registros && d.registros.length === 0))) {
           let defSalStr = esFestivo ? '15:00:00' : '16:15:00';
           let defSalLbl = esFestivo ? '15:00' : '16:15';
           return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'SALIDA', '${defSalStr}', '${f}')"><i class="fas fa-plus"></i> ${defSalLbl}</button>`;
@@ -3693,6 +3748,26 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       totExtra50 += (h50 + hC50);
       totExtra100 += (h100 + hC100);
 
+      // Detección de necesidad de regularización en días laborables ordinarios
+      const esDiaLaboralOrdinario = (dayOfWeek !== 0 && dayOfWeek !== 6 && !esFestivo);
+      const faltaMarcacionEntrada = periodosDia.some(p => !p.entrada && p.salida);
+      const faltaMarcacionSalida = periodosDia.some(p => p.entrada && !p.salida);
+      const esFaltaSinJustificar = esFalta && !isJustificado;
+
+      if (esDiaLaboralOrdinario && f <= hoyStrLocal) {
+        const fParts = f.split('-');
+        const fFmt = (fParts.length === 3) ? `${fParts[2]}/${fParts[1]}` : f;
+        if (esFaltaSinJustificar) {
+          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Inasistencia', tipo: 'ausencia' });
+        } else if (faltaMarcacionSalida) {
+          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Salida', tipo: 'incompleto' });
+        } else if (faltaMarcacionEntrada) {
+          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Entrada', tipo: 'incompleto' });
+        } else if (tiempoPorJustificar > 0) {
+          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo' });
+        }
+      }
+
       const esAusenciaEspecial = esFalta && (
         ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonAusenciaVal) ||
         ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonJustificadaVal)
@@ -3701,7 +3776,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (esAusenciaEspecial) {
         const razonMostrar = razonAusenciaVal || razonJustificadaVal || 'Ausencia';
         const icon = razonMostrar.toLowerCase().includes('vacac') ? '🏖️' : razonMostrar.toLowerCase().includes('medico') ? '🩺' : '📋';
-        return `<tr style="${rowStyle}">
+        return `<tr id="fila-fecha-${f}" style="${rowStyle}">
         <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px;">${fechaFormateada}</td>
         <td colspan="14" style="font-size:10px; padding:4px 8px; font-weight:600; background:rgba(79, 70, 229, 0.03);">
           <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -3717,7 +3792,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       </tr>`;
       }
 
-      return `<tr style="${rowStyle}">
+      return `<tr id="fila-fecha-${f}" style="${rowStyle}">
       <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px;">${fechaFormateada}</td>
       <td style="font-size:10px; padding:2px 3px; text-align:center;">${modalidadCell}</td>
       <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaE}</td>
@@ -3784,13 +3859,19 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       tfoot.innerHTML = tfootRow;
     }
 
-    return { filas, tfootRow };
+    const wrapBanner = document.getElementById('contenedorBannerRegularizarDetalle');
+    if (wrapBanner) {
+      wrapBanner.innerHTML = generarBannerRegularizarHTML(fechasARegularizar);
+    }
+
+    return { filas, tfootRow, fechasARegularizar };
   }
 
   // Renderizado inicial con la tabla vacía de vacaciones
   const initialTable = rebuildTable();
   let filas = initialTable.filas;
   let tfootRow = initialTable.tfootRow;
+  let fechasARegularizar = initialTable.fechasARegularizar || [];
 
   function actualizarCardVacaciones(vacacionesTomadasHoy, vacacionesRestantesHoy) {
     const container = document.getElementById('card-vacaciones-detalle');
@@ -4022,6 +4103,12 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           </div>
           <span style="color:var(--indigo);font-weight:600;font-size:13px;background:#e0e7ff;padding:4px 10px;border-radius:12px;">${periodoSeleccionado ? periodoSeleccionado.label : ''}</span>
         </div>
+        
+        <!-- BANNER FECHAS POR REGULARIZAR -->
+        <div id="contenedorBannerRegularizarDetalle">
+          ${generarBannerRegularizarHTML(fechasARegularizar)}
+        </div>
+
         <div class="table-wrapper">
           <div class="table-scroll-wrap">
             <table class="employee-table table-compact table-ultra-compact">
@@ -4050,6 +4137,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       </div>
     </div>`;
   cambiarPanel('detalle');
+
+  if (window.fechaEnfocarDetalleActual) {
+    const fEnf = window.fechaEnfocarDetalleActual;
+    window.fechaEnfocarDetalleActual = null;
+    setTimeout(() => {
+      window.enfocarFechaEnDetalle(fEnf);
+    }, 350);
+  }
 }
 
 function volverADirectorio() { cambiarPanel('directorio'); cargarDirectorio(); }
@@ -12352,24 +12447,29 @@ window.renderFilasHistoricoBase = function (lista) {
       const fArr = item.fechasDiferencia || [];
       const fmtFechas = fArr.map(f => {
         const parts = f.split('-');
-        return parts.length === 3 ? `${parts[2]}/${parts[1]}` : f;
+        return {
+          iso: f,
+          label: parts.length === 3 ? `${parts[2]}/${parts[1]}` : f
+        };
       });
-      const fullList = fmtFechas.join(', ');
+      const fullList = fmtFechas.map(x => `${x.label} (${x.iso})`).join(', ');
       let displayFechas = '';
-      if (fmtFechas.length <= 2) {
-        displayFechas = fmtFechas.join(', ');
+      if (fmtFechas.length <= 3) {
+        displayFechas = fmtFechas.map(x => `<button type="button" onclick="window.irADetalleFecha('${item.id}', '${x.iso}')" class="btn-chip-dif" title="Clic para ir a regularizar el ${x.iso} en Detalle de Empleado">${x.label}</button>`).join(' ');
       } else {
-        displayFechas = `${fmtFechas[0]}, ${fmtFechas[1]} (+${fmtFechas.length - 2})`;
+        const primeros = fmtFechas.slice(0, 2).map(x => `<button type="button" onclick="window.irADetalleFecha('${item.id}', '${x.iso}')" class="btn-chip-dif" title="Clic para ir a regularizar el ${x.iso} en Detalle de Empleado">${x.label}</button>`).join(' ');
+        const restantes = fmtFechas.length - 2;
+        displayFechas = `${primeros} <button type="button" onclick="window.irADetalleFecha('${item.id}', '${fmtFechas[2].iso}')" class="btn-chip-dif" title="Ver ${restantes} fechas más en Detalle de Empleado">+${restantes}</button>`;
       }
 
       fechasDifHtml = `
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 1px;">
-              <span style="font-weight: 800; padding: 1px 7px; border-radius: 6px; font-size: 11px; background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+              <span style="font-weight: 800; padding: 1px 7px; border-radius: 6px; font-size: 11px; background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;" title="Total inasistencias sin justificar: ${item.diferencia}">
                 -${item.diferencia}
               </span>
-              <span style="font-size: 9.5px; color: #dc2626; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 145px; cursor: help;" title="Inasistencias en días laborables: ${fullList}">
+              <div style="display: flex; align-items: center; gap: 3px; flex-wrap: wrap; justify-content: center; max-width: 155px;">
                 ${displayFechas}
-              </span>
+              </div>
             </div>
           `;
     }
@@ -12476,6 +12576,43 @@ window.exportarTablaHistoricoBaseExcel = window.exportarDiferenciasExcel = async
     console.error('Error exportando excel diferencias:', e);
     if (typeof mostrarToast === 'function') mostrarToast('Error al exportar Excel: ' + e.message, 'error');
   }
+};
+
+// ============================================================
+// NAVEGACIÓN DIRECTA: DESGLOSE HISTÓRICO -> DETALLE DE EMPLEADO
+// ============================================================
+window.irADetalleFecha = function (empleadoId, fechaIso) {
+  if (typeof window.cerrarModalDesgloseHistoricoBase === 'function') {
+    window.cerrarModalDesgloseHistoricoBase();
+  }
+  let idxPer = 0;
+  if (Array.isArray(periodos)) {
+    const found = periodos.findIndex(p => p && fechaIso >= p.inicio && fechaIso <= p.fin);
+    if (found >= 0) idxPer = found;
+  }
+  if (typeof window.mostrarDetalle === 'function') {
+    window.mostrarDetalle(empleadoId, idxPer, null, null, fechaIso);
+  }
+};
+
+window.enfocarFechaEnDetalle = function (fecha) {
+  if (!fecha) return;
+  const rowId = 'fila-fecha-' + fecha;
+  const row = document.getElementById(rowId);
+  if (!row) {
+    if (typeof mostrarToast === 'function') {
+      mostrarToast('Fecha ' + fecha + ' no encontrada en el período visualizado.', 'info');
+    }
+    return;
+  }
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.remove('fila-resaltada-regularizar');
+  void row.offsetWidth; // Forzar reflow para reiniciar animación
+  row.classList.add('fila-resaltada-regularizar');
+
+  setTimeout(() => {
+    row.classList.remove('fila-resaltada-regularizar');
+  }, 5000);
 };
 
 // ==========================================

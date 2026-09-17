@@ -9,11 +9,11 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260916_02">
+  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260917_08">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260917_07"></script>
+  <script src="./JS/firebase_backend.js?v=20260917_08"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -3788,6 +3788,14 @@
         </div>
       </div>
 
+      <!-- Banner Informativo de Regularización Directa -->
+      <div style="margin: 8px 20px 0 20px; background: #fff7ed; border: 1px solid #fed7aa; border-left: 4px solid #ea580c; border-radius: 8px; padding: 7px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: #9a3412; gap: 8px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-hand-pointer" style="color: #ea580c; font-size: 12px;"></i>
+          <span><strong>Regularización Rápida:</strong> Haz clic sobre cualquier fecha en la columna <strong>Diferencia</strong> para ir directamente a dicha fecha en <strong>Detalle de Empleado</strong>.</span>
+        </div>
+      </div>
+
       <!-- Filtros y Búsqueda -->
       <div style="padding: 9px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px;">
@@ -3951,7 +3959,7 @@
 
   <script src="./JS/openwa_service.js?v=20260917_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260916_02"></script>
-  <script src="./JS/supervisor_core.js?v=20260917_07"></script>
+  <script src="./JS/supervisor_core.js?v=20260917_08"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260917_05"></script>

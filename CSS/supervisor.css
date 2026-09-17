@@ -5533,4 +5533,57 @@
     #btnModoHistoricoMensual:hover,
     #btnModoHistoricoAnual:hover {
       filter: brightness(0.96);
-    }
+    }
+
+    /* Estilos para Banner y Fila Resaltada de Regularización */
+    @keyframes pulseRowRegularizar {
+      0% {
+        background-color: #fef08a !important;
+        outline: 2.5px solid #eab308;
+      }
+      50% {
+        background-color: #fef9c3 !important;
+        outline: 3.5px solid #f59e0b;
+      }
+      100% {
+        background-color: #fef08a !important;
+        outline: 2.5px solid #eab308;
+      }
+    }
+
+    .fila-resaltada-regularizar {
+      animation: pulseRowRegularizar 1s ease-in-out 3 alternate !important;
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.3) !important;
+      position: relative;
+      z-index: 5;
+    }
+
+    .btn-chip-dif {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.15s ease;
+      line-height: 1.2;
+    }
+
+    .btn-chip-dif:hover {
+      background: #fecaca;
+      color: #991b1b;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(185, 28, 28, 0.15);
+    }
+
+    .btn-chip-regularizar-detalle:hover {
+      background: #ffedd5 !important;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(234, 88, 12, 0.15) !important;
+    }
+
