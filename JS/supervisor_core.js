@@ -4988,11 +4988,7 @@ window.cambiarAlmuerzoDirectorio = async function (empleadoId, nuevoEstado) {
 // ============================================================
 // EXPORTACIÓN A EXCEL DEL DIRECTORIO
 // ============================================================
-window.exportarDirectorioExcel = function () {
-  if (!window.XLSX) {
-    mostrarToast('Librería de exportación a Excel no disponible', 'error');
-    return;
-  }
+window.exportarDirectorioExcel = async function () {
 
   const lista = (window.directorioUltimaLista && window.directorioUltimaLista.length > 0)
     ? window.directorioUltimaLista
