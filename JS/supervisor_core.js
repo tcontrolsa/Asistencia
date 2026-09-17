@@ -14,6 +14,68 @@ let panelActual = 'asistencia';
 let filtroAsistenciaActual = 'todos';
 
 // ============================================================
+// CARGADORES DINÁMICOS DE LIBRERÍAS EXTERNAS PESADAS (LAZY LOAD)
+// Ahorra más de 1.1 MB en la carga inicial de la página.
+// ============================================================
+window.asegurarXLSX = function () {
+  if (typeof XLSX !== 'undefined') return Promise.resolve(window.XLSX);
+  if (window._promesaCargaXLSX) return window._promesaCargaXLSX;
+
+  window._promesaCargaXLSX = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.async = true;
+    script.onload = () => {
+      console.log('✅ Librería XLSX (Excel) cargada bajo demanda');
+      resolve(window.XLSX);
+    };
+    script.onerror = () => {
+      window._promesaCargaXLSX = null;
+      reject(new Error('No se pudo cargar la librería XLSX'));
+    };
+    document.head.appendChild(script);
+  });
+  return window._promesaCargaXLSX;
+};
+
+window.asegurarHtml2Pdf = function () {
+  if (typeof html2pdf !== 'undefined') return Promise.resolve(window.html2pdf);
+  if (window._promesaCargaHtml2Pdf) return window._promesaCargaHtml2Pdf;
+
+  window._promesaCargaHtml2Pdf = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.async = true;
+    script.onload = () => {
+      console.log('✅ Librería html2pdf (PDF) cargada bajo demanda');
+      resolve(window.html2pdf);
+    };
+    script.onerror = () => {
+      window._promesaCargaHtml2Pdf = null;
+      reject(new Error('No se pudo cargar la librería html2pdf'));
+    };
+    document.head.appendChild(script);
+  });
+  return window._promesaCargaHtml2Pdf;
+};
+
+// Precarga no bloqueante en tiempo ocioso (después de 4 segundos)
+if (typeof window !== 'undefined') {
+  const iniciarPrecargaOciosa = () => {
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(() => {
+        window.asegurarXLSX().catch(() => {});
+      }, { timeout: 6000 });
+    }
+  };
+  if (document.readyState === 'complete') {
+    setTimeout(iniciarPrecargaOciosa, 3000);
+  } else {
+    window.addEventListener('load', () => setTimeout(iniciarPrecargaOciosa, 3000));
+  }
+}
+
+// ============================================================
 // GESTIÓN DE SESIÓN SUPERVISOR Y ROLES (GLOBAL HELPERS)
 // ============================================================
 function getSupervisorRole(idOrSession, supObj) {
@@ -4943,6 +5005,7 @@ window.exportarDirectorioExcel = function () {
 
   mostrarLoader(true);
   try {
+    await window.asegurarXLSX();
     const headers = [
       "Cédula / ID",
       "Nombre Completo",
@@ -12367,13 +12430,14 @@ window.filtrarTablaHistoricoBase = function (term) {
   window.renderFilasHistoricoBase(filtrados);
 };
 
-window.exportarTablaHistoricoBaseExcel = window.exportarDiferenciasExcel = function () {
+window.exportarTablaHistoricoBaseExcel = window.exportarDiferenciasExcel = async function () {
   const lista = window._datosHistoricoBaseModal;
   if (!lista || !lista.length) {
     if (typeof mostrarToast === 'function') mostrarToast('No hay datos para exportar', 'warning');
     return;
   }
   try {
+    await window.asegurarXLSX();
     const rows = lista.map((it, idx) => {
       const fArr = it.fechasDiferencia || [];
       const fechasStr = fArr.map(f => {
@@ -12601,14 +12665,20 @@ window.filtrarTablaVacaciones = function (term) {
   window.renderFilasVacaciones(filtrados);
 };
 
-window.exportarTablaVacacionesExcel = function () {
+window.exportarTablaVacacionesExcel = async function () {
   const tabla = document.getElementById('tablaVacacionesModal');
   if (!tabla) return;
-  const ws = XLSX.utils.table_to_sheet(tabla);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Auditoría Vacaciones");
-  XLSX.writeFile(wb, `Reporte_Auditoria_Vacaciones_${new Date().toISOString().split('T')[0]}.xlsx`);
-  mostrarToast('Auditoría de vacaciones exportada a Excel', 'success');
+  try {
+    await window.asegurarXLSX();
+    const ws = XLSX.utils.table_to_sheet(tabla);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Auditoría Vacaciones");
+    XLSX.writeFile(wb, `Reporte_Auditoria_Vacaciones_${new Date().toISOString().split('T')[0]}.xlsx`);
+    mostrarToast('Auditoría de vacaciones exportada a Excel', 'success');
+  } catch (err) {
+    console.error("Error al exportar vacaciones a Excel:", err);
+    mostrarToast('Error al exportar: ' + err.message, 'error');
+  }
 };
 
 // ==========================================
@@ -12744,69 +12814,93 @@ window.renderDetailedKPIs = function () {
   }
 };
 
-window.exportarKPIsExcel = function () {
-  const wb = XLSX.utils.book_new();
-  const asistVal = $('kpiAsistenciaVal')?.innerText || '0%';
-  const vacVal = $('kpiVacacionesVal')?.innerText || '0%';
-  const data = [
-    ['Indicador', 'Valor %', 'Detalle 1', 'Detalle 2'],
-    ['Cumplimiento de Asistencia', asistVal, 'Efectivas: ' + ($('kpiAsistenciaDetalle1')?.innerText || '0'), 'Esperadas: ' + ($('kpiAsistenciaDetalle2')?.innerText || '0')],
-    ['Cumplimiento de Vacaciones', vacVal, 'Tomadas: ' + ($('kpiVacacionesDetalleTomadas')?.innerText || '0'), 'Adjudicadas: ' + ($('kpiVacacionesDetalle2')?.innerText || '0')]
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  XLSX.utils.book_append_sheet(wb, ws, "KPIs Globales");
-  XLSX.writeFile(wb, `Reporte_KPIs_Globales_${new Date().toISOString().split('T')[0]}.xlsx`);
-  mostrarToast('KPIs exportados a Excel', 'success');
+window.exportarKPIsExcel = async function () {
+  try {
+    await window.asegurarXLSX();
+    const wb = XLSX.utils.book_new();
+    const asistVal = $('kpiAsistenciaVal')?.innerText || '0%';
+    const vacVal = $('kpiVacacionesVal')?.innerText || '0%';
+    const data = [
+      ['Indicador', 'Valor %', 'Detalle 1', 'Detalle 2'],
+      ['Cumplimiento de Asistencia', asistVal, 'Efectivas: ' + ($('kpiAsistenciaDetalle1')?.innerText || '0'), 'Esperadas: ' + ($('kpiAsistenciaDetalle2')?.innerText || '0')],
+      ['Cumplimiento de Vacaciones', vacVal, 'Tomadas: ' + ($('kpiVacacionesDetalleTomadas')?.innerText || '0'), 'Adjudicadas: ' + ($('kpiVacacionesDetalle2')?.innerText || '0')]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, "KPIs Globales");
+    XLSX.writeFile(wb, `Reporte_KPIs_Globales_${new Date().toISOString().split('T')[0]}.xlsx`);
+    mostrarToast('KPIs exportados a Excel', 'success');
+  } catch (err) {
+    console.error("Error exportando KPIs a Excel:", err);
+    mostrarToast('Error al exportar KPIs: ' + err.message, 'error');
+  }
 };
 
-window.exportarKPIsPDF = function () {
+window.exportarKPIsPDF = async function () {
   const section = document.getElementById('kpisDashboardSection');
   if (!section) return;
-  const clone = section.cloneNode(true);
-  clone.style.padding = '20px';
-  clone.style.background = 'white';
-  const opt = {
-    margin: 10,
-    filename: `Reporte_KPIs_${new Date().toISOString().split('T')[0]}.pdf`,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2 },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-  };
-  mostrarToast('Generando PDF de KPIs...', 'info');
-  html2pdf().set(opt).from(clone).save().then(() => {
-    mostrarToast('PDF generado exitosamente', 'success');
-  });
+  try {
+    await window.asegurarHtml2Pdf();
+    const clone = section.cloneNode(true);
+    clone.style.padding = '20px';
+    clone.style.background = 'white';
+    const opt = {
+      margin: 10,
+      filename: `Reporte_KPIs_${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+    mostrarToast('Generando PDF de KPIs...', 'info');
+    html2pdf().set(opt).from(clone).save().then(() => {
+      mostrarToast('PDF generado exitosamente', 'success');
+    });
+  } catch (err) {
+    console.error("Error generando PDF de KPIs:", err);
+    mostrarToast('Error al generar PDF: ' + err.message, 'error');
+  }
 };
 
-window.exportarKPIsDetalladosExcel = function () {
+window.exportarKPIsDetalladosExcel = async function () {
   const tabla = document.getElementById('tablaKpiDetalle');
   if (!tabla) return;
-  const selPeriodo = document.getElementById('kpiDetallePeriodo');
-  const label = selPeriodo ? selPeriodo.options[selPeriodo.selectedIndex]?.text || 'Periodo' : 'Periodo';
-  const ws = XLSX.utils.table_to_sheet(tabla);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "KPIs Detallados");
-  XLSX.writeFile(wb, `KPIs_Detallados_${label.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`);
-  mostrarToast('KPIs detallados exportados a Excel', 'success');
+  try {
+    await window.asegurarXLSX();
+    const selPeriodo = document.getElementById('kpiDetallePeriodo');
+    const label = selPeriodo ? selPeriodo.options[selPeriodo.selectedIndex]?.text || 'Periodo' : 'Periodo';
+    const ws = XLSX.utils.table_to_sheet(tabla);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "KPIs Detallados");
+    XLSX.writeFile(wb, `KPIs_Detallados_${label.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`);
+    mostrarToast('KPIs detallados exportados a Excel', 'success');
+  } catch (err) {
+    console.error("Error exportando KPIs detallados a Excel:", err);
+    mostrarToast('Error al exportar: ' + err.message, 'error');
+  }
 };
 
-window.exportarKPIsDetalladosPDF = function () {
+window.exportarKPIsDetalladosPDF = async function () {
   const container = document.getElementById('tablaKpiDetalle')?.parentElement;
   if (!container) return;
-  const clone = container.cloneNode(true);
-  clone.style.padding = '20px';
-  clone.style.background = 'white';
-  const opt = {
-    margin: 10,
-    filename: `KPIs_Detallados_${new Date().toISOString().split('T')[0]}.pdf`,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2 },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-  };
-  mostrarToast('Generando PDF de KPIs detallados...', 'info');
-  html2pdf().set(opt).from(clone).save().then(() => {
-    mostrarToast('PDF generado exitosamente', 'success');
-  });
+  try {
+    await window.asegurarHtml2Pdf();
+    const clone = container.cloneNode(true);
+    clone.style.padding = '20px';
+    clone.style.background = 'white';
+    const opt = {
+      margin: 10,
+      filename: `KPIs_Detallados_${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+    mostrarToast('Generando PDF de KPIs detallados...', 'info');
+    html2pdf().set(opt).from(clone).save().then(() => {
+      mostrarToast('PDF generado exitosamente', 'success');
+    });
+  } catch (err) {
+    console.error("Error generando PDF detallado:", err);
+    mostrarToast('Error al generar PDF: ' + err.message, 'error');
+  }
 };
 
 // ============================================================
@@ -16183,7 +16277,7 @@ window.copiarResumenCocinaInvitados = function () {
   }
 };
 
-window.exportarInvitadosExcel = function () {
+window.exportarInvitadosExcel = async function () {
   const fechaFiltro = $('filtroFechaInvitados')?.value || '';
   const todos = window.obtenerListaConsolidadaInvitados();
   const datos = fechaFiltro ? todos.filter(i => i.fecha === fechaFiltro) : todos;
@@ -16193,7 +16287,8 @@ window.exportarInvitadosExcel = function () {
     return;
   }
 
-  if (typeof XLSX !== 'undefined') {
+  try {
+    await window.asegurarXLSX();
     const rows = datos.map(item => ({
       'Fecha': item.fecha,
       'Hora Solicitud': item.hora,
@@ -16215,7 +16310,8 @@ window.exportarInvitadosExcel = function () {
     const filename = `Pedidos_Invitados_${fechaFiltro || 'Todos'}.xlsx`;
     XLSX.writeFile(wb, filename);
     mostrarToast("Archivo Excel descargado exitosamente", "success");
-  } else {
+  } catch (eXlsx) {
+    console.warn("Fallo carga de XLSX, usando fallback CSV:", eXlsx);
     // Fallback CSV
     let csv = 'Fecha,Hora,Solicitante,Area,Tipo,Cantidad,Invitado,Empresa,HoraServicio,Observaciones,Estado\n';
     datos.forEach(d => {
