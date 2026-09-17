@@ -1745,6 +1745,58 @@ function obtenerRegistrosEmpleado(empleadoId) {
         });
       }
     }
+    // También verificar si existen registros archivados en HOJA_DESVINCULADOS
+    const sheetDesv = SpreadsheetApp.getActive().getSheetByName(HOJA_DESVINCULADOS);
+    if (sheetDesv) {
+      const dataDesv = sheetDesv.getDataRange().getValues();
+      for (let d = 1; d < dataDesv.length; d++) {
+        const dFila = dataDesv[d];
+        const dHojaOrigen = String(dFila[1] || '').trim();
+        const dId = String(dFila[2] || '').trim();
+        if (dHojaOrigen === 'REGISTROS' && dId === idBuscar) {
+          try {
+            const rawJson = dFila[dFila.length - 1];
+            if (rawJson && typeof rawJson === 'string' && rawJson.startsWith('[')) {
+              const rowData = JSON.parse(rawJson);
+              if (Array.isArray(rowData)) {
+                let fechaObj = rowData[COLUMNAS.FECHA];
+                let timestampObj = rowData[COLUMNAS.TIMESTAMP];
+                let fechaStr = '', timestampStr = '', horaStr = formatearHoraCell(rowData[COLUMNAS.HORA]);
+                if (fechaObj instanceof Date) fechaStr = Utilities.formatDate(fechaObj, timeZone, 'yyyy-MM-dd');
+                else if (typeof fechaObj === 'string') fechaStr = fechaObj;
+                if (timestampObj instanceof Date) timestampStr = timestampObj.toISOString();
+                else if (typeof timestampObj === 'string') timestampStr = timestampObj;
+                registros.push({
+                  fecha: fechaStr,
+                  id: rowData[COLUMNAS.ID]?.toString() || '',
+                  nombre: rowData[COLUMNAS.NOMBRE]?.toString() || '',
+                  tipo: rowData[COLUMNAS.TIPO]?.toString() || '',
+                  almuerzo: rowData[COLUMNAS.ALMUERZO]?.toString() || '',
+                  hora: horaStr,
+                  lat: rowData[COLUMNAS.LAT]?.toString() || '',
+                  lng: rowData[COLUMNAS.LNG]?.toString() || '',
+                  dispositivo: rowData[COLUMNAS.DISPOSITIVO]?.toString() || '',
+                  timestamp: timestampStr,
+                  modo: rowData[COLUMNAS.MODO]?.toString() || '',
+                  horasExtra: rowData[COLUMNAS.HORAS_EXTRA]?.toString() || '',
+                  autoriza: rowData[COLUMNAS.AUTORIZA]?.toString() || '',
+                  razon_salida: rowData[COLUMNAS.RAZON_SALIDA_TEMPRANA]?.toString() || '',
+                  quien_justifica: rowData[COLUMNAS.QUIEN_JUSTIFICA]?.toString() || '',
+                  razon_entrada_tardia: rowData[COLUMNAS.RAZON_ENTRADA_TARDIA]?.toString() || '',
+                  quien_justifica_entrada: rowData[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA]?.toString() || '',
+                  tipo_salida: rowData[COLUMNAS.TIPO_SALIDA]?.toString() || '',
+                  razon_permiso: rowData[COLUMNAS.RAZON_PERMISO]?.toString() || '',
+                  razon_ausencia: rowData[COLUMNAS.RAZON_AUSENCIA]?.toString() || '',
+                  permiso_personal_mins: rowData[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(rowData[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0,
+                  permiso_medico_mins: rowData[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(rowData[COLUMNAS.PERMISO_MEDICO_MINS]) : 0,
+                  tiempo_justificado_mins: rowData[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(rowData[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0
+                });
+              }
+            }
+          } catch (e) {}
+        }
+      }
+    }
     registros.sort((a, b) => {
       if (a.timestamp && b.timestamp) return new Date(b.timestamp) - new Date(a.timestamp);
       return 0;
@@ -1987,27 +2039,75 @@ function obtenerDatosSupervisorConTimestamp() {
       }
     }
 
-    // También incluir cualquier colaborador de la hoja DESVINCULADOS
+    // También incluir cualquier colaborador de la hoja DESVINCULADOS y sus registros archivados
     const sheetDesv = ss.getSheetByName(HOJA_DESVINCULADOS);
     if (sheetDesv) {
       const dataDesv = sheetDesv.getDataRange().getValues();
       for (let d = 1; d < dataDesv.length; d++) {
-        const dId = String(dataDesv[d][2] || '').trim();
-        const dNombre = String(dataDesv[d][3] || '').trim();
-        if (dId && !activeEmpIds.has(dId) && !regEmpIdsMap[dId]) {
-          regEmpIdsMap[dId] = {
-            id: dId,
-            nombre: dNombre || `Colaborador (${dId})`,
-            area: 'Desvinculado',
-            cargo: 'Desvinculado',
-            esEliminado: true,
-            esDesvinculado: true,
-            fecha_salida: String(dataDesv[d][0] || ''),
-            motivo_salida: String(dataDesv[d][4] || ''),
-            desvinculadoPor: String(dataDesv[d][5] || ''),
-            activo: false,
-            registros: []
-          };
+        const dFila = dataDesv[d];
+        const dHojaOrigen = String(dFila[1] || '').trim();
+        const dId = String(dFila[2] || '').trim();
+        const dNombre = String(dFila[3] || '').trim();
+        if (dId && !activeEmpIds.has(dId)) {
+          if (!regEmpIdsMap[dId]) {
+            regEmpIdsMap[dId] = {
+              id: dId,
+              nombre: dNombre || `Colaborador (${dId})`,
+              area: 'Desvinculado',
+              cargo: 'Desvinculado',
+              esEliminado: true,
+              esDesvinculado: true,
+              fecha_salida: String(dFila[0] || ''),
+              motivo_salida: String(dFila[4] || ''),
+              desvinculadoPor: String(dFila[5] || ''),
+              activo: false,
+              registros: []
+            };
+          }
+          if (dHojaOrigen === 'REGISTROS') {
+            try {
+              const rawJson = dFila[dFila.length - 1];
+              if (rawJson && typeof rawJson === 'string' && rawJson.startsWith('[')) {
+                const rowData = JSON.parse(rawJson);
+                if (Array.isArray(rowData)) {
+                  let fechaObj = rowData[COLUMNAS.FECHA];
+                  let timestampObj = rowData[COLUMNAS.TIMESTAMP];
+                  let fechaStr = '', timestampStr = '', horaStr = formatearHoraCell(rowData[COLUMNAS.HORA]);
+                  if (fechaObj instanceof Date) fechaStr = Utilities.formatDate(fechaObj, timeZone, 'yyyy-MM-dd');
+                  else if (typeof fechaObj === 'string') fechaStr = fechaObj;
+                  if (timestampObj instanceof Date) timestampStr = timestampObj.toISOString();
+                  else if (typeof timestampObj === 'string') timestampStr = timestampObj;
+                  const regObj = {
+                    fecha: fechaStr,
+                    id: rowData[COLUMNAS.ID]?.toString() || '',
+                    nombre: rowData[COLUMNAS.NOMBRE]?.toString() || '',
+                    tipo: rowData[COLUMNAS.TIPO]?.toString() || '',
+                    almuerzo: rowData[COLUMNAS.ALMUERZO]?.toString() || '',
+                    hora: horaStr,
+                    lat: rowData[COLUMNAS.LAT]?.toString() || '',
+                    lng: rowData[COLUMNAS.LNG]?.toString() || '',
+                    dispositivo: rowData[COLUMNAS.DISPOSITIVO]?.toString() || '',
+                    timestamp: timestampStr,
+                    modo: rowData[COLUMNAS.MODO]?.toString() || '',
+                    horasExtra: rowData[COLUMNAS.HORAS_EXTRA]?.toString() || '',
+                    autoriza: rowData[COLUMNAS.AUTORIZA]?.toString() || '',
+                    razon_salida: rowData[COLUMNAS.RAZON_SALIDA_TEMPRANA]?.toString() || '',
+                    quien_justifica: rowData[COLUMNAS.QUIEN_JUSTIFICA]?.toString() || '',
+                    razon_entrada_tardia: rowData[COLUMNAS.RAZON_ENTRADA_TARDIA]?.toString() || '',
+                    quien_justifica_entrada: rowData[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA]?.toString() || '',
+                    tipo_salida: rowData[COLUMNAS.TIPO_SALIDA]?.toString() || '',
+                    razon_permiso: rowData[COLUMNAS.RAZON_PERMISO]?.toString() || '',
+                    razon_ausencia: rowData[COLUMNAS.RAZON_AUSENCIA]?.toString() || '',
+                    permiso_personal_mins: rowData[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(rowData[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0,
+                    permiso_medico_mins: rowData[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(rowData[COLUMNAS.PERMISO_MEDICO_MINS]) : 0,
+                    tiempo_justificado_mins: rowData[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(rowData[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0
+                  };
+                  registros.push(regObj);
+                  regEmpIdsMap[dId].registros.push(regObj);
+                }
+              }
+            } catch(eJson) {}
+          }
         }
       }
     }

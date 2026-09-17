@@ -820,10 +820,18 @@
             </div>
           </div>
 
+          <!-- Opción Ver Desvinculados -->
+          <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid #ddd6fe; box-shadow:0 1px 3px rgba(124,58,237,0.06); height:32px;">
+            <label style="font-size:11.5px; font-weight:700; color:#6d28d9; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin:0;" title="Ver colaboradores desvinculados y sus registros históricos">
+              <input type="checkbox" id="chkIncluirDesvinculadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()" style="cursor:pointer; accent-color:#7c3aed;">
+              <i class="fas fa-user-slash" style="color:#7c3aed;"></i> Ver Desvinculados
+            </label>
+          </div>
+
           <!-- Opción Incluir Eliminados -->
           <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.02); height:32px;">
-            <label style="font-size:11.5px; font-weight:700; color:#334155; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin:0;">
-              <input type="checkbox" id="chkIncluirEliminadosRep" onchange="cargarReportes()" style="cursor:pointer; accent-color:#e11d48;">
+            <label style="font-size:11.5px; font-weight:700; color:#334155; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin:0;" title="Incluir otros colaboradores inactivos o eliminados de base">
+              <input type="checkbox" id="chkIncluirEliminadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()" style="cursor:pointer; accent-color:#e11d48;">
               <i class="fas fa-user-minus" style="color:#e11d48;"></i> Incluir Eliminados
             </label>
           </div>
@@ -869,6 +877,7 @@
                   <button class="btn btn-filter" onclick="setFiltroRapidoReporte('pasante', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Pasante</button>
                   <button class="btn btn-filter" onclick="setFiltroRapidoReporte('sin asistencia', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Sin Asistencia</button>
                   <button class="btn btn-filter" onclick="setFiltroRapidoReporte('almuerzos extra', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Almuerzos Extra</button>
+                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('desvinculados', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid #ddd6fe; background:#f5f3ff; color:#7c3aed; font-weight:700; cursor:pointer;" title="Filtrar exclusivamente personal desvinculado"><i class="fas fa-user-slash"></i> Desvinculados</button>
                   <button class="btn btn-filter" onclick="setFiltroRapidoReporte('eliminados', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid #fecdd3; background:#fff1f2; color:#e11d48; font-weight:700; cursor:pointer;">🗑️ Eliminados</button>
                 </div>
                 <input type="hidden" id="filtroCargoReporte" value="">
@@ -3969,7 +3978,7 @@
 
   <script src="./JS/openwa_service.js?v=20260917_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260916_02"></script>
-  <script src="./JS/supervisor_core.js?v=20260917_16"></script>
+  <script src="./JS/supervisor_core.js?v=20260917_17"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260917_05"></script>

@@ -2747,9 +2747,78 @@ function sortarTablaReportes(colId) {
 // ============================================================
 // REPORTES - CÁLCULOS COMPLETOS
 // ============================================================
+// ==========================================
+// HELPERS REPORTES: DESVINCULADOS Y EMPLEADOS
+// ==========================================
+window.obtenerListaEmpleadosReportes = function () {
+  const incluirDesv = $('chkIncluirDesvinculadosRep')?.checked || false;
+  const incluirElim = $('chkIncluirEliminadosRep')?.checked || false;
+  const fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
+  const verBajas = incluirDesv || incluirElim || fCargo === 'desvinculados' || fCargo === 'eliminados';
+
+  let lista = [...empCache];
+  if (verBajas) {
+    const mapaBajas = new Map();
+    (window.empEliminadosCache || []).forEach(emp => {
+      const k = String(emp.id || emp.nombre || '').trim();
+      if (k) mapaBajas.set(k, { ...emp });
+    });
+    (window._cacheDesvinculados || []).forEach(d => {
+      const k = String(d.id || d.nombre || '').trim();
+      if (!k) return;
+      if (!mapaBajas.has(k)) {
+        mapaBajas.set(k, {
+          id: d.id,
+          nombre: d.nombre,
+          area: d.area || 'Desvinculado',
+          cargo: d.cargo || 'Desvinculado',
+          esEliminado: true,
+          esDesvinculado: true,
+          fecha_salida: d.fechaDesvinculacion || '',
+          motivo_salida: d.motivo || '',
+          desvinculadoPor: d.supervisor || '',
+          activo: false,
+          registros: d.registros || []
+        });
+      } else {
+        const item = mapaBajas.get(k);
+        item.esDesvinculado = true;
+        if (d.fechaDesvinculacion && !item.fecha_salida) item.fecha_salida = d.fechaDesvinculacion;
+        if (d.motivo && !item.motivo_salida) item.motivo_salida = d.motivo;
+      }
+    });
+
+    // Si aún no se cargó el historial de desvinculados de Sheets, dispararlo en background
+    if ((!window._cacheDesvinculados || !window._cacheDesvinculados.length) && typeof window.cargarHistorialDesvinculados === 'function' && !window._cargandoHistorialDesvinculadosBg) {
+      window._cargandoHistorialDesvinculadosBg = true;
+      window.cargarHistorialDesvinculados().then(() => {
+        window._cargandoHistorialDesvinculadosBg = false;
+        if (typeof window.actualizarReporteInteractivo === 'function') {
+          window.actualizarReporteInteractivo();
+        }
+      }).catch(() => { window._cargandoHistorialDesvinculadosBg = false; });
+    }
+
+    lista = lista.concat(Array.from(mapaBajas.values()));
+  }
+  return lista;
+};
+
+window.cambiarFiltroDesvinculadosReporte = function () {
+  if (typeof window.actualizarReporteInteractivo === 'function') {
+    window.actualizarReporteInteractivo();
+  }
+  if (typeof cargarReportes === 'function') {
+    cargarReportes();
+  }
+  if (typeof window.filtrarReporteInteractivo === 'function') {
+    window.filtrarReporteInteractivo();
+  }
+};
+
 function cargarReportes() {
   let periodo = periodos[parseInt($('periodoMensual')?.value || 0)];
-  if (!periodo || (!empCache.length && !window.empEliminadosCache?.length)) return;
+  if (!periodo || (!empCache.length && !window.empEliminadosCache?.length && !window._cacheDesvinculados?.length)) return;
 
   const hoyRep = getLocalHoyStr();
   const fechaInicio = $('filtroFechaReportesInicio')?.value;
@@ -2757,21 +2826,28 @@ function cargarReportes() {
   const R_INI = fechaInicio ? fechaInicio : periodo.inicio;
   const R_FIN = fechaFin ? fechaFin : periodo.fin;
 
-  const incluirEliminados = $('chkIncluirEliminadosRep')?.checked || false;
-  let listaEmpleados = [...empCache];
-  if (incluirEliminados && window.empEliminadosCache && window.empEliminadosCache.length > 0) {
-    listaEmpleados = listaEmpleados.concat(window.empEliminadosCache);
-  }
+  let listaEmpleados = window.obtenerListaEmpleadosReportes();
 
   let stats = listaEmpleados.map(e => {
     let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
     let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
-    // Días laborables solo hasta hoy (no días futuros del período)
-    let diasLaborablesTotal = obtenerDiasHabiles(R_INI, R_FIN);
-    let diasLaborables = diasLaborablesTotal.filter(d => d <= hoyRep);
-    let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f)).size;
 
-    // FALTAS: días hábiles transcurridos menos días asistidos
+    // Delimitar evaluación de días hábiles si el colaborador tiene fecha de ingreso o salida
+    const fSalida = (e.fecha_salida || e.fechaDesvinculacion) ? (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) : null;
+    let finEvalEmp = (R_FIN < hoyRep) ? R_FIN : hoyRep;
+    if (fSalida && fSalida < finEvalEmp) {
+      finEvalEmp = fSalida;
+    }
+    let iniEvalEmp = R_INI;
+    if (e.fecha_ingreso) {
+      const fIng = normalizarFechaStr(e.fecha_ingreso);
+      if (fIng && fIng > R_INI) iniEvalEmp = fIng;
+    }
+    let diasLaborables = (iniEvalEmp <= finEvalEmp) ? obtenerDiasHabiles(iniEvalEmp, finEvalEmp) : [];
+    let diasLaborablesTotal = diasLaborables;
+    let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f && f >= iniEvalEmp && f <= finEvalEmp)).size;
+
+    // FALTAS: días hábiles transcurridos menos días asistidos (0 si ya estaba desvinculado)
     let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
 
     // ATRASOS + ALMUERZO + PUNTUALIDAD (atrasos se calculan y descuentan dentro del loop diario abajo)
@@ -2806,6 +2882,8 @@ function cargarReportes() {
     }
 
     todasLasFechas.forEach(fecha => {
+      if (fSalida && fecha > fSalida) return;
+      if (iniEvalEmp && fecha < iniEvalEmp) return;
       const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
       const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
       const isJustificado = regsDia.some(r => {
@@ -3347,7 +3425,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     : (String(sessionData.id) === ADMIN_ID);
   window.isMaster = esMaster;
 
-  let e = empCache.find(x => x.id === id);
+  let e = empCache.find(x => String(x.id).trim() === String(id).trim())
+    || (window.empEliminadosCache || []).find(x => String(x.id).trim() === String(id).trim())
+    || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === String(id).trim());
   if (!e) return;
 
   // Cargar vacaciones del empleado en segundo plano para no demorar la visualización
@@ -3375,6 +3455,18 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   });
   let regs = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN)
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+  // Si no hay registros en el período actual (ej: colaborador desvinculado en meses previos) y tiene marcaciones anteriores
+  if (regs.length === 0 && indexPeriodo === 0 && todosRegs.length > 0 && !customInicio) {
+    const ultReg = [...todosRegs].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
+    if (ultReg && ultReg.fecha) {
+      const idxPeriodoConRegs = periodos.findIndex(p => ultReg.fecha >= p.inicio && ultReg.fecha <= p.fin);
+      if (idxPeriodoConRegs > 0) {
+        console.log(`ℹ️ Redirigiendo automáticamente a período ${periodos[idxPeriodoConRegs].label} para ${e.nombre}`);
+        return mostrarDetalle(id, idxPeriodoConRegs, customInicio, customFin, fechaEnfocar);
+      }
+    }
+  }
 
   // Cargar historial completo de registros archivados si es necesario (ej: periodos anteriores o rango personalizado)
   if (!e._historialCompletoCargado && (window.FirebaseBackend || typeof jsonpRequest === 'function')) {
@@ -3544,7 +3636,11 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     const dHoy = new Date(hoyStrLocal + 'T12:00:00');
     dHoy.setDate(dHoy.getDate() - 1);
     const ayerStrLocal = dHoy.toISOString().split('T')[0];
-    const limiteFinLocal = (R_FIN && R_FIN < ayerStrLocal) ? R_FIN : ayerStrLocal;
+    let limiteFinLocal = (R_FIN && R_FIN < ayerStrLocal) ? R_FIN : ayerStrLocal;
+    const fSalidaEmp = (e.fecha_salida || e.fechaDesvinculacion) ? (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) : null;
+    if (fSalidaEmp && fSalidaEmp < limiteFinLocal) {
+      limiteFinLocal = fSalidaEmp;
+    }
 
     let inicioEvalEmp = R_INI;
     if (e.fecha_ingreso && String(e.fecha_ingreso).trim().length >= 10) {
@@ -4244,6 +4340,10 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
               <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Editar enlace de Rol de Pagos"` : ''}><i class="fas fa-file-invoice-dollar"></i> ${e.id_dispositivo ? 'Con Rol' : 'Sin Rol'}</span>
               ${badgeWhatsAppHtml}
               ${badgeCulturaHtml}
+              ${(e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado') ?
+                `<span style="background:#f5f3ff; color:#7c3aed; border:1.5px solid #ddd6fe; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px;" title="Colaborador Desvinculado"><i class="fas fa-user-slash"></i> Desvinculado ${(e.fecha_salida || e.fechaDesvinculacion) ? ' (' + (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) + ')' : ''}</span>` :
+                (e.esEliminado ? `<span style="background:#fff1f2; color:#e11d48; border:1px solid #fecdd3; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" title="Colaborador Inactivo / Eliminado en base"><i class="fas fa-user-minus"></i> Inactivo en Base</span>` : '')
+              }
               <button onclick="window.resetearPasswordEmpleado('${e.id}', '${escapeHtml(e.nombre)}')" title="Resetear contraseña para permitir que el empleado vuelva a vincular su dispositivo" style="background:#fff1f2; color:#be123c; border:1px solid #fca5a5; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; cursor:pointer; transition:all 0.15s;"><i class="fas fa-key" style="font-size:10px;"></i> Resetear Contraseña</button>
               ${tardT > 0 ?
       `<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` :
@@ -8456,7 +8556,7 @@ window.actualizarReporteInteractivo = function () {
   const selectPeriodo = $('periodoMensual');
   const idx = parseInt(selectPeriodo?.value || 0);
   let periodo = periodos[idx];
-  if (!periodo || (!empCache.length && !window.empEliminadosCache?.length)) return;
+  if (!periodo || (!empCache.length && !window.empEliminadosCache?.length && !window._cacheDesvinculados?.length)) return;
 
   const fechaFiltro = $('filtroFechaReportes')?.value;
   const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
@@ -8464,19 +8564,27 @@ window.actualizarReporteInteractivo = function () {
 
   const hoyRep = getLocalHoyStr();
 
-  const incluirEliminados = $('chkIncluirEliminadosRep')?.checked || false;
-  let listaEmpleados = [...empCache];
-  if (incluirEliminados && window.empEliminadosCache && window.empEliminadosCache.length > 0) {
-    listaEmpleados = listaEmpleados.concat(window.empEliminadosCache);
-  }
+  let listaEmpleados = window.obtenerListaEmpleadosReportes();
 
   // Calcular estadísticas de manera idéntica a cargarReportes()
   _reportesCustomData = listaEmpleados.map(e => {
     let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
     let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
-    let diasLaborablesTotal = obtenerDiasHabiles(R_INI, R_FIN);
-    let diasLaborables = diasLaborablesTotal.filter(d => d <= hoyRep);
-    let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f)).size;
+
+    // Delimitar evaluación de días hábiles si el colaborador tiene fecha de ingreso o salida
+    const fSalida = (e.fecha_salida || e.fechaDesvinculacion) ? (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) : null;
+    let finEvalEmp = (R_FIN < hoyRep) ? R_FIN : hoyRep;
+    if (fSalida && fSalida < finEvalEmp) {
+      finEvalEmp = fSalida;
+    }
+    let iniEvalEmp = R_INI;
+    if (e.fecha_ingreso) {
+      const fIng = normalizarFechaStr(e.fecha_ingreso);
+      if (fIng && fIng > R_INI) iniEvalEmp = fIng;
+    }
+    let diasLaborables = (iniEvalEmp <= finEvalEmp) ? obtenerDiasHabiles(iniEvalEmp, finEvalEmp) : [];
+    let diasLaborablesTotal = diasLaborables;
+    let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f && f >= iniEvalEmp && f <= finEvalEmp)).size;
 
     let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
 
@@ -8511,6 +8619,8 @@ window.actualizarReporteInteractivo = function () {
     }
 
     todasLasFechas.forEach(fecha => {
+      if (fSalida && fecha > fSalida) return;
+      if (iniEvalEmp && fecha < iniEvalEmp) return;
       const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
       const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
       const isJustificado = regsDia.some(r => {
@@ -8802,11 +8912,12 @@ window.sortReporteCustom = function (colId) {
 };
 
 window.setFiltroRapidoReporte = function (cargoVal, btnElement) {
-  if (cargoVal === 'eliminados') {
+  if (cargoVal === 'desvinculados') {
+    const chkDesv = $('chkIncluirDesvinculadosRep');
+    if (chkDesv && !chkDesv.checked) chkDesv.checked = true;
+  } else if (cargoVal === 'eliminados') {
     const chk = $('chkIncluirEliminadosRep');
-    if (chk && !chk.checked) {
-      chk.checked = true;
-    }
+    if (chk && !chk.checked) chk.checked = true;
   }
   if ($('filtroCargoReporte')) {
     $('filtroCargoReporte').value = cargoVal;
@@ -8822,13 +8933,32 @@ window.setFiltroRapidoReporte = function (cargoVal, btnElement) {
       b.style.borderColor = 'var(--g200)';
     });
     const isElim = cargoVal === 'eliminados';
-    btnElement.style.background = isElim ? '#e11d48' : 'var(--blue)';
+    const isDesv = cargoVal === 'desvinculados';
+    btnElement.style.background = isDesv ? '#7c3aed' : (isElim ? '#e11d48' : 'var(--blue)');
     btnElement.style.color = '#fff';
-    btnElement.style.borderColor = isElim ? '#e11d48' : 'var(--blue)';
+    btnElement.style.borderColor = isDesv ? '#7c3aed' : (isElim ? '#e11d48' : 'var(--blue)');
   }
-  if (typeof cargarReportes === 'function') cargarReportes();
   if (typeof actualizarReporteInteractivo === 'function') actualizarReporteInteractivo();
+  if (typeof cargarReportes === 'function') cargarReportes();
   filtrarReporteInteractivo();
+};
+
+window.obtenerDatosFiltradosReporteCustom = function (q = '', fCargo = '') {
+  q = (q || '').toLowerCase();
+  fCargo = (fCargo || '').toLowerCase();
+
+  return (_reportesCustomData || []).filter(e => {
+    let matchQ = !q || (e.nombre || '').toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q) || String(e.id || '').toLowerCase().includes(q);
+    let matchCargo = !fCargo;
+    if (fCargo === 'desvinculados') {
+      matchCargo = !!e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado' || (e.estadoBadge && e.estadoBadge.toLowerCase().includes('desvinculado')) || (e.motivo_salida && e.motivo_salida.length > 0);
+    } else if (fCargo === 'eliminados') {
+      matchCargo = !!e.esEliminado || e.activo === false || (e.area || '').toLowerCase() === 'eliminado' || (e.cargo || '').toLowerCase() === 'eliminado';
+    } else if (fCargo) {
+      matchCargo = (e.cargo || '').toLowerCase() === fCargo;
+    }
+    return matchQ && matchCargo;
+  });
 };
 
 window.filtrarReporteInteractivo = function () {
@@ -8928,16 +9058,7 @@ window.filtrarReporteInteractivo = function () {
     $('reportsLayoutContainer').style.display = 'grid';
   }
 
-  let data = (_reportesCustomData || []).filter(e => {
-    let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-    let matchCargo = !fCargo;
-    if (fCargo === 'eliminados') {
-      matchCargo = !!e.esEliminado || e.activo === false || (e.area || '').toLowerCase() === 'eliminado' || (e.cargo || '').toLowerCase() === 'eliminado';
-    } else if (fCargo) {
-      matchCargo = (e.cargo || '').toLowerCase() === fCargo;
-    }
-    return matchQ && matchCargo;
-  });
+  let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
 
   // Ordenar
   if (_sortCustomReport.col) {
@@ -8970,7 +9091,13 @@ window.filtrarReporteInteractivo = function () {
 
   bodyT.innerHTML = data.map(e => {
     let nombreEmpDisplay = escapeHtml(e.nombre);
-    if (e.esEliminado) {
+    if (e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado') {
+      const fSalidaStr = (e.fecha_salida || e.fechaDesvinculacion) ? (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) : '';
+      nombreEmpDisplay += ` <span class="pill" style="font-size:9.5px; padding:2px 7px; background:#f5f3ff; color:#7c3aed; font-weight:700; border:1px solid #ddd6fe;" title="Colaborador Desvinculado"><i class="fas fa-user-slash"></i> Desvinculado</span>`;
+      if (fSalidaStr) {
+        nombreEmpDisplay += ` <span style="font-size:10px; color:#8b5cf6; font-weight:600; margin-left:2px;">(Salida: ${fSalidaStr})</span>`;
+      }
+    } else if (e.esEliminado) {
       nombreEmpDisplay += ` <span class="pill" style="font-size:9px; padding:1px 6px; background:#ffe4e6; color:#e11d48; font-weight:700; border:1px solid #fecdd3;" title="Colaborador eliminado con registros históricos">🗑️ Eliminado</span>`;
     }
     let rowHtml = `<tr onclick="mostrarDetalle('${e.id}')" style="cursor:pointer"><td><div class="employee-cell">${photoCell(e)}<span>${nombreEmpDisplay}</span></div></td>`;
@@ -9596,11 +9723,7 @@ window.exportarExcelReporteCustom = function () {
     });
     totalCols = columnasCustomActivas.length + 2;
 
-    let data = (_reportesCustomData || []).filter(e => {
-      let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-      let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
-      return matchQ && matchCargo;
-    });
+    let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
 
     bodyHtml = data.map(e => {
       let rowHtml = `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
@@ -9742,11 +9865,7 @@ window.exportarGoogleSheetsReporteCustom = async function () {
       }
     });
 
-    let data = (_reportesCustomData || []).filter(e => {
-      let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-      let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
-      return matchQ && matchCargo;
-    });
+    let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
 
     filas = data.map(e => {
       let fila = [e.nombre, e.area || ''];
@@ -9865,11 +9984,7 @@ window.imprimirReporteCustom = function () {
     });
     tituloReporte = 'TCONTROL S.A. - REPORTE OFICIAL DE ASISTENCIA';
 
-    let data = (_reportesCustomData || []).filter(e => {
-      let matchQ = !q || e.nombre.toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q);
-      let matchCargo = !fCargo || (e.cargo || '').toLowerCase() === fCargo;
-      return matchQ && matchCargo;
-    });
+    let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
     totalMetaLabel = `Total Empleados Evaluados: ${data.length}`;
 
     bodyHtml = data.map(e => {
