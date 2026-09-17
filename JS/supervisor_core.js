@@ -12108,6 +12108,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
     let sumaKpis = 0;
     let datosTabla = [];
 
+    const esVistaConsolidada = (opcionPeriodo === 'ANUAL' || (typeof opcionPeriodo === 'string' && opcionPeriodo.startsWith('ANIO_')) || opcionPeriodo === 'ULTIMOS_365' || opcionPeriodo === 'HISTORICO_BASE');
     const kpiVacIndiv = window.kpiVacacionesIndividual || {};
 
     empAsistencia.forEach(e => {
