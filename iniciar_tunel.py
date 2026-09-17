@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 INICIADOR AUTOMÁTICO DE TÚNEL CLOUDFLARE + CORS BRIDGE — TCONTROL
-- Levanta el CORS Bridge en el puerto 2786 (redirigiendo a http://192.168.10.129:2785).
+- Levanta el CORS Bridge multihilo en el puerto 2786 (redirigiendo a http://192.168.10.129:2785).
 - Inicia cloudflared tunnel hacia http://127.0.0.1:2786.
 - Detecta automáticamente la URL generada en trycloudflare.com.
 - Sincroniza la URL en tiempo real en Cloud Firestore (configuracion/whatsapp).
+- Auto-recuperación: Si el túnel Cloudflare se desconecta, se reinicia automáticamente.
 - Al cerrar (Ctrl+C), restaura la configuración en Firestore a la IP local (http://192.168.10.129:2785).
 """
 
@@ -18,12 +19,26 @@ import subprocess
 import urllib.request
 import urllib.error
 import json
+from socketserver import ThreadingMixIn
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# Forzar codificación UTF-8 en stdout/stderr de Windows para evitar UnicodeEncodeError con emojis
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 TARGET_URL = "http://192.168.10.129:2785"
 PORT_BRIDGE = 2786
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/tcontrol-asistencia/databases/(default)/documents/configuracion/whatsapp?updateMask.fieldPaths=servidorUrl&key=AIzaSyDHAOvwmq4nt4IdalNdowYcak0clwEvFc4"
 CLOUDFLARED_PATH = r"C:\Users\tcontrol\bin\cloudflared.exe"
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
 
 class CorsBridgeHandler(BaseHTTPRequestHandler):
     def _set_cors_headers(self):
@@ -51,7 +66,7 @@ class CorsBridgeHandler(BaseHTTPRequestHandler):
 
         req = urllib.request.Request(target, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:
                 resp_data = resp.read()
                 self.send_response(resp.status)
                 self._set_cors_headers()
@@ -97,93 +112,117 @@ def actualizar_firestore_url(servidor_url):
         with urllib.request.urlopen(req, timeout=8) as res:
             return res.status == 200
     except Exception as e:
-        print(f"⚠️ [Firestore] Aviso actualizando URL en la nube: {e}")
+        print(f"[Firestore] Aviso actualizando URL en la nube: {e}")
         return False
 
 
 def start_cors_server():
-    server = HTTPServer(('127.0.0.1', PORT_BRIDGE), CorsBridgeHandler)
+    server = ThreadingHTTPServer(('127.0.0.1', PORT_BRIDGE), CorsBridgeHandler)
     server.serve_forever()
 
 
+_detener_servicio = False
+_proc_actual = None
+
+
+def limpiar_salida(signum=None, frame=None):
+    global _detener_servicio, _proc_actual
+    _detener_servicio = True
+    print("\nDeteniendo túnel Cloudflare...")
+    if _proc_actual:
+        try:
+            _proc_actual.terminate()
+            _proc_actual.wait(timeout=3)
+        except Exception:
+            try: _proc_actual.kill()
+            except Exception: pass
+    print(f"Restaurando servidor en Firebase a: {TARGET_URL}...")
+    actualizar_firestore_url(TARGET_URL)
+    print("Configuración restaurada. Servicio finalizado.")
+    sys.exit(0)
+
+
 def main():
-    print("================================================================")
+    global _proc_actual, _detener_servicio
+
+    print("=" * 64)
     print("  INICIANDO SERVICIO DE TÚNEL WHATSAPP — TCONTROL S.A.")
     print(f"  Destino OpenWA: {TARGET_URL}")
     print(f"  CORS Bridge:    http://127.0.0.1:{PORT_BRIDGE}")
-    print("================================================================")
+    print("=" * 64)
 
-    # 1. Iniciar CORS Bridge en hilo secundario
+    # 1. Iniciar CORS Bridge multihilo en segundo plano
     try:
         t_bridge = threading.Thread(target=start_cors_server, daemon=True)
         t_bridge.start()
-        print(" [1/3] CORS Bridge activo en http://127.0.0.1:2786 ✅")
+        print(" [1/3] CORS Bridge activo en http://127.0.0.1:2786")
     except Exception as e:
-        print(f" ⚠️ Error levantando CORS Bridge: {e}")
+        print(f" [Aviso] CORS Bridge: {e}")
 
     # 2. Localizar ejecutable de cloudflared
     cloudflared_bin = CLOUDFLARED_PATH
     if not os.path.exists(cloudflared_bin):
-        # Intentar en PATH
         import shutil
         cloudflared_bin = shutil.which("cloudflared") or "cloudflared"
 
-    print(f" [2/3] Levantando túnel con {cloudflared_bin}...")
-
-    # 3. Lanzar subprocess
-    cmd = [cloudflared_bin, "tunnel", "--url", f"http://127.0.0.1:{PORT_BRIDGE}"]
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True
-    )
-
-    url_tunel = None
-    url_regex = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
-
-    def limpiar_salida(signum=None, frame=None):
-        print("\n🛑 Deteniendo túnel Cloudflare...")
-        try:
-            proc.terminate()
-            proc.wait(timeout=3)
-        except Exception:
-            try: proc.kill()
-            except Exception: pass
-        print(f"🔄 Restaurando servidor en Firebase a: {TARGET_URL}...")
-        actualizar_firestore_url(TARGET_URL)
-        print("✅ Configuración restaurada. Servicio finalizado.")
-        sys.exit(0)
+    print(f" [2/3] Ejecutable cloudflared: {cloudflared_bin}")
 
     signal.signal(signal.SIGINT, limpiar_salida)
     signal.signal(signal.SIGTERM, limpiar_salida)
 
-    try:
-        for line in proc.stdout:
-            sys.stdout.write(line)
-            sys.stdout.flush()
+    url_regex = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
 
-            if not url_tunel:
-                match = url_regex.search(line)
-                if match:
-                    url_tunel = match.group(0)
-                    print("\n" + "=" * 64)
-                    print("  🎉 ¡TÚNEL CLOUDFLARE ESTABLECIDO CON ÉXITO! 🎉")
-                    print(f"  URL Pública: {url_tunel}")
-                    print("=" * 64)
-                    print("  Sincronizando automáticamente con Firebase Firestore...")
-                    if actualizar_firestore_url(url_tunel):
-                        print("  ✅ ¡Firebase actualizado! Todos los supervisores están sincronizados.")
-                    else:
-                        print("  ⚠️ No se pudo sincronizar Firestore automáticamente.")
-                    print("  Presiona Ctrl+C en cualquier momento para detener el túnel.")
-                    print("=" * 64 + "\n")
-    except KeyboardInterrupt:
-        limpiar_salida()
-    finally:
-        limpiar_salida()
+    # Bucle de resiliencia: Si el túnel cae, se reinicia automáticamente
+    while not _detener_servicio:
+        url_tunel = None
+        print("\n [3/3] Conectando túnel Cloudflare hacia http://127.0.0.1:2786...")
+        cmd = [cloudflared_bin, "tunnel", "--url", f"http://127.0.0.1:{PORT_BRIDGE}"]
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            _proc_actual = proc
+
+            for line in proc.stdout:
+                if _detener_servicio:
+                    break
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
+                if not url_tunel:
+                    match = url_regex.search(line)
+                    if match:
+                        url_tunel = match.group(0)
+                        print("\n" + "=" * 64)
+                        print("  ¡TÚNEL CLOUDFLARE ESTABLECIDO CON ÉXITO!")
+                        print(f"  URL Pública HTTPS: {url_tunel}")
+                        print("=" * 64)
+                        print("  Sincronizando automáticamente con Firebase Firestore...")
+                        if actualizar_firestore_url(url_tunel):
+                            print("  [OK] Firebase actualizado. Todos los celulares y supervisores están sincronizados.")
+                        else:
+                            print("  [Aviso] No se pudo sincronizar Firestore automáticamente.")
+                        print("  Presiona Ctrl+C en cualquier momento para detener el túnel.")
+                        print("=" * 64 + "\n")
+
+            proc.wait()
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"[Aviso] Error en túnel: {e}")
+
+        if not _detener_servicio:
+            print("El túnel se desconectó. Reintentando en 3 segundos...")
+            time.sleep(3)
+
+    limpiar_salida()
 
 
 if __name__ == '__main__':

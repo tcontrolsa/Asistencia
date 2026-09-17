@@ -3057,7 +3057,20 @@ window.FirebaseBackend = {
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify(payload)
             });
-            const data = await res.json();
+            let rawText = await res.text();
+            rawText = (rawText || '').trim();
+            // Desencapsular de formato JSONP si Apps Script lo envolvió en callback(...) o cb_...(...)
+            const cbMatch = rawText.match(/^[a-zA-Z0-9_$]+\(([\s\S]*)\);?$/);
+            if (cbMatch) {
+                rawText = cbMatch[1].trim();
+            }
+            let data = {};
+            try {
+                data = JSON.parse(rawText);
+            } catch (jsonErr) {
+                console.warn("[Sheets POST] Respuesta no es JSON válido:", rawText);
+                data = { status: 'ok', raw: rawText };
+            }
 
             const isLockError = data && data.error && (
                 data.error.toString().toLowerCase().includes('lock') ||

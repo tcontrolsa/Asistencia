@@ -132,6 +132,31 @@
             } catch (e) {
                 console.warn("[OpenWA] Error cargando configuración, usando valores por defecto:", e);
             }
+
+            // Sincronización en tiempo real con Firestore para que cambios de túnel se reflejen de inmediato en celulares y PCs
+            if (typeof db !== 'undefined' && db && !this._listenerFirestoreIniciado) {
+                this._listenerFirestoreIniciado = true;
+                try {
+                    db.collection('configuracion').doc('whatsapp').onSnapshot(snap => {
+                        if (snap && snap.exists) {
+                            const d = snap.data() || {};
+                            if (d.servidorUrl && d.servidorUrl !== this.config.servidorUrl) {
+                                console.log(`[OpenWA] URL del servidor WhatsApp actualizada en tiempo real: ${d.servidorUrl}`);
+                                this.config.servidorUrl = d.servidorUrl;
+                                if (typeof $ === 'function') {
+                                    const el = $('txtWhatsAppServidorUrl');
+                                    if (el) el.value = d.servidorUrl;
+                                }
+                            }
+                            if (d.servidorUrlLocal) this.config.servidorUrlLocal = d.servidorUrlLocal;
+                            if (d.apiKey) this.config.apiKey = d.apiKey;
+                        }
+                    }, err => {
+                        console.warn("[OpenWA] Aviso en listener tiempo real Firestore:", err);
+                    });
+                } catch(eSnap) {}
+            }
+
             this._inicializado = true;
             return this.config;
         },
@@ -282,6 +307,11 @@
             return num;
         },
 
+        // Detectar si una petición causaría bloqueo de Contenido Mixto (HTTPS -> HTTP) en el navegador
+        _esInseguroEnHttps(url) {
+            return (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && (url || '').trim().startsWith('http://'));
+        },
+
         // Obtener URL base segura para peticiones (maneja auto-upgrade a HTTPS para evitar bloqueo de Contenido Mixto en smartphones)
         _obtenerUrlBase(servidorUrl = null) {
             let url = (servidorUrl || this.config.servidorUrl || DEFAULT_CONFIG_WHATSAPP.servidorUrl || '').trim().replace(/\/+$/, '');
@@ -297,6 +327,13 @@
             const urlBase = this._obtenerUrlBase(servidorUrl);
             const apiKey = apiKeyCustom !== null ? apiKeyCustom : (this.config.apiKey || DEFAULT_CONFIG_WHATSAPP.apiKey || '');
             let timeoutId = null;
+
+            if (this._esInseguroEnHttps(urlBase)) {
+                return {
+                    ok: false,
+                    error: `Bloqueo de Contenido Mixto: La aplicación web se ejecuta en HTTPS seguro, pero la URL configurada para WhatsApp es HTTP insegura (${urlBase}). Los navegadores de celulares y computadoras bloquean estas conexiones. Ejecuta 'iniciar_tunel_whatsapp.bat' en el PC principal para habilitar el túnel HTTPS.`
+                };
+            }
 
             try {
                 const controller = new AbortController();
@@ -440,6 +477,11 @@
             // Normalizar dígitos internacionales para la consulta OpenWA (ej: 593984660105 en vez de 0984660105)
             const cleanDigits = toChatId.replace(/@.*$/, '').replace(/\D/g, '');
 
+            // Si la consulta causaría bloqueo de Contenido Mixto (HTTPS -> HTTP), omitir probe para no disparar alertas en navegador
+            if (this._esInseguroEnHttps(urlBase)) {
+                return { ok: true, chatId: toChatId };
+            }
+
             // Consultar endpoint oficial /contacts/check/ de OpenWA
             if (cleanDigits && cleanDigits.length >= 9) {
                 try {
@@ -484,6 +526,13 @@
 
             if (!mensajeTexto || !mensajeTexto.trim()) {
                 return { ok: false, error: 'El contenido del mensaje no puede estar vacío.' };
+            }
+
+            if (this._esInseguroEnHttps(urlBase)) {
+                return {
+                    ok: false,
+                    error: `Bloqueo de Contenido Mixto: La aplicación corre en HTTPS, pero el servidor WhatsApp está en HTTP (${urlBase}). Los celulares y navegadores bloquean estas conexiones. Inicia el túnel Cloudflare en el PC con iniciar_tunel_whatsapp.bat.`
+                };
             }
 
             const resChat = await this.resolverChatId(numeroDestino, servidorUrl);
@@ -558,11 +607,15 @@
                     return this.enviarMensajeTexto(numeroDestino, mensajeTexto, urlLocal);
                 }
                 const esCors = e.message && (e.message.includes('Failed to fetch') || e.name === 'TypeError');
+                let errDesc = esCors
+                    ? `Error de conexión con el servidor WhatsApp (${urlBase}). Verifica si el servidor o túnel está activo.`
+                    : `Fallo de conexión con el servidor WhatsApp (${e.message}).`;
+                if (esCors && this._esInseguroEnHttps(urlBase)) {
+                    errDesc = `Bloqueo de Contenido Mixto: El navegador impidió conectar con '${urlBase}' porque esta aplicación usa HTTPS. Inicia el túnel Cloudflare con iniciar_tunel_whatsapp.bat.`;
+                }
                 return {
                     ok: false,
-                    error: esCors
-                        ? `Error de conexión con el servidor WhatsApp (${urlBase}). Verifica si el servidor o túnel está activo.`
-                        : `Fallo de conexión con el servidor WhatsApp (${e.message}).`
+                    error: errDesc
                 };
             }
         },
@@ -574,6 +627,13 @@
 
             if (!base64Imagen) {
                 return this.enviarMensajeTexto(numeroDestino, mensajeTexto, servidorUrl);
+            }
+
+            if (this._esInseguroEnHttps(urlBase)) {
+                return {
+                    ok: false,
+                    error: `Bloqueo de Contenido Mixto: La aplicación corre en HTTPS, pero el servidor WhatsApp está en HTTP (${urlBase}). Los celulares y navegadores bloquean estas conexiones. Inicia el túnel Cloudflare en el PC con iniciar_tunel_whatsapp.bat.`
+                };
             }
 
             const resChat = await this.resolverChatId(numeroDestino, servidorUrl);
@@ -763,11 +823,15 @@
                 } catch(e2) {}
 
                 const esCors = e.message && (e.message.includes('Failed to fetch') || e.name === 'TypeError');
+                let errDescImg = esCors
+                    ? `Error de conexión con el servidor WhatsApp (${urlBase}). Verifica si el servidor o túnel está activo.`
+                    : `Fallo de conexión con el servidor WhatsApp (${e.message}).`;
+                if (esCors && this._esInseguroEnHttps(urlBase)) {
+                    errDescImg = `Bloqueo de Contenido Mixto: El navegador impidió conectar con '${urlBase}' porque esta aplicación usa HTTPS. Inicia el túnel Cloudflare con iniciar_tunel_whatsapp.bat.`;
+                }
                 return {
                     ok: false,
-                    error: esCors
-                        ? `Error de conexión con el servidor WhatsApp (${urlBase}). Verifica si el servidor o túnel está activo.`
-                        : `Fallo de conexión con el servidor WhatsApp (${e.message}).`
+                    error: errDescImg
                 };
             }
         },
