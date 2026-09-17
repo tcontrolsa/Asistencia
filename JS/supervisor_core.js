@@ -1969,7 +1969,7 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
       let totalPermisosHoy = tiempoPersonal + tiempoMedico;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
       let tj = Math.max(0, unaccountedMissing - tiempoJustificado);
-      if (tj > 15) {
+      if (tj > 60) {
         fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo', minutos: tj });
       }
     }
@@ -4040,7 +4040,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Salida', tipo: 'incompleto' });
         } else if (faltaMarcacionEntrada) {
           fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Entrada', tipo: 'incompleto' });
-        } else if (tiempoPorJustificar > 15) {
+        } else if (tiempoPorJustificar > 60) {
           fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo', minutos: tiempoPorJustificar });
         }
       }
