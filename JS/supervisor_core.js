@@ -3139,19 +3139,41 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           fullRegs = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: id, force: false, incluirArchivados: true });
         }
         if (Array.isArray(fullRegs) && fullRegs.length > 0) {
-          const existingKeys = new Set((e.registros || []).map(r => `${normalizarFechaStr(r.fecha) || r.fecha}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`));
-          let newAdded = 0;
+          const existingMap = new Map();
+          (e.registros || []).forEach(r => {
+            const fNorm = normalizarFechaStr(r.fecha) || r.fecha;
+            existingMap.set(`${fNorm}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`, r);
+          });
+          let hasChanges = false;
           fullRegs.forEach(r => {
             const fNorm = normalizarFechaStr(r.fecha) || r.fecha;
             const k = `${fNorm}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`;
-            if (!existingKeys.has(k)) {
+            const existing = existingMap.get(k);
+            if (!existing) {
               if (!e.registros) e.registros = [];
               e.registros.push({ ...r, fecha: fNorm });
-              existingKeys.add(k);
-              newAdded++;
+              existingMap.set(k, r);
+              hasChanges = true;
+            } else {
+              if (r.permiso_personal_mins !== undefined && existing.permiso_personal_mins !== r.permiso_personal_mins) {
+                existing.permiso_personal_mins = r.permiso_personal_mins;
+                hasChanges = true;
+              }
+              if (r.permiso_medico_mins !== undefined && existing.permiso_medico_mins !== r.permiso_medico_mins) {
+                existing.permiso_medico_mins = r.permiso_medico_mins;
+                hasChanges = true;
+              }
+              if (r.tiempo_justificado_mins !== undefined && existing.tiempo_justificado_mins !== r.tiempo_justificado_mins) {
+                existing.tiempo_justificado_mins = r.tiempo_justificado_mins;
+                hasChanges = true;
+              }
+              if (r.razon_permiso && existing.razon_permiso !== r.razon_permiso) {
+                existing.razon_permiso = r.razon_permiso;
+                hasChanges = true;
+              }
             }
           });
-          if (newAdded > 0 && window.idDetalleActual === id) {
+          if (hasChanges && window.idDetalleActual === id) {
             todosRegs = (e.registros || []).map(r => {
               const fNorm = normalizarFechaStr(r.fecha);
               return fNorm ? { ...r, fecha: fNorm } : r;
@@ -5617,19 +5639,36 @@ window.guardarPermiso = async function (empleadoId, fecha, tipo, valor, comentar
   let originalPermiso = null;
   let reg = null;
   if (emp) {
+    if (!emp.registros) emp.registros = [];
     reg = (emp.registros || []).find(r => r.fecha === fecha && r.tipo === 'ENTRADA')
+      || (emp.registros || []).find(r => r.fecha === fecha && (r.permiso_personal_mins || r.permiso_medico_mins || r.tiempo_justificado_mins))
       || (emp.registros || []).find(r => r.fecha === fecha);
     if (reg) {
       originalPermiso = {
         personal: reg.permiso_personal_mins || 0,
         medico: reg.permiso_medico_mins || 0,
         justificado: reg.tiempo_justificado_mins || 0,
-        comentario: reg.razon_permiso || ''
+        comentario: reg.razon_permiso || '',
+        esNuevo: false
       };
       if (tipo === 'personal') reg.permiso_personal_mins = mins;
       else if (tipo === 'medico') reg.permiso_medico_mins = mins;
       else if (tipo === 'justificado') reg.tiempo_justificado_mins = mins;
       if (comentario !== null) reg.razon_permiso = comentario;
+    } else {
+      originalPermiso = { personal: 0, medico: 0, justificado: 0, comentario: '', esNuevo: true };
+      reg = {
+        fecha: fecha,
+        tipo: 'PERMISO',
+        hora: '08:00:00',
+        modo: 'OFICINA',
+        justificado: 'SI',
+        permiso_personal_mins: (tipo === 'personal' ? mins : 0),
+        permiso_medico_mins: (tipo === 'medico' ? mins : 0),
+        tiempo_justificado_mins: (tipo === 'justificado' ? mins : 0),
+        razon_permiso: comentario || ''
+      };
+      emp.registros.push(reg);
     }
   }
 
@@ -5661,29 +5700,39 @@ window.guardarPermiso = async function (empleadoId, fecha, tipo, valor, comentar
         document.body.appendChild(script);
       });
     }
-    if (resultado && resultado.ok) {
+    if (resultado && (resultado.ok || !resultado.error)) {
       if (typeof mostrarToast === 'function') mostrarToast(`✅ ${tipo === 'personal' ? 'T.Personal' : 'T.Médico'}: ${mins} min`, 'ok');
       limpiarCachesLocales();
       await cargarDatosCompletos(true, true);
     } else {
       if (typeof mostrarToast === 'function') mostrarToast(resultado?.error || 'Error al guardar', 'error');
       // Revertir
-      if (reg && originalPermiso) {
-        reg.permiso_personal_mins = originalPermiso.personal;
-        reg.permiso_medico_mins = originalPermiso.medico;
-        reg.tiempo_justificado_mins = originalPermiso.justificado;
-        reg.razon_permiso = originalPermiso.comentario;
+      if (reg && originalPermiso && emp) {
+        if (originalPermiso.esNuevo) {
+          const idx = emp.registros.indexOf(reg);
+          if (idx >= 0) emp.registros.splice(idx, 1);
+        } else {
+          reg.permiso_personal_mins = originalPermiso.personal;
+          reg.permiso_medico_mins = originalPermiso.medico;
+          reg.tiempo_justificado_mins = originalPermiso.justificado;
+          reg.razon_permiso = originalPermiso.comentario;
+        }
         mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
       }
     }
   } catch (err) {
     if (typeof mostrarToast === 'function') mostrarToast('Error de comunicación: ' + err.message, 'error');
     // Revertir
-    if (reg && originalPermiso) {
-      reg.permiso_personal_mins = originalPermiso.personal;
-      reg.permiso_medico_mins = originalPermiso.medico;
-      reg.tiempo_justificado_mins = originalPermiso.justificado;
-      reg.razon_permiso = originalPermiso.comentario;
+    if (reg && originalPermiso && emp) {
+      if (originalPermiso.esNuevo) {
+        const idx = emp.registros.indexOf(reg);
+        if (idx >= 0) emp.registros.splice(idx, 1);
+      } else {
+        reg.permiso_personal_mins = originalPermiso.personal;
+        reg.permiso_medico_mins = originalPermiso.medico;
+        reg.tiempo_justificado_mins = originalPermiso.justificado;
+        reg.razon_permiso = originalPermiso.comentario;
+      }
       mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
     }
   } finally {

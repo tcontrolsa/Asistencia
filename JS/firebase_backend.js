@@ -3642,25 +3642,17 @@ window.FirebaseBackend = {
         try {
             const empleadoId = params.empleadoId?.toString();
             const fecha = params.fecha; // YYYY-MM-DD
-            const tipo = params.tipo; // "personal" o "medico"
+            const tipo = params.tipo; // "personal" o "medico" o "justificado"
             const minutos = parseInt(params.mins !== undefined ? params.mins : params.minutos) || 0;
+            const supervisorId = params.supervisorId || 'Supervisor';
 
             if (!empleadoId || !fecha) return { error: "Parámetros incompletos" };
 
-            const hoyStrLocal = this._hoyStr();
-            const isPastDate = fecha < hoyStrLocal;
+            const updateField = tipo === 'personal'
+                ? 'permiso_personal_mins'
+                : (tipo === 'medico' ? 'permiso_medico_mins' : 'tiempo_justificado_mins');
 
-            if (isPastDate) {
-                try {
-                    const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
-                    return await this._jsonp(sheetsParams);
-                } catch (e) {
-                    console.warn("Error writing past permission to Sheets:", e);
-                    return { error: "Error de conexión con Sheets: " + e.message };
-                }
-            }
-
-            // Buscar la entrada o cualquier registro de ese día
+            // 1. Buscar el registro del día en Firebase Firestore
             const regSnap = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
                 .get();
@@ -3677,30 +3669,76 @@ window.FirebaseBackend = {
                     }
                 }
             });
-            entryDocId = entryDocId || fallbackDocId;
+            const targetDocId = entryDocId || fallbackDocId;
 
-            if (entryDocId) {
-                const updateField = tipo === 'personal'
-                    ? 'permiso_personal_mins'
-                    : (tipo === 'medico' ? 'permiso_medico_mins' : 'tiempo_justificado_mins');
-                const updateObj = { [updateField]: minutos };
-                if (params.comentario !== undefined) {
-                    updateObj.razon_permiso = String(params.comentario || '').trim();
-                }
-                await db.collection('registros').doc(entryDocId).update(updateObj);
-
-                // Invalidate local storage cache to force refetch of all days
-                try {
-                    localStorage.removeItem('tcontrol_registros_cache_v1');
-                    localStorage.removeItem(`tcontrol_archivados_cache_${empleadoId}_v1`);
-                } catch (e) { }
-
-                // Los permisos se registran en Firebase y se transfieren a Sheets al archivar datos históricos.
-
-                return { ok: true };
-            } else {
-                return { error: "No se encontró registro de entrada para ese día en Firebase" };
+            const updateObj = { [updateField]: minutos };
+            if (params.comentario !== undefined) {
+                updateObj.razon_permiso = String(params.comentario || '').trim();
             }
+
+            if (targetDocId) {
+                await db.collection('registros').doc(targetDocId).update(updateObj);
+            } else {
+                // Si no existía registro previo en Firestore para este día, crearlo
+                const empDoc = await db.collection('empleados').doc(empleadoId).get();
+                const empData = empDoc.exists ? empDoc.data() : {};
+                const nombre = empData.nombre || empleadoId;
+                const cedula = empData.cedula || '';
+                const parts = fecha.split('-');
+                const fechaObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 8, 0, 0);
+
+                await db.collection('registros').add({
+                    empleadoId: empleadoId,
+                    nombre: nombre,
+                    cedula: cedula,
+                    fecha: fecha,
+                    tipo: 'PERMISO',
+                    hora: '08:00:00',
+                    modo: 'OFICINA',
+                    justificado: 'SI',
+                    quien_justifica: supervisorId,
+                    timestamp: firebase.firestore.Timestamp.fromDate(fechaObj),
+                    ...updateObj
+                });
+            }
+
+            // 2. Invalidar y refrescar cachés locales
+            try {
+                localStorage.removeItem('tcontrol_registros_cache_v1');
+                localStorage.removeItem('tcontrol_registros_cache_v2');
+                localStorage.removeItem(`tcontrol_archivados_cache_${empleadoId}_v1`);
+                localStorage.removeItem(`tcontrol_archivados_cache_${empleadoId}_v2`);
+                localStorage.removeItem('tcontrol_archivados_cache_v2');
+
+                const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${empleadoId}_v2`;
+                const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+                if (storedArch) {
+                    const archData = JSON.parse(storedArch);
+                    if (archData && Array.isArray(archData.registros)) {
+                        const targetArch = archData.registros.find(r => r.fecha === fecha);
+                        if (targetArch) {
+                            targetArch[updateField] = minutos;
+                            if (params.comentario !== undefined) targetArch.razon_permiso = String(params.comentario || '').trim();
+                            localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archData));
+                        }
+                    }
+                }
+            } catch (e) { }
+
+            // 3. Sincronizar en segundo plano con Google Sheets (no bloqueante, timeout de 45s)
+            // Persiste en la hoja de cálculo de Google Sheets sin bloquear la respuesta de Firestore
+            const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
+            this._jsonp(sheetsParams, 0, 1, 45000).then(res => {
+                if (res && res.ok) {
+                    console.log("✅ Permiso sincronizado con Google Sheets con éxito.");
+                } else if (res && res.error) {
+                    console.warn("⚠️ Sheets reportó:", res.error);
+                }
+            }).catch(err => {
+                console.warn("⚠️ Advertencia de red con Sheets (datos ya asegurados en Firebase):", err.message);
+            });
+
+            return { ok: true };
         } catch (e) {
             console.error("Error in guardarPermisoSupervisor:", e);
             return { error: e.message };
