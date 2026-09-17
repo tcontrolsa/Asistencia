@@ -1796,14 +1796,16 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
   let inicio = customInicio;
   let fin = customFin;
   if (!inicio || !fin) {
-    let p = (typeof periodos !== 'undefined' && periodos && periodos[0]) ? periodos[0] : null;
-    if (p) {
-      inicio = inicio || p.inicio;
-      fin = fin || p.fin;
+    const pActual = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+    const pAnterior = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[1]) ? periodos[1] : null;
+    if (pActual) {
+      // Evaluar período actual y el anterior para cubrir regularizaciones pendientes pasadas
+      inicio = pAnterior ? pAnterior.inicio : pActual.inicio;
+      fin = pActual.fin;
     } else {
       let d = new Date();
       fin = fin || d.toISOString().split('T')[0];
-      d.setDate(d.getDate() - 30);
+      d.setDate(d.getDate() - 60);
       inicio = inicio || d.toISOString().split('T')[0];
     }
   }
@@ -1973,6 +1975,8 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
     }
   });
 
+  // Ordenar fechas pendientes descendente (más recientes primero)
+  fechasPendientes.sort((a, b) => b.fecha.localeCompare(a.fecha));
   return fechasPendientes;
 };
 
@@ -2014,7 +2018,10 @@ function cargarAsistencia() {
   let countPermisos = 0;
   let countPorRegularizar = 0;
 
-  const periodoActual = (typeof periodos !== 'undefined' && periodos && periodos.length) ? periodos[0] : null;
+  const pActual = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+  const pAnterior = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[1]) ? periodos[1] : null;
+  const evalInicio = pAnterior ? pAnterior.inicio : (pActual ? pActual.inicio : null);
+  const evalFin = pActual ? pActual.fin : null;
 
   empCache.forEach(e => {
     let fReg = (e.registros || []).find(r => {
@@ -2028,7 +2035,7 @@ function cargarAsistencia() {
     let regCampo = (e.registros || []).some(reg => reg.modo === 'CAMPO' && reg.fecha === hoy);
 
     if (!isSinAsis) {
-      let fechasReg = window.obtenerFechasPendientesRegularizarEmpleado(e, periodoActual?.inicio, periodoActual?.fin);
+      let fechasReg = window.obtenerFechasPendientesRegularizarEmpleado(e, evalInicio, evalFin);
       e._fechasRegularizar = fechasReg || [];
       if (fechasReg && fechasReg.length > 0) {
         countPorRegularizar++;
@@ -2349,8 +2356,9 @@ function filtrarAsistenciaTabla() {
       header: `<th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th>`,
       body: e => {
         const cantReg = (e._fechasRegularizar || []).length;
+        const targetF = cantReg > 0 ? e._fechasRegularizar[0].fecha : '';
         const badgeReg = cantReg > 0
-          ? `<span title="${cantReg} fecha(s) por regularizar" style="background:#ffedd5; color:#c2410c; border:1px solid #fed7aa; border-radius:4px; padding:1px 5px; font-size:9px; font-weight:800; margin-left:5px; display:inline-flex; align-items:center; gap:3px;"><i class="fas fa-calendar-times" style="font-size:8.5px;"></i> ${cantReg} pend.</span>`
+          ? `<button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${targetF}')" title="${cantReg} fecha(s) por regularizar. Clic para ir directamente al registro del ${targetF}" style="background:#ffedd5; color:#c2410c; border:1px solid #fed7aa; border-radius:4px; padding:1px 5px; font-size:9px; font-weight:800; margin-left:5px; display:inline-flex; align-items:center; gap:3px; cursor:pointer;"><i class="fas fa-calendar-times" style="font-size:8.5px;"></i> ${cantReg} pend.</button>`
           : '';
         return `<td><div class="employee-cell">${photoCell(e)}<div><strong>${escapeHtml(e.nombre)}</strong>${badgeReg}${e.id && !e.isVisitante ? `<div style="font-size:10px; color:#64748b; font-weight:600;"><i class="fas fa-id-badge" style="font-size:9px; color:#6366f1;"></i> ID: ${escapeHtml(e.id)}</div>` : ''}</div></div></td>`;
       },
@@ -2366,9 +2374,20 @@ function filtrarAsistenciaTabla() {
       body: e => {
         const list = e._fechasRegularizar || [];
         if (!list.length) return `<td style="text-align:center;"><span style="color:#94a3b8; font-size:11px;">Al día</span></td>`;
-        const chips = list.slice(0, 3).map(f => `<span style="background:#fff7ed; border:1px solid #fed7aa; color:#c2410c; padding:1px 6px; border-radius:4px; font-size:9.5px; font-weight:700; white-space:nowrap;">${f.label} (${f.motivo})</span>`).join(' ');
-        const mas = list.length > 3 ? `<span style="font-size:9.5px; color:#ea580c; font-weight:700;">+${list.length - 3} más</span>` : '';
-        return `<td><div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;"><span class="pill warn" style="background:#ffedd5; color:#c2410c; font-weight:800; font-size:10px; border:1px solid #fed7aa;"><i class="fas fa-calendar-times"></i> ${list.length}</span> ${chips} ${mas}</div></td>`;
+        const chips = list.slice(0, 3).map(f => `
+          <button type="button" 
+                  onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${f.fecha}')" 
+                  class="btn-chip-regularizar-tabla" 
+                  title="Clic para ir directamente a la fecha ${f.fecha} (${f.motivo}) en el detalle">
+            <i class="fas fa-calendar-day" style="color: #ea580c; font-size: 9.5px;"></i>
+            <span>${f.label}</span>
+            <span style="background: #ffedd5; color: #c2410c; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: 700;">${f.motivo}</span>
+          </button>
+        `).join(' ');
+        const mas = list.length > 3 
+          ? `<button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${list[3].fecha}')" class="btn-chip-regularizar-tabla" style="background:#fff7ed; color:#ea580c;" title="Ver ${list.length - 3} fechas más">+${list.length - 3} más</button>` 
+          : '';
+        return `<td><div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;"><button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${list[0].fecha}')" class="pill warn" style="background:#ffedd5; color:#c2410c; font-weight:800; font-size:10px; border:1px solid #fed7aa; cursor:pointer;" title="Clic para ir a la primera fecha pendiente (${list[0].fecha})"><i class="fas fa-calendar-times"></i> ${list.length}</button> ${chips} ${mas}</div></td>`;
       },
       footer: `<td>${data.filter(e => (e._fechasRegularizar || []).length > 0).length} Colaboradores</td>`
     },
@@ -2432,7 +2451,11 @@ function filtrarAsistenciaTabla() {
 
   html += data.map(e => {
     let cellsHtml = activeCols.map(c => colDefs[c].body(e)).join('');
-    return `<tr onclick="mostrarDetalle('${e.id}')">${cellsHtml}</tr>`;
+    const targetFecha = (e._fechasRegularizar && e._fechasRegularizar.length > 0) ? e._fechasRegularizar[0].fecha : '';
+    const clickHandler = (filtroAsistenciaActual === 'por_regularizar' && targetFecha)
+      ? `window.irADetalleFecha('${e.id}', '${targetFecha}')`
+      : `mostrarDetalle('${e.id}')`;
+    return `<tr onclick="${clickHandler}" style="cursor:pointer;">${cellsHtml}</tr>`;
   }).join('');
 
   let footerCellsHtml = activeCols.map(c => colDefs[c].footer).join('');
@@ -12866,27 +12889,37 @@ window.exportarTablaHistoricoBaseExcel = window.exportarDiferenciasExcel = async
 };
 
 // ============================================================
-// NAVEGACIÓN DIRECTA: DESGLOSE HISTÓRICO -> DETALLE DE EMPLEADO
+// NAVEGACIÓN DIRECTA: A FECHA ESPECÍFICA EN DETALLE DE EMPLEADO
+// Detecta automáticamente el período (actual o anterior) de la fecha
 // ============================================================
 window.irADetalleFecha = function (empleadoId, fechaIso) {
   if (typeof window.cerrarModalDesgloseHistoricoBase === 'function') {
     window.cerrarModalDesgloseHistoricoBase();
   }
   let idxPer = 0;
-  if (Array.isArray(periodos)) {
+  if (Array.isArray(periodos) && fechaIso) {
     const found = periodos.findIndex(p => p && fechaIso >= p.inicio && fechaIso <= p.fin);
-    if (found >= 0) idxPer = found;
+    if (found >= 0) {
+      idxPer = found;
+    } else {
+      const foundClosest = periodos.findIndex(p => p && fechaIso >= p.inicio);
+      if (foundClosest >= 0) idxPer = foundClosest;
+    }
   }
   if (typeof window.mostrarDetalle === 'function') {
     window.mostrarDetalle(empleadoId, idxPer, null, null, fechaIso);
   }
 };
 
-window.enfocarFechaEnDetalle = function (fecha) {
+window.enfocarFechaEnDetalle = function (fecha, reintentos = 6) {
   if (!fecha) return;
   const rowId = 'fila-fecha-' + fecha;
   const row = document.getElementById(rowId);
   if (!row) {
+    if (reintentos > 0) {
+      setTimeout(() => window.enfocarFechaEnDetalle(fecha, reintentos - 1), 180);
+      return;
+    }
     if (typeof mostrarToast === 'function') {
       mostrarToast('Fecha ' + fecha + ' no encontrada en el período visualizado.', 'info');
     }

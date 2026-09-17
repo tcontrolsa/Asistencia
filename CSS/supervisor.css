@@ -5603,4 +5603,28 @@
       transform: translateY(-1px);
       box-shadow: 0 2px 5px rgba(234, 88, 12, 0.15) !important;
     }
+
+    .btn-chip-regularizar-tabla {
+      background: #ffffff;
+      border: 1.5px solid #f97316;
+      color: #9a3412;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      transition: all 0.15s ease;
+      line-height: 1.2;
+    }
+
+    .btn-chip-regularizar-tabla:hover {
+      background: #ffedd5;
+      border-color: #ea580c;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(234, 88, 12, 0.2);
+    }
 
