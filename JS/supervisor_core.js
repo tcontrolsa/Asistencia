@@ -6089,43 +6089,62 @@ async function cargarSugerenciasMenu() {
 
 window.guardarMenuSemanal = async function () {
   const inputs = document.querySelectorAll('.menu-input');
+  if (!inputs || inputs.length === 0) {
+    mostrarToast('El formulario de menú aún no se ha cargado. Por favor espera un momento.', 'warning');
+    return;
+  }
+
   const menu = {
     lunes: {}, martes: {}, miercoles: {}, jueves: {}, viernes: {}, sabado: {}, domingo: {}
   };
 
+  let camposLlenos = 0;
   inputs.forEach(input => {
     const dia = input.dataset.dia;
     const campo = input.dataset.campo;
-    menu[dia][campo] = input.value.trim();
+    const val = (input.value || '').trim();
+    if (menu[dia]) {
+      menu[dia][campo] = val;
+    }
+    if (val) camposLlenos++;
   });
+
+  if (camposLlenos === 0) {
+    const confirmarVacio = confirm('Todos los campos del menú están vacíos. ¿Deseas limpiar y guardar el menú en blanco?');
+    if (!confirmarVacio) return;
+  }
 
   mostrarLoader(true);
   try {
-    // 1. Descargar el menú anterior antes de guardar
-    const menuAnteriorRes = await jsonpRequest({ accion: 'obtenerMenuSemanal' });
-    if (menuAnteriorRes && !menuAnteriorRes.error) {
-      const registrosMenu = [];
-      const diasKeys = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-      diasKeys.forEach(key => {
-        const dMenu = menuAnteriorRes[key];
-        if (dMenu && (dMenu.sopa || dMenu.plato || dMenu.jugo)) {
-          registrosMenu.push({
-            fecha: calcularFechaDiaSemana(key),
-            dia: key.charAt(0).toUpperCase() + key.slice(1),
-            sopa: dMenu.sopa || '',
-            plato: dMenu.plato || '',
-            jugo: dMenu.jugo || ''
+    // 1. Descargar el menú anterior antes de guardar para archivar
+    try {
+      const menuAnteriorRes = await jsonpRequest({ accion: 'obtenerMenuSemanal' });
+      if (menuAnteriorRes && !menuAnteriorRes.error) {
+        const registrosMenu = [];
+        const diasKeys = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+        diasKeys.forEach(key => {
+          const dMenu = menuAnteriorRes[key];
+          if (dMenu && (dMenu.sopa || dMenu.plato || dMenu.jugo)) {
+            registrosMenu.push({
+              fecha: calcularFechaDiaSemana(key),
+              dia: key.charAt(0).toUpperCase() + key.slice(1),
+              sopa: dMenu.sopa || '',
+              plato: dMenu.plato || '',
+              jugo: dMenu.jugo || ''
+            });
+          }
+        });
+
+        // 2. Archivar en histórico
+        if (registrosMenu.length > 0) {
+          await jsonpRequest({
+            accion: 'archivarMenuConsumido',
+            registros: JSON.stringify(registrosMenu)
           });
         }
-      });
-
-      // 2. Archivar en Google Sheets
-      if (registrosMenu.length > 0) {
-        await jsonpRequest({
-          accion: 'archivarMenuConsumido',
-          registros: JSON.stringify(registrosMenu)
-        });
       }
+    } catch (eArch) {
+      console.warn("Aviso al archivar histórico de menú:", eArch);
     }
 
     // 3. Guardar el nuevo menú en Firestore
@@ -6133,17 +6152,18 @@ window.guardarMenuSemanal = async function () {
       accion: 'guardarMenuSemanal',
       menu: menu
     });
+
     mostrarLoader(false);
     if (res && res.ok) {
-      mostrarToast('Menú guardado y archivado correctamente', 'success');
+      mostrarToast('¡Menú semanal guardado y publicado correctamente!', 'success');
       cargarSugerenciasMenu(); // Recargar datalists
     } else {
-      mostrarToast(res.error || 'Error al guardar el menú', 'error');
+      mostrarToast(res?.error || 'Error al guardar el menú', 'error');
     }
   } catch (e) {
     mostrarLoader(false);
     console.error(e);
-    mostrarToast('Error al guardar el menú', 'error');
+    mostrarToast('Error de conexión al guardar el menú: ' + (e.message || e), 'error');
   }
 };
 

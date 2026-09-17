@@ -61,6 +61,10 @@ window.FirebaseBackend = {
                     return await this.obtenerMenuSemanal(params);
                 case 'guardarMenuSemanal':
                     return await this.guardarMenuSemanal(params);
+                case 'archivarMenuConsumido':
+                    return await this.archivarMenuConsumido(params);
+                case 'obtenerHistorialMenuSugerencias':
+                    return await this.obtenerHistorialMenuSugerencias(params);
                 case 'obtenerPreguntasCultura':
                     return await this.obtenerPreguntasCultura(params);
                 case 'guardarPreguntasCultura':
@@ -1640,32 +1644,134 @@ window.FirebaseBackend = {
     async obtenerMenuSemanal() {
         try {
             const doc = await db.collection('configuracion').doc('menu_semanal').get();
-            if (doc.exists) {
-                return doc.data();
-            }
-            return {
-                lunes: { sopa: '', plato: '', jugo: '', postre: '' },
-                martes: { sopa: '', plato: '', jugo: '', postre: '' },
-                miercoles: { sopa: '', plato: '', jugo: '', postre: '' },
-                jueves: { sopa: '', plato: '', jugo: '', postre: '' },
-                viernes: { sopa: '', plato: '', jugo: '', postre: '' },
-                sabado: { sopa: '', plato: '', jugo: '', postre: '' },
-                domingo: { sopa: '', plato: '', jugo: '', postre: '' }
+            const data = (doc.exists && doc.data()) ? doc.data() : {};
+
+            const diasDefault = {
+                lunes: { sopa: '', plato: '', jugo: '' },
+                martes: { sopa: '', plato: '', jugo: '' },
+                miercoles: { sopa: '', plato: '', jugo: '' },
+                jueves: { sopa: '', plato: '', jugo: '' },
+                viernes: { sopa: '', plato: '', jugo: '' },
+                sabado: { sopa: '', plato: '', jugo: '' },
+                domingo: { sopa: '', plato: '', jugo: '' }
             };
+
+            let tieneContenido = false;
+            const res = {};
+            for (const dia of Object.keys(diasDefault)) {
+                res[dia] = Object.assign({}, diasDefault[dia], data[dia] || {});
+                if (res[dia].plato || res[dia].sopa || res[dia].jugo) {
+                    tieneContenido = true;
+                }
+            }
+
+            if (tieneContenido) {
+                try { localStorage.setItem('tcontrol_menu_semanal_cache', JSON.stringify(res)); } catch (e) { }
+                return res;
+            }
+
+            // Fallback a cache local si Firestore devolviera objeto vacío
+            try {
+                const cached = localStorage.getItem('tcontrol_menu_semanal_cache');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed && typeof parsed === 'object') return parsed;
+                }
+            } catch (e) { }
+
+            return res;
         } catch (e) {
             console.error("Error al obtener menú semanal:", e);
-            return { error: e.message };
+            try {
+                const cached = localStorage.getItem('tcontrol_menu_semanal_cache');
+                if (cached) return JSON.parse(cached);
+            } catch (e2) { }
+            return {
+                lunes: { sopa: '', plato: '', jugo: '' },
+                martes: { sopa: '', plato: '', jugo: '' },
+                miercoles: { sopa: '', plato: '', jugo: '' },
+                jueves: { sopa: '', plato: '', jugo: '' },
+                viernes: { sopa: '', plato: '', jugo: '' },
+                sabado: { sopa: '', plato: '', jugo: '' },
+                domingo: { sopa: '', plato: '', jugo: '' }
+            };
         }
     },
 
     async guardarMenuSemanal(params) {
         try {
-            const menu = typeof params.menu === 'string' ? JSON.parse(params.menu) : params.menu;
+            let menu = params.menu;
+            if (typeof menu === 'string') {
+                try { menu = JSON.parse(menu); } catch (e) { }
+            }
+            if (!menu || typeof menu !== 'object') {
+                return { error: 'Formato de menú inválido' };
+            }
             await db.collection('configuracion').doc('menu_semanal').set(menu);
+            try { localStorage.setItem('tcontrol_menu_semanal_cache', JSON.stringify(menu)); } catch (e) { }
             return { ok: true };
         } catch (e) {
             console.error("Error al guardar menú semanal:", e);
             return { error: e.message };
+        }
+    },
+
+    async archivarMenuConsumido(params) {
+        try {
+            let regs = params.registros;
+            if (typeof regs === 'string') {
+                try { regs = JSON.parse(regs); } catch (e) { }
+            }
+            if (Array.isArray(regs) && regs.length > 0) {
+                const batch = db.batch();
+                regs.forEach(r => {
+                    const idDoc = ((r.fecha || '').replace(/\//g, '-') + '_' + (r.dia || '').toLowerCase()).trim();
+                    if (idDoc) {
+                        const docRef = db.collection('auditoria_almuerzos').doc(idDoc);
+                        batch.set(docRef, {
+                            ...r,
+                            archivadoEn: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    }
+                });
+                await batch.commit();
+            }
+            return { ok: true };
+        } catch (e) {
+            console.warn("Aviso: No se pudo archivar menú en auditoría:", e);
+            return { ok: true };
+        }
+    },
+
+    async obtenerHistorialMenuSugerencias() {
+        try {
+            const sopas = new Set(['Crema de verduras', 'Locro de papa', 'Sopa de pollo con fideos', 'Caldo de bolas de verde', 'Menestrón de carne', 'Sopa de lenteja', 'Crema de zapallo']);
+            const platos = new Set(['Seco de pollo con arroz y ensalada', 'Carne apanada con menestra', 'Lomo saltado tradicional', 'Pollo al jugo con papas doradas', 'Filete de pescado con patacones', 'Guiso de carne con arroz blanco', 'Asado con ensalada fresca']);
+            const jugos = new Set(['Jugo de mora', 'Jugo de naranjilla', 'Jugo de maracuyá', 'Limonada imperial', 'Jugo de piña', 'Jugo de guanábana', 'Jugo de mandarina']);
+
+            try {
+                const snap = await db.collection('auditoria_almuerzos').limit(20).get();
+                snap.forEach(d => {
+                    const m = d.data();
+                    if (m.sopa) sopas.add(m.sopa);
+                    if (m.plato) platos.add(m.plato);
+                    if (m.jugo) jugos.add(m.jugo);
+                });
+            } catch (eSnap) { }
+
+            return {
+                ok: true,
+                sopas: Array.from(sopas),
+                platos: Array.from(platos),
+                jugos: Array.from(jugos)
+            };
+        } catch (e) {
+            return {
+                ok: true,
+                sopas: ['Crema de verduras', 'Locro de papa', 'Sopa de pollo', 'Menestrón'],
+                platos: ['Seco de pollo', 'Carne apanada', 'Lomo saltado', 'Pescado frito'],
+                jugos: ['Jugo de mora', 'Jugo de naranjilla', 'Jugo de maracuyá', 'Limonada']
+            };
         }
     },
 
