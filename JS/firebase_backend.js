@@ -804,7 +804,7 @@ window.FirebaseBackend = {
                     const resJson = await this._jsonp({
                         accion: 'obtenerRegistrosArchivados',
                         empleadoId: empleadoId
-                    });
+                    }, 0, 2, 20000);
                     if (resJson.ok && resJson.registros) {
                         archivadosData.registros = resJson.registros;
                         archivadosData.lastSync = new Date().toISOString();
@@ -2676,8 +2676,8 @@ window.FirebaseBackend = {
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
             const _fetchArchivados = async () => {
                 try {
-                    // Timeout corto de 8 segundos para no congelar la aplicación
-                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' }, 0, 1, 8000);
+                    // Timeout de 20 segundos con reintentos para soportar respuestas pesadas de Sheets
+                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' }, 0, 2, 20000);
                     if (resJson && resJson.ok && resJson.registros) {
                         this._cacheArchivadosMemoria = resJson.registros;
                         archivadosData.registros = resJson.registros;
@@ -3105,7 +3105,7 @@ window.FirebaseBackend = {
         }
     },
 
-    _jsonp(params, _retryCount = 0, maxRetries = 1, timeoutMs = 7000) {
+    _jsonp(params, _retryCount = 0, maxRetries = 2, timeoutMs = 15000) {
         const MAX_RETRIES = maxRetries;
         const RETRY_DELAY_MS = [1000, 2000];
 
