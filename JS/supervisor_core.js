@@ -12085,6 +12085,11 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
     }
 
     const hoy_ = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
+    const dHoy_ = new Date(hoy_ + 'T12:00:00');
+    dHoy_.setDate(dHoy_.getDate() - 1);
+    const ayer_ = dHoy_.toISOString().split('T')[0];
+    // CRÍTICO: Excluir estrictamente la fecha actual (hoy_) de la auditoría histórica ya que la jornada está en curso
+    const finAuditoriaMax = ayer_;
 
     const empAsistencia = empCache.filter(e => {
       const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
@@ -12113,7 +12118,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
     empAsistencia.forEach(e => {
       (e.registros || []).forEach(r => {
         const f = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(r.fecha) : (r.fecha || '').split('T')[0];
-        if (!f || f > hoy_) return;
+        if (!f || f > finAuditoriaMax) return;
 
         if (esRegistroAsistenciaBase(r)) {
           if (!minFechaGlobalBase || f < minFechaGlobalBase) minFechaGlobalBase = f;
@@ -12127,7 +12132,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
 
     // 2. Determinar rango y etiqueta según período seleccionado
     let rangoIni = null;
-    let rangoFin = hoy_;
+    let rangoFin = finAuditoriaMax;
     let periodoLabel = 'Período';
 
     if (opcionPeriodo === 'DASHBOARD' || !opcionPeriodo) {
@@ -12136,7 +12141,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       const p = (periodos && periodos[idx]) ? periodos[idx] : (periodos ? periodos[0] : null);
       if (p) {
         rangoIni = p.inicio;
-        rangoFin = (p.fin < hoy_) ? p.fin : hoy_;
+        rangoFin = (p.fin < finAuditoriaMax) ? p.fin : finAuditoriaMax;
         periodoLabel = p.label;
       }
     } else if (opcionPeriodo.startsWith('PER_')) {
@@ -12144,7 +12149,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       const p = (periodos && periodos[idx]) ? periodos[idx] : null;
       if (p) {
         rangoIni = p.inicio;
-        rangoFin = (p.fin < hoy_) ? p.fin : hoy_;
+        rangoFin = (p.fin < finAuditoriaMax) ? p.fin : finAuditoriaMax;
         periodoLabel = p.label;
       }
     } else if (opcionPeriodo === 'ANUAL') {
@@ -12154,7 +12159,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       // Regla clave: el rango de evaluación debe ser desde el primer registro que exista en la base
       rangoIni = (primerRegAnio && primerRegAnio > `${anioActual}-01-01`) ? primerRegAnio : (primerRegAnio || `${anioActual}-01-01`);
       const finAnio = `${anioActual}-12-31`;
-      rangoFin = (hoy_ < finAnio) ? hoy_ : finAnio;
+      rangoFin = (finAnio < finAuditoriaMax) ? finAnio : finAuditoriaMax;
       periodoLabel = `Consolidado Anual ${anioActual}`;
     } else if (opcionPeriodo.startsWith('ANIO_')) {
       const y = parseInt(opcionPeriodo.replace('ANIO_', ''));
@@ -12162,7 +12167,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
         const primerRegAnio = minFechaAnioBase[String(y)];
         rangoIni = (primerRegAnio && primerRegAnio > `${y}-01-01`) ? primerRegAnio : (primerRegAnio || `${y}-01-01`);
         const finY = `${y}-12-31`;
-        rangoFin = (hoy_ < finY) ? hoy_ : finY;
+        rangoFin = (finY < finAuditoriaMax) ? finY : finAuditoriaMax;
         periodoLabel = `Año ${y} Completo`;
       }
     } else if (opcionPeriodo === 'ULTIMOS_365' || opcionPeriodo === 'ANIO_MOVIL') {
@@ -12173,7 +12178,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       const day365 = String(d365.getDate()).padStart(2, '0');
       const f365 = `${y365}-${m365}-${day365}`;
       rangoIni = (minFechaGlobalBase && minFechaGlobalBase > f365) ? minFechaGlobalBase : f365;
-      rangoFin = hoy_;
+      rangoFin = finAuditoriaMax;
       periodoLabel = 'Últimos 12 Meses (Año Móvil)';
     } else if (opcionPeriodo === 'ULTIMOS_60') {
       const d60 = new Date();
@@ -12182,11 +12187,11 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       const m60 = String(d60.getMonth() + 1).padStart(2, '0');
       const day60 = String(d60.getDate()).padStart(2, '0');
       rangoIni = `${y60}-${m60}-${day60}`;
-      rangoFin = hoy_;
+      rangoFin = finAuditoriaMax;
       periodoLabel = 'Últimos 60 Días';
     } else if (opcionPeriodo === 'HISTORICO_BASE') {
-      rangoIni = minFechaGlobalBase || hoy_;
-      rangoFin = hoy_;
+      rangoIni = minFechaGlobalBase || finAuditoriaMax;
+      rangoFin = finAuditoriaMax;
       periodoLabel = 'Histórico Completo';
     }
 
@@ -12195,7 +12200,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
     if (sub) {
       const fmtI = rangoIni ? (rangoIni.length >= 10 ? `${rangoIni.substring(8, 10)}/${rangoIni.substring(5, 7)}/${rangoIni.substring(0, 4)}` : rangoIni) : 'Inicio';
       const fmtF = rangoFin.length >= 10 ? `${rangoFin.substring(8, 10)}/${rangoFin.substring(5, 7)}/${rangoFin.substring(0, 4)}` : rangoFin;
-      sub.textContent = `Auditoría: ${periodoLabel} (${fmtI} al ${fmtF}) — Asistencias Ordinarias + Vacaciones vs. Esperadas`;
+      sub.textContent = `Auditoría: ${periodoLabel} (${fmtI} al ${fmtF}) — Asistencias Ordinarias + Vacaciones vs. Esperadas (Excluye jornada en curso)`;
     }
 
     // Días hábiles generales para rango fijo
@@ -12248,8 +12253,8 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
         inicioColaborador = primerRegistroEmpValido;
       }
 
-      let evalIni = (inicioColaborador && inicioColaborador > rangoIni) ? inicioColaborador : (rangoIni || hoy_);
-      let evalFin = rangoFin <= hoy_ ? rangoFin : hoy_;
+      let evalIni = (inicioColaborador && inicioColaborador > rangoIni) ? inicioColaborador : (rangoIni || finAuditoriaMax);
+      let evalFin = rangoFin <= finAuditoriaMax ? rangoFin : finAuditoriaMax;
 
       let diasHabEmp = [];
       if (evalIni <= evalFin) {
@@ -12319,7 +12324,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       // CRÍTICO: Excluir estrictamente la fecha actual (hoy) ya que la jornada está en curso
       const fechasDiferencia = [];
       diasHabEmp.forEach(d => {
-        if (d < hoy_ && !diasOrdinariosEfectivos.has(d) && !diasVacaciones.has(d) && !diasJustificados.has(d)) {
+        if (d <= evalFin && !diasOrdinariosEfectivos.has(d) && !diasVacaciones.has(d) && !diasJustificados.has(d)) {
           fechasDiferencia.push(d);
         }
       });
