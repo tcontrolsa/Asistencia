@@ -3267,9 +3267,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
     });
 
-    // Asegurar que todos los días laborables del rango (desde fecha de ingreso hasta hoy) existan en porDia
+    // Asegurar que todos los días laborables del rango (desde fecha de ingreso hasta ayer) existan en porDia
+    // CRÍTICO: Excluir hoy (fecha actual) de la inyección de inasistencias porque está en curso
     const hoyStrLocal = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
-    const limiteFinLocal = (R_FIN && R_FIN < hoyStrLocal) ? R_FIN : hoyStrLocal;
+    const dHoy = new Date(hoyStrLocal + 'T12:00:00');
+    dHoy.setDate(dHoy.getDate() - 1);
+    const ayerStrLocal = dHoy.toISOString().split('T')[0];
+    const limiteFinLocal = (R_FIN && R_FIN < ayerStrLocal) ? R_FIN : ayerStrLocal;
+
     let inicioEvalEmp = R_INI;
     if (e.fecha_ingreso && String(e.fecha_ingreso).trim().length >= 10) {
       const fi = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(e.fecha_ingreso) : String(e.fecha_ingreso).slice(0, 10);
@@ -3754,7 +3759,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const faltaMarcacionSalida = periodosDia.some(p => p.entrada && !p.salida);
       const esFaltaSinJustificar = esFalta && !isJustificado;
 
-      if (esDiaLaboralOrdinario && f <= hoyStrLocal) {
+      // CRÍTICO: Excluir estrictamente la fecha actual (hoy) ya que la jornada está en curso
+      if (esDiaLaboralOrdinario && f < hoyStrLocal) {
         const fParts = f.split('-');
         const fFmt = (fParts.length === 3) ? `${fParts[2]}/${fParts[1]}` : f;
         if (esFaltaSinJustificar) {
@@ -12310,9 +12316,10 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       }
 
       // Identificar fechas exactas de inasistencias injustificadas (Diferencia)
+      // CRÍTICO: Excluir estrictamente la fecha actual (hoy) ya que la jornada está en curso
       const fechasDiferencia = [];
       diasHabEmp.forEach(d => {
-        if (!diasOrdinariosEfectivos.has(d) && !diasVacaciones.has(d) && !diasJustificados.has(d)) {
+        if (d < hoy_ && !diasOrdinariosEfectivos.has(d) && !diasVacaciones.has(d) && !diasJustificados.has(d)) {
           fechasDiferencia.push(d);
         }
       });
