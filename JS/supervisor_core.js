@@ -2766,10 +2766,17 @@ window.obtenerListaEmpleadosReportes = function () {
     (window._cacheDesvinculados || []).forEach(d => {
       const k = String(d.id || d.nombre || '').trim();
       if (!k) return;
+      let dNom = (d.nombre && d.nombre !== 'Sin nombre' && !d.nombre.startsWith('Colaborador (')) ? d.nombre.trim() : '';
+      if (!dNom && d.id) {
+        const ef = (empCache || []).find(e => String(e.id).trim() === String(d.id).trim()) || (window.empEliminadosCache || []).find(e => String(e.id).trim() === String(d.id).trim());
+        if (ef && ef.nombre) dNom = ef.nombre.trim();
+      }
+      if (!dNom) dNom = d.nombre || (d.id ? `Colaborador (${d.id})` : 'Sin nombre');
+
       if (!mapaBajas.has(k)) {
         mapaBajas.set(k, {
           id: d.id,
-          nombre: d.nombre,
+          nombre: dNom,
           area: d.area || 'Desvinculado',
           cargo: d.cargo || 'Desvinculado',
           esEliminado: true,
@@ -2783,8 +2790,11 @@ window.obtenerListaEmpleadosReportes = function () {
       } else {
         const item = mapaBajas.get(k);
         item.esDesvinculado = true;
+        if (dNom && (!item.nombre || item.nombre.startsWith('Colaborador'))) item.nombre = dNom;
         if (d.fechaDesvinculacion && !item.fecha_salida) item.fecha_salida = d.fechaDesvinculacion;
         if (d.motivo && !item.motivo_salida) item.motivo_salida = d.motivo;
+        if (d.area && (!item.area || item.area === 'Eliminado')) item.area = d.area;
+        if (d.cargo && (!item.cargo || item.cargo === 'Eliminado')) item.cargo = d.cargo;
       }
     });
 
@@ -9252,7 +9262,10 @@ window.cargarPlantillaReporte = function (tipo) {
 };
 
 window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, customInicio = null, customFin = null) {
-  let e = empCache.find(x => x.id === empleadoId);
+  const empIdStr = String(empleadoId || '').trim();
+  let e = empCache.find(x => String(x.id).trim() === empIdStr)
+       || (window.empEliminadosCache || []).find(x => String(x.id).trim() === empIdStr)
+       || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === empIdStr);
   if (!e) {
     mostrarToast('Empleado no encontrado', 'error');
     return;
@@ -12143,9 +12156,22 @@ window.cargarHistorialDesvinculados = async function () {
       const key = id || (item.nombre || '').trim();
       if (!key) return;
       idsArchivados.add(id);
+
+      // Resolver nombre de la persona si viene genérico o vacío
+      let resNom = (item.nombre && item.nombre !== 'Sin nombre' && !item.nombre.startsWith('Colaborador (')) ? item.nombre.trim() : '';
+      if (!resNom && id) {
+        const f1 = (empCache || []).find(e => String(e.id).trim() === id);
+        const f2 = (window.empEliminadosCache || []).find(e => String(e.id).trim() === id);
+        if (f1 && f1.nombre) resNom = f1.nombre.trim();
+        else if (f2 && f2.nombre) resNom = f2.nombre.trim();
+      }
+      if (!resNom) resNom = item.nombre || (id ? `Colaborador (${id})` : 'Sin nombre');
+
       mapaUnificado.set(key, {
         id: item.id || '',
-        nombre: item.nombre || 'Sin nombre',
+        nombre: resNom,
+        area: item.area || '',
+        cargo: item.cargo || '',
         fechaDesvinculacion: item.fechaDesvinculacion || '—',
         motivo: item.motivo || 'Desvinculación laboral',
         supervisor: item.supervisor || 'Admin',
@@ -12163,9 +12189,18 @@ window.cargarHistorialDesvinculados = async function () {
       if (!key) return;
       if (!idsArchivados.has(id) && !mapaUnificado.has(key)) {
         const cantRegs = (emp.registros || []).length;
+        let resNom = (emp.nombre && !emp.nombre.startsWith('Colaborador (')) ? emp.nombre.trim() : '';
+        if (!resNom && id) {
+          const f1 = (empCache || []).find(e => String(e.id).trim() === id);
+          if (f1 && f1.nombre) resNom = f1.nombre.trim();
+        }
+        if (!resNom) resNom = emp.nombre || `Colaborador (${id})`;
+
         mapaUnificado.set(key, {
           id: emp.id || id,
-          nombre: emp.nombre || `Colaborador (${id})`,
+          nombre: resNom,
+          area: emp.area || '',
+          cargo: emp.cargo || '',
           fechaDesvinculacion: emp.fecha_salida || emp.fechaDesvinculacion || 'Baja en base',
           motivo: emp.motivo || emp.motivo_salida || 'Inactivo / Eliminado en base',
           supervisor: emp.desvinculadoPor || 'Pendiente de archivar',
@@ -12188,6 +12223,8 @@ window.cargarHistorialDesvinculados = async function () {
           mapaUnificado.set(key, {
             id: emp.id || id,
             nombre: emp.nombre || `Colaborador (${id})`,
+            area: emp.area || '',
+            cargo: emp.cargo || '',
             fechaDesvinculacion: 'Inactivo en base',
             motivo: emp.motivo || 'Marcado Inactivo',
             supervisor: 'Pendiente de archivar',
@@ -12292,12 +12329,23 @@ window.renderTablaHistorialDesvinculados = function (lista) {
       ? `<button type="button" onclick="window.seleccionarParaDesvincular('${item.id}')" style="background: #7c3aed; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(124,58,237,0.2);" title="Cargar en formulario para respaldar en DESVINCULADOS"><i class="fas fa-archive"></i> Desvincular</button>`
       : `<span style="color: #64748b; font-size: 11px;">${escapeHtml(item.supervisor || 'Admin')}</span>`;
 
+    const inicial = (item.nombre || 'U').trim().charAt(0).toUpperCase();
+
     html += `
           <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.15s;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='#ffffff'">
             <td style="padding: 9px 10px; font-weight: 700; color: #64748b; text-align: center;">${idx + 1}</td>
             <td style="padding: 9px 10px;">
-              <div style="font-weight: 700; color: #1e293b;">${escapeHtml(item.nombre || '—')}</div>
-              <div style="font-size: 10.5px; color: #64748b;">ID: ${escapeHtml(item.id || '—')}</div>
+              <div style="display: flex; align-items: center; gap: 9px;">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: #ede9fe; color: #7c3aed; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12.5px; flex-shrink: 0; border: 1px solid #ddd6fe;">
+                  ${inicial}
+                </div>
+                <div>
+                  <div style="font-weight: 800; color: #1e293b; font-size: 12.5px; line-height: 1.2;">${escapeHtml(item.nombre || '—')}</div>
+                  <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">
+                    ID: <strong style="color:#475569;">${escapeHtml(item.id || '—')}</strong>${(item.cargo || item.area) ? ` &bull; <span>${escapeHtml(item.cargo || item.area)}</span>` : ''}
+                  </div>
+                </div>
+              </div>
             </td>
             <td style="padding: 9px 10px; text-align: center;">
               <div style="font-weight: 600; color: #334155; font-size: 11px;">${escapeHtml(item.fechaDesvinculacion || '—')}</div>
@@ -12344,6 +12392,151 @@ window.filtrarTablaDesvinculados = function (query) {
   }
 
   window.renderTablaHistorialDesvinculados(filtrados);
+};
+
+window.exportarExcelDesvinculados = async function () {
+  const lista = window._cacheDesvinculados || [];
+  if (!lista.length) {
+    mostrarToast('No hay colaboradores desvinculados para exportar', 'warning');
+    return;
+  }
+
+  const filtroEst = window._filtroEstadoDesvinculados || 'todos';
+  const q = (document.getElementById('txtBuscarDesvinculados')?.value || '').toLowerCase().trim();
+
+  let filtrados = lista;
+  if (filtroEst === 'archivados') {
+    filtrados = filtrados.filter(x => x.origen === 'ARCHIVADO');
+  } else if (filtroEst === 'inactivos') {
+    filtrados = filtrados.filter(x => x.origen === 'INACTIVO_BASE');
+  }
+  if (q) {
+    filtrados = filtrados.filter(item => {
+      const texto = `${item.nombre || ''} ${item.id || ''} ${item.motivo || ''} ${item.supervisor || ''} ${item.fechaDesvinculacion || ''} ${item.observaciones || ''}`.toLowerCase();
+      return texto.includes(q);
+    });
+  }
+
+  if (!filtrados.length) {
+    mostrarToast('No hay colaboradores que coincidan con la búsqueda o filtro', 'warning');
+    return;
+  }
+
+  mostrarToast('Exportando historial de desvinculados a Excel...', 'info');
+  const hoyStr = getLocalHoyStr();
+
+  const rows = filtrados.map((item, idx) => ({
+    '#': idx + 1,
+    'ID': item.id || '',
+    'Colaborador / Nombre': item.nombre || '—',
+    'Área': item.area || '—',
+    'Cargo': item.cargo || '—',
+    'Fecha Desvinculación': item.fechaDesvinculacion || '—',
+    'Estado': item.origen === 'ARCHIVADO' ? 'Archivado en DESVINCULADOS' : 'Inactivo en Base',
+    'Motivo de Salida': item.motivo || '—',
+    'Total Registros': item.totalRegs || 0,
+    'Detalle Registros': item.detalleHojas || '',
+    'Responsable': item.supervisor || 'Admin',
+    'Observaciones': item.observaciones || ''
+  }));
+
+  try {
+    if (typeof window.asegurarXLSX === 'function') {
+      await window.asegurarXLSX();
+    }
+    if (typeof XLSX !== 'undefined') {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 5 },  // #
+        { wch: 12 }, // ID
+        { wch: 32 }, // Nombre
+        { wch: 18 }, // Area
+        { wch: 18 }, // Cargo
+        { wch: 16 }, // Fecha
+        { wch: 25 }, // Estado
+        { wch: 25 }, // Motivo
+        { wch: 14 }, // Total
+        { wch: 28 }, // Detalle
+        { wch: 20 }, // Responsable
+        { wch: 35 }  // Observaciones
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Desvinculados");
+      XLSX.writeFile(wb, `Personal_Desvinculado_TCONTROL_${hoyStr}.xlsx`);
+      mostrarToast('Archivo Excel descargado con éxito', 'success');
+      return;
+    }
+  } catch (eXlsx) {
+    console.warn("Fallo exportador XLSX, usando fallback:", eXlsx);
+  }
+
+  // Fallback a HTML .xls
+  const tableRows = rows.map(r => `
+    <tr>
+      <td>${r['#']}</td>
+      <td>${escapeHtml(r['ID'])}</td>
+      <td><strong>${escapeHtml(r['Colaborador / Nombre'])}</strong></td>
+      <td>${escapeHtml(r['Área'])}</td>
+      <td>${escapeHtml(r['Cargo'])}</td>
+      <td>${escapeHtml(r['Fecha Desvinculación'])}</td>
+      <td>${escapeHtml(r['Estado'])}</td>
+      <td>${escapeHtml(r['Motivo de Salida'])}</td>
+      <td style="text-align:center;">${r['Total Registros']}</td>
+      <td>${escapeHtml(r['Detalle Registros'])}</td>
+      <td>${escapeHtml(r['Responsable'])}</td>
+      <td>${escapeHtml(r['Observaciones'])}</td>
+    </tr>
+  `).join('');
+
+  const excelHtml = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <style>
+        table { border-collapse:collapse; font-family:Arial, sans-serif; font-size:11px; }
+        th { background-color:#7c3aed; color:#ffffff; font-weight:bold; height:30px; text-align:left; border:0.5pt solid #cbd5e1; }
+        td { border:0.5pt solid #cbd5e1; height:24px; }
+        .title { font-size:15px; font-weight:bold; color:#7c3aed; height:35px; }
+      </style>
+    </head>
+    <body>
+      <table>
+        <tr><td colspan="12" class="title">TCONTROL S.A. - HISTORIAL DE PERSONAL DESVINCULADO E INACTIVOS</td></tr>
+        <tr><td colspan="12" style="font-size:10px; color:#64748b;">Generado: ${new Date().toLocaleString('es-EC')} | Registros: ${rows.length}</td></tr>
+        <tr><td colspan="12"></td></tr>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>ID</th>
+            <th>Colaborador</th>
+            <th>Área</th>
+            <th>Cargo</th>
+            <th>Fecha Desvinculación</th>
+            <th>Estado</th>
+            <th>Motivo</th>
+            <th>Total Registros</th>
+            <th>Detalle</th>
+            <th>Responsable</th>
+            <th>Observaciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+    </body>
+    </html>
+  `;
+  const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `Personal_Desvinculado_TCONTROL_${hoyStr}.xls`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  mostrarToast('Archivo Excel descargado con éxito', 'success');
 };
 
 // ==========================================

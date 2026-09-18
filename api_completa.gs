@@ -2047,7 +2047,7 @@ function obtenerDatosSupervisorConTimestamp() {
         const dFila = dataDesv[d];
         const dHojaOrigen = String(dFila[1] || '').trim();
         const dId = String(dFila[2] || '').trim();
-        const dNombre = String(dFila[3] || '').trim();
+        let dNombre = String(dFila[3] || '').trim();
         if (dId && !activeEmpIds.has(dId)) {
           if (!regEmpIdsMap[dId]) {
             regEmpIdsMap[dId] = {
@@ -2063,6 +2063,22 @@ function obtenerDatosSupervisorConTimestamp() {
               activo: false,
               registros: []
             };
+          } else {
+            // Si ya existía pero con nombre genérico o sin motivo, enriquecerlo
+            const actNom = regEmpIdsMap[dId].nombre || '';
+            if (dNombre && (!actNom || actNom.startsWith('Colaborador'))) {
+              regEmpIdsMap[dId].nombre = dNombre;
+            }
+            if (!regEmpIdsMap[dId].fecha_salida && dFila[0]) regEmpIdsMap[dId].fecha_salida = String(dFila[0]);
+            if (!regEmpIdsMap[dId].motivo_salida && dFila[4]) regEmpIdsMap[dId].motivo_salida = String(dFila[4]);
+            if (!regEmpIdsMap[dId].desvinculadoPor && dFila[5]) regEmpIdsMap[dId].desvinculadoPor = String(dFila[5]);
+          }
+          if (dHojaOrigen === 'EMPLEADOS') {
+            if (dFila[9] && (!regEmpIdsMap[dId].nombre || regEmpIdsMap[dId].nombre.startsWith('Colaborador'))) {
+              regEmpIdsMap[dId].nombre = String(dFila[9]).trim();
+            }
+            if (dFila[10]) regEmpIdsMap[dId].area = String(dFila[10]).trim();
+            if (dFila[21]) regEmpIdsMap[dId].cargo = String(dFila[21]).trim();
           }
           if (dHojaOrigen === 'REGISTROS') {
             try {
@@ -2633,29 +2649,73 @@ function listarDesvinculados() {
       return { ok: true, desvinculados: [] };
     }
 
+    // Mapear nombres existentes en EMPLEADOS para complementar si falta en registros
+    const empNombreMap = {};
+    const sheetEmp = ss.getSheetByName(HOJA_EMPLEADOS);
+    if (sheetEmp) {
+      const empData = sheetEmp.getDataRange().getValues();
+      for (let e = 1; e < empData.length; e++) {
+        const eId = String(empData[e][COLUMNAS_EMPLEADOS.ID] || '').trim();
+        const eNom = String(empData[e][COLUMNAS_EMPLEADOS.NOMBRE] || '').trim();
+        if (eId && eNom) empNombreMap[eId] = eNom;
+      }
+    }
+
     const mapa = {};
     for (let i = 1; i < data.length; i++) {
-      const fechaDesv = String(data[i][0] || '');
-      const hojaOrigen = String(data[i][1] || '');
-      const empId = String(data[i][2] || '');
-      const empNombre = String(data[i][3] || '');
-      const motivo = String(data[i][4] || '');
-      const supervisor = String(data[i][5] || '');
-      const observaciones = String(data[i][6] || '');
+      const fechaDesv = String(data[i][0] || '').trim();
+      const hojaOrigen = String(data[i][1] || '').trim();
+      const empId = String(data[i][2] || '').trim();
+      let empNombre = String(data[i][3] || '').trim();
+      const motivo = String(data[i][4] || '').trim();
+      const supervisor = String(data[i][5] || '').trim();
+      const observaciones = String(data[i][6] || '').trim();
       const key = empId || empNombre;
 
       if (!key) continue;
 
+      // Si no viene nombre directo o es genérico, intentar resolverlo desde la fila archivada o mapa de empleados
+      if (!empNombre || empNombre === 'Sin nombre' || empNombre.startsWith('Colaborador')) {
+        if (hojaOrigen === 'EMPLEADOS' && data[i][9]) {
+          empNombre = String(data[i][9]).trim();
+        } else if (hojaOrigen === 'REGISTROS' && data[i][10]) {
+          empNombre = String(data[i][10]).trim();
+        } else if (empNombreMap[empId]) {
+          empNombre = empNombreMap[empId];
+        }
+      }
+
+      let area = '';
+      let cargo = '';
+      if (hojaOrigen === 'EMPLEADOS') {
+        area = String(data[i][10] || '').trim(); // COL_C
+        cargo = String(data[i][21] || '').trim(); // CARGO (N)
+      }
+
       if (!mapa[key]) {
         mapa[key] = {
           id: empId,
-          nombre: empNombre,
+          nombre: empNombre || (empNombreMap[empId] || `Colaborador (${empId})`),
           fechaDesvinculacion: fechaDesv,
           motivo: motivo,
           supervisor: supervisor,
           observaciones: observaciones,
+          area: area,
+          cargo: cargo,
           conteo: { empleados: 0, registros: 0, vacaciones: 0, calcular_vacaciones: 0, total: 0 }
         };
+      } else {
+        // Actualizar nombre si el actual es genérico y encontramos un nombre real
+        const nomActual = mapa[key].nombre || '';
+        if (empNombre && (!nomActual || nomActual === 'Sin nombre' || nomActual.startsWith('Colaborador'))) {
+          mapa[key].nombre = empNombre;
+        }
+        if (!mapa[key].fechaDesvinculacion && fechaDesv) mapa[key].fechaDesvinculacion = fechaDesv;
+        if (!mapa[key].motivo && motivo) mapa[key].motivo = motivo;
+        if (!mapa[key].supervisor && supervisor) mapa[key].supervisor = supervisor;
+        if (!mapa[key].observaciones && observaciones) mapa[key].observaciones = observaciones;
+        if (!mapa[key].area && area) mapa[key].area = area;
+        if (!mapa[key].cargo && cargo) mapa[key].cargo = cargo;
       }
 
       mapa[key].conteo.total++;
