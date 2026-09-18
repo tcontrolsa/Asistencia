@@ -98,7 +98,10 @@ window.FirebaseBackend = {
                 case 'obtenerReporteMensual':
                     return await this.obtenerReporteMensual(params);
                 case 'actualizarRegistroGeneral':
+                case 'actualizarRegistroArchivado':
                     return await this.actualizarRegistroGeneral(params);
+                case 'guardarModalidadSupervisor':
+                    return await this.guardarModalidadSupervisor(params);
                 case 'justificarDia':
                     return await this.justificarDia(params);
                 case 'actualizarEmpleado':
@@ -782,9 +785,9 @@ window.FirebaseBackend = {
                     tsVal = !isNaN(parsedD.getTime()) ? parsedD.toISOString() : String(data.timestamp);
                 }
             }
-            registros.push({
+            const rObj = {
                 fecha: this._normFecha(data.fecha),
-                tipo: data.tipo,
+                tipo: (data.tipo || '').toUpperCase(),
                 hora: this._limpiarHora(data.hora),
                 almuerzo: data.almuerzo || '',
                 dispositivo: data.dispositivo || '',
@@ -804,7 +807,11 @@ window.FirebaseBackend = {
                 permiso_personal_mins: data.permiso_personal_mins || 0,
                 permiso_medico_mins: data.permiso_medico_mins || 0,
                 tiempo_justificado_mins: data.tiempo_justificado_mins || 0
-            });
+            };
+            if (rObj.timestamp) {
+                this._extraerFechaHoraDesdeTimestamp(rObj);
+            }
+            registros.push(rObj);
         });
 
         // --- INICIO: Integración de Registros Archivados ---
@@ -845,29 +852,65 @@ window.FirebaseBackend = {
             const archivadosDelEmpleado = archivadosData.registros.filter(r => {
                 const rId = String(r.empleadoId || r.id_empleado || r.id || '').trim();
                 return rId === empIdStr || (Number(rId) && Number(empIdStr) && Number(rId) === Number(empIdStr));
-            }).map(data => ({
-                fecha: this._normFecha(data.fecha),
-                tipo: data.tipo,
-                hora: this._limpiarHora(data.hora),
-                almuerzo: data.almuerzo || '',
-                dispositivo: data.dispositivo || '',
-                timestamp: data.timestamp || null,
-                dia: data.dia || '',
-                modo: data.modo || 'OFICINA',
-                horasExtra: data.horasExtra || 'NO',
-                autoriza: data.autoriza || '',
-                razon_salida_temprana: data.razonSalidaTemprana || data.razon_salida_temprana || '',
-                quien_justifica: data.quienJustifica || data.quien_justifica || '',
-                razon_entrada_tardia: data.razonEntradaTardia || data.razon_entrada_tardia || '',
-                quien_justifica_entrada: data.quienJustificaEntrada || data.quien_justifica_entrada || '',
-                tipo_salida: data.tipoSalida || data.tipo_salida || '',
-                razon_permiso: data.razonPermiso || data.razon_permiso || '',
-                permiso_personal_mins: data.permiso_personal_mins || 0,
-                permiso_medico_mins: data.permiso_medico_mins || 0,
-                tiempo_justificado_mins: data.tiempo_justificado_mins || 0
-            }));
+            }).map(data => {
+                const aObj = {
+                    fecha: this._normFecha(data.fecha),
+                    tipo: (data.tipo || '').toUpperCase(),
+                    hora: this._limpiarHora(data.hora),
+                    almuerzo: data.almuerzo || '',
+                    dispositivo: data.dispositivo || '',
+                    timestamp: data.timestamp || null,
+                    dia: data.dia || '',
+                    modo: data.modo || 'OFICINA',
+                    horasExtra: data.horasExtra || 'NO',
+                    autoriza: data.autoriza || '',
+                    razon_salida_temprana: data.razonSalidaTemprana || data.razon_salida_temprana || '',
+                    quien_justifica: data.quienJustifica || data.quien_justifica || '',
+                    razon_entrada_tardia: data.razonEntradaTardia || data.razon_entrada_tardia || '',
+                    quien_justifica_entrada: data.quienJustificaEntrada || data.quien_justifica_entrada || '',
+                    tipo_salida: data.tipoSalida || data.tipo_salida || '',
+                    razon_permiso: data.razonPermiso || data.razon_permiso || '',
+                    permiso_personal_mins: data.permiso_personal_mins || 0,
+                    permiso_medico_mins: data.permiso_medico_mins || 0,
+                    tiempo_justificado_mins: data.tiempo_justificado_mins || 0
+                };
+                if (aObj.timestamp) {
+                    this._extraerFechaHoraDesdeTimestamp(aObj);
+                }
+                return aObj;
+            });
 
-            registros = registros.concat(archivadosDelEmpleado);
+            // Evitar duplicar registros entre Firebase y Google Sheets
+            const existingKeys = new Set();
+            registros.forEach(r => {
+                const hNorm = (r.hora || '').slice(0, 5);
+                existingKeys.add(`${r.fecha}|${(r.tipo || '').toUpperCase()}|${hNorm}`);
+                existingKeys.add(`${r.fecha}|${(r.tipo || '').toUpperCase()}`);
+            });
+
+            const archivadosUnicos = [];
+            archivadosDelEmpleado.forEach(arch => {
+                const hNorm = (arch.hora || '').slice(0, 5);
+                const kExact = `${arch.fecha}|${(arch.tipo || '').toUpperCase()}|${hNorm}`;
+                const kTipo = `${arch.fecha}|${(arch.tipo || '').toUpperCase()}`;
+
+                if (existingKeys.has(kExact) || existingKeys.has(kTipo)) {
+                    // Enriquecer el registro de Firebase si venían datos de Sheets
+                    const fbReg = registros.find(r => r.fecha === arch.fecha && (r.tipo || '').toUpperCase() === (arch.tipo || '').toUpperCase());
+                    if (fbReg) {
+                        if (arch.permiso_personal_mins) fbReg.permiso_personal_mins = arch.permiso_personal_mins;
+                        if (arch.permiso_medico_mins) fbReg.permiso_medico_mins = arch.permiso_medico_mins;
+                        if (arch.tiempo_justificado_mins) fbReg.tiempo_justificado_mins = arch.tiempo_justificado_mins;
+                        if (arch.razon_permiso) fbReg.razon_permiso = arch.razon_permiso;
+                        if (arch.razon_salida_temprana && !fbReg.razon_salida_temprana) fbReg.razon_salida_temprana = arch.razon_salida_temprana;
+                        if (arch.razon_entrada_tardia && !fbReg.razon_entrada_tardia) fbReg.razon_entrada_tardia = arch.razon_entrada_tardia;
+                    }
+                    return; // No duplicar
+                }
+                archivadosUnicos.push(arch);
+            });
+
+            registros = registros.concat(archivadosUnicos);
         }
         // --- FIN: Integración de Registros Archivados ---
 
@@ -1372,150 +1415,181 @@ window.FirebaseBackend = {
 
         if (!campo) return { error: "Falta el campo a actualizar" };
 
-        // Caso 1: ID explícitamente de Sheets
-        if (docId && String(docId).startsWith('arch_')) {
-            try {
-                return await this._jsonp({
-                    accion: 'actualizarRegistroArchivado',
-                    empleadoId: empleadoId,
-                    fecha: fecha,
-                    tipo: tipo,
-                    campo: campo,
-                    valor: valor
-                });
-            } catch (e) { return { error: "Error de conexión con Sheets: " + e.message }; }
+        // 1. PRIMERO: Actualizar siempre en la hoja REGISTROS de Google Sheets
+        let sheetsRes = null;
+        try {
+            let sheetsCampo = campo;
+            let sheetsValor = valor;
+            // Regla de Oro: Si el campo es 'hora' o 'timestamp', enviar SIEMPRE 'timestamp' formateado (DD/MM/YYYY HH:mm:ss)
+            // para que Google Sheets actualice primero la columna TIMESTAMP, y de ella se deriven FECHA y HORA
+            if (campo === 'hora' || campo === 'timestamp') {
+                let fParts = (fecha || '').includes('/') ? fecha.split('/') : (fecha || '').split('-');
+                let y, mo, d;
+                if (fParts[0] && fParts[0].length === 4) {
+                    y = fParts[0]; mo = fParts[1]; d = fParts[2];
+                } else if (fParts[2] && fParts[2].length === 4) {
+                    d = fParts[0]; mo = fParts[1]; y = fParts[2];
+                }
+                let hVal = (campo === 'hora') ? valor : (String(valor).includes(' ') ? String(valor).split(' ')[1] : valor);
+                if (hVal && String(hVal).length === 5) hVal = hVal + ':00'; // Asegurar HH:mm:ss
+                if (y && mo && d && hVal) {
+                    sheetsCampo = 'timestamp';
+                    sheetsValor = `${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${y} ${hVal}`;
+                }
+            }
+
+            sheetsRes = await this._jsonp({
+                accion: 'actualizarRegistroArchivado',
+                empleadoId: empleadoId,
+                fecha: fecha,
+                tipo: tipo,
+                campo: sheetsCampo,
+                valor: sheetsValor,
+                modo: params.modo,
+                almuerzo: params.almuerzo,
+                horasExtra: params.horasExtra,
+                justificado: params.justificado,
+                razon_justificac: params.razon_justificac,
+                quien_justifica: params.quien_justifica
+            });
+        } catch (e) {
+            console.warn("⚠️ Advertencia al actualizar en Google Sheets:", e.message);
         }
 
-        // Si no hay docId, intentamos buscarlo por empleadoId/fecha/tipo en Firebase
+        // Si era un ID explícito de Sheets, retornar resultado de Sheets
+        if (docId && String(docId).startsWith('arch_')) {
+            return sheetsRes || { ok: true };
+        }
+
+        // 2. EN FIRESTORE: Solo buscar y actualizar SI YA EXISTE. NUNCA crear nuevo documento.
         if (!docId && empleadoId) {
-            const query = await db.collection('registros')
-                .where('empleadoId', '==', empleadoId)
-                .where('tipo', '==', tipo)
-                .get();
-            let matchedDoc = null;
-            query.forEach(doc => {
-                const docData = this._processDoc(doc.id, doc.data());
-                if (docData && docData.fecha === fecha) {
-                    matchedDoc = doc;
+            try {
+                const query = await db.collection('registros')
+                    .where('empleadoId', '==', empleadoId)
+                    .where('tipo', '==', tipo)
+                    .get();
+                let matchedDoc = null;
+                query.forEach(doc => {
+                    const docData = this._processDoc(doc.id, doc.data());
+                    if (docData && docData.fecha === fecha) {
+                        matchedDoc = doc;
+                    }
+                });
+                if (matchedDoc) {
+                    docId = matchedDoc.id;
                 }
-            });
-            if (matchedDoc) {
-                docId = matchedDoc.id;
+            } catch (errQuery) {
+                console.warn("⚠️ Error consultando doc en Firestore:", errQuery.message);
             }
         }
 
         if (docId) {
-            const docRef = db.collection('registros').doc(docId);
-            const docSnap = await docRef.get();
+            try {
+                const docRef = db.collection('registros').doc(docId);
+                const docSnap = await docRef.get();
 
-            if (docSnap.exists) {
-                const updateData = {};
-                if (campo === 'timestamp') {
-                    const parsed = parsearTimestamp(valor);
-                    if (!parsed) return { error: "Formato de timestamp inválido" };
-                    const [dPart, tPart] = parsed.timestampFormatted.split(' ');
-                    const [day, month, year] = dPart.split('/').map(Number);
-                    const [hour, minute, second] = tPart.split(':').map(Number);
-                    const dateObj = new Date(year, month - 1, day, hour, minute, second);
-                    updateData.timestamp = firebase.firestore.Timestamp.fromDate(dateObj);
-                } else {
-                    updateData[campo] = valor;
-                    if (campo === 'hora') {
-                        if (docSnap.data().timestamp) {
+                if (docSnap.exists) {
+                    const updateData = {};
+                    let baseDate = null;
+                    let cleanHora = null;
+                    let cleanFecha = null;
+
+                    if (campo === 'timestamp' || campo === 'hora') {
+                        const hVal = (campo === 'hora') ? valor : (String(valor).includes(' ') ? String(valor).split(' ')[1] : valor);
+                        const [h, m, s] = String(hVal).split(':').map(Number);
+                        let fParts = (fecha || '').includes('/') ? fecha.split('/') : (fecha || '').split('-');
+                        let year, month, day;
+                        if (fParts[0] && fParts[0].length === 4) {
+                            year = Number(fParts[0]); month = Number(fParts[1]); day = Number(fParts[2]);
+                        } else if (fParts[2] && fParts[2].length === 4) {
+                            day = Number(fParts[0]); month = Number(fParts[1]); year = Number(fParts[2]);
+                        } else if (docSnap.data().timestamp) {
                             const oldDate = docSnap.data().timestamp.toDate ? docSnap.data().timestamp.toDate() : new Date(docSnap.data().timestamp);
-                            const [h, m, s] = valor.split(':').map(Number);
-                            const newDate = new Date(oldDate.getFullYear(), oldDate.getMonth(), oldDate.getDate(), h || 0, m || 0, s || 0);
-                            updateData.timestamp = firebase.firestore.Timestamp.fromDate(newDate);
+                            if (!isNaN(oldDate.getTime())) {
+                                year = oldDate.getFullYear(); month = oldDate.getMonth() + 1; day = oldDate.getDate();
+                            }
+                        }
+                        if (year && month && day) {
+                            baseDate = new Date(year, month - 1, day, h || 0, m || 0, s || 0);
+                            cleanFecha = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                            cleanHora = `${String(h||0).padStart(2,'0')}:${String(m||0).padStart(2,'0')}:${String(s||0).padStart(2,'0')}`;
                         }
                     }
+
+                    if (baseDate && !isNaN(baseDate.getTime())) {
+                        updateData.timestamp = firebase.firestore.Timestamp.fromDate(baseDate);
+                        updateData.fecha = cleanFecha || fecha;
+                        updateData.hora = cleanHora || valor;
+                    } else {
+                        updateData[campo] = valor;
+                    }
+                    if (params.modo) updateData.modo = params.modo;
+                    if (params.almuerzo) updateData.almuerzo = params.almuerzo;
+                    if (params.horasExtra) updateData.horasExtra = params.horasExtra;
+                    if (params.justificado) updateData.justificado = params.justificado;
+                    if (params.razon_justificac) updateData.razon_justificac = params.razon_justificac;
+                    if (params.razon_ausencia) updateData.razon_ausencia = params.razon_ausencia;
+                    await docRef.update(updateData);
+                    return { ok: true, sheetsRes };
+                } else {
+                    // El documento no existe en Firestore: NO CREARLO para evitar duplicados con Google Sheets
+                    console.log(`ℹ️ [actualizarRegistroGeneral] Doc ${docId} no existe en Firestore. Actualizado en Google Sheets sin crear duplicado en Firestore.`);
+                    return { ok: true, sheetsRes, noFirestoreDoc: true };
                 }
-                if (params.justificado) updateData.justificado = params.justificado;
-                if (params.razon_justificac) updateData.razon_justificac = params.razon_justificac;
-                if (params.razon_ausencia) updateData.razon_ausencia = params.razon_ausencia;
-                await docRef.update(updateData);
-                return { ok: true };
-            } else {
-                // El documento no existe: lo creamos con set
-                const empDoc = await db.collection('empleados').doc(empleadoId).get();
-                if (!empDoc.exists) return { error: "Empleado no existe" };
-                const empData = empDoc.data();
-
-                const fechaPartes = fecha.split('-').map(Number);
-                const hVal = (campo === 'hora' ? valor : '00:00:00');
-                const [h, m, s] = hVal.split(':').map(Number);
-                const dateObj = new Date(fechaPartes[0], fechaPartes[1] - 1, fechaPartes[2], h || 0, m || 0, s || 0);
-
-                const newData = {
-                    empleadoId: empleadoId,
-                    nombre: empData.nombre,
-                    tipo: tipo,
-                    almuerzo: params.almuerzo || "NO",
-                    modo: params.modo || "OFICINA",
-                    horasExtra: params.horasExtra || "NO",
-                    observacion: params.observacion || "",
-                    timestamp: firebase.firestore.Timestamp.fromDate(dateObj)
-                };
-                if (campo && campo !== 'hora') {
-                    newData[campo] = valor;
-                }
-                if (params.justificado) newData.justificado = params.justificado;
-                if (params.razon_justificac) newData.razon_justificac = params.razon_justificac;
-                if (params.razon_ausencia) newData.razon_ausencia = params.razon_ausencia;
-                await docRef.set(newData);
-                return { ok: true };
+            } catch (errUpd) {
+                console.warn("⚠️ Error actualizando doc en Firestore:", errUpd.message);
             }
-        } else if (empleadoId && campo === 'hora') {
-            // Si el registro no está en Firebase y la fecha es antigua (ej: > 2 días), enviar a Sheets
-            const hoy = new Date();
-            const limiteFirebase = new Date();
-            limiteFirebase.setDate(limiteFirebase.getDate() - 2);
-            const fechaRegistro = new Date(fecha + 'T12:00:00');
-
-            if (fechaRegistro < limiteFirebase) {
-                try {
-                    return await this._jsonp({
-                        accion: 'actualizarRegistroArchivado',
-                        empleadoId: empleadoId,
-                        fecha: fecha,
-                        tipo: tipo,
-                        campo: campo,
-                        valor: valor,
-                        almuerzo: params.almuerzo,
-                        modo: params.modo,
-                        horasExtra: params.horasExtra,
-                        observacion: params.observacion
-                    });
-                } catch (e) { return { error: "Error de conexión con Sheets: " + e.message }; }
-            }
-
-            // Crear registro nuevo en Firebase
-            const empDoc = await db.collection('empleados').doc(empleadoId).get();
-            if (!empDoc.exists) return { error: "Empleado no existe" };
-            const empData = empDoc.data();
-
-            const fechaPartes = fecha.split('-').map(Number);
-            const [h, m, s] = valor.split(':').map(Number);
-            const dateObj = new Date(fechaPartes[0], fechaPartes[1] - 1, fechaPartes[2], h || 0, m || 0, s || 0);
-
-            const newData = {
-                empleadoId: empleadoId,
-                nombre: empData.nombre,
-                tipo: tipo,
-                almuerzo: params.almuerzo || "NO",
-                modo: params.modo || "OFICINA",
-                horasExtra: params.horasExtra || "NO",
-                observacion: params.observacion || "",
-                timestamp: firebase.firestore.Timestamp.fromDate(dateObj)
-            };
-            if (params.justificado) newData.justificado = params.justificado;
-            if (params.razon_justificac) newData.razon_justificac = params.razon_justificac;
-            if (params.razon_ausencia) newData.razon_ausencia = params.razon_ausencia;
-
-            await db.collection('registros').add(newData);
-            return { ok: true };
         }
 
-        return { error: "No se encontró el registro para actualizar" };
+        return { ok: true, sheetsRes };
+    },
+
+    async actualizarRegistroArchivado(params) {
+        return await this.actualizarRegistroGeneral(params);
+    },
+
+    async guardarModalidadSupervisor(params) {
+        const empleadoId = String(params.empleadoId || '').trim();
+        const fecha = String(params.fecha || '').trim();
+        const modalidad = String(params.modalidad || params.modo || '').trim().toUpperCase();
+        const supervisorId = String(params.supervisorId || '').trim();
+
+        // 1. Google Sheets primero
+        let sheetsRes = null;
+        try {
+            sheetsRes = await this._jsonp({
+                accion: 'actualizarRegistroArchivado',
+                empleadoId: empleadoId,
+                fecha: fecha,
+                tipo: 'ENTRADA',
+                campo: 'modo',
+                valor: modalidad,
+                supervisorId: supervisorId
+            });
+        } catch (e) {
+            console.warn("⚠️ Sheets modalidad aviso:", e);
+        }
+
+        // 2. En Firestore: actualizar SOLO si el documento ya existe (no crear nuevos)
+        try {
+            const query = await db.collection('registros')
+                .where('empleadoId', '==', empleadoId)
+                .get();
+            const batch = db.batch();
+            let hasUpdates = false;
+            query.forEach(doc => {
+                const d = this._processDoc(doc.id, doc.data());
+                if (d && d.fecha === fecha) {
+                    batch.update(doc.ref, { modo: modalidad });
+                    hasUpdates = true;
+                }
+            });
+            if (hasUpdates) await batch.commit();
+        } catch (e) {
+            console.warn("⚠️ Firestore modalidad aviso:", e);
+        }
+
+        return { ok: true, sheetsRes, modalidad };
     },
 
     async justificarDia(params) {
@@ -2879,41 +2953,53 @@ window.FirebaseBackend = {
                 _fetchAlmuerzosExtra(); // En segundo plano, la interfaz abre de inmediato
             }
 
-            const archivadosNorm = archivadosData.registros.map(reg => ({
-                id: reg.id || `arch_${reg.empleadoId}_${reg.fecha}_${reg.tipo}`,
-                empleadoId: String(reg.empleadoId || reg.id_empleado || '').trim(),
-                fecha: this._normFecha(reg.fecha),
-                tipo: (reg.tipo || '').toUpperCase(),
-                hora: this._limpiarHora(reg.hora),
-                almuerzo: reg.almuerzo || '',
-                modo: reg.modo || 'OFICINA',
-                lat: reg.lat || '',
-                lng: reg.lng || '',
-                dispositivo: reg.dispositivo || '',
-                timestamp: reg.timestamp || '',
-                // Mapear campos de Sheets → campos estándar
-                razon_salida: reg.razon_salida || reg.razonSalidaTemprana || '',
-                quien_justifica: reg.quien_justifica || reg.quienJustifica || '',
-                razon_entrada_tardia: reg.razon_entrada_tardia || reg.razonEntradaTardia || '',
-                quien_justifica_entrada: reg.quien_justifica_entrada || reg.quienJustificaEntrada || '',
-                tipo_salida: reg.tipo_salida || reg.tipoSalida || '',
-                razon_permiso: reg.razon_permiso || reg.razonPermiso || '',
-                horasExtra: reg.horasExtra || '',
-                autoriza: reg.autoriza || '',
-                justificado: reg.justificado || '',
-                razon_justificac: reg.razon_justificac || '',
-                permiso_personal_mins: Number(reg.permiso_personal_mins || 0),
-                permiso_medico_mins: Number(reg.permiso_medico_mins || 0),
-                tiempo_justificado_mins: Number(reg.tiempo_justificado_mins || 0)
-            })).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
+            const archivadosNorm = archivadosData.registros.map(reg => {
+                const normR = {
+                    id: reg.id || `arch_${reg.empleadoId}_${reg.fecha}_${reg.tipo}`,
+                    empleadoId: String(reg.empleadoId || reg.id_empleado || '').trim(),
+                    fecha: this._normFecha(reg.fecha),
+                    tipo: (reg.tipo || '').toUpperCase(),
+                    hora: this._limpiarHora(reg.hora),
+                    almuerzo: reg.almuerzo || '',
+                    modo: reg.modo || 'OFICINA',
+                    lat: reg.lat || '',
+                    lng: reg.lng || '',
+                    dispositivo: reg.dispositivo || '',
+                    timestamp: reg.timestamp || '',
+                    // Mapear campos de Sheets → campos estándar
+                    razon_salida: reg.razon_salida || reg.razonSalidaTemprana || '',
+                    quien_justifica: reg.quien_justifica || reg.quienJustifica || '',
+                    razon_entrada_tardia: reg.razon_entrada_tardia || reg.razonEntradaTardia || '',
+                    quien_justifica_entrada: reg.quien_justifica_entrada || reg.quienJustificaEntrada || '',
+                    tipo_salida: reg.tipo_salida || reg.tipoSalida || '',
+                    razon_permiso: reg.razon_permiso || reg.razonPermiso || '',
+                    horasExtra: reg.horasExtra || '',
+                    autoriza: reg.autoriza || '',
+                    justificado: reg.justificado || '',
+                    razon_justificac: reg.razon_justificac || '',
+                    permiso_personal_mins: Number(reg.permiso_personal_mins || 0),
+                    permiso_medico_mins: Number(reg.permiso_medico_mins || 0),
+                    tiempo_justificado_mins: Number(reg.tiempo_justificado_mins || 0)
+                };
+                if (normR.timestamp) {
+                    this._extraerFechaHoraDesdeTimestamp(normR);
+                }
+                return normR;
+            }).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
 
-            // Registros de Firebase: también normalizar fecha y hora
-            const registrosFirebase = allRegistros.map(r => ({
-                ...r,
-                empleadoId: String(r.empleadoId || r.id_empleado || '').trim(),
-                fecha: this._normFecha(r.fecha),
-                hora: this._limpiarHora(r.hora)
-            }));
+            // Registros de Firebase: también normalizar fecha y hora desde timestamp si existe
+            const registrosFirebase = allRegistros.map(r => {
+                const rf = {
+                    ...r,
+                    empleadoId: String(r.empleadoId || r.id_empleado || '').trim(),
+                    fecha: this._normFecha(r.fecha),
+                    hora: this._limpiarHora(r.hora)
+                };
+                if (rf.timestamp) {
+                    this._extraerFechaHoraDesdeTimestamp(rf);
+                }
+                return rf;
+            });
 
             // Fechas cubiertas por Firebase por empleado (para evitar duplicados con archivados de forma individual)
             const empFechasEnFirebase = new Set(registrosFirebase.map(r => `${r.empleadoId}|${r.fecha}`).filter(Boolean));
@@ -3382,33 +3468,71 @@ window.FirebaseBackend = {
         return url;
     },
 
+    _extraerFechaHoraDesdeTimestamp(item) {
+        if (!item || !item.timestamp) return item;
+        const ts = item.timestamp;
+        let d = null;
+        let fechaStr = null;
+        let horaStr = null;
+
+        if (typeof ts === 'object' && typeof ts.toDate === 'function') {
+            d = ts.toDate();
+        } else if (typeof ts === 'object' && ts.seconds !== undefined) {
+            d = new Date(ts.seconds * 1000);
+        } else if (ts instanceof Date) {
+            d = ts;
+        } else if (typeof ts === 'string') {
+            const s = ts.trim();
+            const mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+            const mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+            if (mDMY) {
+                const day = String(mDMY[1]).padStart(2, '0');
+                const month = String(mDMY[2]).padStart(2, '0');
+                const year = mDMY[3];
+                const hour = String(mDMY[4]).padStart(2, '0');
+                const min = String(mDMY[5]).padStart(2, '0');
+                const sec = String(mDMY[6] || '00').padStart(2, '0');
+                fechaStr = `${year}-${month}-${day}`;
+                horaStr = `${hour}:${min}:${sec}`;
+            } else if (mYMD) {
+                const year = mYMD[1];
+                const month = String(mYMD[2]).padStart(2, '0');
+                const day = String(mYMD[3]).padStart(2, '0');
+                const hour = String(mYMD[4]).padStart(2, '0');
+                const min = String(mYMD[5]).padStart(2, '0');
+                const sec = String(mYMD[6] || '00').padStart(2, '0');
+                fechaStr = `${year}-${month}-${day}`;
+                horaStr = `${hour}:${min}:${sec}`;
+            } else {
+                const parsed = new Date(s);
+                if (!isNaN(parsed.getTime())) {
+                    d = parsed;
+                }
+            }
+        }
+
+        if (d && !isNaN(d.getTime())) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            fechaStr = `${y}-${m}-${day}`;
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            const ss = String(d.getSeconds()).padStart(2, '0');
+            horaStr = `${hh}:${mm}:${ss}`;
+            item.dia = this._obtenerDiaSemana(d);
+        }
+
+        if (fechaStr) item.fecha = fechaStr;
+        if (horaStr) item.hora = horaStr;
+        return item;
+    },
+
     _processDoc(id, data) {
         if (!data) return null;
         const res = { id, ...data };
         if (data.timestamp) {
-            let d;
-            if (typeof data.timestamp.toDate === 'function') {
-                d = data.timestamp.toDate();
-            } else if (data.timestamp instanceof Date) {
-                d = data.timestamp;
-            } else {
-                d = new Date(data.timestamp);
-            }
-            if (d && !isNaN(d.getTime())) {
-                const y = d.getFullYear();
-                const m = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                if (!res.fecha) res.fecha = `${y}-${m}-${day}`;
-
-                const hh = String(d.getHours()).padStart(2, '0');
-                const mm = String(d.getMinutes()).padStart(2, '0');
-                const ss = String(d.getSeconds()).padStart(2, '0');
-                if (!res.hora || res.hora === '') {
-                    res.hora = `${hh}:${mm}:${ss}`;
-                }
-
-                res.dia = this._obtenerDiaSemana(d);
-            }
+            this._extraerFechaHoraDesdeTimestamp(res);
         }
 
         // Si el tipo es de ausencia, calcular dinámicamente hora y razon_ausencia si no están
@@ -3452,7 +3576,11 @@ window.FirebaseBackend = {
         const mTime = hStr.match(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/);
         if (mTime) {
             const parts = mTime[1].split(':');
-            return `${parts[0].padStart(2, '0')}:${parts[1]}${parts[2] ? ':' + parts[2] : ''}`;
+            return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${(parts[2] || '00').padStart(2, '0')}`;
+        }
+        if (/^\d{1,2}:\d{2}$/.test(hStr)) {
+            const p = hStr.split(':');
+            return `${p[0].padStart(2, '0')}:${p[1].padStart(2, '0')}:00`;
         }
         return hStr;
     },
@@ -3618,7 +3746,20 @@ window.FirebaseBackend = {
                 ? 'permiso_personal_mins'
                 : (tipo === 'medico' ? 'permiso_medico_mins' : 'tiempo_justificado_mins');
 
-            // 1. Buscar el registro del día en Firebase Firestore
+            // 1. PRIMERO: Buscar y actualizar en la hoja REGISTROS de Google Sheets
+            const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
+            try {
+                const resSheets = await this._jsonp(sheetsParams, 0, 1, 35000);
+                if (resSheets && resSheets.ok) {
+                    console.log("✅ Permiso actualizado en Google Sheets (Hoja REGISTROS):", resSheets.msg || 'OK');
+                } else if (resSheets && resSheets.error) {
+                    console.warn("⚠️ Sheets reportó al guardar permiso:", resSheets.error);
+                }
+            } catch (errSheets) {
+                console.warn("⚠️ Advertencia al actualizar permiso en Google Sheets:", errSheets.message);
+            }
+
+            // 2. EN FIRESTORE: Solo buscar y actualizar SI YA EXISTE. NUNCA crear nuevo documento.
             const regSnap = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
                 .get();
@@ -3645,30 +3786,11 @@ window.FirebaseBackend = {
             if (targetDocId) {
                 await db.collection('registros').doc(targetDocId).update(updateObj);
             } else {
-                // Si no existía registro previo en Firestore para este día, crearlo
-                const empDoc = await db.collection('empleados').doc(empleadoId).get();
-                const empData = empDoc.exists ? empDoc.data() : {};
-                const nombre = empData.nombre || empleadoId;
-                const cedula = empData.cedula || '';
-                const parts = fecha.split('-');
-                const fechaObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 8, 0, 0);
-
-                await db.collection('registros').add({
-                    empleadoId: empleadoId,
-                    nombre: nombre,
-                    cedula: cedula,
-                    fecha: fecha,
-                    tipo: 'PERMISO',
-                    hora: '08:00:00',
-                    modo: 'OFICINA',
-                    justificado: 'SI',
-                    quien_justifica: supervisorId,
-                    timestamp: firebase.firestore.Timestamp.fromDate(fechaObj),
-                    ...updateObj
-                });
+                // Si no existía registro previo en Firestore, NO CREAR NUEVO DOCUMENTO para evitar duplicados con Google Sheets
+                console.log(`ℹ️ [guardarPermisoSupervisor] No hay doc previo en Firestore para ${empleadoId} en ${fecha}. Actualizado en Sheets sin crear duplicado en Firestore.`);
             }
 
-            // 2. Invalidar y refrescar cachés locales
+            // 3. Invalidar y refrescar cachés locales
             try {
                 localStorage.removeItem('tcontrol_registros_cache_v1');
                 localStorage.removeItem('tcontrol_registros_cache_v2');
@@ -3690,19 +3812,6 @@ window.FirebaseBackend = {
                     }
                 }
             } catch (e) { }
-
-            // 3. Sincronizar en segundo plano con Google Sheets (no bloqueante, timeout de 45s)
-            // Persiste en la hoja de cálculo de Google Sheets sin bloquear la respuesta de Firestore
-            const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
-            this._jsonp(sheetsParams, 0, 1, 45000).then(res => {
-                if (res && res.ok) {
-                    console.log("✅ Permiso sincronizado con Google Sheets con éxito.");
-                } else if (res && res.error) {
-                    console.warn("⚠️ Sheets reportó:", res.error);
-                }
-            }).catch(err => {
-                console.warn("⚠️ Advertencia de red con Sheets (datos ya asegurados en Firebase):", err.message);
-            });
 
             return { ok: true };
         } catch (e) {

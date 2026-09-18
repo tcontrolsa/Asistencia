@@ -329,12 +329,31 @@ function doPost(e) {
             }
           }
           
-          var horaVal = r[5];
+          var horaVal = r[COLUMNAS.HORA];
           var horaStr = '';
           if (horaVal instanceof Date) {
             horaStr = Utilities.formatDate(horaVal, tz, 'HH:mm:ss');
           } else {
             horaStr = horaVal ? String(horaVal) : '';
+          }
+          
+          var timestampVal = r[COLUMNAS.TIMESTAMP];
+          var timestampStr = '';
+          if (timestampVal instanceof Date) {
+            timestampStr = Utilities.formatDate(timestampVal, tz, "yyyy-MM-dd'T'HH:mm:ss");
+          } else if (timestampVal) {
+            timestampStr = String(timestampVal).trim();
+          }
+
+          // Regla: Extraer fecha y hora desde TIMESTAMP
+          if (timestampVal) {
+            var rawTs = (timestampVal instanceof Date) ? Utilities.formatDate(timestampVal, tz, 'yyyy-MM-dd HH:mm:ss') : String(timestampVal).trim();
+            var parsedTs = parsearTimestampGAS(rawTs);
+            if (parsedTs) {
+              fechaStr = parsedTs.fecha;
+              horaStr = parsedTs.hora;
+              if (!timestampStr) timestampStr = parsedTs.timestampFormatted;
+            }
           }
           
           var r_razonSalidaTemprana = r[COLUMNAS.RAZON_SALIDA_TEMPRANA]?String(r[COLUMNAS.RAZON_SALIDA_TEMPRANA]):'';
@@ -531,41 +550,57 @@ function procesarAccion(params) {
         // Si se pide un empleado especifico, saltar los demas
         if (empIdReq && rEmpId !== empIdReq) continue;
         
+        var tsVal = r[9];
         var fechaVal = r[0];
+        var horaVal = r[5];
         var fechaStr = '';
-        if (fechaVal instanceof Date) {
-          fechaStr = Utilities.formatDate(fechaVal, tz, 'yyyy-MM-dd');
-        } else if (fechaVal) {
-          var s = String(fechaVal).trim();
-          if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-            fechaStr = s.slice(0, 10);
-          } else {
-            var mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-            if (mYMD) {
-              fechaStr = mYMD[1] + '-' + mYMD[2].padStart(2, '0') + '-' + mYMD[3].padStart(2, '0');
+        var horaStr = '';
+
+        // 1. Extraer prioritariamente desde TIMESTAMP
+        if (tsVal) {
+          var parsedTs = parsearTimestampGAS(tsVal);
+          if (parsedTs) {
+            fechaStr = parsedTs.fecha;
+            horaStr = parsedTs.hora;
+          }
+        }
+
+        // Fallback a columnas FECHA y HORA si no se pudo extraer de TIMESTAMP
+        if (!fechaStr) {
+          if (fechaVal instanceof Date) {
+            fechaStr = Utilities.formatDate(fechaVal, tz, 'yyyy-MM-dd');
+          } else if (fechaVal) {
+            var s = String(fechaVal).trim();
+            if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+              fechaStr = s.slice(0, 10);
             } else {
-              var mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-              if (mDMY) {
-                fechaStr = mDMY[3] + '-' + mDMY[2].padStart(2, '0') + '-' + mDMY[1].padStart(2, '0');
+              var mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+              if (mYMD) {
+                fechaStr = mYMD[1] + '-' + mYMD[2].padStart(2, '0') + '-' + mYMD[3].padStart(2, '0');
               } else {
-                var d = new Date(s);
-                fechaStr = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+                var mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+                if (mDMY) {
+                  fechaStr = mDMY[3] + '-' + mDMY[2].padStart(2, '0') + '-' + mDMY[1].padStart(2, '0');
+                } else {
+                  var d = new Date(s);
+                  fechaStr = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+                }
               }
             }
           }
         }
 
-        var horaVal = r[5];
-        var horaStr = '';
-        if (horaVal instanceof Date) {
-          horaStr = Utilities.formatDate(horaVal, tz, 'HH:mm:ss');
-        } else if (horaVal) {
-          var h = String(horaVal).trim();
-          if (/^\d{4}-\d{2}-\d{2}T/.test(h)) {
-            horaStr = h.split('T')[1].split('.')[0].substring(0, 8);
-          } else {
-            var mTime = h.match(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/);
-            horaStr = mTime ? mTime[1] : h;
+        if (!horaStr) {
+          if (horaVal instanceof Date) {
+            horaStr = Utilities.formatDate(horaVal, tz, 'HH:mm:ss');
+          } else if (horaVal) {
+            var h = String(horaVal).trim();
+            if (/^\d{4}-\d{2}-\d{2}T/.test(h)) {
+              horaStr = h.split('T')[1].split('.')[0].substring(0, 8);
+            } else {
+              var mTime = h.match(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/);
+              horaStr = mTime ? mTime[1] : h;
+            }
           }
         }
 
@@ -579,6 +614,7 @@ function procesarAccion(params) {
       return { ok: true, registros: registros };
 
     case 'actualizarRegistroArchivado':
+    case 'actualizarRegistroGeneral':
       return actualizarRegistroArchivado(params);
       
     case 'eliminarRegistroArchivado':
@@ -1716,8 +1752,18 @@ function obtenerRegistrosEmpleado(empleadoId) {
         let fechaStr = '', timestampStr = '', horaStr = formatearHoraCell(fila[COLUMNAS.HORA]);
         if (fechaObj instanceof Date) fechaStr = Utilities.formatDate(fechaObj, timeZone, 'yyyy-MM-dd');
         else if (typeof fechaObj === 'string') fechaStr = fechaObj;
-        if (timestampObj instanceof Date) timestampStr = timestampObj.toISOString();
+        if (timestampObj instanceof Date) timestampStr = Utilities.formatDate(timestampObj, timeZone, "yyyy-MM-dd'T'HH:mm:ss");
         else if (typeof timestampObj === 'string') timestampStr = timestampObj;
+
+        // Regla: extraer fecha y hora desde TIMESTAMP
+        if (timestampObj) {
+          var rawTs = (timestampObj instanceof Date) ? Utilities.formatDate(timestampObj, timeZone, 'yyyy-MM-dd HH:mm:ss') : String(timestampObj).trim();
+          var parsedTs = parsearTimestampGAS(rawTs);
+          if (parsedTs) {
+            fechaStr = parsedTs.fecha;
+            horaStr = parsedTs.hora;
+          }
+        }
         registros.push({
           fecha: fechaStr,
           id: fila[COLUMNAS.ID]?.toString() || '',
@@ -1764,8 +1810,17 @@ function obtenerRegistrosEmpleado(empleadoId) {
                 let fechaStr = '', timestampStr = '', horaStr = formatearHoraCell(rowData[COLUMNAS.HORA]);
                 if (fechaObj instanceof Date) fechaStr = Utilities.formatDate(fechaObj, timeZone, 'yyyy-MM-dd');
                 else if (typeof fechaObj === 'string') fechaStr = fechaObj;
-                if (timestampObj instanceof Date) timestampStr = timestampObj.toISOString();
+                if (timestampObj instanceof Date) timestampStr = Utilities.formatDate(timestampObj, timeZone, "yyyy-MM-dd'T'HH:mm:ss");
                 else if (typeof timestampObj === 'string') timestampStr = timestampObj;
+
+                if (timestampObj) {
+                  var rawTs = (timestampObj instanceof Date) ? Utilities.formatDate(timestampObj, timeZone, 'yyyy-MM-dd HH:mm:ss') : String(timestampObj).trim();
+                  var parsedTs = parsearTimestampGAS(rawTs);
+                  if (parsedTs) {
+                    fechaStr = parsedTs.fecha;
+                    horaStr = parsedTs.hora;
+                  }
+                }
                 registros.push({
                   fecha: fechaStr,
                   id: rowData[COLUMNAS.ID]?.toString() || '',
@@ -1848,7 +1903,7 @@ function obtenerDatosSupervisorConTimestamp() {
     const registros = [];
     for (let i = 1; i < registrosData.length; i++) {
       const fila = registrosData[i];
-      if (!fila[COLUMNAS.FECHA]) continue;
+      if (!fila[COLUMNAS.FECHA] && !fila[COLUMNAS.TIMESTAMP]) continue;
       
       let fechaStr = '';
       let timestampStr = '';
@@ -1861,9 +1916,22 @@ function obtenerDatosSupervisorConTimestamp() {
       }
       
       if (fila[COLUMNAS.TIMESTAMP] instanceof Date) {
-        timestampStr = fila[COLUMNAS.TIMESTAMP].toISOString();
-      } else if (typeof fila[COLUMNAS.TIMESTAMP] === 'string') {
-        timestampStr = fila[COLUMNAS.TIMESTAMP];
+        timestampStr = Utilities.formatDate(fila[COLUMNAS.TIMESTAMP], timeZone, "yyyy-MM-dd'T'HH:mm:ss");
+      } else if (fila[COLUMNAS.TIMESTAMP]) {
+        timestampStr = String(fila[COLUMNAS.TIMESTAMP]).trim();
+      }
+
+      // Regla de Oro: La información de FECHA y HORA se extrae prioritariamente desde TIMESTAMP
+      if (fila[COLUMNAS.TIMESTAMP]) {
+        var rawTs = (fila[COLUMNAS.TIMESTAMP] instanceof Date)
+          ? Utilities.formatDate(fila[COLUMNAS.TIMESTAMP], timeZone, 'yyyy-MM-dd HH:mm:ss')
+          : String(fila[COLUMNAS.TIMESTAMP]).trim();
+        var parsedTs = parsearTimestampGAS(rawTs);
+        if (parsedTs) {
+          fechaStr = parsedTs.fecha;
+          horaStr = parsedTs.hora;
+          if (!timestampStr) timestampStr = parsedTs.timestampFormatted;
+        }
       }
       
       // Extraer campos adicionales
@@ -3518,15 +3586,25 @@ function actualizarRegistroArchivado(params) {
     const tz = Session.getScriptTimeZone();
     let filaIndex = -1;
     
+    var normFechaStr = function(val) {
+      if (!val) return '';
+      if (val instanceof Date) return Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+      var s = String(val).trim();
+      var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (mYMD) return mYMD[1] + '-' + String(mYMD[2]).padStart(2, '0') + '-' + String(mYMD[3]).padStart(2, '0');
+      var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (mDMY) return mDMY[3] + '-' + String(mDMY[2]).padStart(2, '0') + '-' + String(mDMY[1]).padStart(2, '0');
+      return s;
+    };
+    var targetFechaNorm = normFechaStr(fecha);
+    
     for (let i = 1; i < data.length; i++) {
-      let fStr = '';
-      if (data[i][COLUMNAS.FECHA] instanceof Date) {
-        fStr = Utilities.formatDate(data[i][COLUMNAS.FECHA], tz, 'yyyy-MM-dd');
-      } else {
-        fStr = String(data[i][COLUMNAS.FECHA]).trim();
+      let rowFecha = normFechaStr(data[i][COLUMNAS.FECHA]);
+      if (!rowFecha && data[i][COLUMNAS.TIMESTAMP]) {
+        rowFecha = normFechaStr(data[i][COLUMNAS.TIMESTAMP]);
       }
       
-      if (String(data[i][COLUMNAS.ID]).trim() === eid && fStr === fecha && String(data[i][COLUMNAS.TIPO]).trim() === tipo) {
+      if (String(data[i][COLUMNAS.ID]).trim() === eid && rowFecha === targetFechaNorm && String(data[i][COLUMNAS.TIPO]).trim() === tipo) {
         filaIndex = i + 1;
         break;
       }
@@ -3540,15 +3618,32 @@ function actualizarRegistroArchivado(params) {
         sheet.getRange(filaIndex, COLUMNAS.FECHA + 1).setValue(parsed.fecha);
         sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue(parsed.hora);
         sheet.getRange(filaIndex, COLUMNAS.DIA + 1).setValue(obtenerDiaEcuador(new Date(parsed.fecha + 'T12:00:00')));
-        return { ok: true };
+        if (params.modo) sheet.getRange(filaIndex, COLUMNAS.MODO + 1).setValue(params.modo);
+        if (params.almuerzo) sheet.getRange(filaIndex, COLUMNAS.ALMUERZO + 1).setValue(params.almuerzo);
+        if (params.horasExtra) sheet.getRange(filaIndex, COLUMNAS.HORAS_EXTRA + 1).setValue(params.horasExtra);
+        return { ok: true, timestamp: parsed.timestampFormatted, fecha: parsed.fecha, hora: parsed.hora };
       }
 
       // Actualizar existente
-      let colIdx = -1;
-      // Mapear campo a columna
-      if (campo === 'hora') colIdx = COLUMNAS.HORA;
+      if (campo === 'hora') {
+        var hStr = String(valor).trim();
+        var fullTs = fecha + ' ' + hStr;
+        var parsed = parsearTimestampGAS(fullTs);
+        var tsFinal = parsed ? parsed.timestampFormatted : fullTs;
+        var fFinal = parsed ? parsed.fecha : fecha;
+        var hFinal = parsed ? parsed.hora : hStr;
+
+        sheet.getRange(filaIndex, COLUMNAS.TIMESTAMP + 1).setValue(tsFinal);
+        sheet.getRange(filaIndex, COLUMNAS.FECHA + 1).setValue(fFinal);
+        sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue(hFinal);
+        sheet.getRange(filaIndex, COLUMNAS.DIA + 1).setValue(obtenerDiaEcuador(new Date(fFinal + 'T12:00:00')));
+        if (params.modo) sheet.getRange(filaIndex, COLUMNAS.MODO + 1).setValue(params.modo);
+        if (params.almuerzo) sheet.getRange(filaIndex, COLUMNAS.ALMUERZO + 1).setValue(params.almuerzo);
+        if (params.horasExtra) sheet.getRange(filaIndex, COLUMNAS.HORAS_EXTRA + 1).setValue(params.horasExtra);
+        return { ok: true, timestamp: tsFinal, fecha: fFinal, hora: hFinal };
+      }
       else if (campo === 'almuerzo') colIdx = COLUMNAS.ALMUERZO;
-      else if (campo === 'modo' || campo === 'ubicacion') colIdx = COLUMNAS.MODO;
+      else if (campo === 'modo' || campo === 'ubicacion' || campo === 'modalidad') colIdx = COLUMNAS.MODO;
       else if (campo === 'horasExtra') colIdx = COLUMNAS.HORAS_EXTRA;
       else if (campo === 'razon_entrada_tardia') colIdx = COLUMNAS.RAZON_ENTRADA_TARDIA;
       else if (campo === 'razon_salida') colIdx = COLUMNAS.RAZON_SALIDA_TEMPRANA;
@@ -3566,7 +3661,7 @@ function actualizarRegistroArchivado(params) {
       return { ok: false, error: "Campo no mapeado para Sheets" };
     } else {
       // Crear nuevo registro en Sheets si es completar hora o si es justificación
-      if (campo === 'hora' || tipo === 'JUSTIFICACION' || campo === 'justificado') {
+      if (campo === 'hora' || campo === 'timestamp' || tipo === 'JUSTIFICACION' || campo === 'justificado') {
         const sheetEmp = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
         const emps = sheetEmp.getDataRange().getValues();
         let nombre = eid;
@@ -3577,17 +3672,23 @@ function actualizarRegistroArchivado(params) {
           }
         }
         
-        const nuevaFila = new Array(22).fill('');
-        nuevaFila[COLUMNAS.FECHA] = fecha;
+        var rawTsInput = (campo === 'timestamp') ? valor : (fecha + ' ' + (campo === 'hora' ? valor : '00:00:00'));
+        var parsed = parsearTimestampGAS(rawTsInput);
+        var tsFinal = parsed ? parsed.timestampFormatted : rawTsInput;
+        var fFinal = parsed ? parsed.fecha : fecha;
+        var hFinal = parsed ? parsed.hora : (campo === 'hora' ? valor : '00:00:00');
+
+        const nuevaFila = new Array(25).fill('');
+        nuevaFila[COLUMNAS.TIMESTAMP] = tsFinal;
+        nuevaFila[COLUMNAS.FECHA] = fFinal;
+        nuevaFila[COLUMNAS.HORA] = hFinal;
         nuevaFila[COLUMNAS.ID] = eid;
         nuevaFila[COLUMNAS.NOMBRE] = nombre;
         nuevaFila[COLUMNAS.TIPO] = tipo || 'JUSTIFICACION';
-        nuevaFila[COLUMNAS.HORA] = (campo === 'hora' ? valor : '00:00:00');
-        nuevaFila[COLUMNAS.ALMUERZO] = "NO";
-        nuevaFila[COLUMNAS.MODO] = "OFICINA";
-        nuevaFila[COLUMNAS.HORAS_EXTRA] = "NO";
-        nuevaFila[COLUMNAS.TIMESTAMP] = new Date();
-        nuevaFila[COLUMNAS.DIA] = obtenerDiaEcuador(new Date(fecha + 'T12:00:00'));
+        nuevaFila[COLUMNAS.ALMUERZO] = params.almuerzo || "NO";
+        nuevaFila[COLUMNAS.MODO] = params.modo || "EMPRESA";
+        nuevaFila[COLUMNAS.HORAS_EXTRA] = params.horasExtra || "NO";
+        nuevaFila[COLUMNAS.DIA] = obtenerDiaEcuador(new Date(fFinal + 'T12:00:00'));
         
         if (campo === 'justificado' || tipo === 'JUSTIFICACION') {
           nuevaFila[20] = 'SI';
@@ -3596,7 +3697,7 @@ function actualizarRegistroArchivado(params) {
         }
         
         sheet.appendRow(nuevaFila);
-        return { ok: true };
+        return { ok: true, timestamp: tsFinal, fecha: fFinal, hora: hFinal };
       }
       return { ok: false, error: "Registro no encontrado y no es creación de hora/justificación" };
     }
@@ -4460,10 +4561,9 @@ kpiVacacionesIndividual: !empIdReq ? vacacionesPorEmpleado : null
 
 function guardarModalidadSupervisor(params) {
   try {
-    const SUPERVISORES_AUTORIZADOS = ['7', '1058'];
     const supervisorId = String(params.supervisorId || '').trim();
-    if (!SUPERVISORES_AUTORIZADOS.includes(supervisorId)) {
-      return { ok: false, error: 'No autorizado para modificar modalidad.' };
+    if (!supervisorId) {
+      return { ok: false, error: 'Supervisor no especificado.' };
     }
 
     const empleadoId = String(params.empleadoId || '').trim();

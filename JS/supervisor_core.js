@@ -412,6 +412,65 @@ function formatearFechaA_DMY(fecha) {
   return str;
 }
 
+window.normalizarRegistroDesdeTimestamp = function (r) {
+  if (!r || !r.timestamp) return r;
+  const ts = r.timestamp;
+  let d = null;
+  let fechaStr = null;
+  let horaStr = null;
+
+  if (typeof ts === 'object' && typeof ts.toDate === 'function') {
+    d = ts.toDate();
+  } else if (typeof ts === 'object' && ts.seconds !== undefined) {
+    d = new Date(ts.seconds * 1000);
+  } else if (ts instanceof Date) {
+    d = ts;
+  } else if (typeof ts === 'string') {
+    const s = ts.trim();
+    const mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+    const mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+    if (mDMY) {
+      const day = String(mDMY[1]).padStart(2, '0');
+      const month = String(mDMY[2]).padStart(2, '0');
+      const year = mDMY[3];
+      const hour = String(mDMY[4]).padStart(2, '0');
+      const min = String(mDMY[5]).padStart(2, '0');
+      const sec = String(mDMY[6] || '00').padStart(2, '0');
+      fechaStr = `${year}-${month}-${day}`;
+      horaStr = `${hour}:${min}:${sec}`;
+    } else if (mYMD) {
+      const year = mYMD[1];
+      const month = String(mYMD[2]).padStart(2, '0');
+      const day = String(mYMD[3]).padStart(2, '0');
+      const hour = String(mYMD[4]).padStart(2, '0');
+      const min = String(mYMD[5]).padStart(2, '0');
+      const sec = String(mYMD[6] || '00').padStart(2, '0');
+      fechaStr = `${year}-${month}-${day}`;
+      horaStr = `${hour}:${min}:${sec}`;
+    } else {
+      const parsed = new Date(s);
+      if (!isNaN(parsed.getTime())) {
+        d = parsed;
+      }
+    }
+  }
+
+  if (d && !isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    fechaStr = `${y}-${m}-${day}`;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    horaStr = `${hh}:${mm}:${ss}`;
+  }
+
+  if (fechaStr) r.fecha = fechaStr;
+  if (horaStr) r.hora = horaStr;
+  return r;
+};
+
 function obtenerMinutos(valor) {
   if (!valor) return null;
   if (typeof valor === 'number') {
@@ -3579,17 +3638,26 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           const existingMap = new Map();
           (e.registros || []).forEach(r => {
             const fNorm = normalizarFechaStr(r.fecha) || r.fecha;
-            existingMap.set(`${fNorm}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`, r);
+            const hNorm = (r.hora || '').slice(0, 5);
+            const tipoUpper = (r.tipo || '').toUpperCase();
+            existingMap.set(`${fNorm}_${tipoUpper}_${hNorm}`, r);
+            existingMap.set(`${fNorm}_${tipoUpper}`, r);
+            if (r.id) existingMap.set(String(r.id), r);
           });
           let hasChanges = false;
           fullRegs.forEach(r => {
             const fNorm = normalizarFechaStr(r.fecha) || r.fecha;
-            const k = `${fNorm}_${(r.tipo || '').toUpperCase()}_${r.hora || ''}`;
-            const existing = existingMap.get(k);
+            const hNorm = (r.hora || '').slice(0, 5);
+            const tipoUpper = (r.tipo || '').toUpperCase();
+            const kExact = `${fNorm}_${tipoUpper}_${hNorm}`;
+            const kTipo = `${fNorm}_${tipoUpper}`;
+            const existing = (r.id && existingMap.get(String(r.id))) || existingMap.get(kExact) || existingMap.get(kTipo);
             if (!existing) {
               if (!e.registros) e.registros = [];
               e.registros.push({ ...r, fecha: fNorm });
-              existingMap.set(k, r);
+              existingMap.set(kExact, r);
+              existingMap.set(kTipo, r);
+              if (r.id) existingMap.set(String(r.id), r);
               hasChanges = true;
             } else {
               if (r.permiso_personal_mins !== undefined && existing.permiso_personal_mins !== r.permiso_personal_mins) {
@@ -3606,6 +3674,18 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
               }
               if (r.razon_permiso && existing.razon_permiso !== r.razon_permiso) {
                 existing.razon_permiso = r.razon_permiso;
+                hasChanges = true;
+              }
+              if (r.razon_ausencia && !existing.razon_ausencia) {
+                existing.razon_ausencia = r.razon_ausencia;
+                hasChanges = true;
+              }
+              if (r.razon_justificac && !existing.razon_justificac) {
+                existing.razon_justificac = r.razon_justificac;
+                hasChanges = true;
+              }
+              if (r.timestamp && !existing.timestamp) {
+                existing.timestamp = r.timestamp;
                 hasChanges = true;
               }
             }
@@ -3699,7 +3779,43 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const fechaNorm = normalizarFechaStr(r.fecha);
       if (!fechaNorm) return;
       if (!porDia[fechaNorm]) porDia[fechaNorm] = { registros: [], almuerzo: null };
-      porDia[fechaNorm].registros.push(r);
+      
+      const rTipo = String(r.tipo || '').toUpperCase();
+      const rH = (r.hora || '').slice(0, 5); // HH:mm
+      
+      // Evitar registros duplicados para el mismo día, tipo y hora (mismo minuto)
+      const yaExiste = porDia[fechaNorm].registros.some(ex => {
+        const exTipo = String(ex.tipo || '').toUpperCase();
+        const exH = (ex.hora || '').slice(0, 5);
+        if (ex.id && r.id && ex.id === r.id) return true;
+        if (exTipo === rTipo && exH && rH && exH === rH) return true;
+        const esSalidaEx = exTipo.includes('SALIDA');
+        const esSalidaR = rTipo.includes('SALIDA');
+        if (esSalidaEx && esSalidaR && exH && rH && exH === rH) return true;
+        const esEntradaEx = exTipo.includes('ENTRADA') || exTipo.includes('RETORNO');
+        const esEntradaR = rTipo.includes('ENTRADA') || rTipo.includes('RETORNO');
+        if (esEntradaEx && esEntradaR && exH && rH && exH === rH) return true;
+        return false;
+      });
+
+      if (!yaExiste) {
+        porDia[fechaNorm].registros.push(r);
+      } else {
+        const ex = porDia[fechaNorm].registros.find(x => {
+          const exTipo = String(x.tipo || '').toUpperCase();
+          const exH = (x.hora || '').slice(0, 5);
+          return (ex.id && r.id && ex.id === r.id) || (exTipo === rTipo && exH === rH);
+        });
+        if (ex) {
+          if (!ex.timestamp && r.timestamp) ex.timestamp = r.timestamp;
+          if (r.permiso_personal_mins) ex.permiso_personal_mins = r.permiso_personal_mins;
+          if (r.permiso_medico_mins) ex.permiso_medico_mins = r.permiso_medico_mins;
+          if (r.tiempo_justificado_mins) ex.tiempo_justificado_mins = r.tiempo_justificado_mins;
+          if (r.razon_permiso) ex.razon_permiso = r.razon_permiso;
+          if (r.razon_ausencia && !ex.razon_ausencia) ex.razon_ausencia = r.razon_ausencia;
+          if (r.razon_justificac && !ex.razon_justificac) ex.razon_justificac = r.razon_justificac;
+        }
+      }
       if (r.tipo === 'ENTRADA' && r.almuerzo) porDia[fechaNorm].almuerzo = r.almuerzo;
     });
 
@@ -3812,7 +3928,13 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       regsDia.forEach(r => {
         const tipo = String(r.tipo || '').toUpperCase();
         if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO' || tipo === 'ENTRADA_CAMPO') {
-          let mE = obtenerMinutos(r.hora);
+          let mE = obtenerMinutos(r.timestamp || r.hora);
+          if (entradaPendiente) {
+            let mPend = obtenerMinutos(entradaPendiente.timestamp || entradaPendiente.hora);
+            if (mPend !== null && mE !== null && Math.abs(mE - mPend) <= 2) {
+              return; // Entrada duplicada consecutiva, ignorar
+            }
+          }
           if (ultimoSalidaMins !== null && mE !== null && mE > ultimoSalidaMins) {
             minutosPermisoHoy += (mE - ultimoSalidaMins);
           }
@@ -3820,9 +3942,19 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
           if (entradaPendiente) {
             periodosDia.push({ entrada: entradaPendiente, salida: r });
-            ultimoSalidaMins = obtenerMinutos(r.hora);
+            ultimoSalidaMins = obtenerMinutos(r.timestamp || r.hora);
             entradaPendiente = null;
           } else {
+            // Protección contra salidas duplicadas consecutivas: si el último período ya tiene salida con hora idéntica (dentro de 2 minutos)
+            const ultP = periodosDia[periodosDia.length - 1];
+            if (ultP && ultP.salida) {
+              let mUlt = obtenerMinutos(ultP.salida.timestamp || ultP.salida.hora);
+              let mCur = obtenerMinutos(r.timestamp || r.hora);
+              if (mUlt !== null && mCur !== null && Math.abs(mCur - mUlt) <= 2) {
+                // Es un duplicado evidente de la salida anterior, ignorar y no crear fila fantasma
+                return;
+              }
+            }
             periodosDia.push({ entrada: null, salida: r });
           }
         }
@@ -3832,11 +3964,11 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
       // Mostrar todos los tramos de horas de forma limpia y legible
       let horaE = periodosDia.map(p => {
-        return p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--';
+        return p.entrada ? formatearHora(p.entrada.timestamp || p.entrada.hora) : '--:--';
       }).join('<br>');
 
       let horaS = periodosDia.map(p => {
-        return p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--';
+        return p.salida ? formatearHora(p.salida.timestamp || p.salida.hora) : '--:--';
       }).join('<br>');
 
       let aBadge = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? '<span class="pill ok">🏢 Sí</span>' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? '<span class="pill" style="background:#dbeafe; color:#1e40af;">🏠 No</span>' : '<span class="pill dim">❓ —</span>';
@@ -3847,7 +3979,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
       let atrasoMins = 0;
       if (primerReg) {
-        let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
+        let mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
         let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
         if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
       }
@@ -4425,24 +4557,38 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (vacacionesList.length > 0) {
         const sortedVacs = [...vacacionesList].sort((a, b) => b.fecha.localeCompare(a.fecha));
         listaVacacionesHTML = sortedVacs.map(v => {
-          return `<div style="font-size:11px; padding:4px 0; border-bottom:1px dashed #f1f5f9; display:flex; justify-content:space-between; color:#334155;">
-                <span>📅 ${v.fecha}</span>
-                <span style="font-weight:700; color:#4f46e5;">🏖️ Tomada</span>
+          return `<div style="font-size:10px; padding:2px 4px; border-radius:4px; background:#f8fafc; border:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; color:#334155;">
+                <span><i class="fas fa-calendar-day" style="color:#d97706; font-size:9px;"></i> ${v.fecha}</span>
+                <span style="font-weight:700; color:#b45309; font-size:9px; background:#fef3c7; padding:1px 5px; border-radius:3px;">Tomada</span>
               </div>`;
         }).join('');
       } else {
-        listaVacacionesHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:5px 0;">Sin vacaciones registradas</div>`;
+        listaVacacionesHTML = `<div style="font-size:10.5px; color:#94a3b8; text-align:center; padding:4px 0;">Sin vacaciones registradas</div>`;
       }
 
       container.innerHTML = `
-            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; justify-content:space-between; text-transform:uppercase; letter-spacing:0.02em;">
-              <span style="display:flex; align-items:center; gap:4px;"><i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:11px;"></i> Vacaciones</span>
-              <span style="font-size:9.5px; color:#475569;"><strong style="color:#0f172a;">${totalVacsTomadas}</strong> tom. / <strong style="color:var(--green);">${totalVacsRestantes}</strong> rest.</span>
-            </div>
-            <div style="max-height: 48px; overflow-y: auto; padding-right: 2px;">
-              ${listaVacacionesHTML}
-            </div>
-          `;
+        <div class="kpi-header-row">
+          <span class="kpi-header-title" style="font-size:10.5px;">
+            <i class="fas fa-umbrella-beach" style="color:#d97706; font-size:11.5px;"></i> Vacaciones
+          </span>
+          <span class="emp-chip" style="background:#fffbeb; color:#b45309; font-size:9.5px; padding:1px 6px; white-space:nowrap;">
+            ${totalVacsTomadas} tom. / <strong style="color:var(--green);">${totalVacsRestantes}</strong> disp.
+          </span>
+        </div>
+        <div class="kpi-card-stats-grid">
+          <div class="kpi-stat-item">
+            <span class="kpi-stat-label">Tomadas</span>
+            <div class="kpi-stat-val-hero" style="color:#d97706;">${totalVacsTomadas} <span style="font-size:10px; font-weight:500; color:#94a3b8;">días</span></div>
+          </div>
+          <div class="kpi-stat-item">
+            <span class="kpi-stat-label">Disponibles</span>
+            <div class="kpi-stat-val-hero" style="color:var(--green);">${totalVacsRestantes} <span style="font-size:10px; font-weight:500; color:#94a3b8;">días</span></div>
+          </div>
+          <div style="grid-column: span 2; border-top: 1px dashed #f1f5f9; padding-top: 4px; margin-top: 2px; max-height: 44px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;">
+            ${listaVacacionesHTML}
+          </div>
+        </div>
+      `;
     }
   }
 
@@ -4459,172 +4605,199 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   let badgeWhatsAppHtml = '';
   if (tieneWa) {
     badgeWhatsAppHtml = `
-          <span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'telefono', '${escapeHtml(rawTel)}')" title="Clic para editar número de WhatsApp"` : ''}>
-            <i class="fab fa-whatsapp" style="color:#16a34a; font-size:12px;"></i> WhatsApp: ${escapeHtml(rawTel)}
-            ${esMaster ? `<i class="fas fa-pen" style="font-size:8.5px; opacity:0.6; margin-left:2px;"></i>` : ''}
-          </span>
-          <button type="button" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" style="background:linear-gradient(135deg, #25d366 0%, #16a34a 100%); color:white; border:none; padding:2px 10px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px; cursor:pointer; box-shadow:0 1px 4px rgba(22,163,74,0.25); transition:transform 0.15s;" title="Enviar mensaje directo de WhatsApp a ${escapeHtml(e.nombre)}">
-            <i class="fab fa-whatsapp" style="font-size:12px;"></i> Enviar WhatsApp
-          </button>
-        `;
+      <button type="button" class="btn-action-detail btn-action-wa" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" title="Enviar WhatsApp a ${escapeHtml(e.nombre)} (${escapeHtml(rawTel)})">
+        <i class="fab fa-whatsapp" style="font-size:13px;"></i> <span>WhatsApp: ${escapeHtml(rawTel)}</span>
+      </button>
+    `;
   } else {
     badgeWhatsAppHtml = `
-          <span style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" title="No tiene WhatsApp registrado. Clic para registrarlo">
-            <i class="fab fa-whatsapp" style="color:#ef4444; font-size:12px;"></i> Sin WhatsApp
-            <i class="fas fa-plus-circle" style="font-size:9px; margin-left:2px;"></i>
-          </span>
-          <button type="button" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" style="background:#fff1f2; color:#be123c; border:1px solid #fca5a5; padding:2px 10px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px; cursor:pointer; transition:all 0.15s;" title="Registrar número para enviar WhatsApp">
-            <i class="fab fa-whatsapp" style="font-size:12px;"></i> Agregar WhatsApp
-          </button>
-        `;
+      <button type="button" class="btn-action-detail btn-action-wa-add" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" title="Registrar número para enviar WhatsApp">
+        <i class="fab fa-whatsapp" style="font-size:13px;"></i> <span>+ WhatsApp</span>
+      </button>
+    `;
   }
 
   const culturaActivaEmp = !(e.cultura_habilitada === false || e.cultura_activa === false || e.cultura_habilitada === 'false' || e.cultura_activa === 'false');
   const badgeCulturaHtml = `
-        <button type="button" onclick="window.toggleCulturaEmpleado('${e.id}')" title="${culturaActivaEmp ? 'Cultura Tcontrol Habilitada para este usuario. Clic para deshabilitar / exonerar' : 'Cultura Tcontrol Deshabilitada para este usuario. Clic para habilitar'}" style="background:${culturaActivaEmp ? '#eff6ff' : '#f8fafc'}; color:${culturaActivaEmp ? '#1d4ed8' : '#64748b'}; border:1px solid ${culturaActivaEmp ? '#bfdbfe' : '#cbd5e1'}; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px; cursor:pointer; transition:all 0.15s;">
-          <i class="fas fa-lightbulb" style="color:${culturaActivaEmp ? '#2563eb' : '#94a3b8'};"></i>
-          Cultura: <span style="color:${culturaActivaEmp ? '#15803d' : '#be123c'};">${culturaActivaEmp ? 'Habilitado' : 'Exonerado'}</span>
-          <i class="fas fa-sync-alt" style="font-size:8.5px; opacity:0.6;"></i>
-        </button>
-      `;
+    <button type="button" class="btn-action-detail ${culturaActivaEmp ? 'btn-action-cultura-on' : 'btn-action-cultura-off'}" onclick="window.toggleCulturaEmpleado('${e.id}')" title="${culturaActivaEmp ? 'Cultura Tcontrol Habilitada para este colaborador. Clic para deshabilitar / exonerar' : 'Cultura Tcontrol Deshabilitada para este colaborador. Clic para habilitar'}">
+      <i class="fas fa-lightbulb"></i>
+      <span>Cultura: <strong>${culturaActivaEmp ? 'Habilitado' : 'Exonerado'}</strong></span>
+      <i class="fas fa-rotate" style="font-size:9px; opacity:0.6;"></i>
+    </button>
+  `;
 
   $('detalleContent').innerHTML = `
-    <div class="detail-view">
-      <!-- CABECERA REDISEÑADA: COMPACTA Y MODERNA -->
-      <div class="detail-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 18px; background:#ffffff; border-bottom:1px solid #e2e8f0;">
-        <div style="display:flex; gap:12px; align-items:center;">
-          <div class="detail-photo-container" style="width:72px; height:72px; min-width:72px; box-shadow:0 2px 6px rgba(0,0,0,0.06); border:2px solid #ffffff;" ${esMaster ? `onclick="triggerPhotoUpload('${e.id}')" title="Subir nueva foto"` : ''}>
-            ${photoCell(e, 'large')}
-            ${esMaster ? `<div class="photo-upload-overlay" style="font-size:10px;"><i class="fas fa-camera"></i></div>` : ''}
-          </div>
-          <div class="detail-info">
-            <div class="detail-name" style="font-size:18px; font-weight:700; color:#0f172a; line-height:1.2; margin-bottom:4px;" ${esMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')"` : ''}>${escapeHtml(e.nombre)}</div>
-            <div class="detail-meta" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-              <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')"` : ''}><i class="fas fa-id-card"></i> ${escapeHtml(e.id)}</span>
-              <span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')"` : ''}><i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}</span>
-              <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Editar enlace de Rol de Pagos"` : ''}><i class="fas fa-file-invoice-dollar"></i> ${e.id_dispositivo ? 'Con Rol' : 'Sin Rol'}</span>
-              ${badgeWhatsAppHtml}
-              ${badgeCulturaHtml}
-              ${(e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado') ?
-                `<span style="background:#f5f3ff; color:#7c3aed; border:1.5px solid #ddd6fe; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px;" title="Colaborador Desvinculado"><i class="fas fa-user-slash"></i> Desvinculado ${(e.fecha_salida || e.fechaDesvinculacion) ? ' (' + (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) + ')' : ''}</span>` :
-                (e.esEliminado ? `<span style="background:#fff1f2; color:#e11d48; border:1px solid #fecdd3; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" title="Colaborador Inactivo / Eliminado en base"><i class="fas fa-user-minus"></i> Inactivo en Base</span>` : '')
-              }
-              <button type="button" onclick="window.abrirModalEditarEmpleado('${e.id}')" style="background:#4f46e5; color:#ffffff; border:none; padding:3px 9px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; cursor:pointer; box-shadow:0 1px 3px rgba(79, 70, 229, 0.25); transition:all 0.15s;" title="Abrir ficha para editar datos del colaborador (Nombre, Área, Cargo, PIN, Rol, WhatsApp, etc.)"><i class="fas fa-user-edit"></i> Editar Datos</button>
-              <button onclick="window.resetearPasswordEmpleado('${e.id}', '${escapeHtml(e.nombre)}')" title="Resetear contraseña para permitir que el empleado vuelva a vincular su dispositivo" style="background:#fff1f2; color:#be123c; border:1px solid #fca5a5; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; cursor:pointer; transition:all 0.15s;"><i class="fas fa-key" style="font-size:10px;"></i> Resetear Contraseña</button>
-              ${tardT > 0 ?
-      `<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` :
-      `<span style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check-circle"></i> Puntual</span>`
-    }
+    <div class="detail-view-modern">
+      <!-- CABECERA REDISEÑADA: HERO PROFILE CARD -->
+      <div class="detail-hero-card">
+        <!-- TOP: IDENTITY & ACTION BUTTONS -->
+        <div class="detail-hero-main">
+          <div class="detail-identity-group">
+            <div class="detail-avatar-wrapper" ${esMaster ? `onclick="triggerPhotoUpload('${e.id}')" title="Subir o cambiar fotografía"` : ''}>
+              ${photoCell(e, 'large')}
+              ${esMaster ? `<div class="detail-avatar-hover"><i class="fas fa-camera"></i></div>` : ''}
+              <span class="detail-status-dot ${(e.esEliminado || e.esDesvinculado) ? 'dot-inactive' : 'dot-active'}" title="${(e.esEliminado || e.esDesvinculado) ? 'Inactivo' : 'Activo'}"></span>
+            </div>
+            <div class="detail-identity-info">
+              <div class="detail-name-heading" ${esMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')" title="Clic para editar nombre"` : ''}>
+                ${escapeHtml(e.nombre)}
+              </div>
+              <div class="detail-chips-row">
+                <span class="emp-chip chip-id" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')" title="ID Firebase"` : ''}>
+                  <i class="fas fa-id-card"></i> ${escapeHtml(e.id)}
+                </span>
+                <span class="emp-chip chip-area" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')" title="Área / Departamento"` : ''}>
+                  <i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}
+                </span>
+                <span class="emp-chip chip-cargo" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'cargo', '${e.cargo || ''}')" title="Cargo"` : ''}>
+                  <i class="fas fa-briefcase"></i> ${escapeHtml(e.cargo || 'General')}
+                </span>
+                <span class="emp-chip ${e.id_dispositivo ? 'chip-rol-si' : 'chip-rol-no'}" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Rol de Pagos"` : ''}>
+                  <i class="fas fa-file-invoice-dollar"></i> ${e.id_dispositivo ? 'Con Rol' : 'Sin Rol'}
+                </span>
+                ${(e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado') ?
+                  `<span class="emp-chip chip-desvinculado" title="Colaborador Desvinculado"><i class="fas fa-user-slash"></i> Desvinculado ${(e.fecha_salida || e.fechaDesvinculacion) ? ' (' + (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) + ')' : ''}</span>` :
+                  (e.esEliminado ? `<span class="emp-chip chip-eliminado" title="Colaborador Inactivo / Eliminado en base"><i class="fas fa-user-minus"></i> Inactivo en Base</span>` : '')
+                }
+                ${tardT > 0 ?
+                  `<span class="emp-chip chip-warning" title="${tardT} tardanzas"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` :
+                  `<span class="emp-chip chip-success" title="Sin atrasos"><i class="fas fa-check-circle"></i> Puntual</span>`
+                }
+              </div>
             </div>
           </div>
+
+          <!-- BOTONERA DE ACCIONES RÁPIDAS -->
+          <div class="detail-actions-toolbar">
+            ${badgeWhatsAppHtml}
+            ${badgeCulturaHtml}
+            <button type="button" class="btn-action-detail btn-action-edit" onclick="window.abrirModalEditarEmpleado('${e.id}')" title="Abrir ficha completa para editar datos del colaborador (Nombre, Área, Cargo, PIN, Rol, WhatsApp, etc.)">
+              <i class="fas fa-user-pen"></i> <span>Editar Datos</span>
+            </button>
+            <button type="button" class="btn-action-detail btn-action-reset" onclick="window.resetearPasswordEmpleado('${e.id}', '${escapeHtml(e.nombre)}')" title="Resetear contraseña para permitir que el colaborador vuelva a vincular su dispositivo">
+              <i class="fas fa-key"></i> <span>Resetear PIN</span>
+            </button>
+          </div>
         </div>
-        
-        <!-- SELECTOR DE PERÍODOS INLINE -->
-        <div class="periodo-selector" style="background:#ffffff; padding:6px 12px; border-radius:8px; border:1px solid #cbd5e1; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12px; box-shadow:none;">
-          <div style="display:flex; align-items:center;">
-            <label style="font-weight:600; color:#475569; margin-right:6px; font-size:11.5px;"><i class="fas fa-calendar-alt"></i> Período:</label>
-            <select id="filtroPeriodoDetalle" class="filter-select" onchange="mostrarDetalle('${e.id}', parseInt(this.value))" style="font-size:12px; font-weight:500; border:1px solid #cbd5e1; border-radius:6px; padding:2px 4px; outline:none; background:#ffffff;">
+
+        <!-- BARRA INTEGRADA DE PERÍODO Y FILTRO DE FECHAS -->
+        <div class="detail-period-toolbar">
+          <div class="detail-period-selector-group">
+            <span class="period-label"><i class="fas fa-calendar-alt" style="color:#4f46e5;"></i> Período:</span>
+            <select id="filtroPeriodoDetalle" class="period-select" onchange="mostrarDetalle('${e.id}', parseInt(this.value))">
               ${optionsPeriodos}
             </select>
           </div>
-          <div style="display:flex; align-items:center; gap:6px;">
-            <label style="font-weight:600; color:#475569; font-size:11.5px;">Desde:</label>
-            <input type="date" id="detFechaInicio" value="${R_INI}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), this.value, $('detFechaFin').value)" style="border:1px solid #cbd5e1; border-radius:6px; padding:2px 4px; font-size:12px; font-family:inherit; outline:none; color:#334155; background:#ffffff;">
-            <label style="font-weight:600; color:#475569; font-size:11.5px;">Hasta:</label>
-            <input type="date" id="detFechaFin" value="${R_FIN}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), $('detFechaInicio').value, this.value)" style="border:1px solid #cbd5e1; border-radius:6px; padding:2px 4px; font-size:12px; font-family:inherit; outline:none; color:#334155; background:#ffffff;">
-            <button class="btn btn-secondary" onclick="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value))" title="Restablecer al rango por defecto del período" style="font-size:11px; padding:3px 8px; height:auto; display:inline-flex; align-items:center; gap:4px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">
-              <i class="fas fa-sync-alt"></i> Restablecer
+          <div class="detail-date-range-group">
+            <div class="date-field">
+              <span class="date-label">Desde:</span>
+              <input type="date" id="detFechaInicio" value="${R_INI}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), this.value, $('detFechaFin').value)" class="date-input">
+            </div>
+            <div class="date-field">
+              <span class="date-label">Hasta:</span>
+              <input type="date" id="detFechaFin" value="${R_FIN}" onchange="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value), $('detFechaInicio').value, this.value)" class="date-input">
+            </div>
+            <button type="button" class="btn-reset-period" onclick="mostrarDetalle('${e.id}', parseInt($('filtroPeriodoDetalle').value))" title="Restablecer al rango por defecto del período">
+              <i class="fas fa-rotate-left"></i> Restablecer
             </button>
           </div>
         </div>
       </div>
-      
-      <!-- SECCIÓN DE MÉTRICAS REDISEÑADA Y COMPACTA (ponytail: minimal height) -->
-      <div style="padding:6px 14px; background:#ffffff; border-bottom:1px solid #e2e8f0;">
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px; width:100%;">
-          
-          <!-- RESUMEN ASISTENCIA -->
-          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
-            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
-              <i class="fas fa-calendar-check" style="color:var(--blue); font-size:11px;"></i> Asistencia
-            </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:4px 8px;">
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Días Trab.</span>
-                <div style="font-size:13px; font-weight:700; color:#0f172a;">${dias} <span style="font-size:9px; color:#94a3b8; font-weight:400;">(${entT}e/${salT}s)</span></div>
-              </div>
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Puntualidad</span>
-                <div style="font-size:13px; font-weight:700; color:${puntualidadColor};">${puntualidadVal}%</div>
-              </div>
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Prom. Ent.</span>
-                <div style="font-size:11.5px; font-weight:600; color:#334155;">${minsToHHMM(pE)}</div>
-              </div>
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Prom. Sal.</span>
-                <div style="font-size:11.5px; font-weight:600; color:#334155;">${minsToHHMM(pS)}</div>
-              </div>
-            </div>
-          </div>
 
-          <!-- JORNADA Y TIEMPOS -->
-          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
-            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
-              <i class="fas fa-clock" style="color:var(--green); font-size:11px;"></i> Jornada y Tiempos
+      <!-- SECCIÓN DE 4 MÉTRICAS EN GRID RESPONSIVO Y BALANCEADO -->
+      <div class="kpi-grid-detail">
+        <!-- 1. RESUMEN ASISTENCIA -->
+        <div class="kpi-metric-card kpi-card-blue">
+          <div class="kpi-header-row">
+            <span class="kpi-header-title">
+              <i class="fas fa-calendar-check" style="color:#2563eb; font-size:12px;"></i> Asistencia
+            </span>
+            <span class="emp-chip" style="background:#eff6ff; color:#1d4ed8; font-size:10px; padding:1px 6px;">Registro</span>
+          </div>
+          <div class="kpi-card-stats-grid">
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Días Trab.</span>
+              <div class="kpi-stat-val-hero">${dias} <span style="font-size:10px; color:#94a3b8; font-weight:500;">(${entT}e/${salT}s)</span></div>
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:4px 8px;">
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Total Horas</span>
-                <div style="font-size:13px; font-weight:700; color:var(--green);">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
-              </div>
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Atrasos Acum.</span>
-                <div style="font-size:13px; font-weight:700; color:${totAtrasos > 0 ? 'var(--red)' : '#0f172a'};">${minutosAHHMMSS(totAtrasos)}</div>
-              </div>
-              <div style="grid-column: span 2; border-top: 1px dashed #f1f5f9; padding-top: 3px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:9px; color:#64748b; font-weight:600;">T. por Justificar:</span>
-                <span style="font-size:13px; font-weight:700; color:${totTJ > 0 ? 'var(--red)' : 'var(--green)'};">${minutosAHHMMSS(totTJ)}</span>
-              </div>
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Puntualidad</span>
+              <div class="kpi-stat-val-hero" style="color:${puntualidadColor};">${puntualidadVal}%</div>
+            </div>
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Prom. Ent.</span>
+              <div class="kpi-stat-val-sub" style="color:#334155;">${minsToHHMM(pE)}</div>
+            </div>
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Prom. Sal.</span>
+              <div class="kpi-stat-val-sub" style="color:#334155;">${minsToHHMM(pS)}</div>
             </div>
           </div>
+        </div>
 
-          <!-- PERMISOS Y ALMUERZOS -->
-          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
-            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
-              <i class="fas fa-hand-holding-heart" style="color:var(--indigo); font-size:11px;"></i> Permisos y Almuerzos
+        <!-- 2. JORNADA Y TIEMPOS -->
+        <div class="kpi-metric-card kpi-card-green">
+          <div class="kpi-header-row">
+            <span class="kpi-header-title">
+              <i class="fas fa-clock" style="color:#10b981; font-size:12px;"></i> Jornada y Tiempos
+            </span>
+            <span class="emp-chip" style="background:#ecfdf5; color:#047857; font-size:10px; padding:1px 6px;">Laboral</span>
+          </div>
+          <div class="kpi-card-stats-grid">
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Total Horas</span>
+              <div class="kpi-stat-val-hero" style="color:#10b981;">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
             </div>
-            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:4px 8px;">
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">T. Personal</span>
-                <div style="font-size:11.5px; font-weight:600; color:var(--indigo);">${minutosAHHMMSS(totTP)}</div>
-              </div>
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">T. Médico</span>
-                <div style="font-size:11.5px; font-weight:600; color:var(--teal);">${minutosAHHMMSS(totTM)}</div>
-              </div>
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Alm. Planta</span>
-                <div style="font-size:11.5px; font-weight:600; color:var(--purple);">${almP}d</div>
-              </div>
-              <div>
-                <span style="font-size:9px; color:#64748b; font-weight:600;">Alm. Fuera</span>
-                <div style="font-size:11.5px; font-weight:600; color:#475569;">${almF}d</div>
-              </div>
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Atrasos Acum.</span>
+              <div class="kpi-stat-val-hero" style="color:${totAtrasos > 0 ? '#dc2626' : '#0f172a'};">${minutosAHHMMSS(totAtrasos)}</div>
+            </div>
+            <div class="kpi-subrow-split">
+              <span class="kpi-stat-label" style="margin:0;">T. por Justificar:</span>
+              <span style="font-size:12px; font-weight:800; color:${totTJ > 0 ? '#dc2626' : '#10b981'};">${minutosAHHMMSS(totTJ)}</span>
             </div>
           </div>
+        </div>
 
-          <!-- HISTORIAL DE VACACIONES -->
-          <div id="card-vacaciones-detalle" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; display:flex; flex-direction:column; gap:4px;">
-            <div style="font-size:10px; font-weight:700; color:#64748b; border-bottom:1px solid #f1f5f9; padding-bottom:3px; margin-bottom:2px; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
-              <i class="fas fa-umbrella-beach" style="color:#4f46e5; font-size:11px;"></i> Vacaciones
+        <!-- 3. PERMISOS Y ALMUERZOS -->
+        <div class="kpi-metric-card kpi-card-purple">
+          <div class="kpi-header-row">
+            <span class="kpi-header-title">
+              <i class="fas fa-hand-holding-heart" style="color:#8b5cf6; font-size:12px;"></i> Permisos y Almuerzos
+            </span>
+            <span class="emp-chip" style="background:#faf5ff; color:#7e22ce; font-size:10px; padding:1px 6px;">Beneficios</span>
+          </div>
+          <div class="kpi-card-stats-grid">
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">T. Personal</span>
+              <div class="kpi-stat-val-sub" style="color:#6366f1;">${minutosAHHMMSS(totTP)}</div>
             </div>
-            <div style="display:flex; align-items:center; justify-content:center; padding:6px 0; color:#64748b; font-size:10px; gap:4px;">
-              <div class="spinner-border text-primary" role="status" style="width:12px; height:12px; border-width:2px;"></div>
-              <span>Cargando...</span>
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">T. Médico</span>
+              <div class="kpi-stat-val-sub" style="color:#0d9488;">${minutosAHHMMSS(totTM)}</div>
+            </div>
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Alm. Planta</span>
+              <div class="kpi-stat-val-sub" style="color:#8b5cf6;">${almP}d</div>
+            </div>
+            <div class="kpi-stat-item">
+              <span class="kpi-stat-label">Alm. Fuera</span>
+              <div class="kpi-stat-val-sub" style="color:#64748b;">${almF}d</div>
             </div>
           </div>
-          
+        </div>
+
+        <!-- 4. HISTORIAL DE VACACIONES -->
+        <div id="card-vacaciones-detalle" class="kpi-metric-card kpi-card-amber">
+          <div class="kpi-header-row">
+            <span class="kpi-header-title">
+              <i class="fas fa-umbrella-beach" style="color:#d97706; font-size:12px;"></i> Vacaciones
+            </span>
+            <span class="emp-chip" style="background:#fffbeb; color:#b45309; font-size:10px; padding:1px 6px;">Saldo</span>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:center; padding:12px 0; color:#64748b; font-size:11px; gap:6px; min-height:48px;">
+            <div class="spinner-border text-primary" role="status" style="width:14px; height:14px; border-width:2px;"></div>
+            <span>Consultando saldo...</span>
+          </div>
         </div>
       </div>
       <div style="padding:var(--pad)">
@@ -6990,14 +7163,18 @@ async function guardarAlmuerzoExtra() {
 async function completarRegistro(empleadoId, tipo, hora, fecha) {
   mostrarLoader(true);
   try {
+    let fParts = (fecha || '').includes('-') ? fecha.split('-') : fecha.split('/').reverse();
+    let y = fParts[0], mo = fParts[1], d = fParts[2];
+    let hVal = hora && hora.length === 5 ? hora + ':00' : hora;
+    let fullTs = `${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${y} ${hVal}`;
     const res = await jsonpRequest({
       accion: 'actualizarRegistroGeneral',
-      docId: `${empleadoId}_${tipo}_${fecha}_${hora.replace(/:/g, '')}`,
+      docId: `${empleadoId}_${tipo}_${fecha}_${hVal.replace(/:/g, '')}`,
       empleadoId: empleadoId,
       tipo: tipo,
       fecha: fecha,
-      campo: 'hora',
-      valor: hora
+      campo: 'timestamp',
+      valor: fullTs
     });
     if (res.ok) {
       mostrarToast('Registro completado', 'success');
@@ -7423,14 +7600,19 @@ async function guardarRegistroManual() {
 
   mostrarLoader(true);
   try {
+    let fParts = (fecha || '').includes('-') ? fecha.split('-') : fecha.split('/').reverse();
+    let y = fParts[0], mo = fParts[1], d = fParts[2];
+    let hVal = hora && hora.length === 5 ? hora + ':00' : hora;
+    let fullTs = `${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${y} ${hVal}`;
+
     const res = await jsonpRequest({
       accion: 'actualizarRegistroGeneral',
-      docId: `${eid}_${tipo}_${fecha}_${hora.replace(/:/g, '')}`,
+      docId: `${eid}_${tipo}_${fecha}_${hVal.replace(/:/g, '')}`,
       empleadoId: eid,
       tipo: tipo,
       fecha: fecha,
-      campo: 'hora',
-      valor: hora,
+      campo: 'timestamp',
+      valor: fullTs,
       modo: modo,
       almuerzo: almuerzo,
       horasExtra: horasExtra,
@@ -7741,14 +7923,27 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
 
   if (nuevoValor === null) return;
 
+  let campoRequest = campo;
+  let valorRequest = nuevoValor;
+
+  if (campo === 'hora') {
+    let fParts = (targetFecha || '').includes('-') ? targetFecha.split('-') : targetFecha.split('/').reverse();
+    let y = fParts[0], mo = fParts[1], d = fParts[2];
+    let hVal = nuevoValor && nuevoValor.length === 5 ? nuevoValor + ':00' : nuevoValor;
+    if (y && mo && d && hVal) {
+      campoRequest = 'timestamp';
+      valorRequest = `${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')}/${y} ${hVal}`;
+    }
+  }
+
   // Realizar actualización optimista en el cache local
   let emp = empCache.find(e => e.id === empleadoId);
   let originalRegistros = emp ? JSON.parse(JSON.stringify(emp.registros || [])) : null;
   let originalAlmuerzoHoy = emp ? emp.almuerzoHoy : null;
+  let reg = null;
 
   if (emp) {
     if (!emp.registros) emp.registros = [];
-    let reg = null;
     if (docId) {
       reg = emp.registros.find(r => r.id === docId);
     }
@@ -7764,11 +7959,12 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
           reg.fecha = parsed.fecha;
           reg.hora = parsed.hora;
         }
+      } else if (campo === 'hora') {
+        reg.timestamp = valorRequest;
+        reg.hora = nuevoValor && nuevoValor.length === 5 ? nuevoValor + ':00' : nuevoValor;
+        if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(reg);
       } else {
         reg[campo] = nuevoValor;
-        if (campo === 'hora') {
-          reg.hora = nuevoValor;
-        }
       }
     } else {
       let newReg = {
@@ -7777,12 +7973,12 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
         nombre: emp.nombre,
         fecha: targetFecha,
         tipo: tipo,
-        hora: campo === 'hora' ? nuevoValor : '00:00:00',
+        hora: campo === 'hora' ? (nuevoValor.length === 5 ? nuevoValor + ':00' : nuevoValor) : '00:00:00',
         almuerzo: campo === 'almuerzo' ? nuevoValor : 'NO',
         modo: campo === 'modo' ? nuevoValor : 'OFICINA',
         horasExtra: campo === 'horasExtra' ? nuevoValor : 'NO',
         observacion: campo === 'observacion' ? nuevoValor : '',
-        timestamp: new Date().toISOString()
+        timestamp: valorRequest || new Date().toISOString()
       };
       if (campo === 'timestamp') {
         const parsed = parsearTimestamp(nuevoValor);
@@ -7791,6 +7987,9 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
           newReg.fecha = parsed.fecha;
           newReg.hora = parsed.hora;
         }
+      } else if (campo === 'hora') {
+        newReg.timestamp = valorRequest;
+        if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(newReg);
       }
       emp.registros.push(newReg);
     }
@@ -7820,8 +8019,8 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
       empleadoId: empleadoId,
       tipo: tipo,
       fecha: targetFecha,
-      campo: campo,
-      valor: nuevoValor
+      campo: campoRequest,
+      valor: valorRequest
     });
     if (res && res.ok) {
       mostrarToast('Registro actualizado', 'success');
@@ -8058,6 +8257,7 @@ async function cargarDatosCompletos(force = false, silencioso = false, forceShee
     empCache.forEach(emp => {
       if (emp.registros && emp.registros.length) {
         emp.registros.forEach(r => {
+          if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(r);
           if (r.fecha) r.fecha = normalizarFechaStr(r.fecha) || r.fecha;
         });
       }
@@ -8067,6 +8267,7 @@ async function cargarDatosCompletos(force = false, silencioso = false, forceShee
     eliminadosList.forEach(emp => {
       if (emp.registros && emp.registros.length) {
         emp.registros.forEach(r => {
+          if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(r);
           if (r.fecha) r.fecha = normalizarFechaStr(r.fecha) || r.fecha;
         });
       }
@@ -8077,6 +8278,7 @@ async function cargarDatosCompletos(force = false, silencioso = false, forceShee
     if (res.registros && res.registros.length) {
       const elimMap = {};
       res.registros.forEach(r => {
+        if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(r);
         const rId = String(r.empleadoId || r.id_empleado || (r.id && !String(r.id).includes('_') ? r.id : '')).trim();
         if (rId && !activeIds.has(rId) && !elimIds.has(rId)) {
           if (!elimMap[rId]) {
@@ -14112,7 +14314,70 @@ window.exportarKPIsDetalladosPDF = async function () {
 // ============================================================
 // MODAL GESTIÓN DE JORNADA, PERMISOS PARCIALES Y AUSENCIAS
 // ============================================================
+
 window._modalJornadaContexto = null;
+
+window.esCumpleanosEmpleadoEnFecha = function (emp, fechaStr) {
+  if (!emp || !fechaStr) return false;
+  const rawN = (typeof window.obtenerFechaNacimientoEmpleado === 'function') 
+    ? window.obtenerFechaNacimientoEmpleado(emp) 
+    : (emp.fechaNacimiento || emp.fecha_nacimiento || emp.fNacimiento || emp.fechanacimiento || '');
+  if (!rawN) return false;
+  const normNac = (typeof window.normalizarFechaParaInput === 'function') 
+    ? window.normalizarFechaParaInput(rawN) 
+    : String(rawN).split('T')[0];
+  const normFecha = (typeof window.normalizarFechaParaInput === 'function') 
+    ? window.normalizarFechaParaInput(fechaStr) 
+    : String(fechaStr).split('T')[0];
+  if (!normNac || !normFecha) return false;
+  const pNac = normNac.split('-');
+  const pFecha = normFecha.split('-');
+  if (pNac.length < 3 || pFecha.length < 3) return false;
+  return (parseInt(pNac[1], 10) === parseInt(pFecha[1], 10) && parseInt(pNac[2], 10) === parseInt(pFecha[2], 10));
+};
+
+window.actualizarEstadoSeccionRazon = function () {
+  const hE = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
+  const hS = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
+  const ctx = window._modalJornadaContexto;
+  const tieneAsistencia = Boolean(hE || hS || (ctx && ctx.tieneAsistencia));
+
+  const seccion2 = document.getElementById('seccionModalJornadaRazon');
+  const razonSel = document.getElementById('modalJornadaRazonSelect');
+  const inputOtro = document.getElementById('modalJornadaRazonOtroInput');
+  const avisoInactivo = document.getElementById('modalJornadaAvisoSeccion2Inactiva');
+
+  if (tieneAsistencia) {
+    if (seccion2) {
+      seccion2.style.opacity = '0.6';
+      seccion2.style.background = '#f8fafc';
+    }
+    if (razonSel) {
+      razonSel.disabled = true;
+      razonSel.style.cursor = 'not-allowed';
+      razonSel.style.background = '#e2e8f0';
+      razonSel.style.borderColor = '#cbd5e1';
+      razonSel.style.color = '#64748b';
+      razonSel.value = '';
+    }
+    if (inputOtro) inputOtro.disabled = true;
+    if (avisoInactivo) avisoInactivo.style.display = 'flex';
+  } else {
+    if (seccion2) {
+      seccion2.style.opacity = '1';
+      seccion2.style.background = '#ffffff';
+    }
+    if (razonSel) {
+      razonSel.disabled = false;
+      razonSel.style.cursor = 'pointer';
+      razonSel.style.background = '#f5f3ff';
+      razonSel.style.borderColor = '#8b5cf6';
+      razonSel.style.color = '#5b21b6';
+    }
+    if (inputOtro) inputOtro.disabled = false;
+    if (avisoInactivo) avisoInactivo.style.display = 'none';
+  }
+};
 
 window.abrirModalGestionJornada = function (empleadoId, fecha) {
   let modal = document.getElementById('modalGestionJornadaFecha');
@@ -14125,15 +14390,16 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   }
 
   const idBuscado = String(empleadoId || window.idDetalleActual || '').trim();
+  const poolEmps = (typeof empCache !== 'undefined' && empCache && empCache.length) ? empCache : (window.empCache || []);
   let emp = null;
   if (idBuscado) {
-    emp = (empCache || []).find(x => String(x.id).trim() === idBuscado || String(x.cedula || '').trim() === idBuscado)
+    emp = poolEmps.find(x => String(x.id).trim() === idBuscado || String(x.cedula || '').trim() === idBuscado)
       || (window.empEliminadosCache || []).find(x => String(x.id).trim() === idBuscado || String(x.cedula || '').trim() === idBuscado)
       || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === idBuscado || String(x.cedula || '').trim() === idBuscado);
   }
   if (!emp && window.idDetalleActual) {
     const idDet = String(window.idDetalleActual).trim();
-    emp = (empCache || []).find(x => String(x.id).trim() === idDet || String(x.cedula || '').trim() === idDet);
+    emp = poolEmps.find(x => String(x.id).trim() === idDet || String(x.cedula || '').trim() === idDet);
   }
 
   if (!emp) {
@@ -14230,7 +14496,7 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
   const medMins = regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
   const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
-  const comentario = regPermiso ? (regPermiso.razon_permiso || '') : '';
+  let comentario = regPermiso ? (regPermiso.razon_permiso || '') : '';
 
   // Almuerzo
   const regEntrada = regsDia.find(r => r.tipo === 'ENTRADA');
@@ -14239,7 +14505,17 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   // Horas extras
   const heVal = regsDia.some(r => r.horasExtra === 'SI') ? 'SI' : 'NO';
 
-  // Guardar en contexto global del modal
+  // Identificar marcaciones y asistencia
+  const primerEntrada = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
+  const ultimoSalida = [...regsDia].reverse().find(r => r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO');
+
+  const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()))
+    || Boolean(primerEntrada || ultimoSalida)
+    || (netWorked > 0);
+
+  // Detección automática de cumpleaños según fecha
+  const esCumpleHoy = window.esCumpleanosEmpleadoEnFecha(emp, fecha);
+
   window._modalJornadaContexto = {
     empleadoId,
     fecha,
@@ -14251,7 +14527,8 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
     faltanteJornada,
     modActual,
     esFestivo,
-    tieneAsistencia: regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()))
+    tieneAsistencia,
+    esCumpleHoy
   };
 
   // Asignar al DOM
@@ -14273,26 +14550,40 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   document.getElementById('modalJornadaInfoAtraso').textContent = (typeof minutosAHHMMSS === 'function') ? (atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '00:00:00') : `${atrasoMins} min`;
   document.getElementById('modalJornadaInfoFaltante').textContent = (typeof minutosAHHMMSS === 'function') ? (faltanteJornada > 0 ? minutosAHHMMSS(faltanteJornada) : '00:00:00') : `${faltanteJornada} min`;
 
-  // Inputs de horas
-  const primerEntrada = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
-  const ultimoSalida = [...regsDia].reverse().find(r => r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO');
+  // Banner automático de Cumpleaños
+  const bannerCumple = document.getElementById('modalJornadaBannerCumpleanos');
+  if (bannerCumple) {
+    bannerCumple.style.display = esCumpleHoy ? 'flex' : 'none';
+  }
 
-  document.getElementById('modalJornadaHoraEntrada').value = primerEntrada ? (formatearHora(primerEntrada.hora || primerEntrada.timestamp) || '') : '';
-  document.getElementById('modalJornadaHoraSalida').value = ultimoSalida ? (formatearHora(ultimoSalida.hora || ultimoSalida.timestamp) || '') : '';
+  // Inputs de horas: extraídos directamente desde TIMESTAMP como fuente de verdad
+  document.getElementById('modalJornadaHoraEntrada').value = primerEntrada ? (formatearHora(primerEntrada.timestamp || primerEntrada.hora) || '') : '';
+  document.getElementById('modalJornadaHoraSalida').value = ultimoSalida ? (formatearHora(ultimoSalida.timestamp || ultimoSalida.hora) || '') : '';
 
   // Modo
   const modoSel = document.getElementById('modalJornadaModoSelect');
   if (modoSel) modoSel.value = (modActual === 'CAMPO' || modActual === 'MIXTO') ? modActual : 'EMPRESA';
 
-  // Razón
+  // Habilitar / Deshabilitar opciones de día completo
+  const optVac = document.getElementById('modalOptVacacion');
+  const optFer = document.getElementById('modalOptFeriado');
+  const optInas = document.getElementById('modalOptInasistencia');
+  if (optVac) optVac.disabled = tieneAsistencia;
+  if (optFer) optFer.disabled = tieneAsistencia;
+  if (optInas) optInas.disabled = tieneAsistencia;
+
+  // Razón de ausencia (solo activa si no hay marcaciones)
   const razonSel = document.getElementById('modalJornadaRazonSelect');
   const divOtro = document.getElementById('modalJornadaDivRazonPersonalizada');
   const inputOtro = document.getElementById('modalJornadaRazonOtroInput');
   if (razonSel) {
-    if (['Salida Justificada', 'Cumpleaños', 'Permiso Médico', 'Permiso Personal', 'Vacación', 'Feriado', 'Calamidad Doméstica', 'Salida a Campo', 'Inasistencia'].includes(razonActual)) {
+    if (tieneAsistencia) {
+      razonSel.value = '';
+      if (divOtro) divOtro.style.display = 'none';
+    } else if (['Vacación', 'Feriado', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Salida a Campo', 'Inasistencia'].includes(razonActual)) {
       razonSel.value = razonActual;
       if (divOtro) divOtro.style.display = 'none';
-    } else if (razonActual) {
+    } else if (razonActual && razonActual !== 'Cumpleaños') {
       razonSel.value = 'Otro';
       if (divOtro) divOtro.style.display = 'block';
       if (inputOtro) inputOtro.value = razonActual;
@@ -14303,10 +14594,43 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
     }
   }
 
-  // Tiempos
-  document.getElementById('modalJornadaMinsJustificado').value = justMins;
-  document.getElementById('modalJornadaMinsPersonal').value = persMins;
-  document.getElementById('modalJornadaMinsMedico').value = medMins;
+  // Sanitizar tiempos iniciales para garantizar exclusividad mutua
+  let cleanJust = justMins;
+  let cleanPers = persMins;
+  let cleanMed = medMins;
+  const numActivos = (cleanJust > 0 ? 1 : 0) + (cleanPers > 0 ? 1 : 0) + (cleanMed > 0 ? 1 : 0);
+  if (numActivos > 1) {
+    if (razonActual === 'Permiso Médico') { cleanJust = 0; cleanPers = 0; }
+    else if (razonActual === 'Permiso Personal') { cleanJust = 0; cleanMed = 0; }
+    else if (cleanJust > 0) { cleanPers = 0; cleanMed = 0; }
+    else if (cleanMed > 0) { cleanJust = 0; cleanPers = 0; }
+  }
+
+  // Si es cumpleaños del colaborador y tiene horas trabajadas con faltante/atraso, aplicar beneficio institucional automático
+  if (esCumpleHoy) {
+    if (tieneAsistencia && cleanJust === 0 && cleanPers === 0 && cleanMed === 0 && faltanteJornada > 0) {
+      cleanJust = Math.min(240, faltanteJornada);
+      if (!comentario) comentario = 'Beneficio institucional por cumpleaños (4 horas)';
+    } else if (!tieneAsistencia && !razonActual) {
+      if (!comentario) comentario = 'Día de cumpleaños del colaborador';
+    }
+  }
+
+  // Límite máximo de minutos permitido
+  const maxPermitido = tieneAsistencia ? faltanteJornada : 480;
+  if (tieneAsistencia) {
+    cleanJust = Math.min(cleanJust, maxPermitido);
+    cleanPers = Math.min(cleanPers, maxPermitido);
+    cleanMed = Math.min(cleanMed, maxPermitido);
+  }
+
+  const elJust = document.getElementById('modalJornadaMinsJustificado');
+  const elPers = document.getElementById('modalJornadaMinsPersonal');
+  const elMed = document.getElementById('modalJornadaMinsMedico');
+  if (elJust) { elJust.max = maxPermitido; elJust.value = cleanJust; }
+  if (elPers) { elPers.max = maxPermitido; elPers.value = cleanPers; }
+  if (elMed) { elMed.max = maxPermitido; elMed.value = cleanMed; }
+
   window.actualizarEtiquetasMinutosModal();
 
   // Almuerzo y HE
@@ -14318,8 +14642,8 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
 
   document.getElementById('modalJornadaObservacionInput').value = comentario;
 
-  // Actualizar banner de ayuda dinámico
-  window.alCambiarRazonModalJornada(razonSel?.value || '', false);
+  // Actualizar estado activo/inactivo de la Sección 2
+  window.actualizarEstadoSeccionRazon();
 
   // Banner informativo para fechas previas al registro/ingreso del colaborador
   const fInicioModalEmp = (typeof window.obtenerFechaInicioEfectivaEmpleado === 'function')
@@ -14330,9 +14654,9 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
     if (bannerAyuda) {
       bannerAyuda.style.display = 'flex';
       bannerAyuda.style.background = '#f8fafc';
-      bannerAyuda.style.border = '1px solid #cbd5e1';
+      bannerAyuda.style.border = '1.5px solid #cbd5e1';
       bannerAyuda.style.color = '#475569';
-      bannerAyuda.innerHTML = `<i class="fas fa-info-circle" style="font-size:15px; color:#64748b;"></i> <div><strong>Usuario recién registrado:</strong> Esta jornada es anterior a la fecha de ingreso/registro del colaborador (${fInicioModalEmp}). No corresponde a una inasistencia injustificada.</div>`;
+      bannerAyuda.innerHTML = `<i class="fas fa-info-circle" style="font-size:20px; color:#64748b;"></i> <div><strong>Usuario recién registrado:</strong> Esta jornada es anterior a la fecha de ingreso/registro del colaborador (${fInicioModalEmp}). No corresponde a una inasistencia injustificada.</div>`;
     }
   }
 
@@ -14353,10 +14677,66 @@ window.cerrarModalGestionJornada = function () {
   }
 };
 
-window.actualizarEtiquetasMinutosModal = function () {
-  const just = parseInt(document.getElementById('modalJornadaMinsJustificado')?.value || '0') || 0;
-  const pers = parseInt(document.getElementById('modalJornadaMinsPersonal')?.value || '0') || 0;
-  const med = parseInt(document.getElementById('modalJornadaMinsMedico')?.value || '0') || 0;
+window.actualizarEtiquetasMinutosModal = function (origen) {
+  const ctx = window._modalJornadaContexto;
+  const tieneAsistencia = ctx?.tieneAsistencia || false;
+  const faltante = ctx ? Math.max(0, 480 - (ctx.netWorked || 0)) : 0;
+  const maxPermitido = tieneAsistencia ? faltante : 480;
+
+  const elJust = document.getElementById('modalJornadaMinsJustificado');
+  const elPers = document.getElementById('modalJornadaMinsPersonal');
+  const elMed = document.getElementById('modalJornadaMinsMedico');
+
+  let just = parseInt(elJust?.value || '0') || 0;
+  let pers = parseInt(elPers?.value || '0') || 0;
+  let med = parseInt(elMed?.value || '0') || 0;
+
+  // 1. Exclusividad mutua estricta: si se escribe en uno, los otros se limpian a 0
+  if (origen === 'justificado' && just > 0) {
+    if (elPers && elPers.value != 0) { elPers.value = 0; pers = 0; }
+    if (elMed && elMed.value != 0) { elMed.value = 0; med = 0; }
+  } else if (origen === 'personal' && pers > 0) {
+    if (elJust && elJust.value != 0) { elJust.value = 0; just = 0; }
+    if (elMed && elMed.value != 0) { elMed.value = 0; med = 0; }
+  } else if (origen === 'medico' && med > 0) {
+    if (elJust && elJust.value != 0) { elJust.value = 0; just = 0; }
+    if (elPers && elPers.value != 0) { elPers.value = 0; pers = 0; }
+  } else if (!origen) {
+    const act = (just > 0 ? 1 : 0) + (pers > 0 ? 1 : 0) + (med > 0 ? 1 : 0);
+    if (act > 1) {
+      if (med > 0) { just = 0; pers = 0; if (elJust) elJust.value = 0; if (elPers) elPers.value = 0; }
+      else if (pers > 0) { just = 0; if (elJust) elJust.value = 0; }
+    }
+  }
+
+  // 2. Control de tope máximo permitido
+  if (tieneAsistencia) {
+    if (just > maxPermitido) {
+      just = maxPermitido;
+      if (elJust) elJust.value = maxPermitido;
+      if (typeof mostrarToast === 'function' && origen === 'justificado') {
+        mostrarToast(`⚠️ El tiempo justificado no puede superar el faltante de la jornada (${maxPermitido} min)`, 'warn');
+      }
+    }
+    if (pers > maxPermitido) {
+      pers = maxPermitido;
+      if (elPers) elPers.value = maxPermitido;
+      if (typeof mostrarToast === 'function' && origen === 'personal') {
+        mostrarToast(`⚠️ El permiso personal no puede superar el faltante de la jornada (${maxPermitido} min)`, 'warn');
+      }
+    }
+    if (med > maxPermitido) {
+      med = maxPermitido;
+      if (elMed) elMed.value = maxPermitido;
+      if (typeof mostrarToast === 'function' && origen === 'medico') {
+        mostrarToast(`⚠️ El permiso médico no puede superar el faltante de la jornada (${maxPermitido} min)`, 'warn');
+      }
+    }
+  } else {
+    if (just > 480) { just = 480; if (elJust) elJust.value = 480; }
+    if (pers > 480) { pers = 480; if (elPers) elPers.value = 480; }
+    if (med > 480) { med = 480; if (elMed) elMed.value = 480; }
+  }
 
   const fnFormat = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS : (m => `${m} min`);
 
@@ -14370,7 +14750,15 @@ window.actualizarEtiquetasMinutosModal = function () {
   if (lblMed) lblMed.textContent = fnFormat(med);
 
   const totalTxt = document.getElementById('modalJornadaTotalPermisosTxt');
-  if (totalTxt) totalTxt.textContent = `Total Permisos: ${fnFormat(just + pers + med)} (${just + pers + med} min)`;
+  const total = just + pers + med;
+  if (totalTxt) {
+    totalTxt.textContent = `Total Permisos: ${fnFormat(total)} (${total} min)`;
+    if (tieneAsistencia && total > faltante) {
+      totalTxt.style.color = '#dc2626';
+    } else {
+      totalTxt.style.color = '#15803d';
+    }
+  }
 };
 
 window.recalcularTiemposModalJornada = function () {
@@ -14381,104 +14769,89 @@ window.recalcularTiemposModalJornada = function () {
     const mS = obtenerMinutos(hS);
     if (mE !== null && mS !== null && mS > mE) {
       let dur = mS - mE;
-      if (dur > 240) dur -= 45;
-      const falt = Math.max(0, 480 - dur);
-      if (window._modalJornadaContexto) {
-        window._modalJornadaContexto.netWorked = dur;
-        window._modalJornadaContexto.faltanteJornada = falt;
+      const ctx = window._modalJornadaContexto;
+      const esFestivo = ctx?.esFestivo || false;
+      if (!esFestivo && dur > 240) dur -= 45;
+      dur = Math.max(0, dur);
+      const falt = esFestivo ? 0 : Math.max(0, 480 - dur);
+
+      let refEntrada = esFestivo ? 420 : 450;
+      let atraso = (mE > refEntrada + 5) ? (mE - refEntrada) : 0;
+
+      if (ctx) {
+        ctx.netWorked = dur;
+        ctx.faltanteJornada = falt;
+        ctx.atrasoMins = atraso;
+        ctx.tieneAsistencia = true;
       }
       document.getElementById('modalJornadaInfoNeto').textContent = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS(dur) : `${dur} min`;
-      document.getElementById('modalJornadaInfoFaltante').textContent = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS(falt) : `${falt} min`;
+      document.getElementById('modalJornadaInfoAtraso').textContent = (typeof minutosAHHMMSS === 'function') ? (atraso > 0 ? minutosAHHMMSS(atraso) : '00:00:00') : `${atraso} min`;
+      document.getElementById('modalJornadaInfoFaltante').textContent = (typeof minutosAHHMMSS === 'function') ? (falt > 0 ? minutosAHHMMSS(falt) : '00:00:00') : `${falt} min`;
+
+      // Ajustar max en inputs
+      const elJust = document.getElementById('modalJornadaMinsJustificado');
+      const elPers = document.getElementById('modalJornadaMinsPersonal');
+      const elMed = document.getElementById('modalJornadaMinsMedico');
+      if (elJust) elJust.max = falt;
+      if (elPers) elPers.max = falt;
+      if (elMed) elMed.max = falt;
+
+      // Actualizar estado de la Sección 2 (se desactiva si hay horas)
+      window.actualizarEstadoSeccionRazon();
+      window.actualizarEtiquetasMinutosModal();
     }
+  } else {
+    window.actualizarEstadoSeccionRazon();
   }
 };
 
-window.alCambiarRazonModalJornada = function (valor, autoAsignar = true) {
+window.alCambiarRazonModalJornada = function (valor) {
   const banner = document.getElementById('modalJornadaBannerAyuda');
   const divOtro = document.getElementById('modalJornadaDivRazonPersonalizada');
   if (divOtro) divOtro.style.display = (valor === 'Otro') ? 'block' : 'none';
 
+  const ctx = window._modalJornadaContexto;
+  const tieneAsistencia = ctx?.tieneAsistencia || false;
+
+  // RESTRICCIÓN ESTRICTA: Sección 2 solo activa si NO registró asistencia
+  if (tieneAsistencia) {
+    if (typeof mostrarToast === 'function') {
+      mostrarToast(`⚠️ El colaborador registra asistencia. La Sección 2 solo aplica para días sin marcaciones.`, 'warn');
+    }
+    const razonSel = document.getElementById('modalJornadaRazonSelect');
+    if (razonSel) razonSel.value = '';
+    if (banner) banner.style.display = 'none';
+    return;
+  }
+
   if (!banner) return;
   banner.style.display = 'flex';
 
-  const ctx = window._modalJornadaContexto;
-  const tieneAsistencia = ctx?.tieneAsistencia || false;
-  const faltante = ctx ? Math.max(0, 480 - (ctx.netWorked || 0)) : 0;
-  const atraso = ctx?.atrasoMins || 0;
-
-  if (valor === 'Salida Justificada') {
-    if (autoAsignar) {
-      const inputJust = document.getElementById('modalJornadaMinsJustificado');
-      if (inputJust) inputJust.value = faltante;
-      window.actualizarEtiquetasMinutosModal();
-    }
-    banner.style.background = '#ecfdf5';
-    banner.style.border = '1px solid #a7f3d0';
-    banner.style.color = '#065f46';
-    banner.innerHTML = `<i class="fas fa-check-circle" style="font-size:15px; color:#10b981;"></i> <div><strong>Salida Justificada:</strong> Se completa automáticamente el tiempo restante (${faltante} min) para alcanzar la jornada ordinaria de 8 horas.</div>`;
-  } else if (valor === 'Cumpleaños') {
-    if (autoAsignar) {
-      const inputJust = document.getElementById('modalJornadaMinsJustificado');
-      if (inputJust) inputJust.value = 240; // 4 horas
-      window.actualizarEtiquetasMinutosModal();
-    }
-    banner.style.background = '#eff6ff';
-    banner.style.border = '1px solid #bfdbfe';
-    banner.style.color = '#1e40af';
-    banner.innerHTML = `<i class="fas fa-birthday-cake" style="font-size:15px; color:#3b82f6;"></i> <div><strong>Cumpleaños:</strong> Se asignan automáticamente 4 horas (240 min) de permiso remunerado por beneficio institucional.</div>`;
-  } else if (valor === 'Permiso Médico') {
-    if (tieneAsistencia) {
-      if (autoAsignar && (atraso > 0 || faltante > 0)) {
-        const inputMed = document.getElementById('modalJornadaMinsMedico');
-        if (inputMed && (!inputMed.value || inputMed.value === '0')) {
-          inputMed.value = atraso > 0 ? atraso : faltante;
-          window.actualizarEtiquetasMinutosModal();
-        }
-      }
-      banner.style.background = '#f0fdfa';
-      banner.style.border = '1px solid #99f6e4';
-      banner.style.color = '#0f766e';
-      banner.innerHTML = `<i class="fas fa-stethoscope" style="font-size:15px; color:#0d9488;"></i> <div><strong>Permiso Médico Parcial:</strong> El colaborador tiene marcaciones registradas. Se imputará como permiso en minutos justificando atraso o salida temprana sin anular las horas trabajadas.</div>`;
-    } else {
-      banner.style.background = '#e0f2fe';
-      banner.style.border = '1px solid #bae6fd';
-      banner.style.color = '#0369a1';
-      banner.innerHTML = `<i class="fas fa-stethoscope" style="font-size:15px; color:#0284c7;"></i> <div><strong>Permiso Médico Completo:</strong> Día completo no laborado con justificativo médico.</div>`;
-    }
-  } else if (valor === 'Permiso Personal') {
-    if (tieneAsistencia) {
-      if (autoAsignar && (atraso > 0 || faltante > 0)) {
-        const inputPers = document.getElementById('modalJornadaMinsPersonal');
-        if (inputPers && (!inputPers.value || inputPers.value === '0')) {
-          inputPers.value = atraso > 0 ? atraso : faltante;
-          window.actualizarEtiquetasMinutosModal();
-        }
-      }
-      banner.style.background = '#f5f3ff';
-      banner.style.border = '1px solid #ddd6fe';
-      banner.style.color = '#5b21b6';
-      banner.innerHTML = `<i class="fas fa-user-clock" style="font-size:15px; color:#8b5cf6;"></i> <div><strong>Permiso Personal Parcial:</strong> El colaborador tiene marcaciones. Se computará en minutos manteniendo intactas las horas trabajadas en el día.</div>`;
-    } else {
-      banner.style.background = '#f3e8ff';
-      banner.style.border = '1px solid #e9d5ff';
-      banner.style.color = '#6b21a8';
-      banner.innerHTML = `<i class="fas fa-user-times" style="font-size:15px; color:#7c3aed;"></i> <div><strong>Permiso Personal Completo:</strong> Día completo no laborado por asuntos personales.</div>`;
-    }
-  } else if (valor === 'Vacación') {
+  if (valor === 'Vacación') {
     banner.style.background = '#f0fdfa';
-    banner.style.border = '1px solid #99f6e4';
+    banner.style.border = '1.5px solid #99f6e4';
     banner.style.color = '#0f766e';
-    banner.innerHTML = `<i class="fas fa-umbrella-beach" style="font-size:15px; color:#0d9488;"></i> <div><strong>Vacación:</strong> Goce de vacación de jornada completa autorizada.</div>`;
+    banner.innerHTML = `<i class="fas fa-umbrella-beach" style="font-size:20px; color:#0d9488;"></i> <div><strong>Vacación:</strong> Goce de vacación de jornada completa autorizada.</div>`;
   } else if (valor === 'Feriado') {
     banner.style.background = '#eef2ff';
-    banner.style.border = '1px solid #c7d2fe';
+    banner.style.border = '1.5px solid #c7d2fe';
     banner.style.color = '#3730a3';
-    banner.innerHTML = `<i class="fas fa-landmark" style="font-size:15px; color:#6366f1;"></i> <div><strong>Feriado:</strong> Descanso obligatorio oficial según calendario nacional.</div>`;
+    banner.innerHTML = `<i class="fas fa-landmark" style="font-size:20px; color:#6366f1;"></i> <div><strong>Feriado:</strong> Descanso obligatorio oficial según calendario nacional.</div>`;
+  } else if (valor === 'Permiso Médico') {
+    banner.style.background = '#e0f2fe';
+    banner.style.border = '1.5px solid #bae6fd';
+    banner.style.color = '#0369a1';
+    banner.innerHTML = `<i class="fas fa-stethoscope" style="font-size:20px; color:#0284c7;"></i> <div><strong>Permiso Médico Completo:</strong> Jornada completa no laborada justificada por cita médica o reposo.</div>`;
+  } else if (valor === 'Permiso Personal') {
+    banner.style.background = '#f3e8ff';
+    banner.style.border = '1.5px solid #e9d5ff';
+    banner.style.color = '#6b21a8';
+    banner.innerHTML = `<i class="fas fa-user-times" style="font-size:20px; color:#7c3aed;"></i> <div><strong>Permiso Personal Completo:</strong> Jornada completa no laborada autorizada por asuntos personales.</div>`;
   } else if (valor === 'Inasistencia') {
     banner.style.background = '#fff1f2';
-    banner.style.border = '1px solid #fecdd3';
+    banner.style.border = '1.5px solid #fecdd3';
     banner.style.color = '#be123c';
-    banner.innerHTML = `<i class="fas fa-calendar-times" style="font-size:15px; color:#e11d48;"></i> <div><strong>Inasistencia Injustificada:</strong> Falta sin justificación sujeta a descuento de nómina.</div>`;
+    banner.innerHTML = `<i class="fas fa-calendar-times" style="font-size:20px; color:#e11d48;"></i> <div><strong>Inasistencia Injustificada:</strong> Falta de día completo sin justificación sujeta a descuento de nómina.</div>`;
   } else {
     banner.style.display = 'none';
   }
@@ -14490,30 +14863,28 @@ window.aplicarAccionRapidaModal = function (accion) {
   const faltante = Math.max(0, 480 - (ctx.netWorked || 0));
   const atraso = ctx.atrasoMins || 0;
 
+  const elJust = document.getElementById('modalJornadaMinsJustificado');
+  const elPers = document.getElementById('modalJornadaMinsPersonal');
+  const elMed = document.getElementById('modalJornadaMinsMedico');
+
   if (accion === 'completar_8h') {
-    document.getElementById('modalJornadaMinsJustificado').value = faltante;
-    const razonSel = document.getElementById('modalJornadaRazonSelect');
-    if (razonSel) razonSel.value = 'Salida Justificada';
-    window.alCambiarRazonModalJornada('Salida Justificada', false);
-  } else if (accion === 'cumpleanos_4h') {
-    document.getElementById('modalJornadaMinsJustificado').value = 240;
-    const razonSel = document.getElementById('modalJornadaRazonSelect');
-    if (razonSel) razonSel.value = 'Cumpleaños';
-    window.alCambiarRazonModalJornada('Cumpleaños', false);
+    if (elJust) elJust.value = faltante;
+    if (elPers) elPers.value = 0;
+    if (elMed) elMed.value = 0;
   } else if (accion === 'cubrir_atraso_medico') {
-    document.getElementById('modalJornadaMinsMedico').value = atraso > 0 ? atraso : (faltante > 0 ? faltante : 60);
-    const razonSel = document.getElementById('modalJornadaRazonSelect');
-    if (razonSel && !razonSel.value) razonSel.value = 'Permiso Médico';
-    window.alCambiarRazonModalJornada('Permiso Médico', false);
+    const minCubrir = atraso > 0 ? (faltante > 0 ? Math.min(atraso, faltante) : atraso) : (faltante > 0 ? faltante : 60);
+    if (elMed) elMed.value = minCubrir;
+    if (elJust) elJust.value = 0;
+    if (elPers) elPers.value = 0;
   } else if (accion === 'cubrir_atraso_personal') {
-    document.getElementById('modalJornadaMinsPersonal').value = atraso > 0 ? atraso : (faltante > 0 ? faltante : 60);
-    const razonSel = document.getElementById('modalJornadaRazonSelect');
-    if (razonSel && !razonSel.value) razonSel.value = 'Permiso Personal';
-    window.alCambiarRazonModalJornada('Permiso Personal', false);
+    const minCubrir = atraso > 0 ? (faltante > 0 ? Math.min(atraso, faltante) : atraso) : (faltante > 0 ? faltante : 60);
+    if (elPers) elPers.value = minCubrir;
+    if (elJust) elJust.value = 0;
+    if (elMed) elMed.value = 0;
   } else if (accion === 'limpiar_tiempos') {
-    document.getElementById('modalJornadaMinsJustificado').value = 0;
-    document.getElementById('modalJornadaMinsPersonal').value = 0;
-    document.getElementById('modalJornadaMinsMedico').value = 0;
+    if (elJust) elJust.value = 0;
+    if (elPers) elPers.value = 0;
+    if (elMed) elMed.value = 0;
   }
   window.actualizarEtiquetasMinutosModal();
 };
@@ -14521,11 +14892,7 @@ window.aplicarAccionRapidaModal = function (accion) {
 window.guardarModalGestionJornada = async function () {
   const ctx = window._modalJornadaContexto;
   if (!ctx) return;
-  const { empleadoId, fecha, emp } = ctx;
-
-  const razonSel = document.getElementById('modalJornadaRazonSelect')?.value || '';
-  const inputOtro = document.getElementById('modalJornadaRazonOtroInput')?.value.trim() || '';
-  const razonFinal = (razonSel === 'Otro') ? (inputOtro || 'Otro') : razonSel;
+  const { empleadoId, fecha, emp, esCumpleHoy } = ctx;
 
   const hEntrada = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
   const hSalida = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
@@ -14540,7 +14907,52 @@ window.guardarModalGestionJornada = async function () {
   const observacion = document.getElementById('modalJornadaObservacionInput')?.value.trim() || '';
 
   const tieneHoras = Boolean(hEntrada || hSalida);
-  const esAusenciaCompleta = !tieneHoras && ['Vacación', 'Feriado', 'Calamidad Doméstica', 'Inasistencia'].includes(razonFinal);
+  const tieneAsistencia = Boolean(ctx.tieneAsistencia || tieneHoras || (ctx.netWorked > 0));
+  const faltanteJornada = ctx ? Math.max(0, 480 - (ctx.netWorked || 0)) : 0;
+
+  let razonFinal = '';
+  if (!tieneAsistencia) {
+    const razonSel = document.getElementById('modalJornadaRazonSelect')?.value || '';
+    const inputOtro = document.getElementById('modalJornadaRazonOtroInput')?.value.trim() || '';
+    razonFinal = (razonSel === 'Otro') ? (inputOtro || 'Otro') : razonSel;
+    if (!razonFinal && esCumpleHoy) {
+      razonFinal = 'Cumpleaños';
+    }
+  }
+
+  // 1. VALIDACIÓN: Exclusividad mutua de tipo de justificación/permiso
+  const camposActivos = (minsJust > 0 ? 1 : 0) + (minsPers > 0 ? 1 : 0) + (minsMed > 0 ? 1 : 0);
+  if (camposActivos > 1) {
+    if (typeof mostrarToast === 'function') {
+      mostrarToast('❌ Solo puede asignar un tipo de justificación o permiso por jornada (Justificado, Personal o Médico). Corrija los valores antes de guardar.', 'error');
+    }
+    return;
+  }
+
+  // 2. VALIDACIÓN: No exceder el faltante de la jornada ordinaria
+  const totalPermisos = minsJust + minsPers + minsMed;
+  if (tieneAsistencia && totalPermisos > faltanteJornada) {
+    if (typeof mostrarToast === 'function') {
+      mostrarToast(`❌ El tiempo de permiso (${totalPermisos} min) excede el faltante de la jornada (${faltanteJornada} min).`, 'error');
+    }
+    return;
+  }
+  if (!tieneAsistencia && totalPermisos > 480) {
+    if (typeof mostrarToast === 'function') {
+      mostrarToast(`❌ El tiempo de permiso (${totalPermisos} min) no puede superar las 8 horas (480 min).`, 'error');
+    }
+    return;
+  }
+
+  // 3. VALIDACIÓN: Si no tiene asistencia ni horas ni permisos, debe tener una razón de ausencia
+  if (!tieneAsistencia && !razonFinal && totalPermisos === 0) {
+    if (typeof mostrarToast === 'function') {
+      mostrarToast('⚠️ Seleccione una razón de ausencia en la Sección 2 para el día no laborado.', 'warn');
+    }
+    return;
+  }
+
+  const esAusenciaCompleta = !tieneHoras && Boolean(razonFinal);
 
   let sessionData = {};
   try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
@@ -14568,98 +14980,119 @@ window.guardarModalGestionJornada = async function () {
       return;
     }
 
-    // 3. Guardar modalidad si cambió
-    if (modalidad !== ctx.modActual) {
+    // 3. Guardar modalidad si cambió y no hay horas de marcación para actualizar
+    if (modalidad !== ctx.modActual && !hEntrada && !hSalida) {
       await window.guardarPermiso(empleadoId, fecha, 'modalidad', modalidad);
     }
 
-    // 4. Guardar horas de entrada y salida si fueron ingresadas o editadas
+    // 4. Guardar horas de entrada y salida:
+    // PRIMERO buscar y actualizar en "Registros" de Google Sheets
+    // 4. Actualizar Marcaciones y Modalidad: ACTUALIZAR SIEMPRE EN LA COLUMNA TIMESTAMP PRIMERO
+    // Y en Firestore SOLO actualizar el documento si ya existe (NUNCA CREAR NUEVOS para evitar duplicados)
+    const [yG, moG, dG] = fecha.includes('-') ? fecha.split('-') : fecha.split('/').reverse();
+
     if (hEntrada) {
+      let hValE = hEntrada.length === 5 ? hEntrada + ':00' : hEntrada;
+      let fullTsEntrada = `${String(dG).padStart(2,'0')}/${String(moG).padStart(2,'0')}/${yG} ${hValE}`;
+
       let regE = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO'));
       if (regE) {
-        regE.hora = hEntrada;
+        regE.timestamp = fullTsEntrada;
+        regE.hora = hValE;
+        regE.fecha = `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`;
         regE.modo = modalidad;
         regE.horasExtra = horasExtrasVal;
         regE.almuerzo = almuerzoVal;
         if (razonFinal) regE.razon_ausencia = razonFinal;
-      } else {
-        if (!emp.registros) emp.registros = [];
-        emp.registros.push({
-          id: `${empleadoId}_ENTRADA_${fecha}_${hEntrada.replace(/:/g, '')}`,
-          empleadoId,
-          fecha,
-          tipo: 'ENTRADA',
-          hora: hEntrada,
-          modo: modalidad,
-          horasExtra: horasExtrasVal,
-          almuerzo: almuerzoVal,
-          razon_ausencia: razonFinal
-        });
+        if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(regE);
       }
+
+      // 4.1 Actualizar primero en Google Sheets (Hoja REGISTROS columna TIMESTAMP)
+      if (typeof jsonpRequest === 'function') {
+        await jsonpRequest({
+          accion: 'actualizarRegistroArchivado',
+          empleadoId: empleadoId,
+          fecha: fecha,
+          tipo: 'ENTRADA',
+          campo: 'timestamp',
+          valor: fullTsEntrada,
+          modo: modalidad,
+          almuerzo: almuerzoVal,
+          horasExtra: horasExtrasVal
+        }).catch(err => console.warn("Aviso Sheets timestamp entrada:", err));
+      }
+
+      // 4.2 En Firestore: SOLO actualizar documento si ya existe (NUNCA crear nuevo doc)
+      const firestoreDocIdE = (regE && regE.id && !String(regE.id).startsWith('arch_')) ? regE.id : null;
       if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
         window.FirebaseBackend.actualizarRegistroGeneral({
-          docId: `${empleadoId}_ENTRADA_${fecha}_${hEntrada.replace(/:/g, '')}`,
+          docId: firestoreDocIdE,
           empleadoId,
           tipo: 'ENTRADA',
           fecha,
-          campo: 'hora',
-          valor: hEntrada
-        }).catch(err => console.error("Error al actualizar hora entrada:", err));
-      } else if (typeof jsonpRequest === 'function') {
-        jsonpRequest({
-          accion: 'actualizarRegistroGeneral',
-          docId: `${empleadoId}_ENTRADA_${fecha}_${hEntrada.replace(/:/g, '')}`,
-          empleadoId,
-          tipo: 'ENTRADA',
-          fecha,
-          campo: 'hora',
-          valor: hEntrada
-        }).catch(err => console.error("Error jsonp hora entrada:", err));
+          campo: 'timestamp',
+          valor: fullTsEntrada,
+          almuerzo: almuerzoVal,
+          modo: modalidad,
+          horasExtra: horasExtrasVal
+        }).catch(err => console.warn("Aviso Firestore entrada:", err));
       }
     }
 
     if (hSalida) {
+      let hValS = hSalida.length === 5 ? hSalida + ':00' : hSalida;
+      let fullTsSalida = `${String(dG).padStart(2,'0')}/${String(moG).padStart(2,'0')}/${yG} ${hValS}`;
+
       let regS = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO'));
       if (regS) {
-        regS.hora = hSalida;
+        regS.timestamp = fullTsSalida;
+        regS.hora = hValS;
+        regS.fecha = `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`;
         regS.modo = modalidad;
-      } else {
-        if (!emp.registros) emp.registros = [];
-        emp.registros.push({
-          id: `${empleadoId}_SALIDA_${fecha}_${hSalida.replace(/:/g, '')}`,
-          empleadoId,
-          fecha,
-          tipo: 'SALIDA',
-          hora: hSalida,
-          modo: modalidad
-        });
+        if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(regS);
       }
+
+      // 4.3 Actualizar Salida primero en Google Sheets (Hoja REGISTROS columna TIMESTAMP)
+      if (typeof jsonpRequest === 'function') {
+        await jsonpRequest({
+          accion: 'actualizarRegistroArchivado',
+          empleadoId: empleadoId,
+          fecha: fecha,
+          tipo: 'SALIDA',
+          campo: 'timestamp',
+          valor: fullTsSalida,
+          modo: modalidad
+        }).catch(err => console.warn("Aviso Sheets timestamp salida:", err));
+      }
+
+      // 4.4 En Firestore: SOLO actualizar documento si ya existe (NUNCA crear nuevo doc)
+      const firestoreDocIdS = (regS && regS.id && !String(regS.id).startsWith('arch_')) ? regS.id : null;
       if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
         window.FirebaseBackend.actualizarRegistroGeneral({
-          docId: `${empleadoId}_SALIDA_${fecha}_${hSalida.replace(/:/g, '')}`,
+          docId: firestoreDocIdS,
           empleadoId,
           tipo: 'SALIDA',
           fecha,
-          campo: 'hora',
-          valor: hSalida
-        }).catch(err => console.error("Error al actualizar hora salida:", err));
-      } else if (typeof jsonpRequest === 'function') {
-        jsonpRequest({
-          accion: 'actualizarRegistroGeneral',
-          docId: `${empleadoId}_SALIDA_${fecha}_${hSalida.replace(/:/g, '')}`,
-          empleadoId,
-          tipo: 'SALIDA',
-          fecha,
-          campo: 'hora',
-          valor: hSalida
-        }).catch(err => console.error("Error jsonp hora salida:", err));
+          campo: 'timestamp',
+          valor: fullTsSalida,
+          modo: modalidad
+        }).catch(err => console.warn("Aviso Firestore salida:", err));
       }
     }
 
-    // 5. Guardar minutos parciales con guardarPermiso
-    await window.guardarPermiso(empleadoId, fecha, 'justificado', minsJust, observacion);
-    await window.guardarPermiso(empleadoId, fecha, 'personal', minsPers, observacion);
-    await window.guardarPermiso(empleadoId, fecha, 'medico', minsMed, observacion);
+    // 5. Guardar minutos parciales con guardarPermiso solo si aplican
+    const prevJust = ctx.minsJustificado || 0;
+    const prevPers = ctx.minsPersonal || 0;
+    const prevMed = ctx.minsMedico || 0;
+    if (minsJust > 0 || prevJust > 0) {
+      await window.guardarPermiso(empleadoId, fecha, 'justificado', minsJust, observacion);
+    }
+    if (minsPers > 0 || prevPers > 0) {
+      await window.guardarPermiso(empleadoId, fecha, 'personal', minsPers, observacion);
+    }
+    if (minsMed > 0 || prevMed > 0) {
+      await window.guardarPermiso(empleadoId, fecha, 'medico', minsMed, observacion);
+    }
 
     if (typeof mostrarToast === 'function') mostrarToast('✅ Jornada y permisos guardados exitosamente', 'success');
 
