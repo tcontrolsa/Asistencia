@@ -896,6 +896,51 @@ function obtenerDiasHabiles(inicio, fin) {
   return dias;
 }
 
+/**
+ * Determina la fecha real de inicio / vinculación o registro de un colaborador.
+ * Evita que usuarios nuevos o de reciente registro sean marcados erróneamente
+ * con inasistencias injustificadas en períodos o días previos a su ingreso.
+ */
+function obtenerFechaInicioEfectivaEmpleado(e, rangoIniFallback) {
+  if (!e) return rangoIniFallback;
+
+  // 1. Fecha de ingreso explícita (fecha_ingreso, fechaIngreso, fecha_inicio, fechaInicio)
+  const fIngRaw = e.fecha_ingreso || e.fechaIngreso || e.fecha_inicio || e.fechaInicio;
+  if (fIngRaw && String(fIngRaw).trim().length >= 10) {
+    const fi = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(fIngRaw) : String(fIngRaw).slice(0, 10);
+    if (fi && /^\d{4}-\d{2}-\d{2}$/.test(fi) && fi >= '2020-01-01') {
+      return fi;
+    }
+  }
+
+  // 2. Fecha de creación / registro explícita en Firestore o sistema
+  const rawCreado = e.creado || e.createTime || e.fechaRegistro || e.fecha_creacion || e.fecha_registro || e.fechaCreacion || e.createdAt;
+  if (rawCreado && String(rawCreado).trim().length >= 10) {
+    const fc = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(rawCreado) : String(rawCreado).slice(0, 10);
+    if (fc && /^\d{4}-\d{2}-\d{2}$/.test(fc) && fc >= '2020-01-01') {
+      return fc;
+    }
+  }
+
+  // 3. Primer registro histórico de marcación (si tiene marcaciones en la base)
+  const regs = Array.isArray(e.registros) ? e.registros : [];
+  if (regs.length > 0) {
+    const fechasReg = regs
+      .map(r => (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(r.fecha) : (r.fecha ? String(r.fecha).slice(0, 10) : ''))
+      .filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= '2020-01-01')
+      .sort();
+    if (fechasReg.length > 0) {
+      return fechasReg[0];
+    }
+  }
+
+  // 4. Si es un usuario recién creado/registrado sin marcaciones ni fecha previa:
+  // Su fecha efectiva de inicio es hoy, evitando falsas inasistencias del período anterior
+  const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().slice(0, 10);
+  return hoyStr;
+}
+window.obtenerFechaInicioEfectivaEmpleado = obtenerFechaInicioEfectivaEmpleado;
+
 // ============================================================
 // JSONP REQUEST (INTERCEPTOR FIREBASE)
 // ============================================================
@@ -1149,8 +1194,11 @@ function cargarDashboard() {
       });
 
       let evalIniEmp = periodo.inicio;
-      if (primerRegFecha && primerRegFecha > periodo.inicio) {
-        evalIniEmp = primerRegFecha;
+      const fInicioEmp = (typeof obtenerFechaInicioEfectivaEmpleado === 'function')
+        ? obtenerFechaInicioEfectivaEmpleado(e, periodo.inicio)
+        : (primerRegFecha || e.fecha_ingreso || periodo.inicio);
+      if (fInicioEmp && fInicioEmp > periodo.inicio) {
+        evalIniEmp = fInicioEmp;
       }
       let evalFinEmp = (periodo.fin < hoy_) ? periodo.fin : hoy_;
 
@@ -1836,6 +1884,14 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
       d.setDate(d.getDate() - 60);
       inicio = inicio || d.toISOString().split('T')[0];
     }
+  }
+
+  // CRÍTICO: Si el colaborador es de recién ingreso/registro, no evaluar días previos a su inicio
+  const fInicioEmp = (typeof window.obtenerFechaInicioEfectivaEmpleado === 'function')
+    ? window.obtenerFechaInicioEfectivaEmpleado(emp, inicio)
+    : (emp.fecha_ingreso || inicio);
+  if (fInicioEmp && fInicioEmp > inicio) {
+    inicio = fInicioEmp;
   }
 
   // Agrupar registros por fecha normalizada
@@ -2877,9 +2933,11 @@ function cargarReportes() {
       finEvalEmp = fSalida;
     }
     let iniEvalEmp = R_INI;
-    if (e.fecha_ingreso) {
-      const fIng = normalizarFechaStr(e.fecha_ingreso);
-      if (fIng && fIng > R_INI) iniEvalEmp = fIng;
+    const fInicioEfectivo = (typeof obtenerFechaInicioEfectivaEmpleado === 'function')
+      ? obtenerFechaInicioEfectivaEmpleado(e, R_INI)
+      : (e.fecha_ingreso || R_INI);
+    if (fInicioEfectivo && fInicioEfectivo > R_INI) {
+      iniEvalEmp = fInicioEfectivo;
     }
     let diasLaborables = (iniEvalEmp <= finEvalEmp) ? obtenerDiasHabiles(iniEvalEmp, finEvalEmp) : [];
     let diasLaborablesTotal = diasLaborables;
@@ -3680,11 +3738,28 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       limiteFinLocal = fSalidaEmp;
     }
 
-    let inicioEvalEmp = R_INI;
-    if (e.fecha_ingreso && String(e.fecha_ingreso).trim().length >= 10) {
-      const fi = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(e.fecha_ingreso) : String(e.fecha_ingreso).slice(0, 10);
-      if (fi && fi > R_INI) inicioEvalEmp = fi;
+    const fechaInicioEfectiva = (typeof window.obtenerFechaInicioEfectivaEmpleado === 'function')
+      ? window.obtenerFechaInicioEfectivaEmpleado(e, R_INI)
+      : (e.fecha_ingreso || R_INI);
+    let inicioEvalEmp = (fechaInicioEfectiva && fechaInicioEfectiva > R_INI) ? fechaInicioEfectiva : R_INI;
+
+    // 1. Días laborables del período previos al ingreso/registro del usuario (usuario recién registrado)
+    // Se registran con marca neutral 'previoAlRegistro' para NO acusar inasistencias injustificadas
+    if (fechaInicioEfectiva && fechaInicioEfectiva > R_INI) {
+      const dPrev = new Date(fechaInicioEfectiva + 'T12:00:00');
+      dPrev.setDate(dPrev.getDate() - 1);
+      const finPrevio = dPrev.toISOString().split('T')[0];
+      if (R_INI <= finPrevio) {
+        const diasPrevios = (typeof obtenerDiasHabiles === 'function') ? obtenerDiasHabiles(R_INI, finPrevio) : [];
+        diasPrevios.forEach(fPrev => {
+          if (!porDia[fPrev]) {
+            porDia[fPrev] = { registros: [], almuerzo: null, previoAlRegistro: true };
+          }
+        });
+      }
     }
+
+    // 2. Días laborables ordinarios desde su inicio efectivo hasta ayer (evaluación de inasistencia)
     if (inicioEvalEmp && limiteFinLocal && inicioEvalEmp <= limiteFinLocal) {
       const diasHabilesRango = (typeof obtenerDiasHabiles === 'function') ? obtenerDiasHabiles(inicioEvalEmp, limiteFinLocal) : [];
       diasHabilesRango.forEach(fHab => {
@@ -4050,8 +4125,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       tiempoMedico += medMins;
       tiempoJustificado += justMins;
 
+      const esPrevioAlRegistro = Boolean(d.previoAlRegistro);
       const esHoyOFuturo = f >= getLocalHoyStr();
-      if (isJustificado || esHoyOFuturo) {
+      if (isJustificado || esHoyOFuturo || esPrevioAlRegistro) {
         tiempoPorJustificar = 0;
       } else {
         let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
@@ -4133,10 +4209,10 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const esDiaLaboralOrdinario = (dayOfWeek !== 0 && dayOfWeek !== 6 && !esFestivo);
       const faltaMarcacionEntrada = periodosDia.some(p => !p.entrada && p.salida);
       const faltaMarcacionSalida = periodosDia.some(p => p.entrada && !p.salida);
-      const esFaltaSinJustificar = esFalta && !isJustificado;
+      const esFaltaSinJustificar = esFalta && !isJustificado && !esPrevioAlRegistro;
 
-      // CRÍTICO: Excluir estrictamente la fecha actual (hoy) ya que la jornada está en curso
-      if (esDiaLaboralOrdinario && f < hoyStrLocal) {
+      // CRÍTICO: Excluir estrictamente la fecha actual (hoy) y días previos al registro del colaborador
+      if (esDiaLaboralOrdinario && f < hoyStrLocal && !esPrevioAlRegistro) {
         const fParts = f.split('-');
         const fFmt = (fParts.length === 3) ? `${fParts[2]}/${fParts[1]}` : f;
         if (esFaltaSinJustificar) {
@@ -4148,6 +4224,36 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         } else if (tiempoPorJustificar > 60) {
           fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo', minutos: tiempoPorJustificar });
         }
+      }
+
+      // Caso especial: Días laborables previos al registro del usuario nuevo
+      if (esPrevioAlRegistro) {
+        const cardBg = 'rgba(100, 116, 139, 0.04)';
+        const cardBorder = '#cbd5e1';
+        const badgeBg = '#f1f5f9';
+        const badgeColor = '#475569';
+        const icon = '👤';
+        const razonMostrar = 'Usuario recién registrado';
+        const descMostrar = 'Previo al inicio/registro de labores del colaborador';
+
+        return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar este día">
+        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:3px 4px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
+        <td colspan="12" style="font-size:10px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
+                ${icon} ${razonMostrar.toUpperCase()}
+              </span>
+              <span style="font-size:10.5px; color:#64748b; font-weight:600;">
+                ${descMostrar}
+              </span>
+            </div>
+            <button type="button" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')" style="font-size:10.5px; color:#475569; font-weight:700; display:inline-flex; align-items:center; gap:4px; background:#ffffff; padding:3px 10px; border-radius:12px; border:1px solid #cbd5e1; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+              <i class="fas fa-info-circle"></i> Info
+            </button>
+          </div>
+        </td>
+      </tr>`;
       }
 
       // CRÍTICO: Solo es ausencia de día completo si el usuario NO tuvo marcaciones de asistencia
@@ -5824,7 +5930,9 @@ window.guardarNuevoEmpleadoDirectorio = async function () {
     activo: 'SI',
     cultura_habilitada: true,
     cultura_activa: true,
-    fechaNacimiento: fechaNacimiento
+    fechaNacimiento: fechaNacimiento,
+    fecha_ingreso: (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0],
+    creado: new Date().toISOString()
   };
 
   mostrarLoader(true);
@@ -8638,9 +8746,11 @@ window.actualizarReporteInteractivo = function () {
       finEvalEmp = fSalida;
     }
     let iniEvalEmp = R_INI;
-    if (e.fecha_ingreso) {
-      const fIng = normalizarFechaStr(e.fecha_ingreso);
-      if (fIng && fIng > R_INI) iniEvalEmp = fIng;
+    const fInicioEfectivo = (typeof obtenerFechaInicioEfectivaEmpleado === 'function')
+      ? obtenerFechaInicioEfectivaEmpleado(e, R_INI)
+      : (e.fecha_ingreso || R_INI);
+    if (fInicioEfectivo && fInicioEfectivo > R_INI) {
+      iniEvalEmp = fInicioEfectivo;
     }
     let diasLaborables = (iniEvalEmp <= finEvalEmp) ? obtenerDiasHabiles(iniEvalEmp, finEvalEmp) : [];
     let diasLaborablesTotal = diasLaborables;
@@ -12897,17 +13007,9 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       // 2. Si no tiene fecha_ingreso, verificamos su primer registro histórico en la base (primerRegistroEmpValido).
       //    Si ese primer registro es posterior a rangoIni, se toma como inicio aproximado.
       // 3. De lo contrario, se evalúa desde el inicio del período (rangoIni).
-      // 4. CRÍTICO: NUNCA usar primerRegistroEmpPeriodo, ya que reducía el período anual a 1 día para quienes marcaron recién.
-      let fechaIngresoValida = null;
-      if (e.fecha_ingreso && String(e.fecha_ingreso).trim().length >= 10) {
-        const fi = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(e.fecha_ingreso) : String(e.fecha_ingreso).slice(0, 10);
-        if (fi && fi >= '2020-01-01') fechaIngresoValida = fi;
-      }
-
-      let inicioColaborador = fechaIngresoValida;
-      if (!inicioColaborador && primerRegistroEmpValido && primerRegistroEmpValido > rangoIni) {
-        inicioColaborador = primerRegistroEmpValido;
-      }
+      let inicioColaborador = (typeof obtenerFechaInicioEfectivaEmpleado === 'function')
+        ? obtenerFechaInicioEfectivaEmpleado(e, rangoIni)
+        : (e.fecha_ingreso || primerRegistroEmpValido || null);
 
       let evalIni = (inicioColaborador && inicioColaborador > rangoIni) ? inicioColaborador : (rangoIni || finAuditoriaMax);
       let evalFin = rangoFin <= finAuditoriaMax ? rangoFin : finAuditoriaMax;
@@ -13757,7 +13859,7 @@ window.renderDetailedKPIs = function () {
   const formatDias = (n) => (n % 1 === 0 ? n : n.toFixed(1));
 
   let totOrdinarias = 0;
-  let totEsperadas = diasLaborables * empActivos.length;
+  let totEsperadas = 0;
   let totVacaciones = 0;
   let totInasistencias = 0;
   let totExtras = 0;
@@ -13765,7 +13867,14 @@ window.renderDetailedKPIs = function () {
 
   let html = '';
   empActivos.forEach(emp => {
-    const regsEmp = (emp.registros || []).filter(r => r.fecha >= periodo.inicio && r.fecha <= hoy_);
+    const fInicioEmp = (typeof obtenerFechaInicioEfectivaEmpleado === 'function')
+      ? obtenerFechaInicioEfectivaEmpleado(emp, periodo.inicio)
+      : (emp.fecha_ingreso || periodo.inicio);
+    const iniEvalEmp = (fInicioEmp && fInicioEmp > periodo.inicio) ? fInicioEmp : periodo.inicio;
+    const diasHabEmp = diasHab.filter(d => d >= iniEvalEmp);
+    const diasLabEmp = diasHabEmp.length;
+
+    const regsEmp = (emp.registros || []).filter(r => r.fecha >= iniEvalEmp && r.fecha <= hoy_);
     let diasEfectivos = new Set();
     let diasVac = new Set();
     let diasExt = new Set();
@@ -13773,7 +13882,7 @@ window.renderDetailedKPIs = function () {
     regsEmp.forEach(r => {
       const t = (r.tipo || '').toUpperCase();
       const just = (r.justificado || '').toUpperCase();
-      const esHab = diasHab.includes(r.fecha);
+      const esHab = diasHabEmp.includes(r.fecha);
       if (t === 'VACACIONES' || t === 'VACACION') {
         if (esHab) diasVac.add(r.fecha);
       } else if (t === 'ENTRADA' || t === 'CAMPO' || just === 'SI') {
@@ -13785,14 +13894,15 @@ window.renderDetailedKPIs = function () {
     const ord = diasEfectivos.size;
     const vac = diasVac.size;
     const ext = diasExt.size;
-    const inasist = Math.max(0, diasLaborables - (ord + vac));
+    const inasist = Math.max(0, diasLabEmp - (ord + vac));
 
     totOrdinarias += ord;
     totVacaciones += vac;
     totExtras += ext;
     totInasistencias += inasist;
+    totEsperadas += diasLabEmp;
 
-    let kpiAsistPct = diasLaborables > 0 ? (((ord + vac) / diasLaborables) * 100) : 100;
+    let kpiAsistPct = diasLabEmp > 0 ? (((ord + vac) / diasLabEmp) * 100) : 100;
     if (kpiAsistPct > 100) kpiAsistPct = 100;
     sumaKpiAsist += kpiAsistPct;
 
@@ -13825,7 +13935,7 @@ window.renderDetailedKPIs = function () {
     html += `
           <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" onclick="mostrarDetalle('${emp.id}')" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='#ffffff'">
             <td style="padding: 10px 12px; font-weight: 600;">${escapeHtml(emp.nombre)}</td>
-            <td style="padding: 10px 12px; text-align: center;">${diasLaborables}</td>
+            <td style="padding: 10px 12px; text-align: center;" title="Días laborables esperados para este colaborador: ${diasLabEmp}">${diasLabEmp}</td>
             <td style="padding: 10px 12px; text-align: center; color: #2563eb; font-weight: 700;">${ord}</td>
             <td style="padding: 10px 12px; text-align: center; color: ${inasist > 0 ? '#ef4444' : '#10b981'}; font-weight: 700;">${inasist}</td>
             <td style="padding: 10px 12px; text-align: center; color: #7c3aed; font-weight: 600;">+${ext}</td>
@@ -14173,6 +14283,21 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
 
   // Actualizar banner de ayuda dinámico
   window.alCambiarRazonModalJornada(razonSel?.value || '', false);
+
+  // Banner informativo para fechas previas al registro/ingreso del colaborador
+  const fInicioModalEmp = (typeof window.obtenerFechaInicioEfectivaEmpleado === 'function')
+    ? window.obtenerFechaInicioEfectivaEmpleado(emp, fecha)
+    : (emp.fecha_ingreso || fecha);
+  if (fecha < fInicioModalEmp && (!razonActual || razonActual === '')) {
+    const bannerAyuda = document.getElementById('modalJornadaBannerAyuda');
+    if (bannerAyuda) {
+      bannerAyuda.style.display = 'flex';
+      bannerAyuda.style.background = '#f8fafc';
+      bannerAyuda.style.border = '1px solid #cbd5e1';
+      bannerAyuda.style.color = '#475569';
+      bannerAyuda.innerHTML = `<i class="fas fa-info-circle" style="font-size:15px; color:#64748b;"></i> <div><strong>Usuario recién registrado:</strong> Esta jornada es anterior a la fecha de ingreso/registro del colaborador (${fInicioModalEmp}). No corresponde a una inasistencia injustificada.</div>`;
+    }
+  }
 
   // Mostrar modal con propiedades prioritarias
   modal.classList.remove('hidden');
