@@ -172,67 +172,81 @@ window.FirebaseBackend = {
                         return { ok: true, almuerzos: [], error: eAlm.message || eAlm.toString(), desdeCache: false };
                     }
                 case 'obtenerVacacionesEmpleado':
-                    try {
-                        const raw = await this._jsonp(params, 0, 2, 35000);
-                        if (raw && raw.ok) {
-                            const rawIndiv = raw.kpiVacacionesIndividual || {};
-                            const kpiIndivLimpio = {};
-                            let sA = 0, sT = 0, sR = 0;
-                            for (const [k, v] of Object.entries(rawIndiv)) {
-                                const kl = String(k).toLowerCase().trim();
-                                if (!k || kl.includes('sumatoria') || kl.includes('total') || kl.includes('promedio') || kl.includes('resumen')) continue;
-                                const a = parseFloat(v.adjudicadas) || 0;
-                                const t = parseFloat(v.tomadas) || 0;
-                                const r = parseFloat(v.restantes) || 0;
-                                kpiIndivLimpio[k] = { adjudicadas: a, tomadas: t, restantes: r };
-                                sA += a;
-                                sT += t;
-                                sR += r;
-                            }
-                            raw.kpiVacacionesIndividual = kpiIndivLimpio;
-                            const globalSheets = raw.kpiVacaciones || {};
-                            raw.kpiVacaciones = {
-                                adjudicadas: sA > 0 ? sA : (parseFloat(globalSheets.adjudicadas) || 0),
-                                tomadas: sT > 0 ? sT : (parseFloat(globalSheets.tomadas) || 0),
-                                restantes: sR !== 0 ? sR : (parseFloat(globalSheets.restantes) || 0)
-                            };
-                            window.kpiVacaciones = raw.kpiVacaciones;
-                            window._kpiVacacionesCache = raw.kpiVacaciones;
-                            window.kpiVacacionesIndividual = kpiIndivLimpio;
-                            try {
-                                localStorage.setItem('tcontrol_vacaciones_cache_v3', JSON.stringify({
-                                    vacaciones: raw.vacaciones || [],
-                                    kpiVacaciones: raw.kpiVacaciones,
-                                    kpiVacacionesIndividual: kpiIndivLimpio,
-                                    lastSync: new Date().toISOString()
-                                }));
-                            } catch (e) { }
-                            return raw;
-                        }
-                        throw new Error((raw && raw.error) || 'Respuesta no exitosa de Sheets');
-                    } catch (errVac) {
-                        try {
-                            const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v3');
-                            if (storedVac) {
-                                const parsedVac = JSON.parse(storedVac);
-                                return {
-                                    ok: true,
-                                    vacaciones: parsedVac.vacaciones || [],
-                                    kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
-                                    kpiVacacionesIndividual: parsedVac.kpiVacacionesIndividual || {},
-                                    desdeCache: true
-                                };
-                            }
-                        } catch (eC) { }
-                        return {
-                            ok: true,
-                            vacaciones: window._vacacionesCache || [],
-                            kpiVacaciones: window.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
-                            kpiVacacionesIndividual: window.kpiVacacionesIndividual || {},
-                            vacacionesTomadasHoy: 0,
-                            vacacionesRestantesHoy: 0
-                        };
+                    if (this._pendingVacacionesPromise) {
+                        return await this._pendingVacacionesPromise;
                     }
+                    this._pendingVacacionesPromise = (async () => {
+                        try {
+                            const raw = await this._jsonp(params, 0, 1, 45000);
+                            if (raw && raw.ok) {
+                                const rawIndiv = raw.kpiVacacionesIndividual || {};
+                                const kpiIndivLimpio = {};
+                                let sA = 0, sT = 0, sR = 0;
+                                for (const [k, v] of Object.entries(rawIndiv)) {
+                                    const kl = String(k).toLowerCase().trim();
+                                    if (!k || kl.includes('sumatoria') || kl.includes('total') || kl.includes('promedio') || kl.includes('resumen')) continue;
+                                    const a = parseFloat(v.adjudicadas) || 0;
+                                    const t = parseFloat(v.tomadas) || 0;
+                                    const r = parseFloat(v.restantes) || 0;
+                                    kpiIndivLimpio[k] = { adjudicadas: a, tomadas: t, restantes: r };
+                                    sA += a;
+                                    sT += t;
+                                    sR += r;
+                                }
+                                raw.kpiVacacionesIndividual = kpiIndivLimpio;
+                                const globalSheets = raw.kpiVacaciones || {};
+                                raw.kpiVacaciones = {
+                                    adjudicadas: sA > 0 ? sA : (parseFloat(globalSheets.adjudicadas) || 0),
+                                    tomadas: sT > 0 ? sT : (parseFloat(globalSheets.tomadas) || 0),
+                                    restantes: sR !== 0 ? sR : (parseFloat(globalSheets.restantes) || 0)
+                                };
+                                window.kpiVacaciones = raw.kpiVacaciones;
+                                window._kpiVacacionesCache = raw.kpiVacaciones;
+                                window.kpiVacacionesIndividual = kpiIndivLimpio;
+                                window._lastSheetsVacOk = Date.now();
+                                try {
+                                    const cacheData = JSON.stringify({
+                                        vacaciones: raw.vacaciones || [],
+                                        kpiVacaciones: raw.kpiVacaciones,
+                                        kpiVacacionesIndividual: kpiIndivLimpio,
+                                        lastSync: new Date().toISOString()
+                                    });
+                                    localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);
+                                    localStorage.setItem('tcontrol_vacaciones_cache_v2', cacheData);
+                                } catch (e) { }
+                                return raw;
+                            }
+                            throw new Error((raw && raw.error) || 'Respuesta no exitosa de Sheets');
+                        } catch (errVac) {
+                            console.warn("⚠️ Sheets timeout o error al obtener vacaciones:", errVac);
+                            window._lastSheetsVacError = Date.now();
+                            try {
+                                const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v3') || localStorage.getItem('tcontrol_vacaciones_cache_v2');
+                                if (storedVac) {
+                                    const parsedVac = JSON.parse(storedVac);
+                                    if (parsedVac && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
+                                        return {
+                                            ok: true,
+                                            vacaciones: parsedVac.vacaciones || [],
+                                            kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
+                                            kpiVacacionesIndividual: parsedVac.kpiVacacionesIndividual || {},
+                                            desdeCache: true
+                                        };
+                                    }
+                                }
+                            } catch (eC) { }
+                            return {
+                                ok: false,
+                                error: errVac.message || 'Timeout en la conexión con Sheets',
+                                vacaciones: window._vacacionesCache || [],
+                                kpiVacaciones: window.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
+                                kpiVacacionesIndividual: window.kpiVacacionesIndividual || {}
+                            };
+                        } finally {
+                            this._pendingVacacionesPromise = null;
+                        }
+                    })();
+                    return await this._pendingVacacionesPromise;
                 default:
                     console.warn("⚠️ Acción no reconocida:", accion);
                     return { error: "Acción no soportada en Firebase: " + accion };
@@ -3000,10 +3014,10 @@ window.FirebaseBackend = {
             });
 
             // Cargar y fusionar vacaciones desde caché local (inmediato) y sincronizar con Sheets en segundo plano
-            const CACHE_VAC_KEY = 'tcontrol_vacaciones_cache_v2';
+            const CACHE_VAC_KEY = 'tcontrol_vacaciones_cache_v3';
             if (!window._vacacionesCache || window._vacacionesCache.length === 0) {
                 try {
-                    const storedVac = localStorage.getItem(CACHE_VAC_KEY);
+                    const storedVac = localStorage.getItem(CACHE_VAC_KEY) || localStorage.getItem('tcontrol_vacaciones_cache_v2');
                     if (storedVac) {
                         const parsedVac = JSON.parse(storedVac);
                         if (parsedVac.vacaciones) window._vacacionesCache = parsedVac.vacaciones;
@@ -3018,55 +3032,8 @@ window.FirebaseBackend = {
 
             const _fetchVacacionesSheets = async () => {
                 try {
-                    const vacRes = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' }, 0, 2, 35000);
+                    const vacRes = await this.procesarAccion({ accion: 'obtenerVacacionesEmpleado' });
                     if (vacRes && vacRes.ok) {
-                        window._vacacionesCache = vacRes.vacaciones || [];
-
-                        const kpiIndivLimpio = {};
-                        let sumaAdj = 0, sumaTom = 0, sumaRes = 0;
-                        const rawIndiv = vacRes.kpiVacacionesIndividual || {};
-
-                        Object.keys(rawIndiv).forEach(k => {
-                            const kLower = String(k).toLowerCase().trim();
-                            if (!k || kLower.includes('sumatoria') || kLower.includes('total') || kLower.includes('promedio') || kLower.includes('resumen')) {
-                                return;
-                            }
-                            const v = rawIndiv[k];
-                            const adj = parseFloat(v.adjudicadas) || 0;
-                            const tom = parseFloat(v.tomadas) || 0;
-                            const res = parseFloat(v.restantes) || 0;
-                            kpiIndivLimpio[k] = { adjudicadas: adj, tomadas: tom, restantes: res };
-                            sumaAdj += adj;
-                            sumaTom += tom;
-                            sumaRes += res;
-                        });
-
-                        window.kpiVacacionesIndividual = kpiIndivLimpio;
-
-                        let kpiVac = vacRes.kpiVacaciones ? { ...vacRes.kpiVacaciones } : null;
-                        if (sumaAdj > 0) {
-                            kpiVac = {
-                                adjudicadas: sumaAdj,
-                                tomadas: sumaTom,
-                                restantes: sumaRes
-                            };
-                        } else if (!kpiVac) {
-                            kpiVac = { adjudicadas: 0, tomadas: 0, restantes: 0 };
-                        }
-
-                        window._kpiVacacionesCache = kpiVac;
-                        window.kpiVacaciones = kpiVac;
-                        window._lastSheetsVacOk = Date.now();
-
-                        try {
-                            localStorage.setItem(CACHE_VAC_KEY, JSON.stringify({
-                                vacaciones: window._vacacionesCache,
-                                kpiVacaciones: kpiVac,
-                                kpiVacacionesIndividual: kpiIndivLimpio,
-                                lastSync: new Date().toISOString()
-                            }));
-                        } catch (e) { }
-
                         if (typeof renderizarCardKpiVacaciones === 'function') {
                             try { renderizarCardKpiVacaciones(); } catch (e) { }
                         }

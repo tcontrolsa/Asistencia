@@ -13503,54 +13503,11 @@ window.forzarSincronizacionHistorica = async function () {
 // ==========================================
 // MODAL DESGLOSE DE VACACIONES (GOCE ANUAL)
 // ==========================================
-window.abrirModalDesgloseVacaciones = function (forzarRecarga = false) {
+window.renderizarTablaDesgloseVacaciones = function () {
   try {
-    const modal = document.getElementById('modalDesgloseVacaciones');
     const tbody = document.getElementById('tbodyModalVacaciones');
-    if (!modal) {
-      console.error('Modal #modalDesgloseVacaciones no encontrado en el DOM');
-      return;
-    }
-
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
-
-    if (!empCache || !empCache.length) {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="padding: 25px; text-align: center; color: var(--g600);"><i class="fas fa-spinner fa-spin"></i> Cargando datos de colaboradores...</td></tr>`;
-      return;
-    }
-
-    // 1. Si no hay datos individuales cargados en memoria, intentar leer de localStorage de inmediato
-    if (!forzarRecarga && (!window.kpiVacacionesIndividual || Object.keys(window.kpiVacacionesIndividual).length === 0)) {
-      try {
-        const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v3');
-        if (storedVac) {
-          const parsedVac = JSON.parse(storedVac);
-          if (parsedVac && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
-            window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
-            if (parsedVac.kpiVacaciones) {
-              window.kpiVacaciones = parsedVac.kpiVacaciones;
-              window._kpiVacacionesCache = parsedVac.kpiVacaciones;
-            }
-          }
-        }
-      } catch (eCache) {}
-    }
-
-    // 2. Si todavía no hay datos o se forzó recarga, mostrar spinner y solicitar al servidor automáticamente
-    if (forzarRecarga || !window.kpiVacacionesIndividual || Object.keys(window.kpiVacacionesIndividual).length === 0) {
-      if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="8" style="padding: 35px; text-align: center; color: #475569; font-weight: 600;">
-          <i class="fas fa-spinner fa-spin" style="font-size: 24px; color: #0d9488; margin-bottom: 10px; display: block;"></i>
-          Sincronizando desglose de vacaciones desde el servidor...
-        </td></tr>`;
-      }
-      window.sincronizarDatosVacaciones(true);
-      return;
-    }
-
     const kpiVacIndiv = window.kpiVacacionesIndividual || {};
-    const empAsistencia = empCache.filter(e => {
+    const empAsistencia = (empCache || []).filter(e => {
       const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
       const excluido = (typeof esEmpleadoExcluidoAsistencia === 'function') ? esEmpleadoExcluidoAsistencia(e) : false;
       return act && !excluido;
@@ -13608,7 +13565,6 @@ window.abrirModalDesgloseVacaciones = function (forzarRecarga = false) {
 
     const tasaGlobal = totalAdjudicadas > 0 ? ((totalTomadas / totalAdjudicadas) * 100).toFixed(1) : '100.0';
     const promedioIndiv = colabsConVac > 0 ? (sumaKpis / colabsConVac).toFixed(1) : tasaGlobal;
-
     const formatDias = (n) => (n % 1 === 0 ? n : n.toFixed(1));
 
     if (document.getElementById('lblModalVacAdjudicadas')) document.getElementById('lblModalVacAdjudicadas').textContent = `${formatDias(totalAdjudicadas)} d`;
@@ -13619,6 +13575,67 @@ window.abrirModalDesgloseVacaciones = function (forzarRecarga = false) {
 
     window._datosVacacionesModal = datosTabla;
     window.renderFilasVacaciones(datosTabla);
+  } catch (e) {
+    console.error('Error en renderizarTablaDesgloseVacaciones:', e);
+  }
+};
+
+window.abrirModalDesgloseVacaciones = function (forzarRecarga = false) {
+  try {
+    const modal = document.getElementById('modalDesgloseVacaciones');
+    const tbody = document.getElementById('tbodyModalVacaciones');
+    if (!modal) {
+      console.error('Modal #modalDesgloseVacaciones no encontrado en el DOM');
+      return;
+    }
+
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    if (!empCache || !empCache.length) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="padding: 25px; text-align: center; color: var(--g600);"><i class="fas fa-spinner fa-spin"></i> Cargando datos de colaboradores...</td></tr>`;
+      return;
+    }
+
+    // 1. Intentar leer de localStorage si la memoria está vacía
+    if (!window.kpiVacacionesIndividual || Object.keys(window.kpiVacacionesIndividual).length === 0) {
+      try {
+        const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v3') || localStorage.getItem('tcontrol_vacaciones_cache_v2');
+        if (storedVac) {
+          const parsedVac = JSON.parse(storedVac);
+          if (parsedVac && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
+            window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
+            if (parsedVac.kpiVacaciones) {
+              window.kpiVacaciones = parsedVac.kpiVacaciones;
+              window._kpiVacacionesCache = parsedVac.kpiVacaciones;
+            }
+          }
+        }
+      } catch (eCache) {}
+    }
+
+    const tieneDatos = window.kpiVacacionesIndividual && Object.keys(window.kpiVacacionesIndividual).length > 0;
+
+    // Si ya tenemos datos y no se forzó recarga, renderizar de inmediato sin mostrar spinner
+    if (tieneDatos && !forzarRecarga) {
+      window.renderizarTablaDesgloseVacaciones();
+      return;
+    }
+
+    // Si no tenemos datos, mostrar spinner de carga
+    if (!tieneDatos) {
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="8" style="padding: 35px; text-align: center; color: #475569; font-weight: 600;">
+          <i class="fas fa-spinner fa-spin" style="font-size: 24px; color: #0d9488; margin-bottom: 10px; display: block;"></i>
+          Sincronizando desglose de vacaciones desde el servidor...
+        </td></tr>`;
+      }
+    } else {
+      // Si forzó recarga pero ya tenemos datos, renderizar los actuales mientras se refresca
+      window.renderizarTablaDesgloseVacaciones();
+    }
+
+    window.sincronizarDatosVacaciones(false);
   } catch (err) {
     console.error('Error al abrir modal desglose de vacaciones:', err);
     if (typeof mostrarToast === 'function') {
@@ -13635,12 +13652,19 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
     btn.disabled = true;
   }
 
-  const reqVac = (window.FirebaseBackend && typeof window.FirebaseBackend.ejecutar === 'function')
-    ? window.FirebaseBackend.ejecutar('obtenerVacacionesEmpleado')
+  // Si ya hay una sincronización en curso, reusar la misma promesa para evitar duplicados
+  if (window._sincronizandoVacacionesPromise) {
+    return window._sincronizandoVacacionesPromise;
+  }
+
+  const tbody = document.getElementById('tbodyModalVacaciones');
+
+  const reqVac = (window.USE_FIREBASE && window.FirebaseBackend && typeof window.FirebaseBackend.procesarAccion === 'function')
+    ? window.FirebaseBackend.procesarAccion({ accion: 'obtenerVacacionesEmpleado' })
     : jsonpRequest({ accion: 'obtenerVacacionesEmpleado' });
 
-  return reqVac.then(vacRes => {
-    if (vacRes && vacRes.ok) {
+  window._sincronizandoVacacionesPromise = reqVac.then(vacRes => {
+    if (vacRes && vacRes.ok && vacRes.kpiVacacionesIndividual && Object.keys(vacRes.kpiVacacionesIndividual).length > 0) {
       const rawIndiv = vacRes.kpiVacacionesIndividual || {};
       const limpio = {};
       let sumA = 0, sumT = 0, sumR = 0;
@@ -13664,12 +13688,14 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
       };
       window._kpiVacacionesCache = window.kpiVacaciones;
       try {
-        localStorage.setItem('tcontrol_vacaciones_cache_v3', JSON.stringify({
+        const cacheData = JSON.stringify({
           vacaciones: vacRes.vacaciones || [],
           kpiVacaciones: window.kpiVacaciones,
           kpiVacacionesIndividual: limpio,
           lastSync: new Date().toISOString()
-        }));
+        });
+        localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);
+        localStorage.setItem('tcontrol_vacaciones_cache_v2', cacheData);
       } catch(e) {}
 
       // Actualizar tarjeta KPI en el dashboard principal
@@ -13677,27 +13703,35 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
         window.renderDetailedKPIs();
       }
 
-      // Re-renderizar modal si está abierto o si se solicitó explícitamente
-      const modal = document.getElementById('modalDesgloseVacaciones');
-      if (abrirModalDespues || (modal && modal.style.display !== 'none' && !modal.classList.contains('hidden'))) {
-        window.abrirModalDesgloseVacaciones(false);
-      }
+      // Renderizar modal sin volver a disparar sincronización (evita bucles infinitos)
+      window.renderizarTablaDesgloseVacaciones();
 
       if (btn && typeof mostrarToast === 'function') {
         mostrarToast('Desglose de vacaciones actualizado con éxito', 'success');
       }
       return true;
     } else {
-      throw new Error((vacRes && vacRes.error) || 'Respuesta vacía del servidor');
+      // Si la respuesta falló o no trajo datos individuales, revisar si hay caché previa
+      const hayCache = window.kpiVacacionesIndividual && Object.keys(window.kpiVacacionesIndividual).length > 0;
+      if (hayCache) {
+        window.renderizarTablaDesgloseVacaciones();
+        if (btn && typeof mostrarToast === 'function') {
+          mostrarToast('Datos cargados desde caché local.', 'info');
+        }
+        return true;
+      }
+      throw new Error((vacRes && vacRes.error) || 'El servidor de Google Sheets tardó demasiado en responder.');
     }
   }).catch(err => {
     console.error('Error al sincronizar vacaciones:', err);
-    const tbody = document.getElementById('tbodyModalVacaciones');
-    if (tbody && abrirModalDespues) {
+    if (tbody) {
       tbody.innerHTML = `<tr><td colspan="8" style="padding: 25px; text-align: center; color: #ef4444;">
-        <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i>
-        No se pudieron cargar los datos de vacaciones. 
-        <button type="button" onclick="window.sincronizarDatosVacaciones(true)" class="btn" style="margin-left: 8px; padding: 4px 10px; font-size: 11px; background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 6px; cursor: pointer; font-weight: 700;">Reintentar</button>
+        <i class="fas fa-exclamation-triangle" style="font-size: 22px; margin-bottom: 8px; display: block;"></i>
+        <div style="font-weight: 600; margin-bottom: 6px;">No se pudieron sincronizar las vacaciones desde Google Sheets.</div>
+        <div style="font-size: 11px; color: #64748b; margin-bottom: 12px;">${(typeof escapeHtml === 'function') ? escapeHtml(err.message || 'Tiempo de espera agotado') : (err.message || 'Tiempo de espera agotado')}</div>
+        <button type="button" onclick="window.sincronizarDatosVacaciones(true)" class="btn" style="padding: 5px 14px; font-size: 11.5px; background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 6px; cursor: pointer; font-weight: 700;">
+          <i class="fas fa-sync-alt" style="margin-right: 4px;"></i> Reintentar sincronización
+        </button>
       </td></tr>`;
     }
     if (btn && typeof mostrarToast === 'function') {
@@ -13705,11 +13739,14 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
     }
     return false;
   }).finally(() => {
+    window._sincronizandoVacacionesPromise = null;
     if (btn) {
       if (icon) icon.className = 'fas fa-sync-alt';
       btn.disabled = false;
     }
   });
+
+  return window._sincronizandoVacacionesPromise;
 };
 
 window.recargarDesgloseVacaciones = function (btn) {
