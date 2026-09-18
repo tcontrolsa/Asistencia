@@ -3727,33 +3727,13 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
       if (periodosDia.length === 0) periodosDia.push({ entrada: null, salida: null });
 
-      // Mostrar todos los tramos de horas con capacidad de edición y borrado para Admin
+      // Mostrar todos los tramos de horas de forma limpia y legible
       let horaE = periodosDia.map(p => {
-        const valor = p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--';
-        if (esMaster && p.entrada) {
-          const tsVal = formatearTimestampCompleto(p.entrada.timestamp);
-          return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.entrada.tipo}', '${p.entrada.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.entrada.id}', '${e.id}', '${f}', '${p.entrada.tipo}')"><i class="fas fa-trash"></i></button></div>`;
-        }
-        if (esMaster && !p.entrada && (!esFalta || (d.registros && d.registros.length === 0))) {
-          let defEntStr = esFestivo ? '07:00:00' : '07:30:00';
-          let defEntLbl = esFestivo ? '07:00' : '07:30';
-          return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'ENTRADA', '${defEntStr}', '${f}')"><i class="fas fa-plus"></i> ${defEntLbl}</button>`;
-        }
-        return valor;
+        return p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--';
       }).join('<br>');
 
       let horaS = periodosDia.map(p => {
-        const valor = p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--';
-        if (esMaster && p.salida) {
-          const tsVal = formatearTimestampCompleto(p.salida.timestamp);
-          return `<div class="editable-row-cell"><span class="editable-cell" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'hora', '${valor}', '${f}')">${valor}</span><button class="btn-edit-tiny" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${p.salida.tipo}', '${p.salida.id}', 'timestamp', '${tsVal}', '${f}')" title="Editar timestamp completo (actualiza fecha y hora)"><i class="fas fa-clock"></i></button><button class="btn-delete-tiny" onclick="event.stopPropagation();eliminarRegistroSupervisor('${p.salida.id}', '${e.id}', '${f}', '${p.salida.tipo}')"><i class="fas fa-trash"></i></button></div>`;
-        }
-        if (esMaster && !p.salida && (!esFalta || (d.registros && d.registros.length === 0))) {
-          let defSalStr = esFestivo ? '15:00:00' : '16:15:00';
-          let defSalLbl = esFestivo ? '15:00' : '16:15';
-          return `<button class="btn-quick-add" onclick="event.stopPropagation();completarRegistro('${e.id}', 'SALIDA', '${defSalStr}', '${f}')"><i class="fas fa-plus"></i> ${defSalLbl}</button>`;
-        }
-        return valor;
+        return p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--';
       }).join('<br>');
 
       let aBadge = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? '<span class="pill ok">🏢 Sí</span>' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? '<span class="pill" style="background:#dbeafe; color:#1e40af;">🏠 No</span>' : '<span class="pill dim">❓ —</span>';
@@ -3851,23 +3831,21 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         }
       });
 
-      let selectRazonHtml = `
-          <select onchange="window.guardarRazonAusenciaFecha('${e.id}', '${f}', this.value)" ${(!esSuperPermiso || !esFalta) ? 'disabled' : ''} style="font-size:10px; border:1px solid #d1d5db; border-radius:5px; padding:1px 3px; background:#f8fafc; cursor:pointer; width:92px; max-width:92px;">
-            <option value="">-- Razón --</option>
-            <option value="Vacación" ${razonAusenciaVal === 'Vacación' || razonAusenciaVal === 'Vacacion' ? 'selected' : ''}>🏖️ Vacación</option>
-            <option value="Permiso Médico" ${razonAusenciaVal === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Med.</option>
-            <option value="Permiso Personal" ${razonAusenciaVal === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Pers.</option>
-            <option value="Calamidad Doméstica" ${razonAusenciaVal === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad</option>
-            <option value="Salida a Campo" ${razonAusenciaVal === 'Salida a Campo' || razonAusenciaVal === 'Trabajo de Campo' ? 'selected' : ''}>🚗 S. Campo</option>
-            <option value="Cumpleaños" ${razonAusenciaVal === 'Cumpleaños' ? 'selected' : ''}>🎂 Cumpleaños</option>
-            <option value="Salida Justificada" ${razonAusenciaVal === 'Salida Justificada' ? 'selected' : ''}>✅ S. Justif.</option>
-            <option value="Otro" ${razonAusenciaVal && !['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Trabajo de Campo', 'Salida a Campo', 'Cumpleaños', 'Salida Justificada'].includes(razonAusenciaVal) ? 'selected' : ''}>✏️ Otro...</option>
-          </select>
-        `;
-      if (razonAusenciaVal && !['Vacación', 'Vacacion', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Trabajo de Campo', 'Salida a Campo', 'Cumpleaños', 'Salida Justificada'].includes(razonAusenciaVal)) {
-        selectRazonHtml += `<div style="font-size:9px; color:var(--indigo); margin-top:2px; font-weight:700;">${escapeHtml(razonAusenciaVal)}</div>`;
-      } else if (razonJustificadaVal) {
-        selectRazonHtml += `<div style="font-size:9px; color:var(--green); margin-top:2px; font-weight:700;">Justif: ${escapeHtml(razonJustificadaVal)}</div>`;
+      // RAZÓN: Mostrar badge estilizado de razón o '—' si es marcación normal
+      let razonDisplayHtml = '<span style="color:#94a3b8; font-size:10px;">—</span>';
+      const razonTextoFinal = razonAusenciaVal || razonJustificadaVal;
+      if (razonTextoFinal) {
+        let rIco = '📌';
+        const rLower = razonTextoFinal.toLowerCase();
+        if (rLower.includes('vacac')) rIco = '🏖️';
+        else if (rLower.includes('medico')) rIco = '🩺';
+        else if (rLower.includes('personal')) rIco = '👤';
+        else if (rLower.includes('calamidad')) rIco = '🏠';
+        else if (rLower.includes('cumplea')) rIco = '🎂';
+        else if (rLower.includes('justif')) rIco = '✅';
+        else if (rLower.includes('campo')) rIco = '🚗';
+        else if (rLower.includes('feriado')) rIco = '🏛️';
+        razonDisplayHtml = `<span class="pill" style="background:#f5f3ff; color:#6d28d9; font-size:10px; font-weight:700; border:1px solid #ddd6fe;" title="${escapeHtml(razonTextoFinal)}">${rIco} ${escapeHtml(razonTextoFinal)}</span>`;
       }
 
       let rowStyle = "";
@@ -3886,7 +3864,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
 
       const diaSemana = obtenerDiaSemanaStr(f);
-      let fechaFormateada = `<span style="font-size:10px;color:var(--g400);display:block">${diaSemana}</span>${f.slice(8, 10)}/${f.slice(5, 7)}${badgeDia}`;
+      let fechaFormateada = `<span style="font-size:10px;color:var(--g400);display:block">${diaSemana}</span><div style="display:flex; align-items:center; gap:4px;"><span>${f.slice(8, 10)}/${f.slice(5, 7)}</span><i class="fas fa-edit" style="font-size:8.5px; color:#94a3b8;" title="Clic para gestionar jornada"></i></div>${badgeDia}`;
 
       let h50 = 0, h100 = 0, hCN = 0, hC50 = 0, hC100 = 0;
       let minutosTrabajadosHoy = 0;
@@ -4071,16 +4049,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const tieneEmpresa = todosRegsConModo.some(r => r.modo === 'EMPRESA' || r.modo === 'OFICINA');
       const modActual = tieneCampo && tieneEmpresa ? 'MIXTO' : tieneCampo ? 'CAMPO' : 'EMPRESA';
 
+      // Columna MODO: mostrar exclusivamente "EMPRESA" o "CAMPO" (o MIXTO) tomado de la base
       let modalidadCell;
-      if (esSuperPermiso && !esFalta) {
-        modalidadCell = `<select data-emp="${e.id}" data-fecha="${f}" onchange="guardarPermiso('${e.id}','${f}','modalidad',this.value)" style="font-size:10px;border:1px solid #d1d5db;border-radius:6px;padding:2px 4px;background:#f8fafc;cursor:pointer;">
-            <option value="EMPRESA" ${modActual === 'EMPRESA' ? 'selected' : ''}>🏢 Empresa</option>
-            <option value="CAMPO"   ${modActual === 'CAMPO' ? 'selected' : ''}>🏗️ Campo</option>
-            <option value="MIXTO"   ${modActual === 'MIXTO' ? 'selected' : ''}>🔀 Mixto</option>
-          </select>`;
+      if (modActual === 'CAMPO') {
+        modalidadCell = `<span class="pill" style="background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:10px; border:1px solid #bfdbfe;">🏗️ CAMPO</span>`;
+      } else if (modActual === 'MIXTO') {
+        modalidadCell = `<span class="pill" style="background:#f5f3ff; color:#6d28d9; font-weight:700; font-size:10px; border:1px solid #ddd6fe;">🔀 MIXTO</span>`;
       } else {
-        const mIcon = modActual === 'CAMPO' ? '🏗️' : modActual === 'MIXTO' ? '🔀' : '🏢';
-        modalidadCell = `<span style="font-size:10px;">${mIcon} ${modActual}</span>`;
+        modalidadCell = `<span class="pill" style="background:#f8fafc; color:#334155; font-weight:700; font-size:10px; border:1px solid #cbd5e1;">🏢 EMPRESA</span>`;
       }
 
       const eRegPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia[0];
@@ -4102,18 +4078,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
 
       const badgesStr = badgesTiemposHtml.length > 0 ? badgesTiemposHtml.join(' ') : '<span style="color:#94a3b8; font-size:10px;">—</span>';
-
-      let btnGestionTiempos = '';
-      if (esSuperPermiso && !esFalta) {
-        btnGestionTiempos = `<button type="button" onclick="editarCeldaTiempo('cel_gest_${e.id}_${f.replace(/-/g, '')}','${e.id}','${f}','justificado',${tiempoJustificado},'${comentarioEscapadoPermiso}',${tiempoPersonal},${tiempoMedico},${tiempoPorJustificar},${originalAtrasoMins})" style="background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:2px 6px; font-size:10px; font-weight:700; color:#b45309; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; transition:all 0.15s;" onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'" title="Gestionar o Justificar tiempo">
-            <i class="fas fa-plus-circle" style="color:#d97706; font-size:10px;"></i> + Tiempo
-          </button>`;
-      }
-
-      const celdaGestionTiempos = `<div style="display:flex; align-items:center; justify-content:center; gap:5px; flex-wrap:wrap;">
-          ${badgesStr}
-          ${btnGestionTiempos}
-        </div>`;
+      const celdaGestionTiempos = `<div style="display:flex; align-items:center; justify-content:center; gap:5px; flex-wrap:wrap;">${badgesStr}</div>`;
 
       totTP += tiempoPersonal;
       totTM += tiempoMedico;
@@ -4151,36 +4116,86 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         }
       }
 
-      const esAusenciaEspecial = esFalta && (
-        ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonAusenciaVal) ||
-        ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonJustificadaVal)
+      // CRÍTICO: Solo es ausencia de día completo si el usuario NO tuvo marcaciones de asistencia
+      const esAusenciaEspecial = esFalta && !tieneAsistencia && (
+        ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada', 'Calamidad Doméstica', 'Feriado', 'Inasistencia'].includes(razonAusenciaVal) ||
+        ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonJustificadaVal) ||
+        Boolean(d.faltaInasistencia)
       );
 
       if (esAusenciaEspecial) {
-        const razonMostrar = razonAusenciaVal || razonJustificadaVal || 'Ausencia';
-        const icon = razonMostrar.toLowerCase().includes('vacac') ? '🏖️' : razonMostrar.toLowerCase().includes('medico') ? '🩺' : '📋';
-        return `<tr id="fila-fecha-${f}" style="${rowStyle}">
-        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px;">${fechaFormateada}</td>
-        <td colspan="14" style="font-size:10px; padding:4px 8px; font-weight:600; background:rgba(79, 70, 229, 0.03);">
-          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <span style="display:inline-flex; align-items:center; gap:4px; font-weight:700; color:#312e81; background:#e0e7ff; padding:2px 6px; border-radius:5px; border:1px solid #c7d2fe;">
-              ${icon} ${razonMostrar.toUpperCase()}
-            </span>
-            <div style="display:flex; align-items:center; gap:4px; color:#64748b; font-size:10px;">
-              <span>Razón:</span>
-              ${selectRazonHtml}
+        const razonMostrar = razonAusenciaVal || razonJustificadaVal || (d.faltaInasistencia ? 'Inasistencia Injustificada' : 'Ausencia');
+        let cardBg = 'rgba(79, 70, 229, 0.04)';
+        let cardBorder = '#c7d2fe';
+        let badgeBg = '#e0e7ff';
+        let badgeColor = '#312e81';
+        let icon = '📋';
+        const rLower = razonMostrar.toLowerCase();
+        
+        if (rLower.includes('vacac')) {
+          icon = '🏖️';
+          cardBg = 'rgba(13, 148, 136, 0.04)';
+          cardBorder = '#99f6e4';
+          badgeBg = '#ccfbf1';
+          badgeColor = '#0f766e';
+        } else if (rLower.includes('medico')) {
+          icon = '🩺';
+          cardBg = 'rgba(2, 132, 199, 0.04)';
+          cardBorder = '#bae6fd';
+          badgeBg = '#e0f2fe';
+          badgeColor = '#0369a1';
+        } else if (rLower.includes('personal')) {
+          icon = '👤';
+          cardBg = 'rgba(147, 51, 234, 0.04)';
+          cardBorder = '#e9d5ff';
+          badgeBg = '#f3e8ff';
+          badgeColor = '#6b21a8';
+        } else if (rLower.includes('feriado')) {
+          icon = '🏛️';
+          cardBg = 'rgba(99, 102, 241, 0.04)';
+          cardBorder = '#c7d2fe';
+          badgeBg = '#e0e7ff';
+          badgeColor = '#4338ca';
+        } else if (rLower.includes('calamidad')) {
+          icon = '🏠';
+          cardBg = 'rgba(217, 119, 6, 0.04)';
+          cardBorder = '#fde68a';
+          badgeBg = '#fef3c7';
+          badgeColor = '#92400e';
+        } else if (rLower.includes('inasistencia') || rLower.includes('falta')) {
+          icon = '❌';
+          cardBg = 'rgba(225, 29, 72, 0.04)';
+          cardBorder = '#fecdd3';
+          badgeBg = '#ffe4e6';
+          badgeColor = '#be123c';
+        }
+
+        return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${e.id}', '${f}')" title="Clic para gestionar este día">
+        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:3px 4px;">${fechaFormateada}</td>
+        <td colspan="12" style="font-size:10px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder};">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
+                ${icon} ${razonMostrar.toUpperCase()}
+              </span>
+              <span style="font-size:10.5px; color:#64748b; font-weight:600;">
+                ${d.faltaInasistencia ? 'Sin registro de asistencia en día laborable' : 'Día completo sin marcaciones registradas'}
+              </span>
             </div>
+            <span style="font-size:10px; color:#4f46e5; font-weight:700; display:inline-flex; align-items:center; gap:4px; background:#ffffff; padding:2px 8px; border-radius:12px; border:1px solid #e0e7ff;">
+              <i class="fas fa-sliders-h"></i> Gestionar
+            </span>
           </div>
         </td>
       </tr>`;
       }
 
-      return `<tr id="fila-fecha-${f}" style="${rowStyle}">
+      return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${e.id}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
       <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px;">${fechaFormateada}</td>
       <td style="font-size:10px; padding:2px 3px; text-align:center;">${modalidadCell}</td>
       <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaE}</td>
       <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaS}</td>
-      <td style="font-size:10px; padding:2px 3px;">${selectRazonHtml}</td>
+      <td style="font-size:10px; padding:2px 3px; text-align:center;">${razonDisplayHtml}</td>
       <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}; font-size:10px; padding:2px 3px;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
       <td style="text-align:center; font-size:10px; padding:2px 4px;">${celdaGestionTiempos}</td>
       <td style="text-align:center; color:var(--red); font-weight:600; font-size:10px; padding:2px 3px;">${descuentoDiaVis > 0 ? minutosAHHMMSS(descuentoDiaVis) : '—'}</td>
@@ -13788,6 +13803,589 @@ window.exportarKPIsDetalladosPDF = async function () {
 
 
 // ============================================================
+// MODAL GESTIÓN DE JORNADA, PERMISOS PARCIALES Y AUSENCIAS
+// ============================================================
+window._modalJornadaContexto = null;
+
+window.abrirModalGestionJornada = function (empleadoId, fecha) {
+  const modal = document.getElementById('modalGestionJornadaFecha');
+  if (!modal) return;
+
+  const emp = empCache.find(x => String(x.id).trim() === String(empleadoId).trim())
+    || (window.empEliminadosCache || []).find(x => String(x.id).trim() === String(empleadoId).trim())
+    || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === String(empleadoId).trim());
+  if (!emp) {
+    if (typeof mostrarToast === 'function') mostrarToast('Colaborador no encontrado', 'error');
+    return;
+  }
+
+  // Filtrar registros del día
+  const regsDia = (emp.registros || []).filter(r => {
+    const fNorm = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(r.fecha) : r.fecha;
+    return fNorm === fecha;
+  }).sort((a, b) => {
+    if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+    return String(a.hora || '').localeCompare(String(b.hora || ''));
+  });
+
+  const dayOfWeek = new Date(fecha + 'T12:00:00').getDay();
+  const esFestivo = (typeof esFeriadoODomingo === 'function') ? (esFeriadoODomingo(fecha) || dayOfWeek === 6 || dayOfWeek === 0) : false;
+
+  // Emparejar períodos del día
+  let periodosDia = [];
+  let entradaPendiente = null;
+  regsDia.forEach(r => {
+    const tipo = String(r.tipo || '').toUpperCase();
+    if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO' || tipo === 'ENTRADA_CAMPO') {
+      entradaPendiente = r;
+    } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+      if (entradaPendiente) {
+        periodosDia.push({ entrada: entradaPendiente, salida: r });
+        entradaPendiente = null;
+      } else {
+        periodosDia.push({ entrada: null, salida: r });
+      }
+    }
+  });
+  if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
+
+  // Calcular minutos trabajados reales
+  let minutosTrabajadosHoy = 0;
+  periodosDia.forEach(p => {
+    if (!p.entrada || !p.salida) return;
+    let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+    let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+    if (mE !== null && mS !== null && mS > mE) {
+      minutosTrabajadosHoy += (mS - mE);
+    }
+  });
+
+  let netWorked = minutosTrabajadosHoy;
+  if (!esFestivo && netWorked > 240) netWorked -= 45;
+  netWorked = Math.max(0, netWorked);
+
+  // Atraso detectado
+  let atrasoMins = 0;
+  const primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
+  if (primerReg) {
+    let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
+    let refEntrada = esFestivo ? 420 : 450; // 07:00 o 07:30
+    if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
+  }
+
+  // Faltante de jornada ordinaria (8h = 480 min)
+  let faltanteJornada = esFestivo ? 0 : Math.max(0, 480 - netWorked);
+
+  // Modo actual
+  const todosRegsConModo = regsDia.filter(r => r.modo);
+  const tieneCampo = todosRegsConModo.some(r => r.modo === 'CAMPO');
+  const tieneEmpresa = todosRegsConModo.some(r => r.modo === 'EMPRESA' || r.modo === 'OFICINA');
+  const modActual = tieneCampo && tieneEmpresa ? 'MIXTO' : tieneCampo ? 'CAMPO' : 'EMPRESA';
+
+  // Razón de ausencia o justificativo existente
+  let razonActual = '';
+  regsDia.forEach(r => {
+    if (r.razon_ausencia) razonActual = r.razon_ausencia;
+    else if (r.razon_justificac) razonActual = r.razon_justificac;
+    else if (r.tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(r.tipo.toUpperCase())) {
+      const t = r.tipo.toUpperCase();
+      if (t.includes('VACAC')) razonActual = 'Vacación';
+      else if (t.includes('MEDIC')) razonActual = 'Permiso Médico';
+      else if (t.includes('PERS')) razonActual = 'Permiso Personal';
+      else if (t.includes('CUMPLE')) razonActual = 'Cumpleaños';
+      else if (t.includes('JUSTIF')) razonActual = 'Salida Justificada';
+      else if (t.includes('CALAM')) razonActual = 'Calamidad Doméstica';
+    }
+  });
+
+  // Tiempos existentes
+  const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA')
+    || regsDia.find(r => r.permiso_personal_mins || r.permiso_medico_mins || r.tiempo_justificado_mins)
+    || regsDia[0];
+  const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
+  const medMins = regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
+  const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
+  const comentario = regPermiso ? (regPermiso.razon_permiso || '') : '';
+
+  // Almuerzo
+  const regEntrada = regsDia.find(r => r.tipo === 'ENTRADA');
+  const almuerzoVal = regEntrada ? (regEntrada.almuerzo || 'SI') : (emp.almuerzoHoy || 'SI');
+
+  // Horas extras
+  const heVal = regsDia.some(r => r.horasExtra === 'SI') ? 'SI' : 'NO';
+
+  // Guardar en contexto global del modal
+  window._modalJornadaContexto = {
+    empleadoId,
+    fecha,
+    emp,
+    regsDia,
+    periodosDia,
+    netWorked,
+    atrasoMins,
+    faltanteJornada,
+    modActual,
+    esFestivo,
+    tieneAsistencia: regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()))
+  };
+
+  // Asignar al DOM
+  document.getElementById('modalJornadaColaboradorNombre').textContent = emp.nombre || `ID: ${empleadoId}`;
+  const fParts = fecha.split('-');
+  const diaNom = (typeof obtenerDiaSemanaStr === 'function') ? obtenerDiaSemanaStr(fecha) : '';
+  document.getElementById('modalJornadaFechaTexto').textContent = `${diaNom} ${fParts[2]}/${fParts[1]}/${fParts[0]}`;
+
+  const badgeDia = document.getElementById('modalJornadaBadgeDia');
+  if (badgeDia) {
+    if (dayOfWeek === 0) { badgeDia.textContent = 'DOMINGO'; badgeDia.style.background = '#dc2626'; }
+    else if (dayOfWeek === 6) { badgeDia.textContent = 'SÁBADO'; badgeDia.style.background = '#d97706'; }
+    else if (esFestivo) { badgeDia.textContent = 'FERIADO'; badgeDia.style.background = '#4f46e5'; }
+    else { badgeDia.textContent = 'LABORAL'; badgeDia.style.background = '#16a34a'; }
+  }
+
+  document.getElementById('modalJornadaInfoModo').textContent = modActual === 'CAMPO' ? '🏗️ CAMPO' : modActual === 'MIXTO' ? '🔀 MIXTO' : '🏢 EMPRESA';
+  document.getElementById('modalJornadaInfoNeto').textContent = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS(netWorked) : `${netWorked} min`;
+  document.getElementById('modalJornadaInfoAtraso').textContent = (typeof minutosAHHMMSS === 'function') ? (atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '00:00:00') : `${atrasoMins} min`;
+  document.getElementById('modalJornadaInfoFaltante').textContent = (typeof minutosAHHMMSS === 'function') ? (faltanteJornada > 0 ? minutosAHHMMSS(faltanteJornada) : '00:00:00') : `${faltanteJornada} min`;
+
+  // Inputs de horas
+  const primerEntrada = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
+  const ultimoSalida = [...regsDia].reverse().find(r => r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO');
+
+  document.getElementById('modalJornadaHoraEntrada').value = primerEntrada ? (formatearHora(primerEntrada.hora || primerEntrada.timestamp) || '') : '';
+  document.getElementById('modalJornadaHoraSalida').value = ultimoSalida ? (formatearHora(ultimoSalida.hora || ultimoSalida.timestamp) || '') : '';
+
+  // Modo
+  const modoSel = document.getElementById('modalJornadaModoSelect');
+  if (modoSel) modoSel.value = (modActual === 'CAMPO' || modActual === 'MIXTO') ? modActual : 'EMPRESA';
+
+  // Razón
+  const razonSel = document.getElementById('modalJornadaRazonSelect');
+  const divOtro = document.getElementById('modalJornadaDivRazonPersonalizada');
+  const inputOtro = document.getElementById('modalJornadaRazonOtroInput');
+  if (razonSel) {
+    if (['Salida Justificada', 'Cumpleaños', 'Permiso Médico', 'Permiso Personal', 'Vacación', 'Feriado', 'Calamidad Doméstica', 'Salida a Campo', 'Inasistencia'].includes(razonActual)) {
+      razonSel.value = razonActual;
+      if (divOtro) divOtro.style.display = 'none';
+    } else if (razonActual) {
+      razonSel.value = 'Otro';
+      if (divOtro) divOtro.style.display = 'block';
+      if (inputOtro) inputOtro.value = razonActual;
+    } else {
+      razonSel.value = '';
+      if (divOtro) divOtro.style.display = 'none';
+      if (inputOtro) inputOtro.value = '';
+    }
+  }
+
+  // Tiempos
+  document.getElementById('modalJornadaMinsJustificado').value = justMins;
+  document.getElementById('modalJornadaMinsPersonal').value = persMins;
+  document.getElementById('modalJornadaMinsMedico').value = medMins;
+  window.actualizarEtiquetasMinutosModal();
+
+  // Almuerzo y HE
+  const almSel = document.getElementById('modalJornadaAlmuerzoSelect');
+  if (almSel) almSel.value = (almuerzoVal === 'NO' || almuerzoVal === 'FUERA') ? 'NO' : (almuerzoVal === 'EXTRA') ? 'EXTRA' : 'SI';
+
+  const heSel = document.getElementById('modalJornadaHorasExtrasSelect');
+  if (heSel) heSel.value = heVal;
+
+  document.getElementById('modalJornadaObservacionInput').value = comentario;
+
+  // Actualizar banner de ayuda dinámico
+  window.alCambiarRazonModalJornada(razonSel?.value || '', false);
+
+  // Mostrar modal
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+};
+
+window.cerrarModalGestionJornada = function () {
+  const modal = document.getElementById('modalGestionJornadaFecha');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+};
+
+window.actualizarEtiquetasMinutosModal = function () {
+  const just = parseInt(document.getElementById('modalJornadaMinsJustificado')?.value || '0') || 0;
+  const pers = parseInt(document.getElementById('modalJornadaMinsPersonal')?.value || '0') || 0;
+  const med = parseInt(document.getElementById('modalJornadaMinsMedico')?.value || '0') || 0;
+
+  const fnFormat = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS : (m => `${m} min`);
+
+  const lblJust = document.getElementById('modalJornadaLblJustificado');
+  if (lblJust) lblJust.textContent = fnFormat(just);
+
+  const lblPers = document.getElementById('modalJornadaLblPersonal');
+  if (lblPers) lblPers.textContent = fnFormat(pers);
+
+  const lblMed = document.getElementById('modalJornadaLblMedico');
+  if (lblMed) lblMed.textContent = fnFormat(med);
+
+  const totalTxt = document.getElementById('modalJornadaTotalPermisosTxt');
+  if (totalTxt) totalTxt.textContent = `Total Permisos: ${fnFormat(just + pers + med)} (${just + pers + med} min)`;
+};
+
+window.recalcularTiemposModalJornada = function () {
+  const hE = document.getElementById('modalJornadaHoraEntrada')?.value.trim();
+  const hS = document.getElementById('modalJornadaHoraSalida')?.value.trim();
+  if (hE && hS && typeof obtenerMinutos === 'function') {
+    const mE = obtenerMinutos(hE);
+    const mS = obtenerMinutos(hS);
+    if (mE !== null && mS !== null && mS > mE) {
+      let dur = mS - mE;
+      if (dur > 240) dur -= 45;
+      const falt = Math.max(0, 480 - dur);
+      if (window._modalJornadaContexto) {
+        window._modalJornadaContexto.netWorked = dur;
+        window._modalJornadaContexto.faltanteJornada = falt;
+      }
+      document.getElementById('modalJornadaInfoNeto').textContent = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS(dur) : `${dur} min`;
+      document.getElementById('modalJornadaInfoFaltante').textContent = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS(falt) : `${falt} min`;
+    }
+  }
+};
+
+window.alCambiarRazonModalJornada = function (valor, autoAsignar = true) {
+  const banner = document.getElementById('modalJornadaBannerAyuda');
+  const divOtro = document.getElementById('modalJornadaDivRazonPersonalizada');
+  if (divOtro) divOtro.style.display = (valor === 'Otro') ? 'block' : 'none';
+
+  if (!banner) return;
+  banner.style.display = 'flex';
+
+  const ctx = window._modalJornadaContexto;
+  const tieneAsistencia = ctx?.tieneAsistencia || false;
+  const faltante = ctx ? Math.max(0, 480 - (ctx.netWorked || 0)) : 0;
+  const atraso = ctx?.atrasoMins || 0;
+
+  if (valor === 'Salida Justificada') {
+    if (autoAsignar) {
+      const inputJust = document.getElementById('modalJornadaMinsJustificado');
+      if (inputJust) inputJust.value = faltante;
+      window.actualizarEtiquetasMinutosModal();
+    }
+    banner.style.background = '#ecfdf5';
+    banner.style.border = '1px solid #a7f3d0';
+    banner.style.color = '#065f46';
+    banner.innerHTML = `<i class="fas fa-check-circle" style="font-size:15px; color:#10b981;"></i> <div><strong>Salida Justificada:</strong> Se completa automáticamente el tiempo restante (${faltante} min) para alcanzar la jornada ordinaria de 8 horas.</div>`;
+  } else if (valor === 'Cumpleaños') {
+    if (autoAsignar) {
+      const inputJust = document.getElementById('modalJornadaMinsJustificado');
+      if (inputJust) inputJust.value = 240; // 4 horas
+      window.actualizarEtiquetasMinutosModal();
+    }
+    banner.style.background = '#eff6ff';
+    banner.style.border = '1px solid #bfdbfe';
+    banner.style.color = '#1e40af';
+    banner.innerHTML = `<i class="fas fa-birthday-cake" style="font-size:15px; color:#3b82f6;"></i> <div><strong>Cumpleaños:</strong> Se asignan automáticamente 4 horas (240 min) de permiso remunerado por beneficio institucional.</div>`;
+  } else if (valor === 'Permiso Médico') {
+    if (tieneAsistencia) {
+      if (autoAsignar && (atraso > 0 || faltante > 0)) {
+        const inputMed = document.getElementById('modalJornadaMinsMedico');
+        if (inputMed && (!inputMed.value || inputMed.value === '0')) {
+          inputMed.value = atraso > 0 ? atraso : faltante;
+          window.actualizarEtiquetasMinutosModal();
+        }
+      }
+      banner.style.background = '#f0fdfa';
+      banner.style.border = '1px solid #99f6e4';
+      banner.style.color = '#0f766e';
+      banner.innerHTML = `<i class="fas fa-stethoscope" style="font-size:15px; color:#0d9488;"></i> <div><strong>Permiso Médico Parcial:</strong> El colaborador tiene marcaciones registradas. Se imputará como permiso en minutos justificando atraso o salida temprana sin anular las horas trabajadas.</div>`;
+    } else {
+      banner.style.background = '#e0f2fe';
+      banner.style.border = '1px solid #bae6fd';
+      banner.style.color = '#0369a1';
+      banner.innerHTML = `<i class="fas fa-stethoscope" style="font-size:15px; color:#0284c7;"></i> <div><strong>Permiso Médico Completo:</strong> Día completo no laborado con justificativo médico.</div>`;
+    }
+  } else if (valor === 'Permiso Personal') {
+    if (tieneAsistencia) {
+      if (autoAsignar && (atraso > 0 || faltante > 0)) {
+        const inputPers = document.getElementById('modalJornadaMinsPersonal');
+        if (inputPers && (!inputPers.value || inputPers.value === '0')) {
+          inputPers.value = atraso > 0 ? atraso : faltante;
+          window.actualizarEtiquetasMinutosModal();
+        }
+      }
+      banner.style.background = '#f5f3ff';
+      banner.style.border = '1px solid #ddd6fe';
+      banner.style.color = '#5b21b6';
+      banner.innerHTML = `<i class="fas fa-user-clock" style="font-size:15px; color:#8b5cf6;"></i> <div><strong>Permiso Personal Parcial:</strong> El colaborador tiene marcaciones. Se computará en minutos manteniendo intactas las horas trabajadas en el día.</div>`;
+    } else {
+      banner.style.background = '#f3e8ff';
+      banner.style.border = '1px solid #e9d5ff';
+      banner.style.color = '#6b21a8';
+      banner.innerHTML = `<i class="fas fa-user-times" style="font-size:15px; color:#7c3aed;"></i> <div><strong>Permiso Personal Completo:</strong> Día completo no laborado por asuntos personales.</div>`;
+    }
+  } else if (valor === 'Vacación') {
+    banner.style.background = '#f0fdfa';
+    banner.style.border = '1px solid #99f6e4';
+    banner.style.color = '#0f766e';
+    banner.innerHTML = `<i class="fas fa-umbrella-beach" style="font-size:15px; color:#0d9488;"></i> <div><strong>Vacación:</strong> Goce de vacación de jornada completa autorizada.</div>`;
+  } else if (valor === 'Feriado') {
+    banner.style.background = '#eef2ff';
+    banner.style.border = '1px solid #c7d2fe';
+    banner.style.color = '#3730a3';
+    banner.innerHTML = `<i class="fas fa-landmark" style="font-size:15px; color:#6366f1;"></i> <div><strong>Feriado:</strong> Descanso obligatorio oficial según calendario nacional.</div>`;
+  } else if (valor === 'Inasistencia') {
+    banner.style.background = '#fff1f2';
+    banner.style.border = '1px solid #fecdd3';
+    banner.style.color = '#be123c';
+    banner.innerHTML = `<i class="fas fa-calendar-times" style="font-size:15px; color:#e11d48;"></i> <div><strong>Inasistencia Injustificada:</strong> Falta sin justificación sujeta a descuento de nómina.</div>`;
+  } else {
+    banner.style.display = 'none';
+  }
+};
+
+window.aplicarAccionRapidaModal = function (accion) {
+  const ctx = window._modalJornadaContexto;
+  if (!ctx) return;
+  const faltante = Math.max(0, 480 - (ctx.netWorked || 0));
+  const atraso = ctx.atrasoMins || 0;
+
+  if (accion === 'completar_8h') {
+    document.getElementById('modalJornadaMinsJustificado').value = faltante;
+    const razonSel = document.getElementById('modalJornadaRazonSelect');
+    if (razonSel) razonSel.value = 'Salida Justificada';
+    window.alCambiarRazonModalJornada('Salida Justificada', false);
+  } else if (accion === 'cumpleanos_4h') {
+    document.getElementById('modalJornadaMinsJustificado').value = 240;
+    const razonSel = document.getElementById('modalJornadaRazonSelect');
+    if (razonSel) razonSel.value = 'Cumpleaños';
+    window.alCambiarRazonModalJornada('Cumpleaños', false);
+  } else if (accion === 'cubrir_atraso_medico') {
+    document.getElementById('modalJornadaMinsMedico').value = atraso > 0 ? atraso : (faltante > 0 ? faltante : 60);
+    const razonSel = document.getElementById('modalJornadaRazonSelect');
+    if (razonSel && !razonSel.value) razonSel.value = 'Permiso Médico';
+    window.alCambiarRazonModalJornada('Permiso Médico', false);
+  } else if (accion === 'cubrir_atraso_personal') {
+    document.getElementById('modalJornadaMinsPersonal').value = atraso > 0 ? atraso : (faltante > 0 ? faltante : 60);
+    const razonSel = document.getElementById('modalJornadaRazonSelect');
+    if (razonSel && !razonSel.value) razonSel.value = 'Permiso Personal';
+    window.alCambiarRazonModalJornada('Permiso Personal', false);
+  } else if (accion === 'limpiar_tiempos') {
+    document.getElementById('modalJornadaMinsJustificado').value = 0;
+    document.getElementById('modalJornadaMinsPersonal').value = 0;
+    document.getElementById('modalJornadaMinsMedico').value = 0;
+  }
+  window.actualizarEtiquetasMinutosModal();
+};
+
+window.guardarModalGestionJornada = async function () {
+  const ctx = window._modalJornadaContexto;
+  if (!ctx) return;
+  const { empleadoId, fecha, emp } = ctx;
+
+  const razonSel = document.getElementById('modalJornadaRazonSelect')?.value || '';
+  const inputOtro = document.getElementById('modalJornadaRazonOtroInput')?.value.trim() || '';
+  const razonFinal = (razonSel === 'Otro') ? (inputOtro || 'Otro') : razonSel;
+
+  const hEntrada = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
+  const hSalida = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
+  const modalidad = document.getElementById('modalJornadaModoSelect')?.value || 'EMPRESA';
+
+  const minsJust = parseInt(document.getElementById('modalJornadaMinsJustificado')?.value || '0') || 0;
+  const minsPers = parseInt(document.getElementById('modalJornadaMinsPersonal')?.value || '0') || 0;
+  const minsMed = parseInt(document.getElementById('modalJornadaMinsMedico')?.value || '0') || 0;
+
+  const almuerzoVal = document.getElementById('modalJornadaAlmuerzoSelect')?.value || 'SI';
+  const horasExtrasVal = document.getElementById('modalJornadaHorasExtrasSelect')?.value || 'NO';
+  const observacion = document.getElementById('modalJornadaObservacionInput')?.value.trim() || '';
+
+  const tieneHoras = Boolean(hEntrada || hSalida);
+  const esAusenciaCompleta = !tieneHoras && ['Vacación', 'Feriado', 'Calamidad Doméstica', 'Inasistencia'].includes(razonFinal);
+
+  let sessionData = {};
+  try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+  const supervisorId = String(sessionData.id || '');
+
+  const bgSync = $('bgSyncIndicator');
+  if (bgSync) bgSync.classList.remove('hidden');
+
+  try {
+    // 1. Si el usuario tiene o registró horas/marcaciones, LIMPIAR cualquier registro virtual de ausencia previa de jornada completa
+    if (tieneHoras || (minsJust > 0 || minsPers > 0 || minsMed > 0)) {
+      if (emp && emp.registros) {
+        emp.registros = emp.registros.filter(r => {
+          if (r.fecha !== fecha) return true;
+          const t = String(r.tipo || '').toUpperCase();
+          return t === 'ENTRADA' || t === 'SALIDA' || t === 'RETORNO_CAMPO' || t === 'SALIDA_CAMPO' || t === 'ENTRADA_CAMPO';
+        });
+      }
+    }
+
+    // 2. Si es ausencia completa sin marcaciones, guardar como ausencia completa de jornada
+    if (esAusenciaCompleta) {
+      await window.guardarRazonAusenciaFecha(empleadoId, fecha, razonFinal);
+      window.cerrarModalGestionJornada();
+      return;
+    }
+
+    // 3. Guardar modalidad si cambió
+    if (modalidad !== ctx.modActual) {
+      await window.guardarPermiso(empleadoId, fecha, 'modalidad', modalidad);
+    }
+
+    // 4. Guardar horas de entrada y salida si fueron ingresadas o editadas
+    if (hEntrada) {
+      let regE = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO'));
+      if (regE) {
+        regE.hora = hEntrada;
+        regE.modo = modalidad;
+        regE.horasExtra = horasExtrasVal;
+        regE.almuerzo = almuerzoVal;
+        if (razonFinal) regE.razon_ausencia = razonFinal;
+      } else {
+        if (!emp.registros) emp.registros = [];
+        emp.registros.push({
+          id: `${empleadoId}_ENTRADA_${fecha}_${hEntrada.replace(/:/g, '')}`,
+          empleadoId,
+          fecha,
+          tipo: 'ENTRADA',
+          hora: hEntrada,
+          modo: modalidad,
+          horasExtra: horasExtrasVal,
+          almuerzo: almuerzoVal,
+          razon_ausencia: razonFinal
+        });
+      }
+      if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+        window.FirebaseBackend.actualizarRegistroGeneral({
+          docId: `${empleadoId}_ENTRADA_${fecha}_${hEntrada.replace(/:/g, '')}`,
+          empleadoId,
+          tipo: 'ENTRADA',
+          fecha,
+          campo: 'hora',
+          valor: hEntrada
+        }).catch(err => console.error("Error al actualizar hora entrada:", err));
+      } else if (typeof jsonpRequest === 'function') {
+        jsonpRequest({
+          accion: 'actualizarRegistroGeneral',
+          docId: `${empleadoId}_ENTRADA_${fecha}_${hEntrada.replace(/:/g, '')}`,
+          empleadoId,
+          tipo: 'ENTRADA',
+          fecha,
+          campo: 'hora',
+          valor: hEntrada
+        }).catch(err => console.error("Error jsonp hora entrada:", err));
+      }
+    }
+
+    if (hSalida) {
+      let regS = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO'));
+      if (regS) {
+        regS.hora = hSalida;
+        regS.modo = modalidad;
+      } else {
+        if (!emp.registros) emp.registros = [];
+        emp.registros.push({
+          id: `${empleadoId}_SALIDA_${fecha}_${hSalida.replace(/:/g, '')}`,
+          empleadoId,
+          fecha,
+          tipo: 'SALIDA',
+          hora: hSalida,
+          modo: modalidad
+        });
+      }
+      if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+        window.FirebaseBackend.actualizarRegistroGeneral({
+          docId: `${empleadoId}_SALIDA_${fecha}_${hSalida.replace(/:/g, '')}`,
+          empleadoId,
+          tipo: 'SALIDA',
+          fecha,
+          campo: 'hora',
+          valor: hSalida
+        }).catch(err => console.error("Error al actualizar hora salida:", err));
+      } else if (typeof jsonpRequest === 'function') {
+        jsonpRequest({
+          accion: 'actualizarRegistroGeneral',
+          docId: `${empleadoId}_SALIDA_${fecha}_${hSalida.replace(/:/g, '')}`,
+          empleadoId,
+          tipo: 'SALIDA',
+          fecha,
+          campo: 'hora',
+          valor: hSalida
+        }).catch(err => console.error("Error jsonp hora salida:", err));
+      }
+    }
+
+    // 5. Guardar minutos parciales con guardarPermiso
+    await window.guardarPermiso(empleadoId, fecha, 'justificado', minsJust, observacion);
+    await window.guardarPermiso(empleadoId, fecha, 'personal', minsPers, observacion);
+    await window.guardarPermiso(empleadoId, fecha, 'medico', minsMed, observacion);
+
+    if (typeof mostrarToast === 'function') mostrarToast('✅ Jornada y permisos guardados exitosamente', 'success');
+
+    window.cerrarModalGestionJornada();
+
+    // Refrescar detalle inmediatamente
+    const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+    mostrarDetalle(empleadoId, idxSel);
+
+    limpiarCachesLocales();
+    cargarDatosCompletos(true, true).then(() => {
+      mostrarDetalle(empleadoId, idxSel);
+    }).catch(e => console.warn(e));
+
+  } catch (err) {
+    console.error("Error guardando modal jornada:", err);
+    if (typeof mostrarToast === 'function') mostrarToast('Error al guardar: ' + err.message, 'error');
+  } finally {
+    if (bgSync) bgSync.classList.add('hidden');
+  }
+};
+
+window.eliminarMarcacionesDiaModal = async function () {
+  const ctx = window._modalJornadaContexto;
+  if (!ctx) return;
+  const { empleadoId, fecha, emp } = ctx;
+
+  if (!confirm(`¿Estás seguro de eliminar todas las marcaciones y registros del día ${fecha} para este colaborador?`)) {
+    return;
+  }
+
+  mostrarLoader(true);
+  try {
+    // Eliminar del cache local
+    if (emp && emp.registros) {
+      emp.registros = emp.registros.filter(r => r.fecha !== fecha);
+    }
+
+    // Eliminar en backend si existen registros específicos
+    for (const r of (ctx.regsDia || [])) {
+      if (r.id) {
+        if (typeof jsonpRequest === 'function') {
+          await jsonpRequest({
+            accion: 'eliminarRegistro',
+            docId: r.id,
+            empleadoId: empleadoId,
+            fecha: fecha,
+            tipo: r.tipo
+          }).catch(e => console.warn(e));
+        }
+      }
+    }
+
+    if (typeof mostrarToast === 'function') mostrarToast('Marcaciones del día eliminadas', 'info');
+    window.cerrarModalGestionJornada();
+
+    const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+    mostrarDetalle(empleadoId, idxSel);
+
+    limpiarCachesLocales();
+    await cargarDatosCompletos(true, true);
+    mostrarDetalle(empleadoId, idxSel);
+  } catch (err) {
+    if (typeof mostrarToast === 'function') mostrarToast('Error al eliminar marcaciones: ' + err.message, 'error');
+  } finally {
+    mostrarLoader(false);
+  }
+};
+
+// ============================================================
 // MODULOS SATELITES EXTRAIDOS EN FASE 2:
 // - JS/supervisor/supervisor_cultura.js
 // - JS/supervisor/supervisor_whatsapp.js
@@ -13795,3 +14393,4 @@ window.exportarKPIsDetalladosPDF = async function () {
 // - JS/supervisor/supervisor_invitados.js
 // Se cargan independientemente en supervisor.html
 // ============================================================
+

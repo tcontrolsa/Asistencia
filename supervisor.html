@@ -3976,12 +3976,251 @@
         <button type="button" class="btn" onclick="window.cerrarModalDesgloseVacaciones()" style="padding: 6px 15px; border-radius: 7px; font-size: 11.5px; background: #e2e8f0; color: #334155; font-weight: 700; border: none; cursor: pointer;">Cerrar</button>
       </div>
 
+  </div>
+
+  <!-- MODAL GESTIÓN DE JORNADA Y PERMISOS POR FECHA -->
+  <div id="modalGestionJornadaFecha" class="modal-overlay hidden" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.65); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); z-index:9999; align-items:center; justify-content:center; padding:12px;">
+    <div class="modal-card" style="background:#ffffff; border-radius:16px; width:100%; max-width:680px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1); border:1px solid #e2e8f0; overflow:hidden; animation: fadeIn 0.2s ease-out;">
+      
+      <!-- Modal Header -->
+      <div style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color:#ffffff; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:38px; height:38px; border-radius:10px; background:rgba(99, 102, 241, 0.2); border:1px solid rgba(129, 140, 248, 0.4); display:flex; align-items:center; justify-content:center; color:#818cf8; font-size:18px;">
+            <i class="fas fa-calendar-check"></i>
+          </div>
+          <div>
+            <div style="font-size:16px; font-weight:800; letter-spacing:-0.3px; display:flex; align-items:center; gap:8px;">
+              <span>Gestión de Jornada y Ausencias</span>
+              <span id="modalJornadaBadgeDia" style="background:#475569; color:#f8fafc; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; text-transform:uppercase;">LABORAL</span>
+            </div>
+            <div style="font-size:12px; color:#94a3b8; margin-top:2px;" id="modalJornadaSubtitulo">
+              Colaborador: <strong id="modalJornadaColaboradorNombre" style="color:#f1f5f9;">--</strong> • <span id="modalJornadaFechaTexto" style="color:#cbd5e1;">--</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" onclick="window.cerrarModalGestionJornada()" style="background:rgba(255,255,255,0.1); border:none; color:#94a3b8; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px; transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'; this.style.color='#ffffff'" onmouseout="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#94a3b8'">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div style="padding:18px 22px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px; background:#f8fafc;">
+        
+        <!-- Chips Informativos del Día -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:10px; text-align:center;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Modo Base</div>
+            <div id="modalJornadaInfoModo" style="font-size:13px; font-weight:800; color:#1e293b; margin-top:2px;">🏢 EMPRESA</div>
+          </div>
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:10px; text-align:center;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Horas Netas</div>
+            <div id="modalJornadaInfoNeto" style="font-size:13px; font-weight:800; color:#16a34a; margin-top:2px;">00:00:00</div>
+          </div>
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:10px; text-align:center;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Atraso Detectado</div>
+            <div id="modalJornadaInfoAtraso" style="font-size:13px; font-weight:800; color:#dc2626; margin-top:2px;">00:00:00</div>
+          </div>
+          <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:10px; text-align:center;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Faltante Jornada</div>
+            <div id="modalJornadaInfoFaltante" style="font-size:13px; font-weight:800; color:#d97706; margin-top:2px;">00:00:00</div>
+          </div>
+        </div>
+
+        <!-- Banner de Ayuda Dinámica según selección -->
+        <div id="modalJornadaBannerAyuda" style="display:none; padding:10px 14px; border-radius:10px; font-size:11.5px; font-weight:600; line-height:1.4; display:flex; align-items:center; gap:8px;">
+        </div>
+
+        <!-- Sección 1: Horarios de Marcación y Modo -->
+        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size:12px; font-weight:800; color:#1e293b; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-clock" style="color:#3b82f6;"></i> <span>1. Marcaciones y Modalidad de Trabajo</span>
+          </div>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+            <!-- Entrada -->
+            <div>
+              <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Hora de Entrada</label>
+              <div style="display:flex; gap:4px;">
+                <input type="text" id="modalJornadaHoraEntrada" placeholder="HH:MM:SS" style="width:100%; font-size:12.5px; font-weight:700; padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; text-align:center; background:#f8fafc;">
+                <button type="button" onclick="document.getElementById('modalJornadaHoraEntrada').value='07:30:00'; window.recalcularTiemposModalJornada();" style="border:1px solid #cbd5e1; background:#ffffff; border-radius:8px; padding:4px 7px; font-size:10px; font-weight:700; color:#3b82f6; cursor:pointer;" title="Asignar horario oficial 07:30">07:30</button>
+              </div>
+            </div>
+
+            <!-- Salida -->
+            <div>
+              <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Hora de Salida</label>
+              <div style="display:flex; gap:4px;">
+                <input type="text" id="modalJornadaHoraSalida" placeholder="HH:MM:SS" style="width:100%; font-size:12.5px; font-weight:700; padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; text-align:center; background:#f8fafc;">
+                <button type="button" onclick="document.getElementById('modalJornadaHoraSalida').value='16:15:00'; window.recalcularTiemposModalJornada();" style="border:1px solid #cbd5e1; background:#ffffff; border-radius:8px; padding:4px 7px; font-size:10px; font-weight:700; color:#3b82f6; cursor:pointer;" title="Asignar horario oficial 16:15">16:15</button>
+              </div>
+            </div>
+
+            <!-- Modo -->
+            <div>
+              <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Modalidad (MODO)</label>
+              <select id="modalJornadaModoSelect" style="width:100%; font-size:12px; font-weight:700; padding:7px 8px; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff; cursor:pointer; color:#1e293b;">
+                <option value="EMPRESA">🏢 EMPRESA</option>
+                <option value="CAMPO">🏗️ CAMPO</option>
+                <option value="MIXTO">🔀 MIXTO</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 2: Razón / Ausencia / Justificación -->
+        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size:12px; font-weight:800; color:#1e293b; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <i class="fas fa-tag" style="color:#8b5cf6;"></i> <span>2. Razón de Ausencia / Permiso / Justificación</span>
+            </div>
+            <span style="font-size:10.5px; color:#64748b; font-weight:600;">(Afecta jornada completa o parcial)</span>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Seleccione la Razón del Día</label>
+              <select id="modalJornadaRazonSelect" onchange="window.alCambiarRazonModalJornada(this.value)" style="width:100%; font-size:12px; font-weight:700; padding:8px 10px; border:1.5px solid #8b5cf6; border-radius:8px; background:#f5f3ff; color:#5b21b6; cursor:pointer;">
+                <option value="">-- Sin Razón / Marcación Ordinaria --</option>
+                <option value="Salida Justificada">✅ Salida Justificada (Completar jornada restante)</option>
+                <option value="Cumpleaños">🎂 Cumpleaños (Completar 4 horas)</option>
+                <option value="Permiso Médico">🩺 Permiso Médico</option>
+                <option value="Permiso Personal">👤 Permiso Personal</option>
+                <option value="Vacación">🏖️ Vacación (Jornada completa)</option>
+                <option value="Feriado">🏛️ Feriado Oficial</option>
+                <option value="Calamidad Doméstica">🏠 Calamidad Doméstica</option>
+                <option value="Salida a Campo">🚗 Salida a Campo</option>
+                <option value="Inasistencia">❌ Inasistencia Injustificada</option>
+                <option value="Otro">✏️ Otra Razón Personalizada...</option>
+              </select>
+            </div>
+
+            <div id="modalJornadaDivRazonPersonalizada" style="display:none;">
+              <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Especificar Razón</label>
+              <input type="text" id="modalJornadaRazonOtroInput" placeholder="Escriba el motivo..." style="width:100%; font-size:12px; padding:7px 10px; border:1px solid #cbd5e1; border-radius:8px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 3: Desglose de Permisos Parciales y Minutos -->
+        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size:12px; font-weight:800; color:#1e293b; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <i class="fas fa-hourglass-half" style="color:#d97706;"></i> <span>3. Tiempos Parciales y Permisos en Minutos</span>
+            </div>
+            <span style="font-size:10.5px; color:#15803d; font-weight:700;" id="modalJornadaTotalPermisosTxt">Total: 0 min</span>
+          </div>
+
+          <div style="font-size:11px; color:#64748b; margin-bottom:10px;">
+            Si el usuario registró marcaciones, el tiempo se guarda como permiso parcial sin anular las horas trabajadas.
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+            <!-- Tiempo Justificado -->
+            <div style="background:#fefce8; border:1px solid #fef08a; border-radius:8px; padding:8px 10px;">
+              <label style="display:block; font-size:10.5px; font-weight:700; color:#854d0e; margin-bottom:3px;">
+                <i class="fas fa-check-circle"></i> T. Justificado (min)
+              </label>
+              <input type="number" id="modalJornadaMinsJustificado" min="0" max="720" value="0" oninput="window.actualizarEtiquetasMinutosModal()" style="width:100%; font-size:13px; font-weight:800; padding:5px 8px; border:1px solid #fde047; border-radius:6px; background:#ffffff; text-align:center; color:#854d0e;">
+              <div id="modalJornadaLblJustificado" style="font-size:10px; color:#a16207; font-weight:700; text-align:center; margin-top:2px;">00:00:00</div>
+            </div>
+
+            <!-- Permiso Personal -->
+            <div style="background:#eef2ff; border:1px solid #c7d2fe; border-radius:8px; padding:8px 10px;">
+              <label style="display:block; font-size:10.5px; font-weight:700; color:#3730a3; margin-bottom:3px;">
+                <i class="fas fa-user"></i> Permiso Personal (min)
+              </label>
+              <input type="number" id="modalJornadaMinsPersonal" min="0" max="720" value="0" oninput="window.actualizarEtiquetasMinutosModal()" style="width:100%; font-size:13px; font-weight:800; padding:5px 8px; border:1px solid #a5b4fc; border-radius:6px; background:#ffffff; text-align:center; color:#3730a3;">
+              <div id="modalJornadaLblPersonal" style="font-size:10px; color:#4338ca; font-weight:700; text-align:center; margin-top:2px;">00:00:00</div>
+            </div>
+
+            <!-- Permiso Médico -->
+            <div style="background:#f0fdfa; border:1px solid #99f6e4; border-radius:8px; padding:8px 10px;">
+              <label style="display:block; font-size:10.5px; font-weight:700; color:#115e59; margin-bottom:3px;">
+                <i class="fas fa-stethoscope"></i> Permiso Médico (min)
+              </label>
+              <input type="number" id="modalJornadaMinsMedico" min="0" max="720" value="0" oninput="window.actualizarEtiquetasMinutosModal()" style="width:100%; font-size:13px; font-weight:800; padding:5px 8px; border:1px solid #5eead4; border-radius:6px; background:#ffffff; text-align:center; color:#115e59;">
+              <div id="modalJornadaLblMedico" style="font-size:10px; color:#0f766e; font-weight:700; text-align:center; margin-top:2px;">00:00:00</div>
+            </div>
+          </div>
+
+          <!-- Botones de Acción Rápida de Tiempos -->
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
+            <button type="button" class="btn" onclick="window.aplicarAccionRapidaModal('completar_8h')" style="font-size:11px; padding:4px 10px; border-radius:6px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; font-weight:700; cursor:pointer;">
+              ⚡ Salida Justif. (Restante Jornada)
+            </button>
+            <button type="button" class="btn" onclick="window.aplicarAccionRapidaModal('cumpleanos_4h')" style="font-size:11px; padding:4px 10px; border-radius:6px; background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; font-weight:700; cursor:pointer;">
+              🎂 Cumpleaños (4 Horas)
+            </button>
+            <button type="button" class="btn" onclick="window.aplicarAccionRapidaModal('cubrir_atraso_medico')" style="font-size:11px; padding:4px 10px; border-radius:6px; background:#f0fdfa; border:1px solid #99f6e4; color:#0f766e; font-weight:700; cursor:pointer;">
+              🩺 Cubrir Atraso Médico
+            </button>
+            <button type="button" class="btn" onclick="window.aplicarAccionRapidaModal('cubrir_atraso_personal')" style="font-size:11px; padding:4px 10px; border-radius:6px; background:#f5f3ff; border:1px solid #ddd6fe; color:#5b21b6; font-weight:700; cursor:pointer;">
+              👤 Cubrir Atraso Personal
+            </button>
+            <button type="button" class="btn" onclick="window.aplicarAccionRapidaModal('limpiar_tiempos')" style="font-size:11px; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#475569; font-weight:700; cursor:pointer;">
+              🔄 Reiniciar Tiempos
+            </button>
+          </div>
+        </div>
+
+        <!-- Sección 4: Extras, Almuerzo y Comentario -->
+        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+          <div style="font-size:12px; font-weight:800; color:#1e293b; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-utensils" style="color:#10b981;"></i> <span>4. Almuerzo, Horas Extras y Justificación</span>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px;">
+            <!-- Almuerzo -->
+            <div>
+              <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Estado Almuerzo</label>
+              <select id="modalJornadaAlmuerzoSelect" style="width:100%; font-size:12px; font-weight:700; padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff;">
+                <option value="SI">🏢 Sí (En Planta)</option>
+                <option value="NO">🏠 No (Fuera / No Tomó)</option>
+                <option value="EXTRA">⭐ Almuerzo Extra</option>
+              </select>
+            </div>
+
+            <!-- Horas Extras Autorizadas -->
+            <div>
+              <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Horas Extras Autorizadas</label>
+              <select id="modalJornadaHorasExtrasSelect" style="width:100%; font-size:12px; font-weight:700; padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff;">
+                <option value="NO">❌ No Autorizadas</option>
+                <option value="SI">✅ Sí Autorizadas</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Comentario / Observación -->
+          <div>
+            <label style="display:block; font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Observación / Comentario del Supervisor</label>
+            <textarea id="modalJornadaObservacionInput" rows="2" placeholder="Motivo o detalle de la justificación..." style="width:100%; font-size:12px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-family:inherit; resize:vertical;"></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div style="padding:14px 20px; background:#ffffff; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn" onclick="window.eliminarMarcacionesDiaModal()" style="font-size:11.5px; font-weight:700; padding:8px 12px; border-radius:8px; background:#fff1f2; border:1px solid #fecdd3; color:#be123c; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Eliminar marcaciones registradas para este día">
+          <i class="fas fa-trash-alt"></i> Limpiar Registros
+        </button>
+
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn" onclick="window.cerrarModalGestionJornada()" style="font-size:12px; font-weight:700; padding:8px 16px; border-radius:8px; background:#f1f5f9; border:1px solid #cbd5e1; color:#475569; cursor:pointer;">
+            Cancelar
+          </button>
+          <button type="button" class="btn btn-primary" onclick="window.guardarModalGestionJornada()" style="font-size:12px; font-weight:800; padding:8px 20px; border-radius:8px; background:#4f46e5; border:none; color:#ffffff; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(79, 70, 229, 0.35);">
+            <i class="fas fa-save"></i> Guardar Cambios
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 
   <script src="./JS/openwa_service.js?v=20260917_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260916_02"></script>
-  <script src="./JS/supervisor_core.js?v=20260917_18"></script>
+  <script src="./JS/supervisor_core.js?v=20260918_02"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260917_05"></script>
