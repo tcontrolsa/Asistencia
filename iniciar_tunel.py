@@ -175,6 +175,15 @@ def main():
     # Bucle de resiliencia: Si el túnel cae, se reinicia automáticamente
     while not _detener_servicio:
         url_tunel = None
+        fue_rate_limited = False
+
+        # Limpiar procesos previos de cloudflared huérfanos antes de abrir uno nuevo
+        if sys.platform == 'win32':
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", "cloudflared.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+
         print("\n [3/3] Conectando túnel Cloudflare hacia http://127.0.0.1:2786...")
         cmd = [cloudflared_bin, "tunnel", "--url", f"http://127.0.0.1:{PORT_BRIDGE}"]
         try:
@@ -195,6 +204,9 @@ def main():
                     break
                 sys.stdout.write(line)
                 sys.stdout.flush()
+
+                if "status 429" in line or "1015" in line:
+                    fue_rate_limited = True
 
                 if not url_tunel:
                     match = url_regex.search(line)
@@ -219,8 +231,15 @@ def main():
             print(f"[Aviso] Error en túnel: {e}")
 
         if not _detener_servicio:
-            print("El túnel se desconectó. Reintentando en 3 segundos...")
-            time.sleep(3)
+            if fue_rate_limited:
+                print("\n⚠️ Cloudflare aplicó rate-limit temporal (código 1015).")
+                print("   Restaurando servidor en Firestore a IP local para permitir envíos...")
+                actualizar_firestore_url(TARGET_URL)
+                print("   Esperando 60 segundos antes del siguiente intento...")
+                time.sleep(60)
+            else:
+                print("El túnel se desconectó. Reintentando en 10 segundos...")
+                time.sleep(10)
 
     limpiar_salida()
 

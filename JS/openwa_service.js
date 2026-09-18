@@ -123,7 +123,8 @@
                 const esUrlObsoleta = this.config.servidorUrl && (
                     this.config.servidorUrl.includes(':8081') ||
                     this.config.servidorUrl.includes('quote-bacteria-valve-lights') ||
-                    this.config.servidorUrl.includes('trails-aids-spending-targeted')
+                    this.config.servidorUrl.includes('trails-aids-spending-targeted') ||
+                    this.config.servidorUrl.includes('sleeps-element-creates-taught')
                 );
                 if (esUrlObsoleta) {
                     this.config.servidorUrl = DEFAULT_CONFIG_WHATSAPP.servidorUrl;
@@ -501,6 +502,7 @@
                     const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
                     if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
                         try {
+                            this.config.servidorUrl = urlLocal;
                             const checkResLoc = await fetch(`${urlLocal}/api/sessions/${sessId}/contacts/check/${cleanDigits}`, {
                                 headers: this._obtenerHeaders()
                             });
@@ -603,7 +605,8 @@
                 console.error("[OpenWA] Error enviando mensaje:", e);
                 const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
                 if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
-                    console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Intentando fallback automático a servidor local (${urlLocal})...`);
+                    console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Cambiando servidor activo a servidor local (${urlLocal})...`);
+                    this.config.servidorUrl = urlLocal;
                     return this.enviarMensajeTexto(numeroDestino, mensajeTexto, urlLocal);
                 }
                 const esCors = e.message && (e.message.includes('Failed to fetch') || e.name === 'TypeError');
@@ -807,7 +810,8 @@
                 console.error("[OpenWA] Error enviando imagen:", e);
                 const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
                 if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
-                    console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Intentando fallback automático de imagen a servidor local (${urlLocal})...`);
+                    console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Cambiando servidor activo a servidor local (${urlLocal})...`);
+                    this.config.servidorUrl = urlLocal;
                     return this.enviarMensajeImagen(numeroDestino, mensajeTexto, base64Imagen, urlLocal);
                 }
                 try {
