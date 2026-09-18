@@ -3937,6 +3937,9 @@
           <input type="text" id="txtBuscarVacaciones" onkeyup="window.filtrarTablaVacaciones(this.value)" placeholder="Buscar colaborador, cargo o área..." style="width: 100%; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none; background: #ffffff;">
         </div>
         <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-outline" onclick="window.recargarDesgloseVacaciones(this)" style="padding: 5px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; background: #ffffff;" title="Sincronizar datos de vacaciones desde Google Sheets">
+            <i class="fas fa-sync-alt" style="color: #0d9488;"></i> Actualizar
+          </button>
           <button type="button" class="btn btn-outline" onclick="window.exportarTablaVacacionesExcel()" style="padding: 5px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; background: #ffffff;">
             <i class="fas fa-file-excel" style="color: #10b981;"></i> Exportar Excel
           </button>
