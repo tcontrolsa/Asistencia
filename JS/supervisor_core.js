@@ -3863,8 +3863,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         badgeDia = `<span class="pill ok" style="font-size: 9px; padding: 1px 6px; margin-top: 4px; display: inline-block; font-weight: 700;">LABORAL</span>`;
       }
 
+      const targetEmpId = String(e.id || id || window.idDetalleActual || '').trim();
       const diaSemana = obtenerDiaSemanaStr(f);
-      let fechaFormateada = `<span style="font-size:10px;color:var(--g400);display:block">${diaSemana}</span><div style="display:flex; align-items:center; gap:4px;"><span>${f.slice(8, 10)}/${f.slice(5, 7)}</span><i class="fas fa-edit" style="font-size:8.5px; color:#94a3b8;" title="Clic para gestionar jornada"></i></div>${badgeDia}`;
+      let fechaFormateada = `<span style="font-size:9.5px;color:var(--g400);display:block;margin-bottom:2px;">${diaSemana}</span>
+        <button type="button" class="btn-fecha-gestionar" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')" style="background:#eef2ff; border:1.5px solid #c7d2fe; color:#4338ca; padding:3px 8px; border-radius:7px; font-weight:800; font-size:11.5px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 2px rgba(67, 56, 202, 0.08); transition:all 0.15s ease;" title="Clic para gestionar jornada y permisos de esta fecha">
+          <span>${f.slice(8, 10)}/${f.slice(5, 7)}</span>
+          <i class="fas fa-edit" style="font-size:10px; color:#4f46e5;"></i>
+        </button>
+        ${badgeDia}`;
 
       let h50 = 0, h100 = 0, hCN = 0, hC50 = 0, hC100 = 0;
       let minutosTrabajadosHoy = 0;
@@ -4170,9 +4176,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           badgeColor = '#be123c';
         }
 
-        return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${e.id}', '${f}')" title="Clic para gestionar este día">
-        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:3px 4px;">${fechaFormateada}</td>
-        <td colspan="12" style="font-size:10px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder};">
+        return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar este día">
+        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:3px 4px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
+        <td colspan="12" style="font-size:10px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
@@ -4182,16 +4188,16 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
                 ${d.faltaInasistencia ? 'Sin registro de asistencia en día laborable' : 'Día completo sin marcaciones registradas'}
               </span>
             </div>
-            <span style="font-size:10px; color:#4f46e5; font-weight:700; display:inline-flex; align-items:center; gap:4px; background:#ffffff; padding:2px 8px; border-radius:12px; border:1px solid #e0e7ff;">
+            <button type="button" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')" style="font-size:10.5px; color:#4f46e5; font-weight:700; display:inline-flex; align-items:center; gap:4px; background:#ffffff; padding:3px 10px; border-radius:12px; border:1px solid #c7d2fe; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
               <i class="fas fa-sliders-h"></i> Gestionar
-            </span>
+            </button>
           </div>
         </td>
       </tr>`;
       }
 
-      return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${e.id}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
-      <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px;">${fechaFormateada}</td>
+      return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
+      <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
       <td style="font-size:10px; padding:2px 3px; text-align:center;">${modalidadCell}</td>
       <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaE}</td>
       <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaS}</td>
@@ -4369,6 +4375,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
                 `<span style="background:#f5f3ff; color:#7c3aed; border:1.5px solid #ddd6fe; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px;" title="Colaborador Desvinculado"><i class="fas fa-user-slash"></i> Desvinculado ${(e.fecha_salida || e.fechaDesvinculacion) ? ' (' + (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) + ')' : ''}</span>` :
                 (e.esEliminado ? `<span style="background:#fff1f2; color:#e11d48; border:1px solid #fecdd3; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" title="Colaborador Inactivo / Eliminado en base"><i class="fas fa-user-minus"></i> Inactivo en Base</span>` : '')
               }
+              <button type="button" onclick="window.abrirModalEditarEmpleado('${e.id}')" style="background:#4f46e5; color:#ffffff; border:none; padding:3px 9px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; cursor:pointer; box-shadow:0 1px 3px rgba(79, 70, 229, 0.25); transition:all 0.15s;" title="Abrir ficha para editar datos del colaborador (Nombre, Área, Cargo, PIN, Rol, WhatsApp, etc.)"><i class="fas fa-user-edit"></i> Editar Datos</button>
               <button onclick="window.resetearPasswordEmpleado('${e.id}', '${escapeHtml(e.nombre)}')" title="Resetear contraseña para permitir que el empleado vuelva a vincular su dispositivo" style="background:#fff1f2; color:#be123c; border:1px solid #fca5a5; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px; cursor:pointer; transition:all 0.15s;"><i class="fas fa-key" style="font-size:10px;"></i> Resetear Contraseña</button>
               ${tardT > 0 ?
       `<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:6px; font-size:10.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` :
@@ -13256,6 +13263,13 @@ window.enfocarFechaEnDetalle = function (fecha, reintentos = 6) {
   setTimeout(() => {
     row.classList.remove('fila-resaltada-regularizar');
   }, 5000);
+
+  // Abrir automáticamente el modal de edición para agilizar la gestión
+  if (window.idDetalleActual && typeof window.abrirModalGestionJornada === 'function') {
+    setTimeout(() => {
+      window.abrirModalGestionJornada(window.idDetalleActual, fecha);
+    }, 250);
+  }
 };
 
 // ==========================================
@@ -13808,28 +13822,46 @@ window.exportarKPIsDetalladosPDF = async function () {
 window._modalJornadaContexto = null;
 
 window.abrirModalGestionJornada = function (empleadoId, fecha) {
-  const modal = document.getElementById('modalGestionJornadaFecha');
-  if (!modal) return;
-
-  const emp = empCache.find(x => String(x.id).trim() === String(empleadoId).trim())
-    || (window.empEliminadosCache || []).find(x => String(x.id).trim() === String(empleadoId).trim())
-    || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === String(empleadoId).trim());
-  if (!emp) {
-    if (typeof mostrarToast === 'function') mostrarToast('Colaborador no encontrado', 'error');
+  let modal = document.getElementById('modalGestionJornadaFecha');
+  if (!modal) {
+    console.error('Modal modalGestionJornadaFecha no encontrado en DOM');
     return;
   }
+  if (modal.parentElement !== document.body) {
+    document.body.appendChild(modal);
+  }
+
+  const idBuscado = String(empleadoId || window.idDetalleActual || '').trim();
+  let emp = null;
+  if (idBuscado) {
+    emp = (empCache || []).find(x => String(x.id).trim() === idBuscado || String(x.cedula || '').trim() === idBuscado)
+      || (window.empEliminadosCache || []).find(x => String(x.id).trim() === idBuscado || String(x.cedula || '').trim() === idBuscado)
+      || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === idBuscado || String(x.cedula || '').trim() === idBuscado);
+  }
+  if (!emp && window.idDetalleActual) {
+    const idDet = String(window.idDetalleActual).trim();
+    emp = (empCache || []).find(x => String(x.id).trim() === idDet || String(x.cedula || '').trim() === idDet);
+  }
+
+  if (!emp) {
+    if (typeof mostrarToast === 'function') mostrarToast('Colaborador no encontrado (' + idBuscado + ')', 'error');
+    return;
+  }
+
+  const fNormObj = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(fecha) : fecha;
+  const fechaEfectiva = fNormObj || fecha;
 
   // Filtrar registros del día
   const regsDia = (emp.registros || []).filter(r => {
     const fNorm = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(r.fecha) : r.fecha;
-    return fNorm === fecha;
+    return fNorm === fechaEfectiva;
   }).sort((a, b) => {
     if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
     return String(a.hora || '').localeCompare(String(b.hora || ''));
   });
 
-  const dayOfWeek = new Date(fecha + 'T12:00:00').getDay();
-  const esFestivo = (typeof esFeriadoODomingo === 'function') ? (esFeriadoODomingo(fecha) || dayOfWeek === 6 || dayOfWeek === 0) : false;
+  const dayOfWeek = new Date(fechaEfectiva + 'T12:00:00').getDay();
+  const esFestivo = (typeof esFeriadoODomingo === 'function') ? (esFeriadoODomingo(fechaEfectiva) || dayOfWeek === 6 || dayOfWeek === 0) : false;
 
   // Emparejar períodos del día
   let periodosDia = [];
@@ -13996,16 +14028,20 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   // Actualizar banner de ayuda dinámico
   window.alCambiarRazonModalJornada(razonSel?.value || '', false);
 
-  // Mostrar modal
+  // Mostrar modal con propiedades prioritarias
   modal.classList.remove('hidden');
-  modal.style.display = 'flex';
+  modal.style.setProperty('display', 'flex', 'important');
+  modal.style.setProperty('opacity', '1', 'important');
+  modal.style.setProperty('visibility', 'visible', 'important');
+  modal.style.setProperty('z-index', '100005', 'important');
 };
 
 window.cerrarModalGestionJornada = function () {
   const modal = document.getElementById('modalGestionJornadaFecha');
   if (modal) {
     modal.classList.add('hidden');
-    modal.style.display = 'none';
+    modal.style.setProperty('display', 'none', 'important');
+    modal.style.setProperty('visibility', 'hidden', 'important');
   }
 };
 
