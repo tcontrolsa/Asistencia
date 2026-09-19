@@ -1415,49 +1415,51 @@ window.FirebaseBackend = {
 
         if (!campo) return { error: "Falta el campo a actualizar" };
 
-        // 1. PRIMERO: Actualizar siempre en la hoja REGISTROS de Google Sheets
+        // 1. Sincronización con Google Sheets (en paralelo / no bloqueante)
         let sheetsRes = null;
-        try {
-            let sheetsCampo = campo;
-            let sheetsValor = valor;
-            // Regla de Oro: Si el campo es 'hora' o 'timestamp', enviar SIEMPRE 'timestamp' formateado (DD/MM/YYYY HH:mm:ss)
-            // para que Google Sheets actualice primero la columna TIMESTAMP, y de ella se deriven FECHA y HORA
-            if (campo === 'hora' || campo === 'timestamp') {
-                let fParts = (fecha || '').includes('/') ? fecha.split('/') : (fecha || '').split('-');
-                let y, mo, d;
-                if (fParts[0] && fParts[0].length === 4) {
-                    y = fParts[0]; mo = fParts[1]; d = fParts[2];
-                } else if (fParts[2] && fParts[2].length === 4) {
-                    d = fParts[0]; mo = fParts[1]; y = fParts[2];
+        const sheetsPromise = (async () => {
+            try {
+                let sheetsCampo = campo;
+                let sheetsValor = valor;
+                if (campo === 'hora' || campo === 'timestamp') {
+                    let fParts = (fecha || '').includes('/') ? fecha.split('/') : (fecha || '').split('-');
+                    let y, mo, d;
+                    if (fParts[0] && fParts[0].length === 4) {
+                        y = fParts[0]; mo = fParts[1]; d = fParts[2];
+                    } else if (fParts[2] && fParts[2].length === 4) {
+                        d = fParts[0]; mo = fParts[1]; y = fParts[2];
+                    }
+                    let hVal = (campo === 'hora') ? valor : (String(valor).includes(' ') ? String(valor).split(' ')[1] : valor);
+                    if (hVal && String(hVal).length === 5) hVal = hVal + ':00';
+                    if (y && mo && d && hVal) {
+                        sheetsCampo = 'timestamp';
+                        sheetsValor = `${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${y} ${hVal}`;
+                    }
                 }
-                let hVal = (campo === 'hora') ? valor : (String(valor).includes(' ') ? String(valor).split(' ')[1] : valor);
-                if (hVal && String(hVal).length === 5) hVal = hVal + ':00'; // Asegurar HH:mm:ss
-                if (y && mo && d && hVal) {
-                    sheetsCampo = 'timestamp';
-                    sheetsValor = `${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${y} ${hVal}`;
-                }
+
+                return await this._jsonp({
+                    accion: 'actualizarRegistroArchivado',
+                    empleadoId: empleadoId,
+                    fecha: fecha,
+                    tipo: tipo,
+                    campo: sheetsCampo,
+                    valor: sheetsValor,
+                    modo: params.modo,
+                    almuerzo: params.almuerzo,
+                    horasExtra: params.horasExtra,
+                    justificado: params.justificado,
+                    razon_justificac: params.razon_justificac,
+                    quien_justifica: params.quien_justifica
+                }, 0, 1, 10000);
+            } catch (e) {
+                console.info("ℹ️ Aviso de sincronización secundaria Sheets:", e.message);
+                return { error: e.message };
             }
+        })();
 
-            sheetsRes = await this._jsonp({
-                accion: 'actualizarRegistroArchivado',
-                empleadoId: empleadoId,
-                fecha: fecha,
-                tipo: tipo,
-                campo: sheetsCampo,
-                valor: sheetsValor,
-                modo: params.modo,
-                almuerzo: params.almuerzo,
-                horasExtra: params.horasExtra,
-                justificado: params.justificado,
-                razon_justificac: params.razon_justificac,
-                quien_justifica: params.quien_justifica
-            });
-        } catch (e) {
-            console.warn("⚠️ Advertencia al actualizar en Google Sheets:", e.message);
-        }
-
-        // Si era un ID explícito de Sheets, retornar resultado de Sheets
+        // Si era un ID explícito de Sheets, esperar y retornar resultado de Sheets
         if (docId && String(docId).startsWith('arch_')) {
+            sheetsRes = await sheetsPromise;
             return sheetsRes || { ok: true };
         }
 
@@ -3483,30 +3485,38 @@ window.FirebaseBackend = {
             d = ts;
         } else if (typeof ts === 'string') {
             const s = ts.trim();
-            const mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
-            const mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
-            if (mDMY) {
-                const day = String(mDMY[1]).padStart(2, '0');
-                const month = String(mDMY[2]).padStart(2, '0');
-                const year = mDMY[3];
-                const hour = String(mDMY[4]).padStart(2, '0');
-                const min = String(mDMY[5]).padStart(2, '0');
-                const sec = String(mDMY[6] || '00').padStart(2, '0');
-                fechaStr = `${year}-${month}-${day}`;
-                horaStr = `${hour}:${min}:${sec}`;
-            } else if (mYMD) {
-                const year = mYMD[1];
-                const month = String(mYMD[2]).padStart(2, '0');
-                const day = String(mYMD[3]).padStart(2, '0');
-                const hour = String(mYMD[4]).padStart(2, '0');
-                const min = String(mYMD[5]).padStart(2, '0');
-                const sec = String(mYMD[6] || '00').padStart(2, '0');
-                fechaStr = `${year}-${month}-${day}`;
-                horaStr = `${hour}:${min}:${sec}`;
-            } else {
+            // Si tiene 'Z', 'GMT' o formato ISO con T, evaluar con new Date para aplicar la zona horaria local
+            if (/^\d{4}-\d{2}-\d{2}T/.test(s) || s.includes('Z') || s.includes('GMT')) {
                 const parsed = new Date(s);
                 if (!isNaN(parsed.getTime())) {
                     d = parsed;
+                }
+            } else {
+                const mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+                const mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+                if (mDMY) {
+                    const day = String(mDMY[1]).padStart(2, '0');
+                    const month = String(mDMY[2]).padStart(2, '0');
+                    const year = mDMY[3];
+                    const hour = String(mDMY[4]).padStart(2, '0');
+                    const min = String(mDMY[5]).padStart(2, '0');
+                    const sec = String(mDMY[6] || '00').padStart(2, '0');
+                    fechaStr = `${year}-${month}-${day}`;
+                    horaStr = `${hour}:${min}:${sec}`;
+                } else if (mYMD) {
+                    const year = mYMD[1];
+                    const month = String(mYMD[2]).padStart(2, '0');
+                    const day = String(mYMD[3]).padStart(2, '0');
+                    const hour = String(mYMD[4]).padStart(2, '0');
+                    const min = String(mYMD[5]).padStart(2, '0');
+                    const sec = String(mYMD[6] || '00').padStart(2, '0');
+                    fechaStr = `${year}-${month}-${day}`;
+                    horaStr = `${hour}:${min}:${sec}`;
+                } else {
+                    const parsed = new Date(s);
+                    if (!isNaN(parsed.getTime())) {
+                        d = parsed;
+                    }
                 }
             }
         }
@@ -3523,8 +3533,9 @@ window.FirebaseBackend = {
             item.dia = this._obtenerDiaSemana(d);
         }
 
-        if (fechaStr) item.fecha = fechaStr;
-        if (horaStr) item.hora = horaStr;
+        // NUNCA sobreescribir fecha u hora si el registro ya las tiene limpias y válidas
+        if (!item.fecha && fechaStr) item.fecha = fechaStr;
+        if (!item.hora && horaStr) item.hora = horaStr;
         return item;
     },
 
@@ -3567,10 +3578,15 @@ window.FirebaseBackend = {
             return `${hh}:${mm}:${ss}`;
         }
         let hStr = hora.toString().trim();
-        // Si viene como ISO (ej: 1899-12-30T12:44:00.000Z)
-        if (/^\d{4}-\d{2}-\d{2}T/.test(hStr)) {
-            let partes = hStr.split('T')[1];
-            return partes.split('.')[0].substring(0, 8); // Retorna HH:mm:ss
+        // Si viene como ISO (ej: 1899-12-30T12:44:00.000Z o con Z)
+        if (/^\d{4}-\d{2}-\d{2}T/.test(hStr) || hStr.includes('Z')) {
+            const d = new Date(hStr);
+            if (!isNaN(d.getTime())) {
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                const ss = String(d.getSeconds()).padStart(2, '0');
+                return `${hh}:${mm}:${ss}`;
+            }
         }
         // Si viene con fecha larga (ej: Sat Dec 30 1899 07:30:00 GMT...)
         const mTime = hStr.match(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/);

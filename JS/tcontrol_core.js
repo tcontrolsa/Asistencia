@@ -119,17 +119,137 @@ async function jsonpRequest(params) {
 }
 
 // ========== UTILIDADES DE FORMATO ==========
-function formatearHora(fecha) {
-    if (!fecha) return '--:--';
+function formatearHora(valor, force24h = false) {
+    if (!valor) return '--:--';
     try {
-        const d = new Date(fecha);
-        if (isNaN(d.getTime())) return '--:--';
-        let hours = d.getHours();
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        const ampm = hours >= 12 ? 'p. m.' : 'a. m.';
-        hours = hours % 12 || 12;
-        return `${hours}:${minutes} ${ampm}`;
-    } catch (e) { return '--:--'; }
+        let H = null;
+        let M = null;
+
+        if (valor instanceof Date) {
+            if (!isNaN(valor.getTime())) {
+                H = valor.getHours();
+                M = valor.getMinutes();
+            }
+        } else if (typeof valor === 'object') {
+            if (typeof valor.toDate === 'function') {
+                const d = valor.toDate();
+                if (!isNaN(d.getTime())) { H = d.getHours(); M = d.getMinutes(); }
+            } else if (typeof valor.seconds === 'number') {
+                const d = new Date(valor.seconds * 1000);
+                if (!isNaN(d.getTime())) { H = d.getHours(); M = d.getMinutes(); }
+            }
+        } else if (typeof valor === 'string') {
+            let s = valor.trim();
+            const m12 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?$/i);
+            if (m12 && m12[4]) {
+                H = parseInt(m12[1], 10);
+                M = parseInt(m12[2], 10);
+                const isPm = /p/i.test(m12[4]);
+                const isAm = /a/i.test(m12[4]);
+                if (isPm && H < 12) H += 12;
+                if (isAm && H === 12) H = 0;
+            } else if (m12) {
+                H = parseInt(m12[1], 10);
+                M = parseInt(m12[2], 10);
+            } else if (/^\d{4}-\d{2}-\d{2}T/.test(s) || s.includes('GMT') || s.includes('Z')) {
+                const d = new Date(s);
+                if (!isNaN(d.getTime())) {
+                    H = d.getHours();
+                    M = d.getMinutes();
+                }
+            } else {
+                const mDmy = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
+                if (mDmy) {
+                    H = parseInt(mDmy[1], 10);
+                    M = parseInt(mDmy[2], 10);
+                } else {
+                    const d = new Date(s);
+                    if (!isNaN(d.getTime())) {
+                        H = d.getHours();
+                        M = d.getMinutes();
+                    }
+                }
+            }
+        } else if (typeof valor === 'number') {
+            if (valor > 1e11) {
+                const d = new Date(valor);
+                if (!isNaN(d.getTime())) { H = d.getHours(); M = d.getMinutes(); }
+            }
+        }
+
+        if (H === null || M === null || isNaN(H) || isNaN(M)) return '--:--';
+
+        if (force24h) {
+            return String(H).padStart(2, '0') + ':' + String(M).padStart(2, '0');
+        }
+
+        const ampm = H >= 12 ? 'p. m.' : 'a. m.';
+        let hours12 = H % 12;
+        hours12 = hours12 ? hours12 : 12;
+        const minutesStr = String(M).padStart(2, '0');
+        return `${hours12}:${minutesStr} ${ampm}`;
+    } catch (e) {
+        return '--:--';
+    }
+}
+
+function formatearHora24(valor) {
+    return formatearHora(valor, true);
+}
+
+function obtenerMinutos(valor) {
+    if (!valor) return null;
+    if (typeof valor === 'object') {
+        if (typeof valor.toDate === 'function') {
+            let d = valor.toDate();
+            return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+        }
+        if (typeof valor.seconds === 'number') {
+            let d = new Date(valor.seconds * 1000);
+            return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+        }
+        if (typeof valor._seconds === 'number') {
+            let d = new Date(valor._seconds * 1000);
+            return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+        }
+        if (valor instanceof Date) return !isNaN(valor.getTime()) ? valor.getHours() * 60 + valor.getMinutes() : null;
+    }
+    if (typeof valor === 'number') {
+        if (valor > 0 && valor < 1) {
+            let s = Math.round(valor * 86400);
+            return Math.floor(s / 3600) * 60 + Math.floor((s % 3600) / 60);
+        }
+        if (valor > 1e11) {
+            let d = new Date(valor);
+            if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+        }
+        return null;
+    }
+    if (typeof valor === 'string') {
+        let s = valor.trim();
+        if (/^\d{4}-\d{2}-\d{2}T/.test(s) || s.includes('GMT') || s.includes('Z')) {
+            let d = new Date(s);
+            if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+        }
+        const ampmMatch = s.match(/(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)/i);
+        let m12 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (m12) {
+            let h = parseInt(m12[1], 10);
+            let m = parseInt(m12[2], 10);
+            if (ampmMatch) {
+                const isPm = /p/i.test(ampmMatch[1]);
+                const isAm = /a/i.test(ampmMatch[1]);
+                if (isPm && h < 12) h += 12;
+                if (isAm && h === 12) h = 0;
+            }
+            return h * 60 + m;
+        }
+        let d = new Date(s);
+        if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+        let m = s.match(/(\d{1,2}):(\d{2})/);
+        if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    }
+    return null;
 }
 
 // Formato de fecha estricto dd/mm/yyyy hh:mm:ss

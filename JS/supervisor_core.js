@@ -333,6 +333,25 @@ function formatearTimestampCompleto(ts) {
 function parsearTimestamp(tsString) {
   if (!tsString) return null;
   tsString = String(tsString).trim();
+
+  // Si contiene Z, GMT o formato ISO completo (con T), usar new Date para convertir a la zona local (Ecuador UTC-5)
+  if (tsString.includes('Z') || tsString.includes('GMT') || /^\d{4}-\d{2}-\d{2}T/i.test(tsString)) {
+    const d = new Date(tsString);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hour = String(d.getHours()).padStart(2, '0');
+      const minute = String(d.getMinutes()).padStart(2, '0');
+      const second = String(d.getSeconds()).padStart(2, '0');
+      return {
+        fecha: `${year}-${month}-${day}`,
+        hora: `${hour}:${minute}:${second}`,
+        timestampFormatted: `${day}/${month}/${year} ${hour}:${minute}:${second}`
+      };
+    }
+  }
+
   const regexDMY = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
   const regexYMD = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/;
 
@@ -423,34 +442,44 @@ window.normalizarRegistroDesdeTimestamp = function (r) {
     d = ts.toDate();
   } else if (typeof ts === 'object' && ts.seconds !== undefined) {
     d = new Date(ts.seconds * 1000);
+  } else if (typeof ts === 'object' && ts._seconds !== undefined) {
+    d = new Date(ts._seconds * 1000);
   } else if (ts instanceof Date) {
     d = ts;
   } else if (typeof ts === 'string') {
     const s = ts.trim();
-    const mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
-    const mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[,\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
-    if (mDMY) {
-      const day = String(mDMY[1]).padStart(2, '0');
-      const month = String(mDMY[2]).padStart(2, '0');
-      const year = mDMY[3];
-      const hour = String(mDMY[4]).padStart(2, '0');
-      const min = String(mDMY[5]).padStart(2, '0');
-      const sec = String(mDMY[6] || '00').padStart(2, '0');
-      fechaStr = `${year}-${month}-${day}`;
-      horaStr = `${hour}:${min}:${sec}`;
-    } else if (mYMD) {
-      const year = mYMD[1];
-      const month = String(mYMD[2]).padStart(2, '0');
-      const day = String(mYMD[3]).padStart(2, '0');
-      const hour = String(mYMD[4]).padStart(2, '0');
-      const min = String(mYMD[5]).padStart(2, '0');
-      const sec = String(mYMD[6] || '00').padStart(2, '0');
-      fechaStr = `${year}-${month}-${day}`;
-      horaStr = `${hour}:${min}:${sec}`;
-    } else {
+    // Si contiene Z, GMT o es ISO con T, parsear con new Date para respetar hora local del navegador (Ecuador UTC-5)
+    if (/^\d{4}-\d{2}-\d{2}T/i.test(s) || s.includes('Z') || s.includes('GMT')) {
       const parsed = new Date(s);
       if (!isNaN(parsed.getTime())) {
         d = parsed;
+      }
+    } else {
+      const mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+      const mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+      if (mDMY) {
+        const day = String(mDMY[1]).padStart(2, '0');
+        const month = String(mDMY[2]).padStart(2, '0');
+        const year = mDMY[3];
+        const hour = String(mDMY[4]).padStart(2, '0');
+        const min = String(mDMY[5]).padStart(2, '0');
+        const sec = String(mDMY[6] || '00').padStart(2, '0');
+        fechaStr = `${year}-${month}-${day}`;
+        horaStr = `${hour}:${min}:${sec}`;
+      } else if (mYMD) {
+        const year = mYMD[1];
+        const month = String(mYMD[2]).padStart(2, '0');
+        const day = String(mYMD[3]).padStart(2, '0');
+        const hour = String(mYMD[4]).padStart(2, '0');
+        const min = String(mYMD[5]).padStart(2, '0');
+        const sec = String(mYMD[6] || '00').padStart(2, '0');
+        fechaStr = `${year}-${month}-${day}`;
+        horaStr = `${hour}:${min}:${sec}`;
+      } else {
+        const parsed = new Date(s);
+        if (!isNaN(parsed.getTime())) {
+          d = parsed;
+        }
       }
     }
   }
@@ -466,45 +495,97 @@ window.normalizarRegistroDesdeTimestamp = function (r) {
     horaStr = `${hh}:${mm}:${ss}`;
   }
 
-  if (fechaStr) r.fecha = fechaStr;
-  if (horaStr) r.hora = horaStr;
+  // NUNCA sobreescribir fecha ni hora si ya son válidas y legítimas
+  const esHoraInvalida = (h) => !h || h === '--:--' || h === '00:00:00' || h === 'Invalid Date';
+  if (!r.fecha && fechaStr) r.fecha = fechaStr;
+  if (esHoraInvalida(r.hora) && horaStr) r.hora = horaStr;
   return r;
 };
 
 function obtenerMinutos(valor) {
   if (!valor) return null;
+  if (typeof valor === 'object') {
+    if (typeof valor.toDate === 'function') {
+      let d = valor.toDate();
+      return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+    }
+    if (typeof valor.seconds === 'number') {
+      let d = new Date(valor.seconds * 1000);
+      return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+    }
+    if (typeof valor._seconds === 'number') {
+      let d = new Date(valor._seconds * 1000);
+      return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+    }
+    if (valor instanceof Date) return !isNaN(valor.getTime()) ? valor.getHours() * 60 + valor.getMinutes() : null;
+  }
   if (typeof valor === 'number') {
     if (valor > 0 && valor < 1) {
       let s = Math.round(valor * 86400);
       return Math.floor(s / 3600) * 60 + Math.floor((s % 3600) / 60);
     }
-    if (valor > 1e12) {
+    if (valor > 1e11) {
       let d = new Date(valor);
-      if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+      if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
     }
     return null;
   }
   if (typeof valor === 'string') {
-    let m = valor.match(/(\d{1,2}):(\d{2})/);
-    if (m) return parseInt(m[1]) * 60 + parseInt(m[2]);
-    let d = new Date(valor);
-    if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+    let s = valor.trim();
+    if (!s) return null;
+    // Si contiene T, Z o GMT, parsear como fecha para respetar la zona horaria local (Ecuador UTC-5)
+    if (/^\d{4}-\d{2}-\d{2}T/i.test(s) || s.includes('GMT') || s.includes('Z')) {
+      let d = new Date(s);
+      if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+    }
+    const ampmMatch = s.match(/(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)/i);
+    const m12 = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (m12) {
+      let h = parseInt(m12[1], 10);
+      let m = parseInt(m12[2], 10);
+      if (ampmMatch) {
+        const isPm = /p/i.test(ampmMatch[1]);
+        const isAm = /a/i.test(ampmMatch[1]);
+        if (isPm && h < 12) h += 12;
+        if (isAm && h === 12) h = 0;
+      }
+      return h * 60 + m;
+    }
+    let d = new Date(s);
+    if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
   }
-  if (valor instanceof Date) return valor.getHours() * 60 + valor.getMinutes();
   return null;
 }
 
 function minsToHHMM(mins) {
-  if (mins === null || mins === undefined) return '--:--';
+  if (mins === null || mins === undefined || isNaN(mins)) return '--:--';
   let h = Math.floor(Math.abs(Math.round(mins)) / 60);
   let m = Math.abs(Math.round(mins)) % 60;
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
-function formatearHora(valor) {
+function formatearHora(valor, force24h = true) {
   let m = obtenerMinutos(valor);
-  return m !== null ? minsToHHMM(m) : '--:--';
+  if (m === null || isNaN(m)) return '--:--';
+  if (force24h) {
+    return minsToHHMM(m);
+  }
+  let h = Math.floor(Math.abs(Math.round(m)) / 60);
+  let min = Math.abs(Math.round(m)) % 60;
+  const ampm = h >= 12 ? 'p. m.' : 'a. m.';
+  let hours12 = h % 12;
+  hours12 = hours12 ? hours12 : 12;
+  return `${hours12}:${String(min).padStart(2, '0')} ${ampm}`;
 }
+
+function formatearHora24(valor) {
+  return formatearHora(valor, true);
+}
+window.obtenerMinutos = obtenerMinutos;
+window.formatearHora = formatearHora;
+window.formatearHora24 = formatearHora24;
+window.minsToHHMM = minsToHHMM;
+window.parsearTimestamp = parsearTimestamp;
 
 function calcularPct(v, t) {
   return t ? Math.round((v / t) * 100) : 0;
@@ -2689,8 +2770,7 @@ window.guardarRazonAusenciaFecha = async function (empleadoId, fecha, valorSelec
   let sessionData = {};
   try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
   const supervisorId = String(sessionData.id || '');
-  const AUTORIZADOS = ['7', '1058'];
-  if (!AUTORIZADOS.includes(supervisorId)) {
+  if (typeof tienePermisoAdmin === 'function' && !tienePermisoAdmin()) {
     if (typeof mostrarToast === 'function') mostrarToast('No autorizado para modificar razones de ausencia.', 'error');
     return;
   }
@@ -2734,6 +2814,7 @@ window.guardarRazonAusenciaFecha = async function (empleadoId, fecha, valorSelec
     // Force refresh the detail view with current period selection
     const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
     mostrarDetalle(empleadoId, idxSel);
+    if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
   }
 
   const bgSync = $('bgSyncIndicator');
@@ -2758,13 +2839,7 @@ window.guardarRazonAusenciaFecha = async function (empleadoId, fecha, valorSelec
     }
 
     if (res && (res.ok || !res.error)) {
-      if (typeof mostrarToast === 'function') mostrarToast('Razón de ausencia guardada con éxito', 'success');
-      // Reload in background to keep data in sync
-      limpiarCachesLocales();
-      cargarDatosCompletos(true, true).then(() => {
-        const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
-        mostrarDetalle(empleadoId, idxSel);
-      }).catch(err => console.error("Error al recargar datos:", err));
+      if (typeof mostrarToast === 'function') mostrarToast('✅ Razón de ausencia guardada con éxito', 'success');
     } else {
       if (typeof mostrarToast === 'function') mostrarToast(res?.error || 'Error al guardar razón', 'error');
       // Revert optimistic update
@@ -14962,7 +15037,7 @@ window.guardarModalGestionJornada = async function () {
   if (bgSync) bgSync.classList.remove('hidden');
 
   try {
-    // 1. Si el usuario tiene o registró horas/marcaciones, LIMPIAR cualquier registro virtual de ausencia previa de jornada completa
+    // 1. Si el usuario tiene o registró horas/marcaciones, limpiar cualquier registro virtual de ausencia previa de jornada completa
     if (tieneHoras || (minsJust > 0 || minsPers > 0 || minsMed > 0)) {
       if (emp && emp.registros) {
         emp.registros = emp.registros.filter(r => {
@@ -14973,144 +15048,224 @@ window.guardarModalGestionJornada = async function () {
       }
     }
 
-    // 2. Si es ausencia completa sin marcaciones, guardar como ausencia completa de jornada
-    if (esAusenciaCompleta) {
-      await window.guardarRazonAusenciaFecha(empleadoId, fecha, razonFinal);
-      window.cerrarModalGestionJornada();
-      return;
-    }
-
-    // 3. Guardar modalidad si cambió y no hay horas de marcación para actualizar
-    if (modalidad !== ctx.modActual && !hEntrada && !hSalida) {
-      await window.guardarPermiso(empleadoId, fecha, 'modalidad', modalidad);
-    }
-
-    // 4. Guardar horas de entrada y salida:
-    // PRIMERO buscar y actualizar en "Registros" de Google Sheets
-    // 4. Actualizar Marcaciones y Modalidad: ACTUALIZAR SIEMPRE EN LA COLUMNA TIMESTAMP PRIMERO
-    // Y en Firestore SOLO actualizar el documento si ya existe (NUNCA CREAR NUEVOS para evitar duplicados)
     const [yG, moG, dG] = fecha.includes('-') ? fecha.split('-') : fecha.split('/').reverse();
+    let fullTsEntrada = null;
+    let fullTsSalida = null;
+    let regE = null;
+    let regS = null;
+    let mappedTipo = null;
 
-    if (hEntrada) {
-      let hValE = hEntrada.length === 5 ? hEntrada + ':00' : hEntrada;
-      let fullTsEntrada = `${String(dG).padStart(2,'0')}/${String(moG).padStart(2,'0')}/${yG} ${hValE}`;
-
-      let regE = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO'));
-      if (regE) {
-        regE.timestamp = fullTsEntrada;
-        regE.hora = hValE;
-        regE.fecha = `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`;
-        regE.modo = modalidad;
-        regE.horasExtra = horasExtrasVal;
-        regE.almuerzo = almuerzoVal;
-        if (razonFinal) regE.razon_ausencia = razonFinal;
+    if (esAusenciaCompleta) {
+      mappedTipo = mapRazonAusenciaATipo(razonFinal);
+      if (emp) {
+        if (!emp.registros) emp.registros = [];
+        let fReg = emp.registros.find(r => {
+          const t = String(r.tipo).toUpperCase();
+          return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === fecha;
+        });
+        if (!fReg) {
+          fReg = {
+            id: `${empleadoId}_${mappedTipo}_${fecha}_000000`,
+            empleadoId: empleadoId,
+            tipo: mappedTipo,
+            fecha: fecha,
+            razon_ausencia: razonFinal
+          };
+          emp.registros.push(fReg);
+        } else {
+          fReg.tipo = mappedTipo;
+          fReg.razon_ausencia = razonFinal;
+        }
+      }
+    } else {
+      // Marcación Entrada
+      if (hEntrada) {
+        let hValE = hEntrada.length === 5 ? hEntrada + ':00' : hEntrada;
+        fullTsEntrada = `${String(dG).padStart(2,'0')}/${String(moG).padStart(2,'0')}/${yG} ${hValE}`;
+        regE = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO'));
+        if (!regE) {
+          regE = {
+            id: 'temp_E_' + Date.now(),
+            empleadoId: empleadoId,
+            tipo: 'ENTRADA',
+            fecha: `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`,
+            hora: hValE,
+            timestamp: fullTsEntrada,
+            modo: modalidad,
+            almuerzo: almuerzoVal,
+            horasExtra: horasExtrasVal
+          };
+          emp.registros.push(regE);
+        } else {
+          regE.timestamp = fullTsEntrada;
+          regE.hora = hValE;
+          regE.fecha = `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`;
+          regE.modo = modalidad;
+          regE.horasExtra = horasExtrasVal;
+          regE.almuerzo = almuerzoVal;
+          if (razonFinal) regE.razon_ausencia = razonFinal;
+        }
         if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(regE);
       }
 
-      // 4.1 Actualizar primero en Google Sheets (Hoja REGISTROS columna TIMESTAMP)
-      if (typeof jsonpRequest === 'function') {
-        await jsonpRequest({
-          accion: 'actualizarRegistroArchivado',
-          empleadoId: empleadoId,
-          fecha: fecha,
-          tipo: 'ENTRADA',
-          campo: 'timestamp',
-          valor: fullTsEntrada,
-          modo: modalidad,
-          almuerzo: almuerzoVal,
-          horasExtra: horasExtrasVal
-        }).catch(err => console.warn("Aviso Sheets timestamp entrada:", err));
-      }
-
-      // 4.2 En Firestore: SOLO actualizar documento si ya existe (NUNCA crear nuevo doc)
-      const firestoreDocIdE = (regE && regE.id && !String(regE.id).startsWith('arch_')) ? regE.id : null;
-      if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
-        window.FirebaseBackend.actualizarRegistroGeneral({
-          docId: firestoreDocIdE,
-          empleadoId,
-          tipo: 'ENTRADA',
-          fecha,
-          campo: 'timestamp',
-          valor: fullTsEntrada,
-          almuerzo: almuerzoVal,
-          modo: modalidad,
-          horasExtra: horasExtrasVal
-        }).catch(err => console.warn("Aviso Firestore entrada:", err));
-      }
-    }
-
-    if (hSalida) {
-      let hValS = hSalida.length === 5 ? hSalida + ':00' : hSalida;
-      let fullTsSalida = `${String(dG).padStart(2,'0')}/${String(moG).padStart(2,'0')}/${yG} ${hValS}`;
-
-      let regS = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO'));
-      if (regS) {
-        regS.timestamp = fullTsSalida;
-        regS.hora = hValS;
-        regS.fecha = `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`;
-        regS.modo = modalidad;
+      // Marcación Salida
+      if (hSalida) {
+        let hValS = hSalida.length === 5 ? hSalida + ':00' : hSalida;
+        fullTsSalida = `${String(dG).padStart(2,'0')}/${String(moG).padStart(2,'0')}/${yG} ${hValS}`;
+        regS = (emp?.registros || []).find(r => r.fecha === fecha && (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO'));
+        if (!regS) {
+          regS = {
+            id: 'temp_S_' + Date.now(),
+            empleadoId: empleadoId,
+            tipo: 'SALIDA',
+            fecha: `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`,
+            hora: hValS,
+            timestamp: fullTsSalida,
+            modo: modalidad
+          };
+          emp.registros.push(regS);
+        } else {
+          regS.timestamp = fullTsSalida;
+          regS.hora = hValS;
+          regS.fecha = `${yG}-${String(moG).padStart(2,'0')}-${String(dG).padStart(2,'0')}`;
+          regS.modo = modalidad;
+        }
         if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(regS);
       }
 
-      // 4.3 Actualizar Salida primero en Google Sheets (Hoja REGISTROS columna TIMESTAMP)
-      if (typeof jsonpRequest === 'function') {
-        await jsonpRequest({
-          accion: 'actualizarRegistroArchivado',
-          empleadoId: empleadoId,
-          fecha: fecha,
-          tipo: 'SALIDA',
-          campo: 'timestamp',
-          valor: fullTsSalida,
-          modo: modalidad
-        }).catch(err => console.warn("Aviso Sheets timestamp salida:", err));
+      // Modalidad en registros del día
+      if (emp && emp.registros) {
+        emp.registros.filter(r => r.fecha === fecha).forEach(r => { r.modo = modalidad; });
       }
 
-      // 4.4 En Firestore: SOLO actualizar documento si ya existe (NUNCA crear nuevo doc)
-      const firestoreDocIdS = (regS && regS.id && !String(regS.id).startsWith('arch_')) ? regS.id : null;
-      if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
-        window.FirebaseBackend.actualizarRegistroGeneral({
-          docId: firestoreDocIdS,
-          empleadoId,
-          tipo: 'SALIDA',
-          fecha,
-          campo: 'timestamp',
-          valor: fullTsSalida,
-          modo: modalidad
-        }).catch(err => console.warn("Aviso Firestore salida:", err));
+      // Permisos / Justificaciones
+      const regPermiso = regE || (emp?.registros || []).find(r => r.fecha === fecha);
+      if (regPermiso) {
+        regPermiso.permiso_personal_mins = minsPers;
+        regPermiso.permiso_medico_mins = minsMed;
+        regPermiso.tiempo_justificado_mins = minsJust;
+        if (observacion) regPermiso.razon_permiso = observacion;
       }
     }
 
-    // 5. Guardar minutos parciales con guardarPermiso solo si aplican
-    const prevJust = ctx.minsJustificado || 0;
-    const prevPers = ctx.minsPersonal || 0;
-    const prevMed = ctx.minsMedico || 0;
-    if (minsJust > 0 || prevJust > 0) {
-      await window.guardarPermiso(empleadoId, fecha, 'justificado', minsJust, observacion);
-    }
-    if (minsPers > 0 || prevPers > 0) {
-      await window.guardarPermiso(empleadoId, fecha, 'personal', minsPers, observacion);
-    }
-    if (minsMed > 0 || prevMed > 0) {
-      await window.guardarPermiso(empleadoId, fecha, 'medico', minsMed, observacion);
-    }
-
-    if (typeof mostrarToast === 'function') mostrarToast('✅ Jornada y permisos guardados exitosamente', 'success');
-
+    // CIERRE INMEDIATO Y ACTUALIZACIÓN VISUAL INSTANTÁNEA (OPTIMISTIC UI)
     window.cerrarModalGestionJornada();
-
-    // Refrescar detalle inmediatamente
     const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
     mostrarDetalle(empleadoId, idxSel);
+    if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+    if (typeof mostrarToast === 'function') mostrarToast('✅ Jornada y permisos guardados exitosamente', 'success');
 
-    limpiarCachesLocales();
-    cargarDatosCompletos(true, true).then(() => {
-      mostrarDetalle(empleadoId, idxSel);
-    }).catch(e => console.warn(e));
+    // TAREAS DE SINCRONIZACIÓN EN SEGUNDO PLANO (PARALELAS, NO BLOQUEANTES)
+    const backgroundTasks = [];
+
+    if (esAusenciaCompleta) {
+      if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
+        backgroundTasks.push(window.FirebaseBackend.guardarRegistro({
+          id: empleadoId,
+          tipo: mappedTipo,
+          fecha_falta: fecha,
+          razon_ausencia: razonFinal
+        }).catch(err => console.warn("Aviso Firestore ausencia:", err)));
+      } else if (typeof jsonpRequest === 'function') {
+        backgroundTasks.push(jsonpRequest({
+          accion: 'guardarRegistro',
+          id: empleadoId,
+          tipo: mappedTipo,
+          fecha_falta: fecha,
+          razon_ausencia: razonFinal
+        }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+      }
+    } else {
+      if (hEntrada && fullTsEntrada) {
+        const firestoreDocIdE = (regE && regE.id && !String(regE.id).startsWith('arch_') && !String(regE.id).startsWith('temp_')) ? regE.id : null;
+        if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+          backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+            docId: firestoreDocIdE,
+            empleadoId,
+            tipo: 'ENTRADA',
+            fecha,
+            campo: 'timestamp',
+            valor: fullTsEntrada,
+            almuerzo: almuerzoVal,
+            modo: modalidad,
+            horasExtra: horasExtrasVal
+          }).catch(err => console.warn("Aviso Firestore entrada:", err)));
+        } else if (typeof jsonpRequest === 'function') {
+          backgroundTasks.push(jsonpRequest({
+            accion: 'actualizarRegistroArchivado',
+            empleadoId: empleadoId,
+            fecha: fecha,
+            tipo: 'ENTRADA',
+            campo: 'timestamp',
+            valor: fullTsEntrada,
+            modo: modalidad,
+            almuerzo: almuerzoVal,
+            horasExtra: horasExtrasVal
+          }).catch(err => console.warn("Aviso Sheets entrada:", err)));
+        }
+      }
+
+      if (hSalida && fullTsSalida) {
+        const firestoreDocIdS = (regS && regS.id && !String(regS.id).startsWith('arch_') && !String(regS.id).startsWith('temp_')) ? regS.id : null;
+        if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+          backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+            docId: firestoreDocIdS,
+            empleadoId,
+            tipo: 'SALIDA',
+            fecha,
+            campo: 'timestamp',
+            valor: fullTsSalida,
+            modo: modalidad
+          }).catch(err => console.warn("Aviso Firestore salida:", err)));
+        } else if (typeof jsonpRequest === 'function') {
+          backgroundTasks.push(jsonpRequest({
+            accion: 'actualizarRegistroArchivado',
+            empleadoId: empleadoId,
+            fecha: fecha,
+            tipo: 'SALIDA',
+            campo: 'timestamp',
+            valor: fullTsSalida,
+            modo: modalidad
+          }).catch(err => console.warn("Aviso Sheets salida:", err)));
+        }
+      }
+
+      // Permisos / Justificaciones
+      const prevJust = ctx.minsJustificado || 0;
+      const prevPers = ctx.minsPersonal || 0;
+      const prevMed = ctx.minsMedico || 0;
+      const permTipo = (minsJust > 0 || prevJust > 0) ? 'justificado' : ((minsPers > 0 || prevPers > 0) ? 'personal' : ((minsMed > 0 || prevMed > 0) ? 'medico' : null));
+      const permMins = (minsJust > 0) ? minsJust : ((minsPers > 0) ? minsPers : ((minsMed > 0) ? minsMed : 0));
+
+      if (permTipo) {
+        const permParams = { empleadoId, fecha, tipo: permTipo, mins: permMins, comentario: observacion, supervisorId };
+        if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
+          backgroundTasks.push(window.FirebaseBackend.guardarPermisoSupervisor(permParams).catch(err => console.warn("Aviso Firestore permiso:", err)));
+        } else if (typeof jsonpRequest === 'function') {
+          backgroundTasks.push(jsonpRequest({ accion: 'guardarPermisoSupervisor', ...permParams }).catch(err => console.warn("Aviso Sheets permiso:", err)));
+        }
+      }
+
+      // Modalidad si no se enviaron horas
+      if (modalidad !== ctx.modActual && !hEntrada && !hSalida) {
+        if (window.FirebaseBackend && window.FirebaseBackend.guardarModalidadSupervisor) {
+          backgroundTasks.push(window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad, supervisorId }).catch(err => console.warn("Aviso Firestore modalidad:", err)));
+        } else if (typeof jsonpRequest === 'function') {
+          backgroundTasks.push(jsonpRequest({ accion: 'guardarModalidadSupervisor', empleadoId, fecha, modalidad, supervisorId }).catch(err => console.warn("Aviso Sheets modalidad:", err)));
+        }
+      }
+    }
+
+    Promise.allSettled(backgroundTasks).then(() => {
+      if (bgSync) bgSync.classList.add('hidden');
+    }).catch(err => {
+      console.warn("Aviso en tareas de segundo plano:", err);
+      if (bgSync) bgSync.classList.add('hidden');
+    });
 
   } catch (err) {
     console.error("Error guardando modal jornada:", err);
-    if (typeof mostrarToast === 'function') mostrarToast('Error al guardar: ' + err.message, 'error');
-  } finally {
+    if (typeof mostrarToast === 'function') mostrarToast('Error al procesar jornada: ' + err.message, 'error');
     if (bgSync) bgSync.classList.add('hidden');
   }
 };
@@ -15124,42 +15279,41 @@ window.eliminarMarcacionesDiaModal = async function () {
     return;
   }
 
-  mostrarLoader(true);
-  try {
-    // Eliminar del cache local
-    if (emp && emp.registros) {
-      emp.registros = emp.registros.filter(r => r.fecha !== fecha);
-    }
-
-    // Eliminar en backend si existen registros específicos
-    for (const r of (ctx.regsDia || [])) {
-      if (r.id) {
-        if (typeof jsonpRequest === 'function') {
-          await jsonpRequest({
-            accion: 'eliminarRegistro',
-            docId: r.id,
-            empleadoId: empleadoId,
-            fecha: fecha,
-            tipo: r.tipo
-          }).catch(e => console.warn(e));
-        }
-      }
-    }
-
-    if (typeof mostrarToast === 'function') mostrarToast('Marcaciones del día eliminadas', 'info');
-    window.cerrarModalGestionJornada();
-
-    const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
-    mostrarDetalle(empleadoId, idxSel);
-
-    limpiarCachesLocales();
-    await cargarDatosCompletos(true, true);
-    mostrarDetalle(empleadoId, idxSel);
-  } catch (err) {
-    if (typeof mostrarToast === 'function') mostrarToast('Error al eliminar marcaciones: ' + err.message, 'error');
-  } finally {
-    mostrarLoader(false);
+  // 1. Actualización optimista inmediata en memoria
+  if (emp && emp.registros) {
+    emp.registros = emp.registros.filter(r => r.fecha !== fecha);
   }
+
+  // 2. Cerrar modal y refrescar pantalla de inmediato
+  window.cerrarModalGestionJornada();
+  const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
+  mostrarDetalle(empleadoId, idxSel);
+  if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+  if (typeof mostrarToast === 'function') mostrarToast('✅ Marcaciones del día eliminadas', 'info');
+
+  const bgSync = $('bgSyncIndicator');
+  if (bgSync) bgSync.classList.remove('hidden');
+
+  // 3. Tareas en segundo plano paralelas
+  const delTasks = [];
+  for (const r of (ctx.regsDia || [])) {
+    if (r.id && typeof jsonpRequest === 'function') {
+      delTasks.push(jsonpRequest({
+        accion: 'eliminarRegistro',
+        docId: r.id,
+        empleadoId: empleadoId,
+        fecha: fecha,
+        tipo: r.tipo
+      }).catch(e => console.warn("Aviso Sheets eliminar:", e)));
+    }
+  }
+
+  Promise.allSettled(delTasks).then(() => {
+    if (bgSync) bgSync.classList.add('hidden');
+  }).catch(e => {
+    console.warn("Aviso eliminar:", e);
+    if (bgSync) bgSync.classList.add('hidden');
+  });
 };
 
 // ============================================================

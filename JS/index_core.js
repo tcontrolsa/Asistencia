@@ -480,20 +480,82 @@ function mostrarToast(msg, tipo = 'info') {
     }, duration);
 }
 
-function formatearHora(fecha) {
-    if (!fecha) return '--:--';
+function formatearHora(valor, force24h = false) {
+    if (!valor) return '--:--';
     try {
-        const d = new Date(fecha);
-        if (isNaN(d.getTime())) return '--:--';
-        let hours = d.getHours();
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        const ampm = hours >= 12 ? 'p. m.' : 'a. m.';
-        hours = hours % 12;
-        hours = hours ? hours : 12;
-        return `${hours}:${minutes} ${ampm}`;
+        let H = null;
+        let M = null;
+
+        if (valor instanceof Date) {
+            if (!isNaN(valor.getTime())) {
+                H = valor.getHours();
+                M = valor.getMinutes();
+            }
+        } else if (typeof valor === 'object') {
+            if (typeof valor.toDate === 'function') {
+                const d = valor.toDate();
+                if (!isNaN(d.getTime())) { H = d.getHours(); M = d.getMinutes(); }
+            } else if (typeof valor.seconds === 'number') {
+                const d = new Date(valor.seconds * 1000);
+                if (!isNaN(d.getTime())) { H = d.getHours(); M = d.getMinutes(); }
+            }
+        } else if (typeof valor === 'string') {
+            let s = valor.trim();
+            const m12 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?$/i);
+            if (m12 && m12[4]) {
+                H = parseInt(m12[1], 10);
+                M = parseInt(m12[2], 10);
+                const isPm = /p/i.test(m12[4]);
+                const isAm = /a/i.test(m12[4]);
+                if (isPm && H < 12) H += 12;
+                if (isAm && H === 12) H = 0;
+            } else if (m12) {
+                H = parseInt(m12[1], 10);
+                M = parseInt(m12[2], 10);
+            } else if (/^\d{4}-\d{2}-\d{2}T/.test(s) || s.includes('GMT') || s.includes('Z')) {
+                const d = new Date(s);
+                if (!isNaN(d.getTime())) {
+                    H = d.getHours();
+                    M = d.getMinutes();
+                }
+            } else {
+                const mDmy = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
+                if (mDmy) {
+                    H = parseInt(mDmy[1], 10);
+                    M = parseInt(mDmy[2], 10);
+                } else {
+                    const d = new Date(s);
+                    if (!isNaN(d.getTime())) {
+                        H = d.getHours();
+                        M = d.getMinutes();
+                    }
+                }
+            }
+        } else if (typeof valor === 'number') {
+            if (valor > 1e11) {
+                const d = new Date(valor);
+                if (!isNaN(d.getTime())) { H = d.getHours(); M = d.getMinutes(); }
+            }
+        }
+
+        if (H === null || M === null || isNaN(H) || isNaN(M)) return '--:--';
+
+        if (force24h) {
+            return String(H).padStart(2, '0') + ':' + String(M).padStart(2, '0');
+        }
+
+        const ampm = H >= 12 ? 'p. m.' : 'a. m.';
+        let hours12 = H % 12;
+        hours12 = hours12 ? hours12 : 12;
+        const minutesStr = String(M).padStart(2, '0');
+        return `${hours12}:${minutesStr} ${ampm}`;
     } catch (e) {
         return '--:--';
     }
+}
+
+function formatearHora24(valor) {
+    return formatearHora(valor, true);
 }
 
 function formatearFechaCorta() {
@@ -1347,14 +1409,15 @@ async function procederConRegistro() {
 
     const ahora = new Date();
     const horaActual = formatearHora(ahora);
+    const horaActual24 = formatearHora24(ahora);
 
     if (empleado.tipoRegistro === 'ENTRADA') {
         estado.tieneEntrada = true;
-        estado.horaEntrada = horaActual;
+        estado.horaEntrada = horaActual24;
         estado.almuerzo = empleado.almuerzo;
     } else {
         estado.tieneSalida = true;
-        estado.horaSalida = horaActual;
+        estado.horaSalida = horaActual24;
     }
 
     let transTitulo = "¡Marcación Registrada!";
@@ -3223,36 +3286,31 @@ function renderHomePage() {
     // Helper para obtener hora limpia de registro (HH:MM)
     function obtenerHoraFormateadaDeRegistro(reg) {
         if (!reg) return null;
-        if (reg.hora) {
-            const match = reg.hora.match(/^(\d{1,2}):(\d{2})/);
-            if (match) {
-                return `${match[1].padStart(2, '0')}:${match[2]}`;
-            }
-        }
-        if (reg.timestamp) {
-            try {
-                const d = reg.timestamp.toDate ? reg.timestamp.toDate() : new Date(reg.timestamp);
-                if (!isNaN(d.getTime())) {
-                    const hh = String(d.getHours()).padStart(2, '0');
-                    const mm = String(d.getMinutes()).padStart(2, '0');
-                    return `${hh}:${mm}`;
-                }
-            } catch (e) { }
-        }
-        return null;
+        const horaVal = getVal(reg, 'hora', 5) || getVal(reg, 'timestamp', 2) || reg.hora || reg.timestamp;
+        if (!horaVal) return null;
+        const h24 = formatearHora24(horaVal);
+        return h24 !== '--:--' ? h24 : null;
     }
 
     const hoyStrLocal = getLocalHoyStr(new Date());
-    const entradaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'ENTRADA') : null;
-    const salidaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => r.fecha === hoyStrLocal && r.tipo === 'SALIDA') : null;
+    const entradaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => {
+        const rFecha = getVal(r, 'fecha', 0) || r.fecha || r[0];
+        const rTipo = String(getVal(r, 'tipo', 3) || r.tipo || r[3] || '').toUpperCase();
+        return rFecha === hoyStrLocal && (rTipo === 'ENTRADA' || rTipo === 'SOLO_ALMUERZO');
+    }) : null;
+    const salidaHoyReg = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => {
+        const rFecha = getVal(r, 'fecha', 0) || r.fecha || r[0];
+        const rTipo = String(getVal(r, 'tipo', 3) || r.tipo || r[3] || '').toUpperCase();
+        return rFecha === hoyStrLocal && rTipo === 'SALIDA';
+    }) : null;
 
     let horaEntradaMostrar = 'Pendiente';
     const horaRegEntrada = obtenerHoraFormateadaDeRegistro(entradaHoyReg);
     if (horaRegEntrada) {
         horaEntradaMostrar = horaRegEntrada;
     } else if (estado.horaEntrada) {
-        const match = estado.horaEntrada.match(/^(\d{1,2}):(\d{2})/);
-        horaEntradaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaEntrada;
+        const h24 = formatearHora24(estado.horaEntrada);
+        horaEntradaMostrar = h24 !== '--:--' ? h24 : estado.horaEntrada;
     } else if (tieneEntrada) {
         horaEntradaMostrar = 'Registrada';
     }
@@ -3262,8 +3320,8 @@ function renderHomePage() {
     if (horaRegSalida) {
         horaSalidaMostrar = horaRegSalida;
     } else if (estado.horaSalida) {
-        const match = estado.horaSalida.match(/^(\d{1,2}):(\d{2})/);
-        horaSalidaMostrar = match ? `${match[1].padStart(2, '0')}:${match[2]}` : estado.horaSalida;
+        const h24 = formatearHora24(estado.horaSalida);
+        horaSalidaMostrar = h24 !== '--:--' ? h24 : estado.horaSalida;
     } else if (tieneSalida) {
         horaSalidaMostrar = 'Registrada';
     }
@@ -3893,8 +3951,8 @@ function renderHistoryPage() {
     const entrada = registrosHoy.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
     const salida = registrosHoy.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
 
-    const entradaHora = entrada ? formatearHora(getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5]) : '--:--';
-    const salidaHora = salida ? formatearHora(getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5]) : '--:--';
+    const entradaHora = entrada ? formatearHora(getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5] || entrada[2]) : '--:--';
+    const salidaHora = salida ? formatearHora(getVal(salida, 'hora', 5) || getVal(salida, 'timestamp', 2) || salida.hora || salida.timestamp || salida[5] || salida[2]) : '--:--';
     const almuerzoText = entrada ? (getVal(entrada, 'almuerzo', 4) === 'SI' ? '🍽️ Dentro de planta' : getVal(entrada, 'almuerzo', 4) === 'NO' ? '🏠 Fuera de planta' : '❓ No registrado') : '❓ No registrado';
 
     mainContent.innerHTML = `
@@ -4057,9 +4115,63 @@ function getVal(reg, key, idx) {
     return (typeof reg === 'object' && key in reg) ? reg[key] : (Array.isArray(reg) ? reg[idx] : null);
 }
 
+function obtenerMinutos(valor) {
+    if (!valor) return null;
+    if (typeof valor === 'object') {
+        if (typeof valor.toDate === 'function') {
+            let d = valor.toDate();
+            return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+        }
+        if (typeof valor.seconds === 'number') {
+            let d = new Date(valor.seconds * 1000);
+            return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+        }
+        if (typeof valor._seconds === 'number') {
+            let d = new Date(valor._seconds * 1000);
+            return !isNaN(d.getTime()) ? d.getHours() * 60 + d.getMinutes() : null;
+        }
+        if (valor instanceof Date) return !isNaN(valor.getTime()) ? valor.getHours() * 60 + valor.getMinutes() : null;
+    }
+    if (typeof valor === 'number') {
+        if (valor > 0 && valor < 1) {
+            let s = Math.round(valor * 86400);
+            return Math.floor(s / 3600) * 60 + Math.floor((s % 3600) / 60);
+        }
+        if (valor > 1e11) {
+            let d = new Date(valor);
+            if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+        }
+        return null;
+    }
+    if (typeof valor === 'string') {
+        let s = valor.trim();
+        if (/^\d{4}-\d{2}-\d{2}T/.test(s) || s.includes('GMT') || s.includes('Z')) {
+            let d = new Date(s);
+            if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+        }
+        let m12 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?$/i);
+        if (m12) {
+            let h = parseInt(m12[1], 10);
+            let m = parseInt(m12[2], 10);
+            if (m12[3]) {
+                const isPm = /p/i.test(m12[3]);
+                const isAm = /a/i.test(m12[3]);
+                if (isPm && h < 12) h += 12;
+                if (isAm && h === 12) h = 0;
+            }
+            return h * 60 + m;
+        }
+        let d = new Date(s);
+        if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+        let m = s.match(/(\d{1,2}):(\d{2})/);
+        if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    }
+    return null;
+}
+
 /**
  * Parsea una fecha de forma segura soportando múltiples formatos
- * (ISO, D/M/YYYY HH:mm:ss, strings con AM/PM, etc.)
+ * (ISO, D/M/YYYY HH:mm:ss, strings con AM/PM, horas puras HH:mm:ss, etc.)
  */
 function parseDateSafe(ts) {
     if (!ts) return null;
@@ -4067,7 +4179,7 @@ function parseDateSafe(ts) {
 
     // Si es un objeto de Firebase (seconds/nanoseconds)
     if (ts && typeof ts.toDate === 'function') return ts.toDate();
-    if (ts && ts.seconds) return new Date(ts.seconds * 1000);
+    if (ts && typeof ts.seconds === 'number') return new Date(ts.seconds * 1000);
 
     let d = new Date(ts);
     if (!isNaN(d.getTime())) return d;
@@ -4075,25 +4187,37 @@ function parseDateSafe(ts) {
     // Intentar parsear formatos manuales (ej: 14/5/2026 16:20:25 o con p. m.)
     try {
         let s = String(ts).replace(',', '').trim();
-        // Normalizar p. m. / a. m. a PM/AM para que el motor de JS lo entienda mejor si es posible
         s = s.replace(/p\.\s*m\./i, 'PM').replace(/a\.\s*m\./i, 'AM');
+
+        // Si es solo una hora ej: "07:30:00" o "16:15"
+        const timeOnly = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+        if (timeOnly) {
+            let hour = parseInt(timeOnly[1], 10) || 0;
+            const min = parseInt(timeOnly[2], 10) || 0;
+            const sec = parseInt(timeOnly[3], 10) || 0;
+            const isPm = /PM/i.test(timeOnly[4] || '');
+            const isAm = /AM/i.test(timeOnly[4] || '');
+            if (isPm && hour < 12) hour += 12;
+            if (isAm && hour === 12) hour = 0;
+            const now = new Date();
+            return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, min, sec);
+        }
 
         const parts = s.split(' ');
         if (parts.length >= 1) {
             const dateParts = parts[0].split('/');
             if (dateParts.length === 3) {
-                const day = parseInt(dateParts[0]);
-                const month = parseInt(dateParts[1]) - 1;
-                const year = parseInt(dateParts[2]);
+                const day = parseInt(dateParts[0], 10);
+                const month = parseInt(dateParts[1], 10) - 1;
+                const year = parseInt(dateParts[2], 10);
 
                 let hour = 0, min = 0, sec = 0;
                 if (parts[1]) {
                     const timeParts = parts[1].split(':');
-                    hour = parseInt(timeParts[0]) || 0;
-                    min = parseInt(timeParts[1]) || 0;
-                    sec = parseInt(timeParts[2]) || 0;
+                    hour = parseInt(timeParts[0], 10) || 0;
+                    min = parseInt(timeParts[1], 10) || 0;
+                    sec = parseInt(timeParts[2], 10) || 0;
 
-                    // Ajuste manual de PM/AM
                     if (s.toUpperCase().includes('PM')) {
                         if (hour < 12) hour += 12;
                     } else if (s.toUpperCase().includes('AM')) {
@@ -4114,20 +4238,15 @@ function parseDateSafe(ts) {
 function calcularMinutosAtraso(horaEntrada, fechaEntrada) {
     try {
         if (!horaEntrada) return 0;
+        const mEntrada = obtenerMinutos(horaEntrada);
+        if (mEntrada === null) return 0;
 
-        // Convertir a Date
-        const d = new Date(horaEntrada);
-        if (isNaN(d.getTime())) return 0;
-
-        // Obtener hora en minutos desde medianoche
-        const horaReal = d.getHours() * 60 + d.getMinutes();
-
-        // Hora esperada desde configuración (ej: "08:00")
-        const [horaEsp, minEsp] = HORA_INICIO_ESPERADA.split(':').map(x => parseInt(x));
+        // Hora esperada desde configuración (ej: "07:30")
+        const [horaEsp, minEsp] = (HORA_INICIO_ESPERADA || "07:30").split(':').map(x => parseInt(x, 10));
         const horaEsperada = (horaEsp * 60) + (minEsp || 0);
 
-        // Calcular diferencia (solo positiva para atrasos con tolerancia de 5 minutos)
-        const diferencia = horaReal - horaEsperada;
+        // Tolerancia de 5 minutos
+        const diferencia = mEntrada - horaEsperada;
         return diferencia > 5 ? diferencia : 0;
     } catch (e) {
         return 0;
@@ -4253,42 +4372,7 @@ function calcularEstadisticas() {
         return esFeriado(fechaStr);
     }
 
-    function obtenerMinutos(valor) {
-        if (!valor) return null;
-        if (typeof valor === 'object') {
-            if (typeof valor.toDate === 'function') {
-                let d = valor.toDate();
-                return d.getHours() * 60 + d.getMinutes();
-            }
-            if (typeof valor.seconds === 'number') {
-                let d = new Date(valor.seconds * 1000);
-                return d.getHours() * 60 + d.getMinutes();
-            }
-            if (typeof valor._seconds === 'number') {
-                let d = new Date(valor._seconds * 1000);
-                return d.getHours() * 60 + d.getMinutes();
-            }
-            if (valor instanceof Date) return valor.getHours() * 60 + valor.getMinutes();
-        }
-        if (typeof valor === 'number') {
-            if (valor > 0 && valor < 1) {
-                let s = Math.round(valor * 86400);
-                return Math.floor(s / 3600) * 60 + Math.floor((s % 3600) / 60);
-            }
-            if (valor > 1e12) {
-                let d = new Date(valor);
-                if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
-            }
-            return null;
-        }
-        if (typeof valor === 'string') {
-            let m = valor.match(/(\d{1,2}):(\d{2})/);
-            if (m) return parseInt(m[1]) * 60 + parseInt(m[2]);
-            let d = new Date(valor);
-            if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
-        }
-        return null;
-    }
+
 
     Object.entries(grupos).forEach(([fechaKey, registrosDia]) => {
         const entrada = registrosDia.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'ENTRADA');
@@ -4708,17 +4792,16 @@ function actualizarHistorialAgrupado() {
 
             if (entrada && salida) {
                 try {
-                    const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
-                    const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
+                    const valE = getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5] || entrada[2];
+                    const valS = getVal(salida, 'hora', 5) || getVal(salida, 'timestamp', 2) || salida.hora || salida.timestamp || salida[5] || salida[2];
 
-                    const dEntrada = parseDateSafe(entradaTs);
-                    const dSalida = parseDateSafe(salidaTs);
+                    const mE = obtenerMinutos(valE);
+                    const mS = obtenerMinutos(valS);
 
-                    if (dEntrada && dSalida) {
-                        let horasBrutas = (dSalida - dEntrada) / (1000 * 60 * 60);
-                        // Restar 45 min (0.75 h)
-                        let horasNetas = Math.max(0, horasBrutas - 0.75);
-                        data.stats.horas += horasNetas;
+                    if (mE !== null && mS !== null && mS > mE) {
+                        let minsBrutos = mS - mE;
+                        let minsNetos = Math.max(0, minsBrutos - 45);
+                        data.stats.horas += (minsNetos / 60);
                     }
                 } catch (e) { }
             }
@@ -4784,7 +4867,7 @@ function actualizarHistorialAgrupado() {
             // Calcular atraso automáticamente si hay entrada
             let minutosAtrasoDelDia = 0;
             if (entrada) {
-                const horaEntrada = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
+                const horaEntrada = getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5] || entrada[2];
                 minutosAtrasoDelDia = calcularMinutosAtraso(horaEntrada, fecha);
             }
 
@@ -4798,21 +4881,19 @@ function actualizarHistorialAgrupado() {
             let duracion = '--';
             if (entrada && salida) {
                 try {
-                    const entradaTs = getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5];
-                    const salidaTs = getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5];
+                    const valE = getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5] || entrada[2];
+                    const valS = getVal(salida, 'hora', 5) || getVal(salida, 'timestamp', 2) || salida.hora || salida.timestamp || salida[5] || salida[2];
 
-                    const dE = parseDateSafe(entradaTs);
-                    const dS = parseDateSafe(salidaTs);
+                    const mE = obtenerMinutos(valE);
+                    const mS = obtenerMinutos(valS);
 
-                    if (dE && dS) {
-                        let msBrutos = dS - dE;
-                        // Restar 45 min = 45 * 60 * 1000 ms
-                        let msNetos = Math.max(0, msBrutos - (45 * 60 * 1000));
-
-                        if (msNetos > 0) {
-                            const h = Math.floor(msNetos / (1000 * 60 * 60));
-                            const m = Math.floor((msNetos % (1000 * 60 * 60)) / (1000 * 60));
-                            duracion = h + 'h ' + m + 'm';
+                    if (mE !== null && mS !== null && mS > mE) {
+                        let minsBrutos = mS - mE;
+                        let minsNetos = Math.max(0, minsBrutos - 45); // Restar 45 min almuerzo
+                        if (minsNetos > 0) {
+                            const h = Math.floor(minsNetos / 60);
+                            const m = minsNetos % 60;
+                            duracion = `${h}h ${m}m`;
                         } else {
                             duracion = '0h 0m';
                         }
@@ -4840,8 +4921,8 @@ function actualizarHistorialAgrupado() {
                 }
             } catch (e) { }
 
-            const entradaHora = esFaltaJustificada ? 'JUSTIFICADO' : (entrada ? formatearHora(getVal(entrada, 'timestamp', 2) || getVal(entrada, 'hora', 5) || entrada[2] || entrada[5]) : '--:--');
-            const salidaHora = esFaltaJustificada ? 'N/A' : (salida ? formatearHora(getVal(salida, 'timestamp', 2) || getVal(salida, 'hora', 5) || salida[2] || salida[5]) : '--:--');
+            const entradaHora = esFaltaJustificada ? 'JUSTIFICADO' : (entrada ? formatearHora(getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5] || entrada[2]) : '--:--');
+            const salidaHora = esFaltaJustificada ? 'N/A' : (salida ? formatearHora(getVal(salida, 'hora', 5) || getVal(salida, 'timestamp', 2) || salida.hora || salida.timestamp || salida[5] || salida[2]) : '--:--');
             const almuerzoVal = entrada ? (getVal(entrada, 'almuerzo', 4) || entrada[4]) : '';
             const almuerzoIcon = (almuerzoVal === 'SI' || almuerzoVal === 'PLANTA') ? '🏢' : (almuerzoVal === 'NO' || almuerzoVal === 'FUERA') ? '🏠' : '-';
 
