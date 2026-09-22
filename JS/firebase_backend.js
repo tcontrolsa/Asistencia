@@ -932,10 +932,23 @@ window.FirebaseBackend = {
             try { data = JSON.parse(params.datos); } catch (e) { }
         }
 
-        const empleadoId = data.id?.toString();
-        const empDoc = await db.collection('empleados').doc(empleadoId).get();
-        if (!empDoc.exists || empDoc.data().activo !== 'SI') return { error: "Empleado inválido o inactivo" };
+        const empleadoId = (data.id || data.empleadoId)?.toString();
+        if (!empleadoId) return { error: "ID de empleado faltante" };
+        let empDoc = await db.collection('empleados').doc(empleadoId).get();
+        if (!empDoc.exists) {
+            const snap = await db.collection('empleados').where('id', '==', empleadoId).limit(1).get();
+            if (!snap.empty) empDoc = snap.docs[0];
+            else {
+                const num = Number(empleadoId);
+                if (!isNaN(num)) {
+                    const snapNum = await db.collection('empleados').where('id', '==', num).limit(1).get();
+                    if (!snapNum.empty) empDoc = snapNum.docs[0];
+                }
+            }
+        }
+        if (!empDoc || !empDoc.exists) return { error: "Empleado no encontrado" };
         const infoEmpleado = empDoc.data();
+        if (infoEmpleado.activo && infoEmpleado.activo !== 'SI') return { error: "Empleado inactivo" };
 
         // Fechas
         let ahora = new Date();
@@ -976,8 +989,21 @@ window.FirebaseBackend = {
         }
 
         const modo = data.modo || "OFICINA";
-        const horasExtra = modo === "CAMPO" ? "SI" : "NO";
-        const autoriza = data.autoriza || (modo === "CAMPO" ? "SISTEMA (CAMPO)" : "");
+        let horasExtra = modo === "CAMPO" ? "SI" : "NO";
+        let autoriza = data.autoriza || (modo === "CAMPO" ? "SISTEMA (CAMPO)" : "");
+
+        if (data.tipo === 'SALIDA') {
+            const hPartes = String(horaStr).trim().split(':');
+            if (hPartes.length >= 2) {
+                const minsSalida = parseInt(hPartes[0], 10) * 60 + parseInt(hPartes[1], 10);
+                const dayOfWeek = fechaRegistro.getDay(); // 0: Dom, 6: Sab
+                const refSalida = dayOfWeek === 6 ? 900 : (dayOfWeek === 0 ? 450 : 975); // 16:15 = 975 min, Sabado 15:00 = 900 min
+                if (minsSalida - refSalida > 45) {
+                    horasExtra = "SI";
+                    if (!autoriza) autoriza = "SISTEMA (>45 MIN)";
+                }
+            }
+        }
 
         // Lógica de Estado de Emergencia dentro de ENTRADA
         if (data.tipo === 'ESTADO') {
@@ -1073,11 +1099,18 @@ window.FirebaseBackend = {
         };
 
         if (esAusenciaTipo(data.tipo)) {
-            nuevoRegistro.razon_ausencia = data.razon_ausencia || "";
+            nuevoRegistro.razon_ausencia = data.razon_ausencia || data.observacion || "";
+            nuevoRegistro.razon_justificac = data.razon_justificac || data.razon_ausencia || data.observacion || "";
+            nuevoRegistro.justificado = data.justificado || 'SI';
         } else if (data.razon_ausencia) {
             nuevoRegistro.observaciones = data.razon_ausencia;
             nuevoRegistro.razon_ausencia = data.razon_ausencia;
         }
+
+        if (data.justificado) nuevoRegistro.justificado = data.justificado;
+        if (data.quien_justifica) nuevoRegistro.quien_justifica = data.quien_justifica;
+        if (data.observacion) nuevoRegistro.observacion = data.observacion;
+        if (data.observaciones) nuevoRegistro.observaciones = data.observaciones;
 
         // Guardar en Firestore siempre (disponibilidad inmediata en cliente)
         await db.collection('registros').doc(idDocumento).set(nuevoRegistro, { merge: true });
@@ -1109,6 +1142,26 @@ window.FirebaseBackend = {
         }
 
         await db.collection('registros').doc(idDocumento).set(nuevoRegistro);
+
+        // Sincronización en segundo plano con Google Sheets (para registrar fila en REGISTROS)
+        if (esAusenciaTipo(data.tipo)) {
+            this._jsonp({
+                accion: 'guardarRegistro',
+                id: empleadoId,
+                empleadoId: empleadoId,
+                tipo: data.tipo,
+                fecha: fechaStr,
+                fecha_falta: fechaStr,
+                hora: horaStr,
+                modo: modo,
+                razon_ausencia: nuevoRegistro.razon_ausencia,
+                razon_justificac: nuevoRegistro.razon_justificac,
+                justificado: nuevoRegistro.justificado,
+                quien_justifica: data.quien_justifica || 'Supervisor'
+            }, 0, 1, 15000).catch(err => {
+                console.info("ℹ️ Sincronización secundaria Sheets (guardarRegistro):", err.message);
+            });
+        }
 
         return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
     },
@@ -1335,61 +1388,94 @@ window.FirebaseBackend = {
     },
 
     async actualizarAlmuerzoSupervisor(params) {
-        const id = params.empleadoId;
-        const nuevoAlmuerzo = params.almuerzo; // "SI" o "NO"
+        const id = String(params.empleadoId || '').trim();
+        const nuevoAlmuerzo = String(params.almuerzo || '').trim().toUpperCase(); // "SI" o "NO"
         const hoy = new Date();
         const hoyStrLocal = this._hoyStr();
         const targetFecha = params.fecha || hoyStrLocal;
 
-        // Buscar todos los registros de este empleado en Firestore
-        const allSnap = await db.collection('registros')
-            .where('empleadoId', '==', id)
-            .get();
+        // 1. Sincronizar con Google Sheets (hoja REGISTROS)
+        let sheetsPromise = (async () => {
+            try {
+                return await this._jsonp({
+                    accion: 'actualizarAlmuerzoSupervisor',
+                    empleadoId: id,
+                    almuerzo: nuevoAlmuerzo,
+                    fecha: targetFecha
+                }, 0, 2, 35000);
+            } catch (e) {
+                console.warn("⚠️ Aviso al sincronizar almuerzo en Sheets:", e.message);
+                return { error: e.message };
+            }
+        })();
 
-        const docs = allSnap.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
-        let matchedReg = docs.find(r => r.fecha === targetFecha && ['ENTRADA', 'ENTRADA_CAMPO', 'RETORNO_CAMPO', 'SOLO_ALMUERZO'].includes(r.tipo));
-        if (!matchedReg) {
-            matchedReg = docs.find(r => r.fecha === targetFecha);
+        // 2. Si el registro existe en Firestore (día actual o no archivado), actualizarlo
+        try {
+            const allSnap = await db.collection('registros')
+                .where('empleadoId', '==', id)
+                .get();
+
+            const docs = allSnap.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
+            let matchedReg = docs.find(r => r.fecha === targetFecha && ['ENTRADA', 'ENTRADA_CAMPO', 'RETORNO_CAMPO', 'SOLO_ALMUERZO'].includes(r.tipo));
+            if (!matchedReg) {
+                matchedReg = docs.find(r => r.fecha === targetFecha);
+            }
+
+            if (matchedReg) {
+                await db.collection('registros').doc(matchedReg.id).update({
+                    almuerzo: nuevoAlmuerzo
+                });
+            } else {
+                // Verificar si es usuario solo almuerzo para hoy
+                const empDoc = await db.collection('empleados').doc(id).get();
+                const empData = empDoc.exists ? empDoc.data() : {};
+                const cargo = String(empData.cargo || '').trim().toUpperCase();
+                const esSoloAlmuerzo = cargo === 'SOLO ALMUERZO' || cargo === 'SOLO_ALMUERZO' || cargo === 'SIN ASISTENCIA';
+                if (esSoloAlmuerzo && targetFecha === hoyStrLocal) {
+                    const h = hoy.getHours().toString().padStart(2, '0');
+                    const m = hoy.getMinutes().toString().padStart(2, '0');
+                    const s = hoy.getSeconds().toString().padStart(2, '0');
+                    const horaStr = `${h}:${m}:${s}`;
+                    const idLimpio = horaStr.replace(/:/g, '');
+                    const idDocumento = `${id}_SOLO_ALMUERZO_${targetFecha}_${idLimpio}`;
+                    await db.collection('registros').doc(idDocumento).set({
+                        empleadoId: id,
+                        nombre: empData.nombre || 'Desconocido',
+                        fecha: targetFecha,
+                        tipo: 'SOLO_ALMUERZO',
+                        almuerzo: nuevoAlmuerzo,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        modo: 'OFICINA',
+                        horasExtra: 'NO'
+                    });
+                }
+            }
+        } catch (errFs) {
+            console.warn("⚠️ Aviso al actualizar almuerzo en Firestore:", errFs.message);
         }
 
-        // Obtener datos del empleado para verificar su cargo
-        const empDoc = await db.collection('empleados').doc(id).get();
-        const empData = empDoc.exists ? empDoc.data() : {};
-        const nombre = empData.nombre || 'Desconocido';
-        const cargo = String(empData.cargo || '').trim().toUpperCase();
-        const esSoloAlmuerzo = cargo === 'SOLO ALMUERZO' || cargo === 'SOLO_ALMUERZO' || cargo === 'SIN ASISTENCIA';
+        // 3. Actualizar la caché local de archivados para que el cambio persista en la UI inmediatamente
+        try {
+            const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${id}_v2`;
+            const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+            if (storedArch) {
+                const archData = JSON.parse(storedArch);
+                if (archData && Array.isArray(archData.registros)) {
+                    archData.registros.forEach(r => {
+                        if (r.fecha === targetFecha) {
+                            r.almuerzo = nuevoAlmuerzo;
+                        }
+                    });
+                    localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archData));
+                }
+            }
+        } catch (e) { }
 
-        if (matchedReg) {
-            // Actualizar el registro existente en Firestore para la fecha especificada
-            await db.collection('registros').doc(matchedReg.id).update({
-                almuerzo: nuevoAlmuerzo
-            });
-        } else if (esSoloAlmuerzo) {
-            // ÚNICAMENTE los usuarios con cargo "Solo Almuerzo" / "Sin Asistencia" pueden tener tipo: SOLO_ALMUERZO
-            const h = hoy.getHours().toString().padStart(2, '0');
-            const m = hoy.getMinutes().toString().padStart(2, '0');
-            const s = hoy.getSeconds().toString().padStart(2, '0');
-            const horaStr = `${h}:${m}:${s}`;
-
-            const idLimpio = horaStr.replace(/:/g, '');
-            const idDocumento = `${id}_SOLO_ALMUERZO_${targetFecha}_${idLimpio}`;
-
-            await db.collection('registros').doc(idDocumento).set({
-                empleadoId: id,
-                nombre: nombre,
-                fecha: targetFecha,
-                tipo: 'SOLO_ALMUERZO',
-                almuerzo: nuevoAlmuerzo,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                modo: 'OFICINA',
-                horasExtra: 'NO'
-            });
-        } else {
-            // Para ningún otro usuario se crea un registro SOLO_ALMUERZO
-            console.log(`ℹ️ Usuario ordinario (${id} - ${cargo}) sin marcación previa para ${targetFecha}. No se crea SOLO_ALMUERZO.`);
+        // Si es fecha pasada, esperar la confirmación de Google Sheets
+        if (targetFecha < hoyStrLocal) {
+            const resSheets = await sheetsPromise;
+            return resSheets || { ok: true, mensaje: "Almuerzo actualizado" };
         }
-
-        // Los cambios de almuerzo se gestionan 100% en Firebase y se transfieren a Sheets al archivar datos históricos.
 
         // Registrar auditoría en Firebase
         try {
@@ -1412,10 +1498,12 @@ window.FirebaseBackend = {
         const empleadoId = params.empleadoId;
         const tipo = params.tipo;
         const fecha = params.fecha || this._hoyStr();
+        const hoyStrLocal = this._hoyStr();
+        const esFechaPasada = fecha < hoyStrLocal;
 
         if (!campo) return { error: "Falta el campo a actualizar" };
 
-        // 1. Sincronización con Google Sheets (en paralelo / no bloqueante)
+        // 1. Sincronización con Google Sheets (timeout de 35s con reintentos)
         let sheetsRes = null;
         const sheetsPromise = (async () => {
             try {
@@ -1450,16 +1538,48 @@ window.FirebaseBackend = {
                     justificado: params.justificado,
                     razon_justificac: params.razon_justificac,
                     quien_justifica: params.quien_justifica
-                }, 0, 1, 10000);
+                }, 0, 2, 35000);
             } catch (e) {
-                console.info("ℹ️ Aviso de sincronización secundaria Sheets:", e.message);
+                console.info("ℹ️ Aviso de sincronización Sheets:", e.message);
                 return { error: e.message };
             }
         })();
 
-        // Si era un ID explícito de Sheets, esperar y retornar resultado de Sheets
-        if (docId && String(docId).startsWith('arch_')) {
+        // 2. Actualizar caché local de archivados para que se refleje inmediatamente en el cliente
+        try {
+            const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${empleadoId}_v2`;
+            const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+            if (storedArch) {
+                const archData = JSON.parse(storedArch);
+                if (archData && Array.isArray(archData.registros)) {
+                    archData.registros.forEach(r => {
+                        if (r.fecha === fecha && (!tipo || r.tipo === tipo)) {
+                            if (campo === 'horasExtra') r.horasExtra = valor;
+                            else if (campo === 'almuerzo') r.almuerzo = valor;
+                            else if (campo === 'modo' || campo === 'modalidad') r.modo = valor;
+                            else if (campo === 'hora') r.hora = valor;
+                            else if (campo === 'timestamp') r.timestamp = valor;
+                            if (params.horasExtra !== undefined) r.horasExtra = params.horasExtra;
+                            if (params.almuerzo !== undefined) r.almuerzo = params.almuerzo;
+                            if (params.modo !== undefined) r.modo = params.modo;
+                        }
+                    });
+                    localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archData));
+                }
+            }
+        } catch (e) { }
+
+        // Si era un ID explícito de Sheets o es una fecha pasada, esperar y retornar resultado de Sheets
+        if ((docId && String(docId).startsWith('arch_')) || esFechaPasada) {
             sheetsRes = await sheetsPromise;
+            if (sheetsRes && sheetsRes.ok) {
+                return sheetsRes;
+            }
+            if (sheetsRes && sheetsRes.error && !esFechaPasada) {
+                // Si Sheets falló pero era fecha actual, continúa intentando Firestore
+            } else if (sheetsRes && sheetsRes.error && esFechaPasada) {
+                return sheetsRes;
+            }
             return sheetsRes || { ok: true };
         }
 
@@ -3562,8 +3682,11 @@ window.FirebaseBackend = {
                 else if (t === 'PERMISO_PERSONAL') res.razon_ausencia = 'Permiso Personal';
                 else if (t === 'CALAMIDAD_DOMESTICA') res.razon_ausencia = 'Calamidad Doméstica';
                 else if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') res.razon_ausencia = 'Salida a Campo';
+                else if (t === 'FALTA_JUSTIFICADA') res.razon_ausencia = 'Falta Justificada';
+                else if (t === 'SALIDA_JUSTIFICADA') res.razon_ausencia = 'Salida Justificada';
                 else res.razon_ausencia = res.tipo;
             }
+            if (!res.justificado) res.justificado = 'SI';
         }
 
         return res;

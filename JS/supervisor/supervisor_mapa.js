@@ -626,7 +626,7 @@ window.renderMatrizMapa = function (empleados, rangoInfo) {
             <td class="mapa-matrix-cell ${esHoy ? 'col-is-today' : ''}">
               <div class="mapa-status-chip" 
                    title="${escapeHtml(emp.nombre)} [${f}]: ${st.label} - ${st.detalle || st.sub}"
-                   onclick="${f >= hoyStr ? `window.mostrarModalFuturos('${emp.id}')` : `mostrarDetalle('${emp.id}')`}"
+                   onclick="${f >= hoyStr ? `window.mostrarModalFuturos('${emp.id}', '${f}')` : `mostrarDetalle('${emp.id}')`}"
                    style="background:${st.bg}; border:1px solid ${st.border}; color:${st.color};">
                 <div style="display:flex; align-items:center; gap:4px; font-size:10px; font-weight:800;">
                   <i class="${st.icono}"></i>

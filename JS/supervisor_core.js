@@ -9,7 +9,8 @@ const LNG_EMPRESA = -78.47896772889067;
 const RADIO_METROS = 250;
 
 let empCache = [];
-let periodos = [];
+let periodos = (typeof generarPeriodos === 'function') ? generarPeriodos() : [];
+let _reportesCustomData = [];
 let panelActual = 'asistencia';
 let filtroAsistenciaActual = 'todos';
 
@@ -611,7 +612,44 @@ function minutosAHHMMSS(minutos) {
   return String(horas).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ':' + String(segs).padStart(2, '0');
 }
 
+function calcularNetWorkedOrdinario(periodosDia, esFestivo) {
+  if (esFestivo) return 0;
+  let ordBruto = 0;
+  let hasLunchGap = false;
+  let ultimoSalidaMins = null;
 
+  if (Array.isArray(periodosDia)) {
+    periodosDia.forEach(p => {
+      if (!p || !p.entrada || !p.salida) return;
+      let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+      let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+      if (mE === null || mS === null || mS <= mE) return;
+
+      if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
+        if (!hasLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
+          let gap = mE - ultimoSalidaMins;
+          if (gap >= 30) {
+            hasLunchGap = true;
+          }
+        }
+      }
+      ultimoSalidaMins = mS;
+
+      let ordE = Math.max(HORA_ENTRADA_REF, mE);
+      let ordS = Math.min(HORA_SALIDA_REF, mS);
+      if (ordS > ordE) {
+        ordBruto += (ordS - ordE);
+      }
+    });
+  }
+
+  let ordNeto = ordBruto;
+  if (!hasLunchGap && ordNeto > 240) {
+    ordNeto -= 45;
+  }
+  return Math.max(0, ordNeto);
+}
+window.calcularNetWorkedOrdinario = calcularNetWorkedOrdinario;
 
 function esFeriadoODomingo(fechaStr) {
   if (!fechaStr) return false;
@@ -1912,12 +1950,14 @@ function filtrarResumenMensual() {
   }).join('');
 
   // Calcular almuerzos extra del período para agregar fila final si es > 0
+  const rangoInfo = (typeof window.obtenerRangoFechasReportes === 'function')
+    ? window.obtenerRangoFechasReportes()
+    : null;
   let idx = parseInt($('periodoMensual')?.value || 0);
-  let periodoSel = periodos[idx];
+  let periodoSel = rangoInfo?.periodo || periodos[idx];
   if (periodoSel) {
-    const fechaFiltro = $('filtroFechaReportes')?.value;
-    const R_INI = fechaFiltro ? fechaFiltro : periodoSel.inicio;
-    const R_FIN = fechaFiltro ? fechaFiltro : periodoSel.fin;
+    const R_INI = rangoInfo ? rangoInfo.R_INI : periodoSel.inicio;
+    const R_FIN = rangoInfo ? rangoInfo.R_FIN : periodoSel.fin;
 
     let extrasPeriodo = window.obtenerAlmuerzosExtraConsolidados(R_INI, R_FIN);
     let totalAlmExt = extrasPeriodo.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
@@ -2189,7 +2229,8 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
     }
 
     if (!isJustificado) {
-      let missingMinutes = Math.max(0, 480 - netWorked);
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, false) : netWorked;
+      let missingMinutes = Math.max(0, 480 - netWorkedOrdinario);
       let totalPermisosHoy = tiempoPersonal + tiempoMedico;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
       let tj = Math.max(0, unaccountedMissing - tiempoJustificado);
@@ -2346,11 +2387,31 @@ function cargarAsistencia() {
     let mEnt = e.entradaHoy ? obtenerMinutos(horaV) : null;
     let tard = mEnt !== null && mEnt > refEntradaHoy + 5;
 
-    let eHtml = e.entradaHoy ? `<span class="editable-cell" ${clickEntrada}>${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'}${tard ? ` <span class="delta pos">+${formatearMinutos(mEnt - refEntradaHoy)}</span>` : ''}</span>` : `<span class="editable-cell empty" ${clickEntrada}>-</span>`;
+    let eHtml = '';
+    if (e.entradaHoy) {
+      if (tard) {
+        eHtml = `<span class="editable-cell rep-badge-pill rep-badge-atraso-alert" ${clickEntrada} title="${canEditAttendance ? 'Clic para editar entrada' : 'Entrada con atraso'}"><i class="fas fa-clock" style="font-size:9.5px;"></i> ${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'} <span class="delta-badge">+${formatearMinutos(mEnt - refEntradaHoy)}</span></span>`;
+      } else {
+        eHtml = `<span class="editable-cell rep-badge-pill rep-badge-asis" ${clickEntrada} title="${canEditAttendance ? 'Clic para editar entrada' : 'Entrada puntual'}"><i class="fas fa-check" style="font-size:9.5px;"></i> ${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'}</span>`;
+      }
+    } else {
+      eHtml = `<span class="editable-cell rep-asis-empty" ${clickEntrada} title="${canEditAttendance ? 'Clic para ingresar entrada manual' : ''}">—</span>`;
+    }
 
     let sHoraV = e.horaSalidaMs || sReg?.hora || sReg?.timestamp;
     let mSal = e.salidaHoy ? obtenerMinutos(sHoraV) : null;
-    let sHtml = e.salidaHoy ? `<span class="editable-cell" ${clickSalida}>${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}${mSal - refSalidaHoy > 1 ? ` <span class="delta neg">+${formatearMinutos(mSal - refSalidaHoy)}</span>` : ''}</span>` : (e.entradaHoy ? `<span class="editable-cell empty" ${clickSalida}>Pendiente</span>` : `<span class="editable-cell empty" ${clickSalida}>-</span>`);
+    let sHtml = '';
+    if (e.salidaHoy) {
+      if (mSal - refSalidaHoy > 1) {
+        sHtml = `<span class="editable-cell rep-badge-pill rep-badge-ex50" ${clickSalida} title="${canEditAttendance ? 'Clic para editar salida' : 'Salida con tiempo adicional'}"><i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i> ${mSal !== null ? minsToHHMM(mSal) : 'Registrada'} <span class="delta-badge" style="background:#dbeafe; color:#1d4ed8;">+${formatearMinutos(mSal - refSalidaHoy)}</span></span>`;
+      } else {
+        sHtml = `<span class="editable-cell rep-badge-pill rep-badge-alm" ${clickSalida} title="${canEditAttendance ? 'Clic para editar salida' : 'Salida registrada'}"><i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i> ${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}</span>`;
+      }
+    } else if (e.entradaHoy) {
+      sHtml = `<span class="editable-cell rep-badge-pill rep-badge-atraso-alert" ${clickSalida} style="background:#fffbeb; color:#b45309; border:1px dashed #fde68a;" title="${canEditAttendance ? 'Clic para registrar salida' : 'Pendiente de salida'}"><i class="fas fa-hourglass-half" style="font-size:9px;"></i> Pendiente</span>`;
+    } else {
+      sHtml = `<span class="editable-cell rep-asis-empty" ${clickSalida} title="${canEditAttendance ? 'Clic para registrar salida manual' : ''}">—</span>`;
+    }
 
     let fReg = (e.registros || []).find(r => {
       const t = String(r.tipo).toUpperCase();
@@ -2360,27 +2421,27 @@ function cargarAsistencia() {
     let isSinAsistencia = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
 
     let estHtml = '';
-    let ausenciaHtml = '-';
+    let ausenciaHtml = '<span class="rep-asis-empty">—</span>';
 
     if (isSinAsistencia) {
-      estHtml = '<span class="pill" style="background:#f1f5f9; color:#64748b; border:1px dashed #cbd5e1;"><i class="fas fa-utensils"></i> Solo Alm.</span>';
-      ausenciaHtml = '<span class="pill dim" style="opacity:0.6; font-size:10px; background:transparent; border:none;">N/A</span>';
+      estHtml = '<span class="rep-badge-pill" style="background:#f1f5f9; color:#64748b; border:1px dashed #cbd5e1;"><i class="fas fa-utensils"></i> Solo Alm.</span>';
+      ausenciaHtml = '<span class="rep-asis-empty" style="font-size:11px;">N/A</span>';
     } else {
       if (!e.entradaHoy) {
-        estHtml = '<span class="pill miss"><i class="fas fa-times"></i> Ausente</span>';
+        estHtml = '<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle"></i> Ausente</span>';
 
         // WhatsApp Button
         let tel = (e.telefono || '').replace(/\D/g, '');
         if (tel && tel.length >= 9) {
           if (tel.startsWith('0')) tel = '593' + tel.substring(1);
           let msg = encodeURIComponent("Hola, te recordamos que no has registrado tu asistencia el día de hoy.");
-          estHtml += ` <a href="https://wa.me/${tel}?text=${msg}" target="_blank" onclick="event.stopPropagation();" style="color:#25d366; margin-left:6px; font-size:16px; vertical-align:middle; transition: transform 0.2s;" title="Notificar por WhatsApp"><i class="fab fa-whatsapp"></i></a>`;
+          estHtml += ` <a href="https://wa.me/${tel}?text=${msg}" target="_blank" onclick="event.stopPropagation();" style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#25d366; color:#ffffff; font-size:12px; margin-left:6px; vertical-align:middle; text-decoration:none; box-shadow:0 1px 3px rgba(37,211,102,0.3); transition:transform 0.2s;" title="Notificar por WhatsApp"><i class="fab fa-whatsapp"></i></a>`;
         }
 
         // Dropdown Razón
         let selectHtml = `
-                    <div style="position:relative; width:100%; min-width:120px;">
-                        <select onchange="window.guardarRazonAusenciaGlobal('${e.id}', this.value)" onclick="event.stopPropagation();" style="font-size:10px; padding:4px 8px; border-radius:12px; width:100%; border:1px solid ${razonAusenciaHoy ? '#fdba74' : '#cbd5e1'}; background:${razonAusenciaHoy ? '#fff7ed' : '#f8fafc'}; color:${razonAusenciaHoy ? '#c2410c' : '#64748b'}; font-weight:600; cursor:pointer; outline:none;">
+                    <div style="position:relative; width:100%; min-width:130px;">
+                        <select onchange="window.guardarRazonAusenciaGlobal('${e.id}', this.value)" onclick="event.stopPropagation();" class="select-ausencia-modern" style="border:1px solid ${razonAusenciaHoy ? '#fdba74' : '#cbd5e1'}; background:${razonAusenciaHoy ? '#fff7ed' : '#ffffff'}; color:${razonAusenciaHoy ? '#c2410c' : '#475569'};">
                             <option value="">${razonAusenciaHoy ? 'Cambiar Razón...' : '+ Agregar Razón'}</option>
                             <option value="Vacación" ${razonAusenciaHoy === 'Vacación' ? 'selected' : ''}>🏖️ Vacación</option>
                             <option value="Permiso Médico" ${razonAusenciaHoy === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
@@ -2394,37 +2455,70 @@ function cargarAsistencia() {
                     </div>
                   `;
         if (razonAusenciaHoy && !['Vacación', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Trabajo de Campo', 'Salida a Campo', 'Cumpleaños', 'Salida Justificada'].includes(razonAusenciaHoy)) {
-          selectHtml += `<div style="font-size:10px; color:var(--indigo); margin-top:4px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
+          selectHtml += `<div style="font-size:10px; color:#4338ca; margin-top:3px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
         }
         ausenciaHtml = selectHtml;
       } else {
-        estHtml = tard ? '<span class="pill late"><i class="fas fa-exclamation"></i> Tarde</span>' : '<span class="pill ok"><i class="fas fa-check"></i> Puntual</span>';
+        estHtml = tard ? '<span class="rep-badge-pill rep-badge-atraso-alert"><i class="fas fa-exclamation-triangle"></i> Tarde</span>' : '<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check-circle"></i> Puntual</span>';
       }
     }
 
     // Modo y Extras
     let modo = eReg?.modo || sReg?.modo || (e.entradaHoy ? 'EMPRESA' : '-');
     let extrasVal = (eReg?.horasExtra === 'SI' || sReg?.horasExtra === 'SI') ? 'SI' : 'NO';
-    let extras = (extrasVal === 'SI') ? '<span class="pill ok">AUTORIZADO</span>' : '<span class="pill dim">NO</span>';
-    if ((eReg?.autoriza || '').includes('CAMPO')) extras = '<span class="pill ok" title="Auto-autorizado por Campo">CAMPO</span>';
+
+    let modoBadge = '';
+    if (modo === 'CAMPO') {
+      modoBadge = '<span class="rep-badge-pill rep-badge-campo"><i class="fas fa-truck-pickup" style="font-size:9.5px;"></i> CAMPO</span>';
+    } else if (modo === 'EMPRESA' || modo === 'PLANTA') {
+      modoBadge = '<span class="rep-badge-pill" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1;"><i class="fas fa-building" style="font-size:9.5px;"></i> PLANTA</span>';
+    } else {
+      modoBadge = '<span class="rep-asis-empty">—</span>';
+    }
+
+    let extrasBadge = '';
+    if ((eReg?.autoriza || '').includes('CAMPO')) {
+      extrasBadge = '<span class="rep-badge-pill rep-badge-campo" title="Auto-autorizado por Campo"><i class="fas fa-check-double" style="font-size:9.5px;"></i> CAMPO</span>';
+    } else if (extrasVal === 'SI') {
+      extrasBadge = '<span class="rep-badge-pill rep-badge-ex50" title="Horas Extras Autorizadas"><i class="fas fa-bolt" style="font-size:9.5px;"></i> AUTORIZADO</span>';
+    } else {
+      extrasBadge = '<span class="rep-badge-pill" style="color:#94a3b8; background:#f8fafc; border:1px solid #e2e8f0; font-weight:600;">NO</span>';
+    }
 
     // Hacer modo y extras editables para Admin y Sup Admin
-    let modoHtml = modo;
-    let extrasHtml = extras;
+    let modoHtml = modoBadge;
+    let extrasHtml = extrasBadge;
     if (canEditAttendance) {
-      const clickModo = `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'modo', '${modo}')"`;
-      const clickExtras = `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'horasExtra', '${extrasVal}')"`;
-      modoHtml = `<span class="editable-pill" ${clickModo}>${modo}</span>`;
-      extrasHtml = `<span class="editable-pill" ${clickExtras}>${extras}</span>`;
+      const clickModo = `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'modo', '${modo}', '${hoy}')"`;
+      const clickExtras = `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'horasExtra', '${extrasVal}', '${hoy}')"`;
+      modoHtml = `<span class="editable-pill" ${clickModo} title="Clic para cambiar modo">${modoBadge}</span>`;
+      extrasHtml = `<span class="editable-pill" ${clickExtras} title="Clic para editar extras">${extrasBadge}</span>`;
     }
 
     let toggle = '';
     let puedeEditar = e.entradaHoy || canEditAttendance || isSinAsistencia;
 
     if (!e.entradaHoy && !isSinAsistencia) {
-      toggle = `<span class="pill dim" style="font-size:10px; opacity:0.5; background:transparent; border:none;">Ausente</span>`;
+      toggle = `<span class="rep-asis-empty" style="font-size:11px; opacity:0.6;">Ausente</span>`;
     } else {
-      toggle = `<div class="almuerzo-toggle"><button class="toggle-option ${(e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA') ? 'active-si' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-building"></i> Sí</button><button class="toggle-option ${(e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA') ? 'active-no' : ''} ${!puedeEditar ? 'disabled' : ''}" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" ${!puedeEditar ? 'disabled' : ''}><i class="fas fa-home"></i> No</button></div>`;
+      const isSi = (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA');
+      const isNo = (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA');
+      toggle = `
+        <div class="almuerzo-toggle-modern">
+          <button type="button" class="almuerzo-btn-toggle ${isSi ? 'active-si' : ''} ${!puedeEditar ? 'disabled' : ''}" 
+                  onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','SI')" 
+                  ${!puedeEditar ? 'disabled' : ''} 
+                  title="Almuerzo en Planta">
+            <i class="fas fa-utensils"></i> Sí
+          </button>
+          <button type="button" class="almuerzo-btn-toggle ${isNo ? 'active-no' : ''} ${!puedeEditar ? 'disabled' : ''}" 
+                  onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}','NO')" 
+                  ${!puedeEditar ? 'disabled' : ''} 
+                  title="Sin Almuerzo">
+            <i class="fas fa-times"></i> No
+          </button>
+        </div>
+      `;
     }
 
     return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, _razonAusenciaHoy: razonAusenciaHoy, id: e.id, isSinAsistencia, _fechasRegularizar: e._fechasRegularizar || [] };
@@ -2437,13 +2531,13 @@ function cargarAsistencia() {
       nombre: `Visitante/Extra (${extra.invitado || extra.nombre || extra.observaciones || 'Sin detalle'})`,
       area: extra.area || 'Visita/Extra',
       foto_url: '',
-      _eH: `<span class="pill dim" style="opacity:0.5; font-size:10px;">${extra.hora || '--:--'}</span>`,
-      _sH: `<span class="pill dim" style="opacity:0.5; font-size:10px;">--:--</span>`,
-      _modo: `<span class="pill dim" style="opacity:0.5; font-size:10px;">N/A</span>`,
-      _extras: `<span class="pill dim" style="opacity:0.5; font-size:10px;">N/A</span>`,
-      _est: `<span class="pill" style="background:#f3f4f6; color:#6b7280; font-size:10px; border:1px dashed #cbd5e1;"><i class="fas fa-id-badge"></i> Invitado</span>`,
-      _ausencia: `<span class="pill dim" style="opacity:0.5; font-size:10px;">—</span>`,
-      _toggle: `<span class="pill" style="background:#dbeafe; color:#1e40af; font-size:11px; font-weight:600;"><i class="fas fa-building" style="margin-right:4px;"></i> +${extra.cantidad || 1} Extra(s)</span>`,
+      _eH: `<span class="rep-badge-pill" style="background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; font-size:10.5px;"><i class="fas fa-clock" style="font-size:9px;"></i> ${extra.hora || '--:--'}</span>`,
+      _sH: `<span class="rep-asis-empty">—</span>`,
+      _modo: `<span class="rep-asis-empty">N/A</span>`,
+      _extras: `<span class="rep-asis-empty">N/A</span>`,
+      _est: `<span class="rep-badge-pill" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:10.5px;"><i class="fas fa-id-badge"></i> Invitado</span>`,
+      _ausencia: `<span class="rep-asis-empty">—</span>`,
+      _toggle: `<span class="rep-badge-pill" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; font-size:11px; font-weight:700;"><i class="fas fa-utensils" style="margin-right:4px;"></i> +${extra.cantidad || 1} Extra(s)</span>`,
       _entradaHoy: false,
       _salidaHoy: false,
       _tard: false,
@@ -2548,10 +2642,11 @@ function filtrarAsistenciaTabla() {
     $('searchTotalCount').textContent = (window._asisData || []).length;
   }
 
-  // Mantener orden alfabético
-  data.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+  // Mantener orden alfabético respetando dirección de ordenamiento
+  const mult = (typeof _sortAsisDir !== 'undefined' && _sortAsisDir === 'desc') ? -1 : 1;
+  data.sort((a, b) => mult * (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
   if (!data.length) {
-    $('asistenciaTablaContainer').innerHTML = '<div class="empty-state"><i class="fas fa-users-slash"></i><p>No hay empleados que coincidan con el filtro</p></div>';
+    $('asistenciaTablaContainer').innerHTML = '<div class="empty-state" style="padding:45px 20px; text-align:center;"><i class="fas fa-users-slash" style="font-size:32px; color:#cbd5e1; margin-bottom:12px;"></i><p style="color:#64748b; font-weight:600; font-size:13px;">No hay colaboradores que coincidan con el filtro seleccionado</p></div>';
     return;
   }
 
@@ -2575,29 +2670,30 @@ function filtrarAsistenciaTabla() {
     return extStr.includes('AUTORIZADO') || extStr.includes('CAMPO');
   }).length;
 
+  const sortIcon = (typeof _sortAsisDir !== 'undefined' && _sortAsisDir === 'desc') ? 'fa-sort-alpha-up-alt' : 'fa-sort-alpha-down';
   const colDefs = {
     'Empleado': {
-      header: `<th onclick="sortAsistencia('nombre')" style="cursor:pointer">Empleado <i class="fas fa-sort" style="opacity:.3;font-size:9px"></i></th>`,
+      header: `<th onclick="sortAsistencia('nombre')" style="cursor:pointer; background:#f8fafc; color:#1e293b; border-bottom:2px solid #2563eb; position:sticky; left:0; z-index:30;" title="Clic para alternar orden alfabético"><i class="fas fa-user-tie" style="color:#2563eb; margin-right:6px;"></i> Colaborador <i class="fas ${sortIcon}" style="color:#2563eb; font-size:10px; margin-left:4px;"></i></th>`,
       body: e => {
         const cantReg = (e._fechasRegularizar || []).length;
         const targetF = cantReg > 0 ? e._fechasRegularizar[0].fecha : '';
         const badgeReg = cantReg > 0
-          ? `<button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${targetF}')" title="${cantReg} fecha(s) por regularizar. Clic para ir directamente al registro del ${targetF}" style="background:#ffedd5; color:#c2410c; border:1px solid #fed7aa; border-radius:4px; padding:1px 5px; font-size:9px; font-weight:800; margin-left:5px; display:inline-flex; align-items:center; gap:3px; cursor:pointer;"><i class="fas fa-calendar-times" style="font-size:8.5px;"></i> ${cantReg} pend.</button>`
+          ? `<button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${targetF}')" title="${cantReg} fecha(s) por regularizar. Clic para ir directamente al registro del ${targetF}" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; border-radius:5px; padding:1.5px 6px; font-size:9.5px; font-weight:800; margin-left:6px; display:inline-flex; align-items:center; gap:3px; cursor:pointer;"><i class="fas fa-calendar-times" style="font-size:9px;"></i> ${cantReg} pend.</button>`
           : '';
-        return `<td><div class="employee-cell">${photoCell(e)}<div><strong>${escapeHtml(e.nombre)}</strong>${badgeReg}${e.id && !e.isVisitante ? `<div style="font-size:10px; color:#64748b; font-weight:600;"><i class="fas fa-id-badge" style="font-size:9px; color:#6366f1;"></i> ID: ${escapeHtml(e.id)}</div>` : ''}</div></div></td>`;
+        return `<td><div class="employee-cell">${photoCell(e)}<div><strong style="color:#0f172a; font-size:12.5px;">${escapeHtml(e.nombre)}</strong>${badgeReg}${e.id && !e.isVisitante ? `<div style="font-size:10px; color:#64748b; font-weight:600; margin-top:1px;"><i class="fas fa-id-badge" style="font-size:9.5px; color:#6366f1;"></i> ID: ${escapeHtml(e.id)}</div>` : ''}</div></div></td>`;
       },
-      footer: `<td><strong>TOTALES (${totalVisible})</strong></td>`
+      footer: `<td><strong style="color:#38bdf8; font-size:12px; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-users" style="color:#38bdf8;"></i> TOTALES (${totalVisible})</strong></td>`
     },
     'Área': {
-      header: `<th>Área</th>`,
-      body: e => `<td>${escapeHtml(e.area || '—')}</td>`,
-      footer: `<td>—</td>`
+      header: `<th style="background:#f8fafc; color:#475569; border-bottom:2px solid #64748b;"><i class="fas fa-building" style="color:#64748b; margin-right:5px;"></i> Área</th>`,
+      body: e => `<td><span class="rep-asis-chip"><i class="fas fa-briefcase" style="font-size:9px; color:#94a3b8;"></i> ${escapeHtml(e.area || '—')}</span></td>`,
+      footer: `<td style="color:#94a3b8;">—</td>`
     },
     'Regularización': {
-      header: `<th>Fechas por Regularizar</th>`,
+      header: `<th style="background:#fff7ed; color:#c2410c; border-bottom:2px solid #ea580c;"><i class="fas fa-calendar-times" style="color:#ea580c; margin-right:5px;"></i> Fechas por Regularizar</th>`,
       body: e => {
         const list = e._fechasRegularizar || [];
-        if (!list.length) return `<td style="text-align:center;"><span style="color:#94a3b8; font-size:11px;">Al día</span></td>`;
+        if (!list.length) return `<td style="text-align:center;"><span style="color:#10b981; font-weight:600; font-size:11px; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check-circle" style="font-size:10px;"></i> Al día</span></td>`;
         const chips = list.slice(0, 3).map(f => `
           <button type="button" 
                   onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${f.fecha}')" 
@@ -2613,42 +2709,42 @@ function filtrarAsistenciaTabla() {
           : '';
         return `<td><div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;"><button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${list[0].fecha}')" class="pill warn" style="background:#ffedd5; color:#c2410c; font-weight:800; font-size:10px; border:1px solid #fed7aa; cursor:pointer;" title="Clic para ir a la primera fecha pendiente (${list[0].fecha})"><i class="fas fa-calendar-times"></i> ${list.length}</button> ${chips} ${mas}</div></td>`;
       },
-      footer: `<td>${data.filter(e => (e._fechasRegularizar || []).length > 0).length} Colaboradores</td>`
+      footer: `<td><span class="rep-badge-pill" style="background:#334155; color:#fdba74; border:1px solid #475569;"><i class="fas fa-calendar-times" style="font-size:9px;"></i> ${data.filter(e => (e._fechasRegularizar || []).length > 0).length} Pend.</span></td>`
     },
     'Entrada': {
-      header: `<th>Entrada</th>`,
-      body: e => `<td>${e._eH}</td>`,
-      footer: `<td>${countEntradas} Entradas</td>`
+      header: `<th style="background:#ecfdf5; color:#047857; border-bottom:2px solid #047857; text-align:center;"><i class="fas fa-sign-in-alt" style="color:#047857; margin-right:5px;"></i> Entrada</th>`,
+      body: e => `<td style="text-align:center;">${e._eH}</td>`,
+      footer: `<td style="text-align:center;"><span class="rep-badge-pill" style="background:#064e3b; color:#4ade80; border:1px solid #047857;"><i class="fas fa-sign-in-alt" style="font-size:9.5px;"></i> ${countEntradas} Entradas</span></td>`
     },
     'Salida': {
-      header: `<th>Salida</th>`,
-      body: e => `<td>${e._sH}</td>`,
-      footer: `<td>${countSalidas} Salidas</td>`
+      header: `<th style="background:#f0f9ff; color:#0284c7; border-bottom:2px solid #0284c7; text-align:center;"><i class="fas fa-sign-out-alt" style="color:#0284c7; margin-right:5px;"></i> Salida</th>`,
+      body: e => `<td style="text-align:center;">${e._sH}</td>`,
+      footer: `<td style="text-align:center;"><span class="rep-badge-pill" style="background:#0c4a6e; color:#38bdf8; border:1px solid #0284c7;"><i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i> ${countSalidas} Salidas</span></td>`
     },
     'Modo': {
-      header: `<th>Modo</th>`,
-      body: e => `<td>${e._modo}</td>`,
-      footer: `<td>${countCampoVis} Campo</td>`
+      header: `<th style="background:#ecfeff; color:#0891b2; border-bottom:2px solid #0891b2; text-align:center;"><i class="fas fa-laptop-house" style="color:#0891b2; margin-right:5px;"></i> Modo</th>`,
+      body: e => `<td style="text-align:center;">${e._modo}</td>`,
+      footer: `<td style="text-align:center;"><span class="rep-badge-pill" style="background:#164e63; color:#67e8f9; border:1px solid #0891b2;"><i class="fas fa-truck-pickup" style="font-size:9.5px;"></i> ${countCampoVis} Campo</span></td>`
     },
     'Extras': {
-      header: `<th>Extras</th>`,
-      body: e => `<td>${e._extras}</td>`,
-      footer: `<td>${countExtrasAut} Aut.</td>`
+      header: `<th style="background:#eff6ff; color:#1d4ed8; border-bottom:2px solid #1d4ed8; text-align:center;"><i class="fas fa-bolt" style="color:#1d4ed8; margin-right:5px;"></i> Extras</th>`,
+      body: e => `<td style="text-align:center;">${e._extras}</td>`,
+      footer: `<td style="text-align:center;"><span class="rep-badge-pill" style="background:#1e3a8a; color:#93c5fd; border:1px solid #1d4ed8;"><i class="fas fa-bolt" style="font-size:9.5px;"></i> ${countExtrasAut} Aut.</span></td>`
     },
     'Estado': {
-      header: `<th>Estado</th>`,
-      body: e => `<td>${e._est}</td>`,
-      footer: `<td>—</td>`
+      header: `<th style="background:#f0fdf4; color:#15803d; border-bottom:2px solid #15803d; text-align:center;"><i class="fas fa-shield-alt" style="color:#15803d; margin-right:5px;"></i> Estado</th>`,
+      body: e => `<td style="text-align:center;">${e._est}</td>`,
+      footer: `<td style="text-align:center; color:#94a3b8;">—</td>`
     },
     'Razón Ausencia': {
-      header: `<th>Razón Ausencia</th>`,
-      body: e => `<td>${e._ausencia}</td>`,
-      footer: `<td>—</td>`
+      header: `<th style="background:#faf5ff; color:#7c3aed; border-bottom:2px solid #7c3aed; text-align:center;"><i class="fas fa-file-signature" style="color:#7c3aed; margin-right:5px;"></i> Razón Ausencia</th>`,
+      body: e => `<td style="text-align:center;">${e._ausencia}</td>`,
+      footer: `<td style="text-align:center; color:#94a3b8;">—</td>`
     },
     'Almuerzo': {
-      header: `<th>Almuerzo</th>`,
-      body: e => `<td>${e._toggle}</td>`,
-      footer: `<td>${countAlmPlanta} Planta</td>`
+      header: `<th style="background:#f0f9ff; color:#0284c7; border-bottom:2px solid #0284c7; text-align:center;"><i class="fas fa-utensils" style="color:#0284c7; margin-right:5px;"></i> Almuerzo</th>`,
+      body: e => `<td style="text-align:center;">${e._toggle}</td>`,
+      footer: `<td style="text-align:center;"><span class="rep-badge-pill" style="background:#713f12; color:#fde047; border:1px solid #a16207;"><i class="fas fa-utensils" style="font-size:9.5px;"></i> ${countAlmPlanta} Planta</span></td>`
     }
   };
 
@@ -2683,7 +2779,7 @@ function filtrarAsistenciaTabla() {
   }).join('');
 
   let footerCellsHtml = activeCols.map(c => colDefs[c].footer).join('');
-  let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid var(--g300); position:sticky; bottom:0; z-index:10;">${footerCellsHtml}</tr>`;
+  let footerHtml = `<tr class="rep-totals-row">${footerCellsHtml}</tr>`;
 
   html += `</tbody><tfoot>${footerHtml}</tfoot></table>`;
   $('asistenciaTablaContainer').innerHTML = html;
@@ -2870,30 +2966,31 @@ function sortAsistencia(campo) {
   });
   cargarAsistencia();
 }
+window.sortAsistencia = sortAsistencia;
 
 // ============================================================
 // GESTOR DE COLUMNAS VISIBLES
 // ============================================================
 const COLUMNAS_DISPONIBLES = [
-  { id: 'area', label: 'Área', tipo: 'texto' },
-  { id: 'asistencias', label: 'Asistencias', tipo: 'numero' },
-  { id: 'faltas', label: 'Faltas', tipo: 'numero' },
-  { id: 'atrasos', label: 'Nº Atrasos', tipo: 'numero' },
-  { id: 'minutosAtrasos', label: 'Total Tiempo Atrasos', tipo: 'tiempo' },
-  { id: 'almPlanta', label: 'Almuerzos en Planta', tipo: 'numero' },
-  { id: 'almFuera', label: 'Almuerzos Fuera', tipo: 'numero' },
-  { id: 'puntualidad', label: 'Puntualidad', tipo: 'pct' },
-  { id: 'permisoMedico', label: 'Permiso Médico', tipo: 'tiempo' },
-  { id: 'permisoPersonal', label: 'Permiso Personal', tipo: 'tiempo' },
-  { id: 'tiempoPorJustificar', label: 'Tiempo por Justificar', tipo: 'tiempo' },
-  { id: 'tiempoADescontar', label: 'Tiempo a Descontar', tipo: 'tiempo' },
-  { id: 'horasExtra50', label: 'Horas Extra 50% (A)', tipo: 'tiempo' },
-  { id: 'horasExtra100', label: 'Horas Extra 100% (B)', tipo: 'tiempo' },
-  { id: 'horasCampoNormales', label: 'Horas Campo Normales', tipo: 'tiempo' },
-  { id: 'horasCampo50', label: 'Horas Campo 50% (C)', tipo: 'tiempo' },
-  { id: 'horasCampo100', label: 'Horas Campo 100% (D)', tipo: 'tiempo' },
-  { id: 'totalExtras50', label: 'Total Extras 50% (A+C)', tipo: 'tiempo' },
-  { id: 'totalExtras100', label: 'Total Extras 100% (B+D)', tipo: 'tiempo' }
+  { id: 'area', label: 'Área', tipo: 'texto', cat: 'general', catLabel: 'Datos Generales', icono: 'fa-building', color: '#475569', colorBg: '#f8fafc', colorHeader: '#334155' },
+  { id: 'asistencias', label: 'Asistencias', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-user-check', color: '#047857', colorBg: '#ecfdf5', colorHeader: '#047857' },
+  { id: 'faltas', label: 'Faltas', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-calendar-times', color: '#b91c1c', colorBg: '#fef2f2', colorHeader: '#b91c1c' },
+  { id: 'atrasos', label: 'Nº Atrasos', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-clock', color: '#d97706', colorBg: '#fffbeb', colorHeader: '#d97706' },
+  { id: 'minutosAtrasos', label: 'Tiempo Atrasos', tipo: 'tiempo', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-hourglass-half', color: '#b45309', colorBg: '#fffbeb', colorHeader: '#b45309' },
+  { id: 'almPlanta', label: 'Alm. Planta', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-utensils', color: '#0284c7', colorBg: '#f0f9ff', colorHeader: '#0284c7' },
+  { id: 'almFuera', label: 'Alm. Fuera', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-box', color: '#0369a1', colorBg: '#f0f9ff', colorHeader: '#0369a1' },
+  { id: 'puntualidad', label: 'Puntualidad', tipo: 'pct', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-chart-pie', color: '#15803d', colorBg: '#f0fdf4', colorHeader: '#15803d' },
+  { id: 'permisoMedico', label: 'Permiso Médico', tipo: 'tiempo', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-notes-medical', color: '#0d9488', colorBg: '#f0fdfa', colorHeader: '#0d9488' },
+  { id: 'permisoPersonal', label: 'Permiso Personal', tipo: 'tiempo', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-user-clock', color: '#7c3aed', colorBg: '#f5f3ff', colorHeader: '#7c3aed' },
+  { id: 'tiempoPorJustificar', label: 'Por Justificar', tipo: 'tiempo', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-question-circle', color: '#c026d3', colorBg: '#fdf4ff', colorHeader: '#c026d3' },
+  { id: 'tiempoADescontar', label: 'A Descontar', tipo: 'tiempo', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-file-invoice-dollar', color: '#be123c', colorBg: '#fff1f2', colorHeader: '#be123c' },
+  { id: 'horasExtra50', label: 'H. Extra 50% (A)', tipo: 'tiempo', cat: 'extras', catLabel: 'Horas Extraordinarias', icono: 'fa-bolt', color: '#1d4ed8', colorBg: '#eff6ff', colorHeader: '#1d4ed8' },
+  { id: 'horasExtra100', label: 'H. Extra 100% (B)', tipo: 'tiempo', cat: 'extras', catLabel: 'Horas Extraordinarias', icono: 'fa-fire', color: '#4338ca', colorBg: '#eef2ff', colorHeader: '#4338ca' },
+  { id: 'horasCampoNormales', label: 'Campo Normal', tipo: 'tiempo', cat: 'campo', catLabel: 'Trabajo en Campo', icono: 'fa-hard-hat', color: '#0891b2', colorBg: '#ecfeff', colorHeader: '#0891b2' },
+  { id: 'horasCampo50', label: 'Campo 50% (C)', tipo: 'tiempo', cat: 'campo', catLabel: 'Trabajo en Campo', icono: 'fa-tools', color: '#0e7490', colorBg: '#ecfeff', colorHeader: '#0e7490' },
+  { id: 'horasCampo100', label: 'Campo 100% (D)', tipo: 'tiempo', cat: 'campo', catLabel: 'Trabajo en Campo', icono: 'fa-wrench', color: '#155e75', colorBg: '#ecfeff', colorHeader: '#155e75' },
+  { id: 'totalExtras50', label: 'Total 50% (A+C)', tipo: 'tiempo', cat: 'totalesExtras', catLabel: 'Totales Extras', icono: 'fa-calculator', color: '#1e3a8a', colorBg: '#dbeafe', colorHeader: '#1e3a8a' },
+  { id: 'totalExtras100', label: 'Total 100% (B+D)', tipo: 'tiempo', cat: 'totalesExtras', catLabel: 'Totales Extras', icono: 'fa-coins', color: '#312e81', colorBg: '#e0e7ff', colorHeader: '#312e81' }
 ];
 
 function obtenerColumnasVisibles() {
@@ -2974,7 +3071,8 @@ window.obtenerListaEmpleadosReportes = function () {
   const fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
   const verBajas = incluirDesv || incluirElim || fCargo === 'desvinculados' || fCargo === 'eliminados';
 
-  let lista = [...empCache];
+  const baseEmps = (empCache && empCache.length) ? empCache : (window.empCache || []);
+  let lista = [...baseEmps];
   if (verBajas) {
     const mapaBajas = new Map();
     (window.empEliminadosCache || []).forEach(emp => {
@@ -3044,15 +3142,74 @@ window.cambiarFiltroDesvinculadosReporte = function () {
   }
 };
 
+window.obtenerRangoFechasReportes = function () {
+  const selectPeriodo = $('periodoMensual') || $('periodoMensualDash') || $('kpiDetallePeriodo');
+  const idx = parseInt(selectPeriodo?.value || 0, 10);
+  const listaPeriodos = (periodos && periodos.length) ? periodos : ((typeof generarPeriodos === 'function') ? generarPeriodos() : []);
+  const periodo = (listaPeriodos && listaPeriodos[idx]) ? listaPeriodos[idx] : (listaPeriodos ? listaPeriodos[0] : null);
+
+  let inpIni = $('filtroFechaReportesInicio')?.value?.trim();
+  let inpFin = $('filtroFechaReportesFinalizacion')?.value?.trim();
+
+  // Fallback a filtro individual de dashboard si aplica
+  const inpDash = $('filtroFechaDashboard')?.value?.trim();
+  if (!inpIni && !inpFin && inpDash) {
+    inpIni = inpDash;
+    inpFin = inpDash;
+  }
+
+  // Si solo se ingresó una de las dos fechas, unificar para rango de 1 solo día
+  if (inpIni && !inpFin) inpFin = inpIni;
+  if (!inpIni && inpFin) inpIni = inpFin;
+
+  let R_INI = inpIni || (periodo ? periodo.inicio : '');
+  let R_FIN = inpFin || (periodo ? periodo.fin : '');
+
+  // Validar y corregir si el usuario invirtió fechas (inicio > fin)
+  if (inpIni && inpFin && inpIni > inpFin) {
+    const tmp = R_INI;
+    R_INI = R_FIN;
+    R_FIN = tmp;
+    if ($('filtroFechaReportesInicio')) $('filtroFechaReportesInicio').value = R_INI;
+    if ($('filtroFechaReportesFinalizacion')) $('filtroFechaReportesFinalizacion').value = R_FIN;
+    if (typeof mostrarToast === 'function') {
+      mostrarToast(`Rango invertido corregido: ${formatearFechaA_DMY(R_INI)} al ${formatearFechaA_DMY(R_FIN)}`, 'info');
+    }
+  }
+
+  const esFiltroPersonalizado = Boolean(inpIni || inpFin);
+  let labelRango = '';
+  let labelCorto = '';
+  if (esFiltroPersonalizado) {
+    labelRango = `${formatearFechaA_DMY(R_INI)} al ${formatearFechaA_DMY(R_FIN)}`;
+    labelCorto = `${R_INI} a ${R_FIN}`;
+  } else if (periodo) {
+    labelRango = (periodo.label || '').replace('⭐ ', '').replace(' (Actual)', '');
+    labelCorto = labelRango;
+  } else {
+    labelRango = `${R_INI} al ${R_FIN}`;
+    labelCorto = labelRango;
+  }
+
+  return {
+    periodo,
+    indexPeriodo: idx,
+    R_INI,
+    R_FIN,
+    esFiltroPersonalizado,
+    labelRango,
+    labelCorto
+  };
+};
+
 function cargarReportes() {
-  let periodo = periodos[parseInt($('periodoMensual')?.value || 0)];
-  if (!periodo || (!empCache.length && !window.empEliminadosCache?.length && !window._cacheDesvinculados?.length)) return;
+  const rango = window.obtenerRangoFechasReportes();
+  const R_INI = rango.R_INI;
+  const R_FIN = rango.R_FIN;
+  const emps = (empCache && empCache.length) ? empCache : (window.empCache || []);
+  if (!R_INI || !R_FIN || (!emps.length && !window.empEliminadosCache?.length && !window._cacheDesvinculados?.length)) return;
 
   const hoyRep = getLocalHoyStr();
-  const fechaInicio = $('filtroFechaReportesInicio')?.value;
-  const fechaFin = $('filtroFechaReportesFinalizacion')?.value;
-  const R_INI = fechaInicio ? fechaInicio : periodo.inicio;
-  const R_FIN = fechaFin ? fechaFin : periodo.fin;
 
   let listaEmpleados = window.obtenerListaEmpleadosReportes();
 
@@ -3211,14 +3368,12 @@ function cargarReportes() {
       let netWorked = minutosTrabajadosHoy;
       if (!esFestivo && netWorked > 240) netWorked -= 45;
 
-      // Auto-autorización de horas extras
-      let autorizado = regsDia.some(r => r.horasExtra === 'SI');
-      if (esFestivo) {
-        if (netWorked > 60) autorizado = true;
-        if (netWorked <= 60) autorizado = false;
-      } else {
-        if (netWorked >= 600) autorizado = true;
-        if (netWorked - 480 <= 60) autorizado = false;
+      // Horas extras independientes (no compensan faltantes)
+      let autorizado = regsDia.some(r => r.horasExtra === 'SI') || regsDia.some(r => (r.autoriza || '').includes('CAMPO'));
+      if (esFestivo && netWorked > 60) {
+        autorizado = true;
+      } else if (!esFestivo && netWorked >= 600) {
+        autorizado = true;
       }
 
       let extraMins50Acum = 0;
@@ -3274,11 +3429,19 @@ function cargarReportes() {
       if (isJustificado || esHoyOFuturo) {
         tiempoJustificarHoy = 0;
       } else {
-        let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
+        let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+        let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
         let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificarHoy;
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         tiempoJustificarHoy += unaccountedMissing;
         tiempoJustificarHoy = Math.max(0, tiempoJustificarHoy - tiempoJustificadoHoy);
+      }
+
+      // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
+      let minsSalidaTempranaHoy = (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < HORA_SALIDA_REF) ? (HORA_SALIDA_REF - ultimoSalidaMins) : 0;
+      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
+      if (!esFestivo && (atrasoMinsHoy + minsSalidaTempranaHoy) > missingMinutesDia) {
+        atrasoMinsHoy = Math.max(0, missingMinutesDia - minsSalidaTempranaHoy);
       }
 
       // Ajustar atrasos del día descontando permisos del día
@@ -3343,24 +3506,24 @@ function cargarReportes() {
   let totalExtras100 = stats.reduce((s, r) => s + r.totalExtras100, 0);
   let totalHorasExtra = stats.reduce((s, r) => s + r.totalHorasExtra, 0);
 
-  $('repFaltas').textContent = totalFaltas;
-  $('repPermisoMedico').textContent = formatearMinutos(totalPermisoMedico);
-  $('repPermisoPersonal').textContent = formatearMinutos(totalPermisoPersonal);
-  $('repAtrasos').textContent = totalAtrasos;
+  if ($('repFaltas')) $('repFaltas').textContent = totalFaltas;
+  if ($('repPermisoMedico')) $('repPermisoMedico').textContent = formatearMinutos(totalPermisoMedico);
+  if ($('repPermisoPersonal')) $('repPermisoPersonal').textContent = formatearMinutos(totalPermisoPersonal);
+  if ($('repAtrasos')) $('repAtrasos').textContent = totalAtrasos;
   if ($('repTiempoPorJustificar')) {
     $('repTiempoPorJustificar').textContent = formatearMinutos(totalTiempoPorJustificar);
   }
   if ($('repTiempoADescontar')) {
     $('repTiempoADescontar').textContent = formatearMinutos(totalTiempoADescontar);
   }
-  $('repHorasExtra50').textContent = formatearHorasDecimal(totalHorasExtra50);
-  $('repHorasExtra100').textContent = formatearHorasDecimal(totalHorasExtra100);
-  $('repHorasCampoNormales').textContent = formatearHorasDecimal(totalHorasCampoNormales);
-  $('repHorasCampo50').textContent = formatearHorasDecimal(totalHorasCampo50);
-  $('repHorasCampo100').textContent = formatearHorasDecimal(totalHorasCampo100);
-  $('repTotalExtras50').textContent = formatearHorasDecimal(totalExtras50);
-  $('repTotalExtras100').textContent = formatearHorasDecimal(totalExtras100);
-  $('repTotalHorasExtra').textContent = formatearHorasDecimal(totalHorasExtra);
+  if ($('repHorasExtra50')) $('repHorasExtra50').textContent = formatearHorasDecimal(totalHorasExtra50);
+  if ($('repHorasExtra100')) $('repHorasExtra100').textContent = formatearHorasDecimal(totalHorasExtra100);
+  if ($('repHorasCampoNormales')) $('repHorasCampoNormales').textContent = formatearHorasDecimal(totalHorasCampoNormales);
+  if ($('repHorasCampo50')) $('repHorasCampo50').textContent = formatearHorasDecimal(totalHorasCampo50);
+  if ($('repHorasCampo100')) $('repHorasCampo100').textContent = formatearHorasDecimal(totalHorasCampo100);
+  if ($('repTotalExtras50')) $('repTotalExtras50').textContent = formatearHorasDecimal(totalExtras50);
+  if ($('repTotalExtras100')) $('repTotalExtras100').textContent = formatearHorasDecimal(totalExtras100);
+  if ($('repTotalHorasExtra')) $('repTotalHorasExtra').textContent = formatearHorasDecimal(totalHorasExtra);
 
   // Almuerzos reporte
   let totalAlmPlanta = stats.reduce((s, r) => s + r.almPlanta, 0);
@@ -3374,6 +3537,8 @@ function cargarReportes() {
   if ($('repAlmuerzosTotal')) $('repAlmuerzosTotal').textContent = totalAlmLunch;
   if ($('repAlmuerzosFuera')) $('repAlmuerzosFuera').textContent = totalAlmFuera;
 
+  _reportesCustomData = stats;
+  window._reportesCustomData = stats;
   window._reportesData = stats;
   // Cargar preferencias de columnas al cargar datos
   if (!localStorage.getItem('columnasVisiblesReporte_v2')) {
@@ -3382,18 +3547,60 @@ function cargarReportes() {
   filtrarTablaReportes();
 }
 
-window.cargarReportesConFiltroFecha = function () {
-  const inputFecha = $('filtroFechaReportes');
-  const inputFechaDash = $('filtroFechaDashboard');
+window.aplicarPresetFechasReporte = function (preset) {
+  const selectPeriodo = $('periodoMensual') || $('periodoMensualDash');
+  const idx = parseInt(selectPeriodo?.value || 0, 10);
+  const periodo = (periodos && periodos[idx]) ? periodos[idx] : (periodos ? periodos[0] : null);
+  const inpIni = $('filtroFechaReportesInicio');
+  const inpFin = $('filtroFechaReportesFinalizacion');
   const btnLimpiar = $('btnLimpiarFechaRep');
-  const btnLimpiarDash = $('btnLimpiarFechaDash');
 
-  const hasValue = (inputFecha && inputFecha.value) || (inputFechaDash && inputFechaDash.value);
-  if (hasValue) {
+  if (!periodo) return;
+
+  if (preset === 'periodo' || preset === 'todo') {
+    if (inpIni) inpIni.value = '';
+    if (inpFin) inpFin.value = '';
+    if (btnLimpiar) btnLimpiar.style.display = 'none';
+  } else if (preset === 'quincena1') {
+    if (inpIni) inpIni.value = periodo.inicio;
+    const finParts = periodo.fin.split('-');
+    if (inpFin) inpFin.value = `${finParts[0]}-${finParts[1]}-10`;
     if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+  } else if (preset === 'quincena2') {
+    const finParts = periodo.fin.split('-');
+    if (inpIni) inpIni.value = `${finParts[0]}-${finParts[1]}-11`;
+    if (inpFin) inpFin.value = periodo.fin;
+    if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+  } else if (preset === 'hoy') {
+    const hoy = getLocalHoyStr();
+    if (inpIni) inpIni.value = hoy;
+    if (inpFin) inpFin.value = hoy;
+    if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+  }
+
+  document.querySelectorAll('.btn-date-preset').forEach(b => {
+    b.classList.toggle('active', b.dataset.preset === preset);
+  });
+
+  cargarReportes();
+  if (typeof actualizarReporteInteractivo === 'function') {
+    actualizarReporteInteractivo();
+  }
+};
+
+window.cargarReportesConFiltroFecha = function () {
+  const inputFechaDash = $('filtroFechaDashboard');
+  const btnLimpiarRep = $('btnLimpiarFechaRep');
+  const btnLimpiarDash = $('btnLimpiarFechaDash');
+  const inpIni = $('filtroFechaReportesInicio');
+  const inpFin = $('filtroFechaReportesFinalizacion');
+
+  const hasValue = (inpIni && inpIni.value) || (inpFin && inpFin.value) || (inputFechaDash && inputFechaDash.value);
+  if (hasValue) {
+    if (btnLimpiarRep) btnLimpiarRep.style.display = 'inline-block';
     if (btnLimpiarDash) btnLimpiarDash.style.display = 'inline-block';
   } else {
-    if (btnLimpiar) btnLimpiar.style.display = 'none';
+    if (btnLimpiarRep) btnLimpiarRep.style.display = 'none';
     if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
   }
   cargarReportes();
@@ -3415,6 +3622,10 @@ window.limpiarFiltroRangoFechasReportes = function () {
   if (btnLimpiar) btnLimpiar.style.display = 'none';
   if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
 
+  document.querySelectorAll('.btn-date-preset').forEach(b => {
+    b.classList.toggle('active', b.dataset.preset === 'periodo');
+  });
+
   cargarReportes();
   if (typeof actualizarReporteInteractivo === 'function') {
     actualizarReporteInteractivo();
@@ -3428,8 +3639,12 @@ window.filtrarReportePorRangoFechas = function () {
 
   if (fechaInicio || fechaFin) {
     if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+    document.querySelectorAll('.btn-date-preset').forEach(b => b.classList.remove('active'));
   } else {
     if (btnLimpiar) btnLimpiar.style.display = 'none';
+    document.querySelectorAll('.btn-date-preset').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === 'periodo');
+    });
   }
 
   cargarReportes();
@@ -3452,36 +3667,36 @@ window.syncPeriodo = function (source) {
     if ($('periodoMensualDash')) $('periodoMensualDash').value = val;
     if ($('kpiDetallePeriodo')) $('kpiDetallePeriodo').value = val;
   }
+
+  // Restablecer filtros de fechas personalizadas para enfocar el nuevo período seleccionado
+  if ($('filtroFechaReportesInicio')) $('filtroFechaReportesInicio').value = '';
+  if ($('filtroFechaReportesFinalizacion')) $('filtroFechaReportesFinalizacion').value = '';
+  if ($('filtroFechaDashboard')) $('filtroFechaDashboard').value = '';
+  if ($('btnLimpiarFechaRep')) $('btnLimpiarFechaRep').style.display = 'none';
+  if ($('btnLimpiarFechaDash')) $('btnLimpiarFechaDash').style.display = 'none';
+
+  document.querySelectorAll('.btn-date-preset').forEach(b => {
+    b.classList.toggle('active', b.dataset.preset === 'periodo');
+  });
+
   cargarResumenMensual();
   if (typeof window.renderDetailedKPIs === 'function') {
     window.renderDetailedKPIs();
+  }
+  if (typeof window.actualizarReporteInteractivo === 'function') {
+    window.actualizarReporteInteractivo();
   }
 };
 
 window.syncFecha = function (source) {
   if (source === 'dash') {
     const val = $('filtroFechaDashboard')?.value;
-    const inpRep = $('filtroFechaReportes');
-    if (inpRep && val !== undefined) {
-      inpRep.value = val;
-    }
-
-    const btnLimpiarRep = $('btnLimpiarFechaRep');
-    const btnLimpiarDash = $('btnLimpiarFechaDash');
+    const inpIni = $('filtroFechaReportesInicio');
+    const inpFin = $('filtroFechaReportesFinalizacion');
     if (val) {
-      if (btnLimpiarRep) btnLimpiarRep.style.display = 'inline-block';
-      if (btnLimpiarDash) btnLimpiarDash.style.display = 'inline-block';
-    } else {
-      if (btnLimpiarRep) btnLimpiarRep.style.display = 'none';
-      if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
+      if (inpIni) inpIni.value = val;
+      if (inpFin) inpFin.value = val;
     }
-  } else {
-    const val = $('filtroFechaReportes')?.value;
-    const inpDash = $('filtroFechaDashboard');
-    if (inpDash && val !== undefined) {
-      inpDash.value = val;
-    }
-
     const btnLimpiarRep = $('btnLimpiarFechaRep');
     const btnLimpiarDash = $('btnLimpiarFechaDash');
     if (val) {
@@ -3497,14 +3712,20 @@ window.syncFecha = function (source) {
 
 window.limpiarFiltroFechaDashboard = function () {
   const inpDash = $('filtroFechaDashboard');
-  const inpRep = $('filtroFechaReportes');
+  const inpIni = $('filtroFechaReportesInicio');
+  const inpFin = $('filtroFechaReportesFinalizacion');
   if (inpDash) inpDash.value = '';
-  if (inpRep) inpRep.value = '';
+  if (inpIni) inpIni.value = '';
+  if (inpFin) inpFin.value = '';
 
   const btnLimpiarRep = $('btnLimpiarFechaRep');
   const btnLimpiarDash = $('btnLimpiarFechaDash');
   if (btnLimpiarRep) btnLimpiarRep.style.display = 'none';
   if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
+
+  document.querySelectorAll('.btn-date-preset').forEach(b => {
+    b.classList.toggle('active', b.dataset.preset === 'periodo');
+  });
 
   cargarReportesConFiltroFecha();
 };
@@ -3537,14 +3758,29 @@ function filtrarTablaReportes() {
       : '<i class="fas fa-sort-down" style="color:var(--red);margin-left:4px;font-size:9px"></i>';
   }
 
-  // Construir headers según columnas visibles
-  let headerHtml = `<th onclick="sortarTablaReportes('nombre')">Empleado ${sortIcon('nombre')}</th>`;
+  // Construir headers según columnas visibles con acentos y categorías
+  let headerHtml = `<th onclick="sortarTablaReportes('nombre')" style="cursor:pointer; min-width:220px; background:#f8fafc; border-bottom:2.5px solid #2563eb;">
+    <div style="display:flex; align-items:center; gap:6px;">
+      <i class="fas fa-user-tie" style="color:#2563eb; font-size:12px;"></i>
+      <span style="font-weight:700; color:#1e293b;">COLABORADOR</span>
+      ${sortIcon('nombre')}
+    </div>
+  </th>`;
   COLUMNAS_DISPONIBLES.forEach(col => {
     if (columnasVisibles.includes(col.id)) {
+      const iconHtml = col.icono ? `<i class="fas ${col.icono}" style="color:${col.color || '#2563eb'}; font-size:11px; margin-right:4px;"></i>` : '';
       if (col.id === 'area') {
-        headerHtml += `<th onclick="sortarTablaReportes('area')">Área ${sortIcon('area')}</th>`;
+        headerHtml += `<th onclick="sortarTablaReportes('area')" style="cursor:pointer; min-width:140px; background:#f8fafc; border-bottom:2.5px solid #64748b;">
+          <div style="display:flex; align-items:center; gap:5px;">
+            ${iconHtml}<span style="font-weight:700; color:#334155;">ÁREA</span> ${sortIcon('area')}
+          </div>
+        </th>`;
       } else {
-        headerHtml += `<th onclick="sortarTablaReportes('${col.id}')" style="text-align:center">${col.label} ${sortIcon(col.id)}</th>`;
+        headerHtml += `<th onclick="sortarTablaReportes('${col.id}')" style="text-align:center; cursor:pointer; min-width:115px; background:${col.colorBg || '#f8fafc'}; border-bottom:2.5px solid ${col.color || '#2563eb'};">
+          <div style="display:flex; align-items:center; justify-content:center; gap:4px;" title="${col.catLabel || col.label}">
+            ${iconHtml}<span style="color:${col.color || '#1e293b'}; font-weight:700;">${col.label}</span> ${sortIcon(col.id)}
+          </div>
+        </th>`;
       }
     }
   });
@@ -3562,19 +3798,60 @@ function filtrarTablaReportes() {
           contenido = escapeHtml(valor || '—');
           rowHtml += `<td>${contenido}</td>`;
         } else {
-          if (col.tipo === 'tiempo') {
-            contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${minutosAHHMMSS(valor)}</span>`;
-          } else if (col.tipo === 'pct') {
-            let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
-            contenido = `<span class="pill ${pc}" style="font-size:10px;padding:2px 7px">${valor}%</span>`;
+          if (col.id === 'asistencias') {
+            contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
           } else if (col.id === 'faltas') {
-            contenido = `<span class="pill ${valor > 0 ? 'miss' : 'ok'}" style="font-size:10px;padding:2px 7px">${valor}</span>`;
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span class="rep-badge-falta-zero">0</span>`;
           } else if (col.id === 'atrasos') {
-            contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:10px;padding:2px 7px">${valor}</span>`;
-          } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
-            contenido = `<strong style="font-family:'Fira Code',monospace;font-size:10px">${valor}</strong>`;
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-atraso-alert"><i class="fas fa-clock" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span class="rep-badge-atraso-zero">0</span>`;
+          } else if (col.id === 'minutosAtrasos') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-atraso-alert">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="font-family:'Fira Code',monospace; font-size:11px; color:#94a3b8;">00:00:00</span>`;
+          } else if (col.id === 'almPlanta' || col.id === 'almFuera') {
+            contenido = `<span class="rep-badge-pill rep-badge-alm"><i class="fas fa-utensils" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'puntualidad') {
+            if (valor >= 90) {
+              contenido = `<span class="rep-badge-pill rep-badge-pct-hi"><i class="fas fa-star" style="font-size:8.5px;"></i> ${valor}%</span>`;
+            } else if (valor >= 75) {
+              contenido = `<span class="rep-badge-pill rep-badge-pct-mid">${valor}%</span>`;
+            } else {
+              contenido = `<span class="rep-badge-pill rep-badge-pct-low"><i class="fas fa-exclamation-circle" style="font-size:8.5px;"></i> ${valor}%</span>`;
+            }
+          } else if (col.id === 'horasExtra50') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-ex50">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
+          } else if (col.id === 'horasExtra100') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-ex100">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
+          } else if (col.id === 'totalExtras50') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-totextra">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">00:00:00</span>`;
+          } else if (col.id === 'totalExtras100') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-totextra" style="background:#ede9fe; color:#4338ca; border-color:#c7d2fe;">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">00:00:00</span>`;
+          } else if (col.cat === 'campo') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-campo">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
+          } else if (col.cat === 'permisos') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-perm" style="background:${col.colorBg}; color:${col.color}; border-color:${col.color}40;">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
           } else {
-            contenido = `<span style="font-family:'Fira Code',monospace;font-size:10px">${valor}</span>`;
+            if (col.tipo === 'tiempo') {
+              contenido = `<span style="font-family:'Fira Code',monospace; font-size:11px; font-weight:600; color:#334155;">${minutosAHHMMSS(valor)}</span>`;
+            } else {
+              contenido = `<span style="font-weight:700; color:#1e293b;">${valor}</span>`;
+            }
           }
           rowHtml += `<td style="text-align:center">${contenido}</td>`;
         }
@@ -3585,7 +3862,46 @@ function filtrarTablaReportes() {
     return rowHtml;
   }).join('');
 
-  html += '</tbody></table>';
+  // Fila de totales sticky para tabla mensual
+  let footerHtml = `<tr class="rep-totals-row">
+        <td style="padding:10px 14px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-calculator" style="color:#38bdf8;"></i>
+            <span>TOTALES / PROMEDIOS</span>
+          </div>
+        </td>`;
+
+  COLUMNAS_DISPONIBLES.forEach(col => {
+    if (columnasVisibles.includes(col.id)) {
+      if (col.id === 'area') {
+        footerHtml += `<td style="text-align:center; color:#64748b;">—</td>`;
+      } else {
+        let total = 0;
+        let count = 0;
+        data.forEach(e => {
+          let val = parseFloat(e[col.id]) || 0;
+          total += val;
+          count++;
+        });
+
+        let displayVal = '';
+        if (col.tipo === 'tiempo') {
+          displayVal = minutosAHHMMSS(total);
+        } else if (col.tipo === 'pct') {
+          let avg = count ? Math.round(total / count) : 0;
+          displayVal = `${avg}%`;
+        } else {
+          displayVal = total;
+        }
+        footerHtml += `<td style="text-align:center;">
+          <span style="font-family:'Fira Code',monospace; font-size:11.5px; font-weight:800; color:#ffffff;">${displayVal}</span>
+        </td>`;
+      }
+    }
+  });
+  footerHtml += '</tr>';
+
+  html += footerHtml + '</tbody></table>';
 
   // Update dropdown columns list dynamically
   if ($('monthlyColsDropdown')) {
@@ -4256,13 +4572,12 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         minsSalidaTemprana = refSalida - ultimoSalidaMins;
       }
 
-      let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
-      if (esFestivo) {
-        if (netWorked > 60) autorizadoGlobal = true;
-        if (netWorked <= 60) autorizadoGlobal = false;
-      } else {
-        if (netWorked >= 600) autorizadoGlobal = true;
-        if (netWorked - 480 <= 60) autorizadoGlobal = false;
+      // Horas extras independientes (no compensan faltantes)
+      let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI') || regsDia.some(r => (r.autoriza || '').includes('CAMPO'));
+      if (esFestivo && netWorked > 60) {
+        autorizadoGlobal = true;
+      } else if (!esFestivo && netWorked >= 600) {
+        autorizadoGlobal = true;
       }
 
       let extBadgeVal = autorizadoGlobal ? 'SI' : 'NO';
@@ -4337,11 +4652,18 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (isJustificado || esHoyOFuturo || esPrevioAlRegistro) {
         tiempoPorJustificar = 0;
       } else {
-        let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
+        let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+        let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
         let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         tiempoPorJustificar += unaccountedMissing;
         tiempoPorJustificar = Math.max(0, tiempoPorJustificar - tiempoJustificado);
+      }
+
+      // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
+      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
+      if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
+        atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
       }
 
       const originalAtrasoMins = atrasoMins;
@@ -4356,10 +4678,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
       }
 
-      netWorked += (tiempoPersonal + tiempoMedico);
-
+      // Horas netas trabajadas e independientes de permisos personales
       const descuentoDia = tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins);
-      const descuentoDiaVis = tiempoPersonal + atrasoMins;
+      const descuentoDiaVis = descuentoDia;
 
       const todosRegsConModo = regsDia.filter(r => r.modo);
       const tieneCampo = todosRegsConModo.some(r => r.modo === 'CAMPO');
@@ -4444,8 +4765,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         const descMostrar = 'Previo al inicio/registro de labores del colaborador';
 
         return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar este día">
-        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:3px 4px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
-        <td colspan="12" style="font-size:10px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
+        <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
+        <td colspan="8" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
@@ -4518,8 +4839,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         }
 
         return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar este día">
-        <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:3px 4px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
-        <td colspan="12" style="font-size:10px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
+        <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
+        <td colspan="8" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
@@ -4537,20 +4858,65 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       </tr>`;
       }
 
+      // Badges consolidados de Novedades y Permisos (sin redundancia)
+      let badgesNovedades = [];
+      if (atrasoMins > 0) {
+        badgesNovedades.push(`<span class="badge-tiempo badge-atraso" title="Atraso al ingreso: ${minutosAHHMMSS(atrasoMins)}"><i class="fas fa-clock" style="font-size:9px;"></i> Atraso: ${minutosAHHMMSS(atrasoMins)}</span>`);
+      }
+      if (minsSalidaTemprana > 0) {
+        badgesNovedades.push(`<span class="badge-tiempo badge-salida-temp" title="Salida anticipada: ${minutosAHHMMSS(minsSalidaTemprana)}"><i class="fas fa-door-open" style="font-size:9px;"></i> Ant: ${minutosAHHMMSS(minsSalidaTemprana)}</span>`);
+      }
+      if (tiempoJustificado > 0) {
+        badgesNovedades.push(`<span class="badge-tiempo badge-just" title="Tiempo Justificado: ${minutosAHHMMSS(tiempoJustificado)}"><i class="fas fa-check-circle" style="font-size:9px;"></i> TJ: ${minutosAHHMMSS(tiempoJustificado)}</span>`);
+      }
+      if (tiempoPersonal > 0) {
+        badgesNovedades.push(`<span class="badge-tiempo badge-pers" title="Permiso Personal: ${minutosAHHMMSS(tiempoPersonal)}"><i class="fas fa-user" style="font-size:9px;"></i> TP: ${minutosAHHMMSS(tiempoPersonal)}</span>`);
+      }
+      if (tiempoMedico > 0) {
+        badgesNovedades.push(`<span class="badge-tiempo badge-med" title="Permiso Médico: ${minutosAHHMMSS(tiempoMedico)}"><i class="fas fa-briefcase-medical" style="font-size:9px;"></i> TM: ${minutosAHHMMSS(tiempoMedico)}</span>`);
+      }
+      if (tiempoPorJustificar > 0) {
+        badgesNovedades.push(`<span class="badge-tiempo badge-falt" title="Tiempo por Justificar / Faltante: ${minutosAHHMMSS(tiempoPorJustificar)}"><i class="fas fa-exclamation-triangle" style="font-size:9px;"></i> Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
+      }
+      if (razonTextoFinal && !['vacación', 'vacacion', 'vacaciones', 'laboral'].includes(razonTextoFinal.toLowerCase())) {
+        badgesNovedades.push(razonDisplayHtml);
+      }
+      const celdaNovedadesHtml = badgesNovedades.length > 0
+        ? `<div style="display:flex; align-items:center; justify-content:center; gap:4px; flex-wrap:wrap;">${badgesNovedades.join(' ')}</div>`
+        : '<span style="color:#94a3b8; font-size:11px;">Normal</span>';
+
+      const totalH50Dia = h50 + hC50;
+      const totalH100Dia = h100 + hC100;
+
+      const celdaH50Html = totalH50Dia > 0 ? `
+        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+          <strong style="color:#1d4ed8; font-size:11.5px;">${minutosAHHMMSS(totalH50Dia)}</strong>
+          ${extBadgeHtml}
+        </div>
+      ` : '<span style="color:#94a3b8;">—</span>';
+
+      const celdaH100Html = totalH100Dia > 0 ? `
+        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+          <strong style="color:#4338ca; font-size:11.5px;">${minutosAHHMMSS(totalH100Dia)}</strong>
+          ${extBadgeHtml}
+        </div>
+      ` : '<span style="color:#94a3b8;">—</span>';
+
       return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
-      <td style="white-space:nowrap; font-weight:600; font-size:10px; padding:2px 3px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
-      <td style="font-size:10px; padding:2px 3px; text-align:center;">${modalidadCell}</td>
-      <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaE}</td>
-      <td class="hora-cell" style="font-size:10px; padding:2px 3px;">${horaS}</td>
-      <td style="font-size:10px; padding:2px 3px; text-align:center;">${razonDisplayHtml}</td>
-      <td style="text-align:center; color:${atrasoMins > 0 ? 'var(--red)' : 'inherit'}; font-size:10px; padding:2px 3px;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
-      <td style="text-align:center; font-size:10px; padding:2px 4px;">${celdaGestionTiempos}</td>
-      <td style="text-align:center; color:var(--red); font-weight:600; font-size:10px; padding:2px 3px;">${descuentoDiaVis > 0 ? minutosAHHMMSS(descuentoDiaVis) : '—'}</td>
-      <td style="text-align:center; color:var(--green); font-weight:600; font-size:10px; padding:2px 3px;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
-      <td style="font-size:10px; padding:2px 3px;">${aBadge}</td>
-      <td style="font-size:10px; padding:2px 3px;">${extBadgeHtml}</td>
-      <td style="text-align:center; font-size:10px; padding:2px 3px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}"><strong>${(h50 + hC50) > 0 ? minutosAHHMMSS(h50 + hC50) : '—'}</strong></td>
-      <td style="text-align:center; font-size:10px; padding:2px 3px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}"><strong>${(h100 + hC100) > 0 ? minutosAHHMMSS(h100 + hC100) : '—'}</strong></td>
+      <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
+      <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">${horaE}</td>
+      <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">
+        ${horaS}
+        ${modActual !== 'EMPRESA' ? `<div style="margin-top:2px;">${modalidadCell}</div>` : ''}
+      </td>
+      <td style="text-align:center; color:${netWorked > 0 ? '#15803d' : '#94a3b8'}; font-weight:700; font-size:11.5px; padding:6px 8px;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
+      <td style="font-size:11px; padding:6px 8px; text-align:center;">${aBadge}</td>
+      <td style="text-align:center; font-size:10.5px; padding:6px 8px;">${celdaNovedadesHtml}</td>
+      <td style="text-align:center; font-size:11px; padding:6px 8px;">
+        ${descuentoDiaVis > 0 ? `<span style="color:#dc2626; font-weight:800; background:#fee2e2; padding:2px 7px; border-radius:6px; border:1px solid #fca5a5;">${minutosAHHMMSS(descuentoDiaVis)}</span>` : '<span style="color:#94a3b8;">—</span>'}
+      </td>
+      <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}">${celdaH50Html}</td>
+      <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}">${celdaH100Html}</td>
     </tr>`;
     }).join('');
 
@@ -4571,33 +4937,30 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
     // Fila de totales para el tfoot
     const mA = v => v > 0 ? `<strong>${minutosAHHMMSS(v)}</strong>` : '—';
-    const tfootRow = `<tr style="background:var(--g50);border-top:2px solid var(--g300);font-weight:700;font-size:10px;">
-        <td style="padding:3px 4px;">TOTALES</td>
-        <td></td>
-        <td></td>
-        <td></td>
-        <td></td>
-        <td style="text-align:center;color:var(--red);">${mA(totAtrasos)}</td>
-        <td style="text-align:center; padding:3px 4px;">
-          <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:5px; font-size:9.5px;">
-            ${totTJustificado > 0 ? `<span style="color:#854d0e;" title="Total Tiempo Justificado">TJ: <strong>${minutosAHHMMSS(totTJustificado)}</strong></span>` : ''}
-            ${totTP > 0 ? `<span style="color:var(--indigo);" title="Total Tiempo Personal">TP: <strong>${minutosAHHMMSS(totTP)}</strong></span>` : ''}
-            ${totTM > 0 ? `<span style="color:var(--teal);" title="Total Tiempo Médico">TM: <strong>${minutosAHHMMSS(totTM)}</strong></span>` : ''}
-            ${totTJ > 0 ? `<span style="color:var(--red);" title="Total Por Justificar">Falt: <strong>${minutosAHHMMSS(totTJ)}</strong></span>` : ''}
-            ${(totTJustificado === 0 && totTP === 0 && totTM === 0 && totTJ === 0) ? '—' : ''}
+    const tfootRow = `<tr style="background:var(--g50); border-top:2px solid var(--g300); font-weight:700; font-size:11px;">
+        <td style="padding:6px 8px; font-weight:800; color:#1e293b;">TOTALES</td>
+        <td style="text-align:center; color:#94a3b8;">—</td>
+        <td style="text-align:center; color:#94a3b8;">—</td>
+        <td style="text-align:center; color:#15803d; font-weight:800; padding:6px 8px;">${mA(totHoras)}</td>
+        <td style="text-align:center; color:#94a3b8;">—</td>
+        <td style="text-align:center; padding:6px 8px;">
+          <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:5px; font-size:10px;">
+            ${totAtrasos > 0 ? `<span style="background:#fee2e2; color:#b91c1c; padding:2px 6px; border-radius:5px; border:1px solid #fca5a5;" title="Total Atrasos">Atrasos: <strong>${minutosAHHMMSS(totAtrasos)}</strong></span>` : ''}
+            ${totTJustificado > 0 ? `<span style="background:#fef9c3; color:#854d0e; padding:2px 6px; border-radius:5px; border:1px solid #fde047;" title="Total Tiempo Justificado">TJ: <strong>${minutosAHHMMSS(totTJustificado)}</strong></span>` : ''}
+            ${totTP > 0 ? `<span style="background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:5px; border:1px solid #c7d2fe;" title="Total Tiempo Personal">TP: <strong>${minutosAHHMMSS(totTP)}</strong></span>` : ''}
+            ${totTM > 0 ? `<span style="background:#ccfbf1; color:#0f766e; padding:2px 6px; border-radius:5px; border:1px solid #99f6e4;" title="Total Tiempo Médico">TM: <strong>${minutosAHHMMSS(totTM)}</strong></span>` : ''}
+            ${totTJ > 0 ? `<span style="background:#ffe4e6; color:#be123c; padding:2px 6px; border-radius:5px; border:1px solid #fecdd3;" title="Total Faltante">Falt: <strong>${minutosAHHMMSS(totTJ)}</strong></span>` : ''}
+            ${(totAtrasos === 0 && totTJustificado === 0 && totTP === 0 && totTM === 0 && totTJ === 0) ? '<span style="color:#94a3b8;">Normal</span>' : ''}
           </div>
         </td>
-        <td style="text-align:center; padding:2px 3px;">${celdaTotalDescuentoHtml}</td>
-        <td style="text-align:center;color:var(--green);">${mA(totHoras)}</td>
-        <td></td>
-        <td></td>
-        <td style="text-align:center;">${mA(totExtra50)}</td>
-        <td style="text-align:center;">${mA(totExtra100)}</td>
+        <td style="text-align:center; padding:6px 8px;">${celdaTotalDescuentoHtml}</td>
+        <td style="text-align:center; padding:6px 8px; color:#1d4ed8; font-weight:800;">${mA(totExtra50)}</td>
+        <td style="text-align:center; padding:6px 8px; color:#4338ca; font-weight:800;">${mA(totExtra100)}</td>
       </tr>`;
 
     const tbody = document.getElementById('tbody-historial-periodo');
     if (tbody) {
-      tbody.innerHTML = filas || '<tr><td colspan="13" class="empty-state">Sin registros</td></tr>';
+      tbody.innerHTML = filas || '<tr><td colspan="9" class="empty-state">Sin registros</td></tr>';
     }
     const tfoot = document.getElementById('tfoot-historial-periodo');
     if (tfoot) {
@@ -4902,25 +5265,21 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
         <div class="table-wrapper">
           <div class="table-scroll-wrap">
-            <table class="employee-table table-compact table-ultra-compact">
+            <table class="employee-table table-compact">
               <thead>
                 <tr>
-                  <th style="font-size:10px;padding:3px 4px;">Fecha</th>
-                  <th style="font-size:10px;padding:3px 4px;">Mod.</th>
-                  <th style="font-size:10px;padding:3px 4px;">Entrada</th>
-                  <th style="font-size:10px;padding:3px 4px;">Salida</th>
-                  <th style="font-size:10px;padding:3px 4px;">Razón</th>
-                  <th style="font-size:10px;padding:3px 4px;text-align:center;">Atraso</th>
-                  <th style="font-size:10px;padding:3px 4px;text-align:center;" title="Gestión de Tiempos: Justificado (TJ), Personal (TP), Médico (TM), Por Justificar (Falt)">Novedades / Tiempos</th>
-                  <th style="font-size:10px;padding:3px 4px;text-align:center;color:var(--red);" title="Tiempo a Descontar (Tiempo Personal + Faltante/Atrasos sin duplicar)">T. Descontar</th>
-                  <th style="font-size:10px;padding:3px 4px;" title="Total Horas Trabajadas">Tot.Hrs</th>
-                  <th style="font-size:10px;padding:3px 4px;">Alm.</th>
-                  <th style="font-size:10px;padding:3px 4px;" title="Horas Extra Autorizadas">HE Aut.</th>
-                  <th style="font-size:10px;padding:3px 4px;" title="Horas Extra 50% (Oficina + Campo)">H.E. 50%</th>
-                  <th style="font-size:10px;padding:3px 4px;" title="Horas Extra 100% (Oficina + Campo)">H.E. 100%</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:left;">Fecha</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center;">Entrada</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center;">Salida</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Total Horas Trabajadas">Horas Trab.</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Modalidad de Almuerzo (Planta / Fuera)">Almuerzo</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Atrasos, Salidas Anticipadas, Justificaciones, Permisos y Observaciones">Novedades & Permisos</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center; color:var(--red);" title="Tiempo neto a descontar">T. Descontar</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center; color:#1d4ed8;" title="Horas Extra 50% con estado de autorización">H.E. 50%</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center; color:#4338ca;" title="Horas Extra 100% con estado de autorización">H.E. 100%</th>
                 </tr>
               </thead>
-              <tbody id="tbody-historial-periodo">${filas || '<tr><td colspan="13" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tbody id="tbody-historial-periodo">${filas || '<tr><td colspan="9" class="empty-state">Sin registros</td></tr>'}</tbody>
               <tfoot id="tfoot-historial-periodo">${tfootRow}</tfoot>
             </table>
           </div>
@@ -7773,7 +8132,7 @@ window.resetearPasswordEmpleado = async function (empleadoId, nombreEmpleado) {
   }
 };
 
-window.mostrarModalFuturos = function (preselectedEmpId = null) {
+window.mostrarModalFuturos = function (preselectedEmpId = null, preselectedFecha = null) {
   const modal = $('eventoFuturoModal');
   const sel = $('futEmpleadoId');
   sel.innerHTML = empCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (${e.id})</option>`).join('');
@@ -7795,8 +8154,9 @@ window.mostrarModalFuturos = function (preselectedEmpId = null) {
       c.querySelector('div:nth-child(2)').style.color = '#374151';
     }
   });
-  $('futFechaInicio').value = hoy;
-  $('futFechaFin').value = hoy;
+  const fechaDefecto = preselectedFecha || hoy;
+  $('futFechaInicio').value = fechaDefecto;
+  $('futFechaFin').value = fechaDefecto;
   $('futObservacion').value = '';
   actualizarResumenFuturo();
   modal.classList.remove('hidden');
@@ -7871,6 +8231,10 @@ window.guardarEventoFuturo = async function () {
   const tipo = $('futTipo').value;
   const observacion = $('futObservacion').value.trim() || 'Registrado por supervisor';
 
+  if (!eid) {
+    mostrarToast('Seleccione un empleado', 'error');
+    return;
+  }
   if (!fInicio || !fFin) {
     mostrarToast('Seleccione fecha de inicio y fin', 'error');
     return;
@@ -7908,27 +8272,60 @@ window.guardarEventoFuturo = async function () {
   try {
     let successCount = 0;
     let errorMsg = null;
+    const emp = (empCache || []).find(x => String(x.id) === String(eid));
 
     for (const f of fechas) {
-      const res = await jsonpRequest({
-        accion: 'actualizarRegistroGeneral',
-        docId: `${eid}_${tipo}_${f}_000000`,
+      const regParams = {
+        accion: 'guardarRegistro',
+        id: eid,
         empleadoId: eid,
         tipo: tipo,
         fecha: f,
-        campo: 'hora',
-        valor: '00:00:00',
+        fecha_falta: f,
+        hora: '00:00:00',
         modo: 'EMPRESA',
         almuerzo: '',
         horasExtra: 'NO',
         observacion: observacion,
+        observaciones: observacion,
+        razon_ausencia: observacion,
         razon_justificac: observacion,
-        justificado: 'SI'
-      });
-      if (res.ok) {
-        successCount++;
+        justificado: 'SI',
+        quien_justifica: 'Supervisor'
+      };
+
+      let res = null;
+      if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarRegistro === 'function') {
+        res = await window.FirebaseBackend.guardarRegistro(regParams);
       } else {
-        errorMsg = res.error;
+        res = await jsonpRequest(regParams);
+      }
+
+      if (res && res.ok) {
+        successCount++;
+        // Actualizar caché en memoria del empleado inmediatamente
+        if (emp) {
+          if (!emp.registros) emp.registros = [];
+          emp.registros = emp.registros.filter(r => !(r.fecha === f && ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'SALIDA_JUSTIFICADA', 'FALTA_JUSTIFICADA'].includes((r.tipo || '').toUpperCase())));
+          emp.registros.push({
+            id: `${eid}_${tipo}_${f}_000000`,
+            empleadoId: eid,
+            nombre: emp.nombre || '',
+            fecha: f,
+            hora: '00:00:00',
+            tipo: tipo,
+            almuerzo: '',
+            modo: 'EMPRESA',
+            horasExtra: 'NO',
+            justificado: 'SI',
+            razon_ausencia: observacion,
+            razon_justificac: observacion,
+            observaciones: observacion,
+            timestamp: `${f} 00:00:00`
+          });
+        }
+      } else {
+        errorMsg = res?.error || 'Error al guardar';
       }
     }
 
@@ -7937,13 +8334,28 @@ window.guardarEventoFuturo = async function () {
       cerrarModalFuturos();
       limpiarCachesLocales();
       await cargarDatosCompletos(true, true);
-      if (panelActual === 'detalle') mostrarDetalle(eid);
-      else cargarAsistencia();
+      if (panelActual === 'detalle') {
+        mostrarDetalle(eid, 0, null, null, fInicio);
+      } else {
+        cargarAsistencia();
+        if (typeof renderizarMapaCalorAsistencia === 'function') renderizarMapaCalorAsistencia();
+      }
     } else {
       mostrarToast(`Se registraron ${successCount}/${fechas.length} días. Error: ${errorMsg || 'desconocido'}`, 'error');
+      if (successCount > 0) {
+        cerrarModalFuturos();
+        limpiarCachesLocales();
+        await cargarDatosCompletos(true, true);
+        if (panelActual === 'detalle') {
+          mostrarDetalle(eid, 0, null, null, fInicio);
+        } else {
+          cargarAsistencia();
+          if (typeof renderizarMapaCalorAsistencia === 'function') renderizarMapaCalorAsistencia();
+        }
+      }
     }
   } catch (e) {
-    mostrarToast('Error de conexión al registrar eventos futuros', 'error');
+    mostrarToast('Error de conexión al registrar eventos futuros: ' + e.message, 'error');
   } finally {
     mostrarLoader(false);
   }
@@ -8977,12 +9389,19 @@ if ($('togglePin')) {
 // ============================================================
 // CREADOR INTERACTIVO DE REPORTES CUSTOM
 // ============================================================
+const DEFAULT_COLUMNAS_CUSTOM = ['area', 'asistencias', 'faltas', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+
 function obtenerColumnasCustomActivas() {
   const saved = localStorage.getItem('columnasCustomActivasReporte');
   if (saved) {
-    try { return JSON.parse(saved); } catch (e) { }
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch (e) { }
   }
-  return ['asistencias', 'faltas', 'atrasos', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+  return [...DEFAULT_COLUMNAS_CUSTOM];
 }
 
 function guardarColumnasCustomActivas(columnas) {
@@ -8990,296 +9409,40 @@ function guardarColumnasCustomActivas(columnas) {
 }
 
 let columnasCustomActivas = obtenerColumnasCustomActivas();
+window.columnasCustomActivas = columnasCustomActivas;
+window.obtenerColumnasCustomActivas = obtenerColumnasCustomActivas;
 let _sortCustomReport = { col: 'nombre', dir: 'asc' };
-let _reportesCustomData = [];
 
 window.inicializarReporteInteractivo = function () {
   actualizarReporteInteractivo();
 };
 
 window.actualizarReporteInteractivo = function () {
+  const rango = window.obtenerRangoFechasReportes();
+  const bodyT = $('reporteCustomBody');
+
+  // Asegurar que selectores de periodo tengan opciones si aún no las tienen
   const selectPeriodo = $('periodoMensual');
-  const idx = parseInt(selectPeriodo?.value || 0);
-  let periodo = periodos[idx];
-  if (!periodo || (!empCache.length && !window.empEliminadosCache?.length && !window._cacheDesvinculados?.length)) return;
+  if (selectPeriodo && (!selectPeriodo.options || selectPeriodo.options.length === 0)) {
+    const listaP = (periodos && periodos.length) ? periodos : ((typeof generarPeriodos === 'function') ? generarPeriodos() : []);
+    selectPeriodo.innerHTML = listaP.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
+  }
 
-  const fechaFiltro = $('filtroFechaReportes')?.value;
-  const R_INI = fechaFiltro ? fechaFiltro : periodo.inicio;
-  const R_FIN = fechaFiltro ? fechaFiltro : periodo.fin;
+  const emps = (empCache && empCache.length) ? empCache : (window.empCache || []);
+  const tieneEmpleados = (emps && emps.length) || (window.empEliminadosCache && window.empEliminadosCache.length) || (window._cacheDesvinculados && window._cacheDesvinculados.length);
 
-  const hoyRep = getLocalHoyStr();
-
-  let listaEmpleados = window.obtenerListaEmpleadosReportes();
-
-  // Calcular estadísticas de manera idéntica a cargarReportes()
-  _reportesCustomData = listaEmpleados.map(e => {
-    let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
-    let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
-
-    // Delimitar evaluación de días hábiles si el colaborador tiene fecha de ingreso o salida
-    const fSalida = (e.fecha_salida || e.fechaDesvinculacion) ? (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) : null;
-    let finEvalEmp = (R_FIN < hoyRep) ? R_FIN : hoyRep;
-    if (fSalida && fSalida < finEvalEmp) {
-      finEvalEmp = fSalida;
+  if (!tieneEmpleados) {
+    if (bodyT) {
+      bodyT.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:45px; color:var(--g500);">
+        <i class="fas fa-spinner fa-spin" style="font-size:24px; color:var(--blue); margin-bottom:10px; display:block;"></i>
+        Cargando datos de colaboradores y registros...
+      </td></tr>`;
     }
-    let iniEvalEmp = R_INI;
-    const fInicioEfectivo = (typeof obtenerFechaInicioEfectivaEmpleado === 'function')
-      ? obtenerFechaInicioEfectivaEmpleado(e, R_INI)
-      : (e.fecha_ingreso || R_INI);
-    if (fInicioEfectivo && fInicioEfectivo > R_INI) {
-      iniEvalEmp = fInicioEfectivo;
-    }
-    let diasLaborables = (iniEvalEmp <= finEvalEmp) ? obtenerDiasHabiles(iniEvalEmp, finEvalEmp) : [];
-    let diasLaborablesTotal = diasLaborables;
-    let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f && f >= iniEvalEmp && f <= finEvalEmp)).size;
+    if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = 'Cargando información...';
+    return;
+  }
 
-    let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
-
-    // ATRASOS + ALMUERZO + PUNTUALIDAD (atrasos se calculan y descuentan dentro del loop diario abajo)
-    let atrasos = 0;
-    let minutosAtrasos = 0;
-    let almPlanta = 0, almFuera = 0;
-
-    const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
-    almPlanta = resAlm.almPlanta;
-    almFuera = resAlm.almFuera;
-    let puntualidad = 0;
-
-    let horasExtra50 = 0;
-    let horasExtra100 = 0;
-    let horasCampoNormales = 0;
-    let horasCampo50 = 0;
-    let horasCampo100 = 0;
-
-    let totalTiempoPersonal = 0;
-    let totalTiempoMedico = 0;
-    let totalTiempoPorJustificar = 0;
-    let totalDescuentoBruto = 0;
-
-    // Generar lista de todas las fechas en el rango
-    let todasLasFechas = [];
-    let currDate = new Date(R_INI + 'T00:00:00');
-    let endDate = new Date(R_FIN + 'T00:00:00');
-    while (currDate <= endDate) {
-      todasLasFechas.push(currDate.toISOString().split('T')[0]);
-      currDate.setDate(currDate.getDate() + 1);
-    }
-
-    todasLasFechas.forEach(fecha => {
-      if (fSalida && fecha > fSalida) return;
-      if (iniEvalEmp && fecha < iniEvalEmp) return;
-      const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
-      const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
-      const isJustificado = regsDia.some(r => {
-        if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
-        if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
-        const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
-        return false;
-      });
-      const esHoyOFuturo = fecha >= getLocalHoyStr();
-
-      if (regsDia.length === 0) {
-        return;
-      }
-
-      let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
-      let atrasoMinsHoy = 0;
-      if (primerReg) {
-        let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
-        let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
-        if (mE !== null && mE > refEntrada + 5) {
-          atrasoMinsHoy = mE - refEntrada;
-        }
-      }
-
-      let periodosDia = [];
-      let entradaPendiente = null;
-
-      let sortedRegs = [...regsDia].sort((a, b) => {
-        if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
-        return String(a.hora || '').localeCompare(String(b.hora || ''));
-      });
-
-      sortedRegs.forEach(r => {
-        const tipo = String(r.tipo || '').toUpperCase();
-        if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
-          entradaPendiente = r;
-        } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
-          if (entradaPendiente) {
-            periodosDia.push({ entrada: entradaPendiente, salida: r });
-            entradaPendiente = null;
-          } else {
-            periodosDia.push({ entrada: null, salida: r });
-          }
-        }
-      });
-      if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
-
-      let minutosTrabajadosHoy = 0;
-      let tiempoPersonalHoy = 0;
-      let tiempoMedicoHoy = 0;
-      let tiempoJustificarHoy = 0;
-
-      const hasCumpleanos = regsDia.some(r => {
-        const raz = String(r.razon_ausencia || '').toLowerCase();
-        const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
-      });
-
-      let ultimoSalidaMins = null;
-      let ultimoSalidaReg = null;
-      let processedLunchGap = false;
-
-      periodosDia.forEach(p => {
-        if (!p.entrada || !p.salida) return;
-        let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
-        let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
-        if (mE === null || mS === null || mS <= mE) return;
-
-        let duracion = mS - mE;
-        minutosTrabajadosHoy += duracion;
-
-        if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
-          let gap = mE - ultimoSalidaMins;
-          if (!processedLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
-            let lunchMins = Math.min(45, gap);
-            gap -= lunchMins;
-            processedLunchGap = true;
-          }
-          if (gap > 0) {
-            let clasif = clasificarGap(ultimoSalidaReg, gap);
-            if (clasif.tipo === 'medico') {
-              tiempoMedicoHoy += gap;
-            } else if (clasif.tipo === 'personal') {
-              tiempoPersonalHoy += gap;
-            } else {
-              tiempoJustificarHoy += gap;
-            }
-          }
-        }
-        ultimoSalidaMins = mS;
-        ultimoSalidaReg = p.salida;
-      });
-
-      let netWorked = minutosTrabajadosHoy;
-      if (!esFestivo && netWorked > 240) netWorked -= 45;
-
-      // Auto-autorización de horas extras
-      let autorizado = regsDia.some(r => r.horasExtra === 'SI');
-      if (esFestivo) {
-        if (netWorked > 60) autorizado = true;
-        if (netWorked <= 60) autorizado = false;
-      } else {
-        if (netWorked >= 600) autorizado = true;
-        if (netWorked - 480 <= 60) autorizado = false;
-      }
-
-      let extraMins50Acum = 0;
-
-      periodosDia.forEach(p => {
-        if (!p.entrada || !p.salida) return;
-        let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
-        let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
-        if (mE === null || mS === null || mS <= mE) return;
-        let duracion = mS - mE;
-        let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
-
-        if (esFestivo) {
-          if (enCampo) {
-            if (autorizado) horasCampo100 += duracion;
-          } else {
-            if (autorizado) horasExtra100 += duracion;
-          }
-        } else {
-          let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
-          if (enCampo) {
-            if (mS <= H_INI || mE >= H_FIN) {
-              horasCampo50 += duracion;
-            } else {
-              let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-              let mExtra = duracion - mNormal;
-              horasCampoNormales += mNormal;
-              horasCampo50 += mExtra;
-            }
-          } else {
-            if (autorizado && mS > H_FIN) {
-              extraMins50Acum += (mS - Math.max(mE, H_FIN));
-            }
-          }
-        }
-      });
-
-      if (esFestivo) {
-        // Ya calculados
-      } else {
-        horasExtra50 += extraMins50Acum;
-      }
-
-      // Sumar permisos asignados manualmente
-      const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
-      const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
-      const medMins = regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
-      const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
-      tiempoPersonalHoy += persMins;
-      tiempoMedicoHoy += medMins;
-      let tiempoJustificadoHoy = justMins + (hasCumpleanos ? 240 : 0);
-
-      if (isJustificado || esHoyOFuturo) {
-        tiempoJustificarHoy = 0;
-      } else {
-        let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
-        let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificarHoy;
-        let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
-        tiempoJustificarHoy += unaccountedMissing;
-        tiempoJustificarHoy = Math.max(0, tiempoJustificarHoy - tiempoJustificadoHoy);
-      }
-
-      // Ajustar atrasos del día descontando permisos del día
-      atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy - tiempoJustificadoHoy);
-      if (atrasoMinsHoy > 0) {
-        atrasos++;
-        minutosAtrasos += atrasoMinsHoy;
-      }
-
-      // Descuento bruto del día: tiempo personal + (si hay tiempo por justificar: max(tjustificar, atraso), si no: solo atraso)
-      const descuentoBrutoHoy = tiempoPersonalHoy + (tiempoJustificarHoy > 0 ? Math.max(tiempoJustificarHoy, atrasoMinsHoy) : atrasoMinsHoy);
-      totalDescuentoBruto += descuentoBrutoHoy;
-
-      totalTiempoPersonal += tiempoPersonalHoy;
-      totalTiempoMedico += tiempoMedicoHoy;
-      totalTiempoPorJustificar += tiempoJustificarHoy;
-    });
-
-    puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
-
-    return {
-      id: e.id,
-      nombre: e.nombre,
-      area: e.area,
-      cargo: e.cargo || '',
-      foto_url: e.foto_url,
-      asistencias: diasAsistidos,
-      faltas: faltas,
-      permisoMedico: totalTiempoMedico,
-      permisoPersonal: totalTiempoPersonal,
-      tiempoPorJustificar: totalTiempoPorJustificar,
-      tiempoADescontar: Math.max(0, totalDescuentoBruto - 240),
-      atrasos: atrasos,
-      minutosAtrasos: minutosAtrasos,
-      almPlanta: almPlanta,
-      almFuera: almFuera,
-      puntualidad: puntualidad,
-      horasExtra50: horasExtra50,
-      horasExtra100: horasExtra100,
-      horasCampoNormales: horasCampoNormales,
-      horasCampo50: horasCampo50,
-      horasCampo100: horasCampo100,
-      totalExtras50: horasExtra50 + horasCampo50,
-      totalExtras100: horasExtra100 + horasCampo100,
-      totalHorasExtra: (horasExtra50 + horasExtra100 + horasCampo50 + horasCampo100)
-    };
-  });
+  cargarReportes();
   renderizarColumnasInteractivas();
   filtrarReporteInteractivo();
 };
@@ -9294,7 +9457,18 @@ window.renderizarColumnasInteractivas = function () {
     const isActiva = columnasCustomActivas.includes(col.id);
     const chip = document.createElement('div');
     chip.className = `chip-item ${isActiva ? 'activa' : 'disponible'}`;
-    chip.innerHTML = `${isActiva ? '<i class="fas fa-check-circle" style="color: #2563eb;"></i>' : '<i class="far fa-circle" style="opacity: 0.5;"></i>'} ${col.label}`;
+    
+    if (isActiva) {
+      chip.style.borderColor = col.color || '#2563eb';
+      chip.style.backgroundColor = col.colorBg || '#eff6ff';
+      chip.style.color = col.color || '#1e40af';
+      chip.innerHTML = `<i class="fas ${col.icono || 'fa-check-circle'}" style="color:${col.color || '#2563eb'};"></i> <span style="font-weight:700;">${col.label}</span>`;
+    } else {
+      chip.style.borderColor = 'var(--g200)';
+      chip.style.backgroundColor = '#ffffff';
+      chip.style.color = 'var(--g600)';
+      chip.innerHTML = `<i class="fas ${col.icono || 'fa-circle'}" style="opacity:0.4;"></i> <span>${col.label}</span>`;
+    }
 
     chip.addEventListener('click', () => {
       if (isActiva) {
@@ -9306,6 +9480,24 @@ window.renderizarColumnasInteractivas = function () {
 
     container.appendChild(chip);
   });
+
+  if ($('lblCountColsActivas')) {
+    $('lblCountColsActivas').textContent = columnasCustomActivas.length;
+  }
+};
+
+window.toggleSelectorColumnas = function () {
+  const c = $('reportsLayoutContainer');
+  if (!c) return;
+  const isOculto = c.style.display === 'none' || getComputedStyle(c).display === 'none';
+  c.style.display = isOculto ? 'block' : 'none';
+  const btn = $('btnToggleColsLayout');
+  if (btn) {
+    btn.classList.toggle('active', isOculto);
+    btn.style.background = isOculto ? '#eff6ff' : '#ffffff';
+    btn.style.borderColor = isOculto ? '#2563eb' : 'var(--g300)';
+    btn.style.color = isOculto ? '#1e40af' : 'var(--g700)';
+  }
 };
 
 window.agregarColumnaCustom = function (colId) {
@@ -9370,7 +9562,7 @@ window.setFiltroRapidoReporte = function (cargoVal, btnElement) {
     $('filtroCargoReporte').value = cargoVal;
   }
   if (btnElement && btnElement.parentElement) {
-    const btns = btnElement.parentElement.querySelectorAll('.btn-filter');
+    const btns = btnElement.parentElement.querySelectorAll('.btn-filter, .btn-filter-pill');
     btns.forEach(b => b.classList.remove('active'));
     btnElement.classList.add('active');
     // Actualizar el estilo visual para mostrar el botón activo con un color de fondo diferente
@@ -9394,13 +9586,19 @@ window.obtenerDatosFiltradosReporteCustom = function (q = '', fCargo = '') {
   q = (q || '').toLowerCase();
   fCargo = (fCargo || '').toLowerCase();
 
-  return (_reportesCustomData || []).filter(e => {
+  const baseData = (window._reportesCustomData && window._reportesCustomData.length)
+    ? window._reportesCustomData
+    : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
+
+  return baseData.filter(e => {
     let matchQ = !q || (e.nombre || '').toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q) || String(e.id || '').toLowerCase().includes(q);
     let matchCargo = !fCargo;
     if (fCargo === 'desvinculados') {
       matchCargo = !!e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado' || (e.estadoBadge && e.estadoBadge.toLowerCase().includes('desvinculado')) || (e.motivo_salida && e.motivo_salida.length > 0);
     } else if (fCargo === 'eliminados') {
       matchCargo = !!e.esEliminado || e.activo === false || (e.area || '').toLowerCase() === 'eliminado' || (e.cargo || '').toLowerCase() === 'eliminado';
+    } else if (fCargo === 'sin asistencia') {
+      matchCargo = (e.asistencias === 0 || !e.asistencias);
     } else if (fCargo) {
       matchCargo = (e.cargo || '').toLowerCase() === fCargo;
     }
@@ -9416,6 +9614,24 @@ window.filtrarReporteInteractivo = function () {
   const bodyT = $('reporteCustomBody');
   if (!bodyT) return;
 
+  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
+    ? window.obtenerRangoFechasReportes()
+    : { R_INI: '', R_FIN: '', labelRango: '', labelCorto: '', esFiltroPersonalizado: false, indexPeriodo: 0 };
+
+  // Actualizar badge visual de estado del rango si existe
+  const badgeRango = $('badgeEstadoRangoReporte');
+  if (badgeRango) {
+    if (rango.esFiltroPersonalizado) {
+      badgeRango.className = 'badge-rango-activo badge-rango-filtro';
+      badgeRango.innerHTML = `<i class="fas fa-filter"></i> Filtro: <strong>${escapeHtml(rango.labelRango)}</strong>`;
+      badgeRango.style.display = 'inline-flex';
+    } else {
+      badgeRango.className = 'badge-rango-activo badge-rango-periodo';
+      badgeRango.innerHTML = `<i class="fas fa-calendar-alt"></i> Período: <strong>${escapeHtml(rango.labelRango)}</strong>`;
+      badgeRango.style.display = 'inline-flex';
+    }
+  }
+
   // Headers
   function sortIconCustom(colId) {
     if (_sortCustomReport.col !== colId) return '<i class="fas fa-sort" style="opacity:.2;margin-left:4px;font-size:9px"></i>';
@@ -9430,13 +9646,7 @@ window.filtrarReporteInteractivo = function () {
       $('reportsLayoutContainer').style.display = 'none';
     }
 
-    const selectPeriodo = $('periodoMensual');
-    const idx = parseInt(selectPeriodo?.value || 0);
-    let periodo = periodos[idx];
-    let pInicio = periodo ? periodo.inicio : '';
-    let pFin = periodo ? periodo.fin : '';
-
-    let extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
+    let extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
 
     if (q) {
       extras = extras.filter(ae =>
@@ -9471,8 +9681,8 @@ window.filtrarReporteInteractivo = function () {
     if (headerTr) headerTr.innerHTML = headersHtml;
 
     if (!extras.length) {
-      bodyT.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No hay almuerzos extras registrados en este período.</td></tr>`;
-      if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = 'Mostrando 0 registros (0 almuerzos extras)';
+      bodyT.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No hay almuerzos extras registrados en este rango/período (${escapeHtml(rango.labelRango)}).</td></tr>`;
+      if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = `Mostrando 0 registros (0 almuerzos extras) | ${rango.labelRango}`;
       return;
     }
 
@@ -9495,14 +9705,9 @@ window.filtrarReporteInteractivo = function () {
 
     if ($('reporteCustomInfo')) {
       let totalCant = extras.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
-      $('reporteCustomInfo').textContent = `Mostrando ${extras.length} registros (${totalCant} almuerzos extras)`;
+      $('reporteCustomInfo').textContent = `Mostrando ${extras.length} registros (${totalCant} almuerzos extras) | ${rango.labelRango}`;
     }
     return;
-  }
-
-  // Mostrar personalizador de columnas cuando se muestran reportes regulares
-  if ($('reportsLayoutContainer')) {
-    $('reportsLayoutContainer').style.display = 'grid';
   }
 
   let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
@@ -9517,13 +9722,29 @@ window.filtrarReporteInteractivo = function () {
     });
   }
 
-  let headersHtml = `<th onclick="sortReporteCustom('nombre')" style="cursor:pointer">Empleado ${sortIconCustom('nombre')}</th>`;
+  let headersHtml = `<th onclick="sortReporteCustom('nombre')" style="cursor:pointer; min-width:230px; background:#f8fafc; border-bottom:2.5px solid #2563eb;">
+    <div style="display:flex; align-items:center; gap:6px;">
+      <i class="fas fa-user-tie" style="color:#2563eb; font-size:12px;"></i>
+      <span style="font-weight:700; color:#1e293b;">COLABORADOR</span>
+      ${sortIconCustom('nombre')}
+    </div>
+  </th>`;
+
   COLUMNAS_DISPONIBLES.forEach(col => {
     if (columnasCustomActivas.includes(col.id)) {
+      const iconHtml = col.icono ? `<i class="fas ${col.icono}" style="color:${col.color || '#2563eb'}; font-size:11px; margin-right:4px;"></i>` : '';
       if (col.id === 'area') {
-        headersHtml += `<th onclick="sortReporteCustom('area')" style="cursor:pointer">Área ${sortIconCustom('area')}</th>`;
+        headersHtml += `<th onclick="sortReporteCustom('area')" style="cursor:pointer; min-width:140px; background:#f8fafc; border-bottom:2.5px solid #64748b;">
+          <div style="display:flex; align-items:center; gap:5px;">
+            ${iconHtml}<span style="font-weight:700; color:#334155;">ÁREA</span> ${sortIconCustom('area')}
+          </div>
+        </th>`;
       } else {
-        headersHtml += `<th onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer;">${col.label} ${sortIconCustom(col.id)}</th>`;
+        headersHtml += `<th onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer; min-width:115px; background:${col.colorBg || '#f8fafc'}; border-bottom:2.5px solid ${col.color || '#2563eb'};">
+          <div style="display:flex; align-items:center; justify-content:center; gap:4px;" title="${col.catLabel || col.label}">
+            ${iconHtml}<span style="color:${col.color || '#1e293b'}; font-weight:700;">${col.label}</span> ${sortIconCustom(col.id)}
+          </div>
+        </th>`;
       }
     }
   });
@@ -9531,8 +9752,8 @@ window.filtrarReporteInteractivo = function () {
   if (headerTr) headerTr.innerHTML = headersHtml;
 
   if (!data.length) {
-    bodyT.innerHTML = `<tr><td colspan="${columnasCustomActivas.length + 1}" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No se encontraron resultados.</td></tr>`;
-    if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = 'Mostrando 0 empleados';
+    bodyT.innerHTML = `<tr><td colspan="${columnasCustomActivas.length + 1}" style="text-align:center; padding:35px; color:var(--g500);"><i class="fas fa-search" style="font-size:22px; margin-bottom:8px; display:block; color:var(--blue);"></i> No se encontraron resultados para el rango/período (<strong>${escapeHtml(rango.labelRango)}</strong>).</td></tr>`;
+    if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = `Mostrando 0 colaboradores | ${rango.labelRango}`;
     return;
   }
 
@@ -9547,31 +9768,70 @@ window.filtrarReporteInteractivo = function () {
     } else if (e.esEliminado) {
       nombreEmpDisplay += ` <span class="pill" style="font-size:9px; padding:1px 6px; background:#ffe4e6; color:#e11d48; font-weight:700; border:1px solid #fecdd3;" title="Colaborador eliminado con registros históricos">🗑️ Eliminado</span>`;
     }
-    let rowHtml = `<tr onclick="mostrarDetalle('${e.id}')" style="cursor:pointer"><td><div class="employee-cell">${photoCell(e)}<span>${nombreEmpDisplay}</span></div></td>`;
+    let rowHtml = `<tr onclick="mostrarDetalle('${e.id}', ${rango.indexPeriodo}, '${rango.R_INI}', '${rango.R_FIN}')" style="cursor:pointer" title="Ver detalle de asistencia de ${escapeHtml(e.nombre)}">
+      <td><div class="employee-cell">${photoCell(e)}<span style="font-weight:600; color:#0f172a;">${nombreEmpDisplay}</span></div></td>`;
 
     COLUMNAS_DISPONIBLES.forEach(col => {
       if (columnasCustomActivas.includes(col.id)) {
         const valor = e[col.id];
         let contenido = '';
+
         if (col.id === 'area') {
-          contenido = escapeHtml(valor || '—');
+          contenido = `<span style="color:#475569; font-weight:600; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-building" style="font-size:9px; opacity:0.4;"></i> ${escapeHtml(valor || '—')}</span>`;
           rowHtml += `<td>${contenido}</td>`;
         } else {
-          if (col.tipo === 'tiempo') {
-            contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${minutosAHHMMSS(valor)}</span>`;
-          } else if (col.tipo === 'pct') {
-            let pc = valor >= 90 ? 'ok' : valor >= 70 ? 'late' : 'miss';
-            contenido = `<span class="pill ${pc}" style="font-size:11px;padding:2px 7px">${valor}%</span>`;
+          if (col.id === 'asistencias') {
+            contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
           } else if (col.id === 'faltas') {
-            contenido = `<span class="pill ${valor > 0 ? 'miss' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span class="rep-badge-falta-zero">0</span>`;
           } else if (col.id === 'atrasos') {
-            contenido = `<span class="pill ${valor > 0 ? 'late' : 'ok'}" style="font-size:11px;padding:2px 7px">${valor}</span>`;
-          } else if (col.id.startsWith('total') || col.id.startsWith('Total')) {
-            contenido = `<strong style="font-family:'Fira Code',monospace;font-size:11px">${valor}</strong>`;
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-atraso-alert"><i class="fas fa-clock" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span class="rep-badge-atraso-zero">0</span>`;
+          } else if (col.id === 'minutosAtrasos') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-atraso-alert">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="font-family:'Fira Code',monospace; font-size:11px; color:#94a3b8;">00:00:00</span>`;
+          } else if (col.id === 'almPlanta' || col.id === 'almFuera') {
+            contenido = `<span class="rep-badge-pill rep-badge-alm"><i class="fas fa-utensils" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'puntualidad') {
+            if (valor >= 90) {
+              contenido = `<span class="rep-badge-pill rep-badge-pct-hi"><i class="fas fa-star" style="font-size:8.5px;"></i> ${valor}%</span>`;
+            } else if (valor >= 75) {
+              contenido = `<span class="rep-badge-pill rep-badge-pct-mid">${valor}%</span>`;
+            } else {
+              contenido = `<span class="rep-badge-pill rep-badge-pct-low"><i class="fas fa-exclamation-circle" style="font-size:8.5px;"></i> ${valor}%</span>`;
+            }
+          } else if (col.id === 'horasExtra50') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-ex50">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
+          } else if (col.id === 'horasExtra100') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-ex100">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
+          } else if (col.id === 'totalExtras50') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-totextra">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">00:00:00</span>`;
+          } else if (col.id === 'totalExtras100') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-totextra" style="background:#ede9fe; color:#4338ca; border-color:#c7d2fe;">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">00:00:00</span>`;
+          } else if (col.cat === 'campo') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-campo">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
+          } else if (col.cat === 'permisos') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill rep-badge-perm" style="background:${col.colorBg}; color:${col.color}; border-color:${col.color}40;">${minutosAHHMMSS(valor)}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
           } else {
-            contenido = `<span style="font-family:'Fira Code',monospace;font-size:11px">${valor}</span>`;
+            contenido = `<span style="font-family:'Fira Code',monospace; font-size:11px;">${valor}</span>`;
           }
-          rowHtml += `<td style="text-align:center">${contenido}</td>`;
+          rowHtml += `<td style="text-align:center;">${contenido}</td>`;
         }
       }
     });
@@ -9580,13 +9840,18 @@ window.filtrarReporteInteractivo = function () {
     return rowHtml;
   }).join('');
 
-  let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold; border-top:2px solid var(--g300); position:sticky; bottom:0; z-index:10;">
-        <td><strong>TOTALES / PROMEDIOS</strong></td>`;
+  let footerHtml = `<tr class="rep-totals-row">
+        <td style="padding:10px 14px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-calculator" style="color:#38bdf8;"></i>
+            <span>TOTALES / PROMEDIOS</span>
+          </div>
+        </td>`;
 
   COLUMNAS_DISPONIBLES.forEach(col => {
     if (columnasCustomActivas.includes(col.id)) {
       if (col.id === 'area') {
-        footerHtml += `<td>—</td>`;
+        footerHtml += `<td style="text-align:center; color:#64748b;">—</td>`;
       } else {
         let total = 0;
         let count = 0;
@@ -9605,7 +9870,9 @@ window.filtrarReporteInteractivo = function () {
         } else {
           displayVal = total;
         }
-        footerHtml += `<td style="text-align:center">${displayVal}</td>`;
+        footerHtml += `<td style="text-align:center;">
+          <span style="font-family:'Fira Code',monospace; font-size:11.5px; font-weight:800; color:#ffffff;">${displayVal}</span>
+        </td>`;
       }
     }
   });
@@ -9631,7 +9898,8 @@ window.filtrarReporteInteractivo = function () {
   }
 
   if ($('reporteCustomInfo')) {
-    $('reporteCustomInfo').textContent = `Mostrando ${data.length} empleados de ${empCache.length}`;
+    let infoRango = rango.esFiltroPersonalizado ? ` | Filtro: ${rango.labelRango}` : ` | ${rango.labelRango}`;
+    $('reporteCustomInfo').textContent = `Mostrando ${data.length} de ${empCache.length} colaboradores${infoRango}`;
   }
 };
 
@@ -9639,7 +9907,7 @@ window.restablecerColumnasDefault = function () {
   // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
   if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
     $('filtroCargoReporte').value = '';
-    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter');
+    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter, #filtrosRapidosCargo .btn-filter-pill');
     btns.forEach(b => {
       b.classList.remove('active');
       b.style.background = '#f8fafc';
@@ -9654,7 +9922,7 @@ window.restablecerColumnasDefault = function () {
       btnTodos.style.borderColor = 'var(--blue)';
     }
   }
-  columnasCustomActivas = [];
+  columnasCustomActivas = [...DEFAULT_COLUMNAS_CUSTOM];
   guardarColumnasCustomActivas(columnasCustomActivas);
   renderizarColumnasInteractivas();
   filtrarReporteInteractivo();
@@ -9665,7 +9933,7 @@ window.cargarPlantillaReporte = function (tipo) {
   // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
   if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
     $('filtroCargoReporte').value = '';
-    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter');
+    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter, #filtrosRapidosCargo .btn-filter-pill');
     btns.forEach(b => {
       b.classList.remove('active');
       b.style.background = '#f8fafc';
@@ -9746,6 +10014,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
   let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
   let totExtra50 = 0, totExtra100 = 0;
   let totDescuentoBruto = 0;
+  let rowCounter = 0;
 
   fechasOrdenadas.forEach(f => {
     const regsDia = porDia[f].registros;
@@ -9882,12 +10151,12 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       minsSalidaTemprana = refSalida - ultimoSalidaMins;
     }
 
-    let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI');
-    if (esFestivo) {
-      if (netWorked > 60) autorizadoGlobal = true;
-    } else {
-      if (netWorked >= 600) autorizadoGlobal = true;
-      if (netWorked - 480 <= 60) autorizadoGlobal = false;
+    // Horas extras independientes (no compensan faltantes)
+    let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI') || regsDia.some(r => (r.autoriza || '').includes('CAMPO'));
+    if (esFestivo && netWorked > 60) {
+      autorizadoGlobal = true;
+    } else if (!esFestivo && netWorked >= 600) {
+      autorizadoGlobal = true;
     }
 
     periodosDia.forEach(p => {
@@ -9940,10 +10209,17 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       const medMins = (entradaDia && entradaDia.permiso_medico_mins) ? Number(entradaDia.permiso_medico_mins) : 0;
       tiempoPersonal += persMins;
       tiempoMedico += medMins;
-      let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorked);
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+      let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
       let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
       tiempoPorJustificar += unaccountedMissing;
+    }
+
+    // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
+    let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
+    if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
+      atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
     }
 
     // Ajustar atrasos y salida temprana descontando permisos
@@ -9958,9 +10234,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       const permisosRestantes = Math.max(0, permisosTotales - originalAtrasoMins);
       minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
     }
-    // Sumar permisos a TOTAL HRS
-    netWorked += (tiempoPersonal + tiempoMedico);
-
+    // Horas netas trabajadas e independientes de permisos personales
     const descuentoDia = tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins);
     totDescuentoBruto += descuentoDia;
 
@@ -9984,55 +10258,100 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
     const diasSemana = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
     let fechaEx = `${diasSemana[dObj.getDay()]} ${f.slice(8, 10)}/${f.slice(5, 7)}`;
 
-    bodyHtml += `<tr>
-          <td>${fechaEx}</td>
-          <td>${horaE}</td>
-          <td>${horaS}</td>
-          <td style="text-align:center;">${tiempoPersonal > 0 ? minutosAHHMMSS(tiempoPersonal) : '—'}</td>
-          <td style="text-align:center;">${tiempoMedico > 0 ? minutosAHHMMSS(tiempoMedico) : '—'}</td>
-          <td style="text-align:center;">${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
-          <td style="text-align:center; color:#dc2626; font-weight:bold;">${descuentoDia > 0 ? minutosAHHMMSS(descuentoDia) : '—'}</td>
-          <td style="text-align:center;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
-          <td style="text-align:center;">${aBadgeVal}</td>
-          <td style="text-align:center;">${autorizadoGlobal ? 'SI' : 'NO'}</td>
-          <td>${escapeHtml(razonText)}</td>
-          <td style="text-align:center;">${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
-          <td style="text-align:center;">${minsSalidaTemprana > 0 ? minutosAHHMMSS(minsSalidaTemprana) : '—'}</td>
-          <td style="text-align:center;">${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
-          <td style="text-align:center;">${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
-          <td style="text-align:center;">${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
-          <td style="text-align:center;">${hC50 > 0 ? minutosAHHMMSS(hC50) : '—'}</td>
-          <td style="text-align:center;">${hC100 > 0 ? minutosAHHMMSS(hC100) : '—'}</td>
-          <td style="text-align:center; font-weight:bold;">${(h50 + hC50) > 0 ? minutosAHHMMSS(h50 + hC50) : '—'}</td>
-          <td style="text-align:center; font-weight:bold;">${(h100 + hC100) > 0 ? minutosAHHMMSS(h100 + hC100) : '—'}</td>
+    // Contador para zebra striping
+    const rowBg = (rowCounter % 2 === 0) ? '#ffffff' : '#f8fafc';
+    rowCounter++;
+    const tdTime = `style="background-color:${rowBg}; border:0.5pt solid #cbd5e1; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`;
+
+      let tdDescStyle = (descuentoDia > 0)
+        ? `style="background-color:#ffe4e6; color:#9f1239; font-weight:bold; border:0.5pt solid #fecdd3; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdAtrasoStyle = (atrasoMins > 0)
+        ? `style="background-color:#fef3c7; color:#92400e; font-weight:bold; border:0.5pt solid #fde68a; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdSalidaTempStyle = (minsSalidaTemprana > 0)
+        ? `style="background-color:#ffedd5; color:#c2410c; font-weight:bold; border:0.5pt solid #fed7aa; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdH50Style = (h50 > 0)
+        ? `style="background-color:#eff6ff; color:#1d4ed8; font-weight:bold; border:0.5pt solid #bfdbfe; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdH100Style = (h100 > 0)
+        ? `style="background-color:#eef2ff; color:#4338ca; font-weight:bold; border:0.5pt solid #c7d2fe; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdHCNStyle = (hCN > 0)
+        ? `style="background-color:#ecfeff; color:#0891b2; font-weight:bold; border:0.5pt solid #a5f3fc; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdHC50Style = (hC50 > 0)
+        ? `style="background-color:#ecfeff; color:#0e7490; font-weight:bold; border:0.5pt solid #a5f3fc; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdHC100Style = (hC100 > 0)
+        ? `style="background-color:#ecfeff; color:#155e75; font-weight:bold; border:0.5pt solid #a5f3fc; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdTot50Style = ((h50 + hC50) > 0)
+        ? `style="background-color:#dbeafe; color:#1e3a8a; font-weight:bold; border-left:1pt solid #93c5fd; border-right:1pt solid #93c5fd; border-top:0.5pt solid #cbd5e1; border-bottom:0.5pt solid #cbd5e1; height:26px; font-size:9.5pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      let tdTot100Style = ((h100 + hC100) > 0)
+        ? `style="background-color:#e0e7ff; color:#312e81; font-weight:bold; border-left:1pt solid #a5b4fc; border-right:1pt solid #a5b4fc; border-top:0.5pt solid #cbd5e1; border-bottom:0.5pt solid #cbd5e1; height:26px; font-size:9.5pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
+        : tdTime;
+
+      bodyHtml += `<tr>
+          <td style="background-color:${rowBg}; font-weight:600; color:#0f172a; text-align:center; border:0.5pt solid #cbd5e1; height:26px;">${fechaEx}</td>
+          <td ${tdTime}>${horaE}</td>
+          <td ${tdTime}>${horaS}</td>
+          <td ${tdTime}>${tiempoPersonal > 0 ? minutosAHHMMSS(tiempoPersonal) : '—'}</td>
+          <td ${tdTime}>${tiempoMedico > 0 ? minutosAHHMMSS(tiempoMedico) : '—'}</td>
+          <td ${tdTime}>${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
+          <td ${tdDescStyle}>${descuentoDia > 0 ? minutosAHHMMSS(descuentoDia) : '—'}</td>
+          <td style="background-color:${rowBg}; font-weight:600; color:#0f172a; font-family:Consolas, monospace; font-size:9pt; text-align:center; border:0.5pt solid #cbd5e1; height:26px; mso-number-format:\\@;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
+          <td style="background-color:${rowBg}; text-align:center; border:0.5pt solid #cbd5e1; height:26px; font-weight:600; color:${aBadgeVal === 'SI' ? '#047857' : aBadgeVal === 'NO' ? '#b91c1c' : '#94a3b8'};">${aBadgeVal}</td>
+          <td style="background-color:${rowBg}; text-align:center; border:0.5pt solid #cbd5e1; height:26px; font-weight:bold; color:${autorizadoGlobal ? '#1d4ed8' : '#94a3b8'};">${autorizadoGlobal ? 'SI' : 'NO'}</td>
+          <td style="background-color:${rowBg}; border:0.5pt solid #cbd5e1; height:26px; font-size:9pt; color:#334155; padding:3px 6px;">${escapeHtml(razonText)}</td>
+          <td ${tdAtrasoStyle}>${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
+          <td ${tdSalidaTempStyle}>${minsSalidaTemprana > 0 ? minutosAHHMMSS(minsSalidaTemprana) : '—'}</td>
+          <td ${tdH50Style}>${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
+          <td ${tdH100Style}>${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
+          <td ${tdHCNStyle}>${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
+          <td ${tdHC50Style}>${hC50 > 0 ? minutosAHHMMSS(hC50) : '—'}</td>
+          <td ${tdHC100Style}>${hC100 > 0 ? minutosAHHMMSS(hC100) : '—'}</td>
+          <td ${tdTot50Style}>${(h50 + hC50) > 0 ? minutosAHHMMSS(h50 + hC50) : '—'}</td>
+          <td ${tdTot100Style}>${(h100 + hC100) > 0 ? minutosAHHMMSS(h100 + hC100) : '—'}</td>
         </tr>`;
-  });
+    });
 
   const totDescontarFinal = Math.max(0, totDescuentoBruto - 240);
 
-  // Fila de totales
-  let footerHtml = `<tr style="background:#f1f5f9; font-weight:bold;">
-        <td>TOTALES</td>
-        <td>—</td>
-        <td>—</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totTP)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totTM)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totTJ)}</td>
-        <td style="text-align:center; color:#dc2626;">${minutosAHHMMSS(totDescontarFinal)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totHoras)}</td>
-        <td style="text-align:center;">—</td>
-        <td style="text-align:center;">—</td>
-        <td>—</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totAtrasos)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totSalidaTemprana)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totH50)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totH100)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totHCN)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totHC50)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totHC100)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totExtra50)}</td>
-        <td style="text-align:center;">${minutosAHHMMSS(totExtra100)}</td>
-      </tr>`;
+  // Fila de totales corporativa
+  let footerHtml = `
+    <tr>
+      <td colspan="3" style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:left; height:34px; border:1pt solid #0f172a; font-size:10pt; padding:6px 10px; letter-spacing:0.5px;">TOTALES DEL PERÍODO</td>
+      <td style="background-color:#0f172a; color:#c4b5fd; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totTP)}</td>
+      <td style="background-color:#0f172a; color:#5eead4; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totTM)}</td>
+      <td style="background-color:#0f172a; color:#f0abfc; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totTJ)}</td>
+      <td style="background-color:#0f172a; color:#fda4af; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totDescontarFinal)}</td>
+      <td style="background-color:#0f172a; color:#fde047; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHoras)}</td>
+      <td style="background-color:#0f172a; color:#ffffff; text-align:center; border:1pt solid #0f172a;">—</td>
+      <td style="background-color:#0f172a; color:#ffffff; text-align:center; border:1pt solid #0f172a;">—</td>
+      <td style="background-color:#0f172a; color:#ffffff; text-align:center; border:1pt solid #0f172a;">—</td>
+      <td style="background-color:#0f172a; color:#fcd34d; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totAtrasos)}</td>
+      <td style="background-color:#0f172a; color:#fdba74; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totSalidaTemprana)}</td>
+      <td style="background-color:#0f172a; color:#93c5fd; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totH50)}</td>
+      <td style="background-color:#0f172a; color:#a5b4fc; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totH100)}</td>
+      <td style="background-color:#0f172a; color:#67e8f9; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHCN)}</td>
+      <td style="background-color:#0f172a; color:#22d3ee; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHC50)}</td>
+      <td style="background-color:#0f172a; color:#06b6d4; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHC100)}</td>
+      <td style="background-color:#0f172a; color:#38bdf8; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totExtra50)}</td>
+      <td style="background-color:#0f172a; color:#818cf8; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totExtra100)}</td>
+    </tr>
+  `;
 
   let excelHtml = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -10046,6 +10365,9 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
                   <x:Name>Reporte Individual</x:Name>
                   <x:WorksheetOptions>
                     <x:DisplayGridlines/>
+                    <x:Print>
+                      <x:Orientation>Landscape</x:Orientation>
+                    </x:Print>
                   </x:WorksheetOptions>
                 </x:ExcelWorksheet>
               </x:ExcelWorksheets>
@@ -10054,39 +10376,57 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
           <![endif]-->
           <style>
             table { border-collapse:collapse; font-family:Arial, sans-serif; }
-            th { background-color:#1e40af; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #cbd5e1; font-size:11px; text-transform:uppercase; }
-            td { border:0.5pt solid #cbd5e1; height:26px; font-size:11px; }
-            .title-cell { font-size:16px; font-weight:bold; color:#1e40af; height:45px; text-align:left; }
-            .meta-cell { font-size:10px; color:#64748b; height:20px; text-align:left; }
+            th { font-family:Arial, sans-serif; }
+            td { font-family:Arial, sans-serif; }
           </style>
         </head>
         <body>
           <table>
-            <tr><td colspan="19" class="title-cell">TCONTROL S.A. - REPORTE INDIVIDUAL DE ASISTENCIA</td></tr>
-            <tr><td colspan="19" class="meta-cell">Empleado: ${escapeHtml(e.nombre)} (ID: ${escapeHtml(e.id)}) | Periodo: ${periodo.label} (Rango: ${R_INI} a ${R_FIN}) | Generado: ${formatearTimestampCompleto(new Date())}</td></tr>
-            <tr><td colspan="19" style="height:15px;"></td></tr>
+            <!-- BANNER DE ENCABEZADO CORPORATIVO -->
+            <tr>
+              <td colspan="20" style="background-color:#0f172a; color:#ffffff; font-size:15pt; font-weight:bold; height:42px; text-align:center; vertical-align:middle; border:1pt solid #0f172a; letter-spacing:1px;">
+                TCONTROL S.A. &mdash; REPORTE INDIVIDUAL DE ASISTENCIA Y CONTROL LABORAL
+              </td>
+            </tr>
+            <tr>
+              <td colspan="20" style="background-color:#1e293b; color:#94a3b8; font-size:9pt; height:24px; text-align:center; vertical-align:middle; border:1pt solid #1e293b;">
+                Colaborador: <strong style="color:#ffffff;">${escapeHtml(e.nombre)}</strong> &nbsp;|&nbsp;
+                ID: <strong style="color:#38bdf8;">${escapeHtml(e.id)}</strong> &nbsp;|&nbsp;
+                Período: <strong style="color:#ffffff;">${periodo.label}</strong> (Rango: ${R_INI} al ${R_FIN}) &nbsp;|&nbsp;
+                Generado: <strong style="color:#ffffff;">${formatearTimestampCompleto(new Date())}</strong>
+              </td>
+            </tr>
+            <tr><td colspan="20" style="height:12px; border:none;"></td></tr>
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Entrada</th>
-                <th>Salida</th>
-                <th>TIEMPO PERSONAL</th>
-                <th>TIEMPO MEDICO</th>
-                <th>TIEMPO POR JUSTIFICAR</th>
-                <th>TIEMPO A DESCONTAR</th>
-                <th>TOTAL HORAS</th>
-                <th>Almuerzo</th>
-                <th>Autoriz. H.E.</th>
-                <th>Razón</th>
-                <th>ATRASOS</th>
-                <th>SALIDA TEMPRANA</th>
-                <th>HORAS EXTRA (A)</th>
-                <th>HORAS EXTRA 100% (B)</th>
-                <th>HORAS CAMPO NORMALES</th>
-                <th>HORAS CAMPO 50% (C)</th>
-                <th>HORAS CAMPO 100% (D)</th>
-                <th>TOTAL EXTRAS 50% (A+C)</th>
-                <th>TOTAL EXTRAS 100% (B+D)</th>
+                <th colspan="3" style="background-color:#1e293b; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #334155; font-size:9.5pt; letter-spacing:0.5px;">MARCACIONES</th>
+                <th colspan="4" style="background-color:#6d28d9; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">PERMISOS Y DESCUENTOS</th>
+                <th colspan="4" style="background-color:#0369a1; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">JORNADA Y ESTADO</th>
+                <th colspan="2" style="background-color:#b45309; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">NOVEDADES</th>
+                <th colspan="5" style="background-color:#1e40af; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">HORAS EXTRAORDINARIAS & CAMPO</th>
+                <th colspan="2" style="background-color:#1e1b4b; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">TOTALES EXTRAS NÓMINA</th>
+              </tr>
+              <tr>
+                <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">FECHA</th>
+                <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">ENTRADA</th>
+                <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">SALIDA</th>
+                <th style="background-color:#7c3aed; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">T. PERSONAL</th>
+                <th style="background-color:#0d9488; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">T. MÉDICO</th>
+                <th style="background-color:#c026d3; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">POR JUSTIFICAR</th>
+                <th style="background-color:#be123c; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">A DESCONTAR</th>
+                <th style="background-color:#0369a1; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">TOTAL HORAS</th>
+                <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">ALMUERZO</th>
+                <th style="background-color:#475569; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">AUTORIZ. H.E.</th>
+                <th style="background-color:#475569; color:#ffffff; font-weight:bold; height:34px; text-align:left; border:0.5pt solid #475569; font-size:9pt; padding-left:6px; min-width:140px;">RAZÓN / ESTADO</th>
+                <th style="background-color:#b45309; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">ATRASOS</th>
+                <th style="background-color:#c2410c; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">SALIDA TEMP.</th>
+                <th style="background-color:#1d4ed8; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">H. EXTRA 50%</th>
+                <th style="background-color:#4338ca; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">H. EXTRA 100%</th>
+                <th style="background-color:#0891b2; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">CAMPO NORMAL</th>
+                <th style="background-color:#0e7490; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">CAMPO 50%</th>
+                <th style="background-color:#155e75; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">CAMPO 100%</th>
+                <th style="background-color:#1e3a8a; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">TOTAL 50%</th>
+                <th style="background-color:#312e81; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">TOTAL 100%</th>
               </tr>
             </thead>
             <tbody>
@@ -10094,8 +10434,24 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
               ${footerHtml}
             </tbody>
             <tfoot>
-              <tr><td colspan="20" style="height:12px;"></td></tr>
-              <tr><td colspan="20" style="font-size:8pt; color:#64748b; font-style:italic;">CONFIDENCIAL — TCONTROL S.A. | Información laboral protegida por la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador). Exclusivo para gestión interna y auditoría patronal autorizada.</td></tr>
+              <tr><td colspan="20" style="height:14px; border:none;"></td></tr>
+              <tr>
+                <td colspan="20" style="background-color:#f8fafc; color:#64748b; font-size:8pt; font-style:italic; border:0.5pt solid #cbd5e1; height:24px; padding:4px 8px; text-align:center;">
+                  CONFIDENCIAL &mdash; TCONTROL S.A. | Información laboral individual protegida por la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador) y el Código del Trabajo.
+                </td>
+              </tr>
+              <tr><td colspan="20" style="height:35px; border:none;"></td></tr>
+              <tr>
+                <td colspan="6" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
+                  FIRMA DEL COLABORADOR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">${escapeHtml(e.nombre)}</span>
+                </td>
+                <td colspan="7" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
+                  SUPERVISOR DIRECTO<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Control de Asistencia y Turnos</span>
+                </td>
+                <td colspan="7" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
+                  TALENTO HUMANO / NÓMINA<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Auditoría y Liquidación</span>
+                </td>
+              </tr>
             </tfoot>
           </table>
         </body>
@@ -10111,23 +10467,22 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  mostrarToast('Reporte individual exportado con éxito', 'success');
+  mostrarToast('Reporte individual exportado a Excel con éxito', 'success');
 };
 
 window.exportarExcelReporteCustom = function () {
   let q = ($('searchReportesCustom')?.value || '').toLowerCase();
   let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-  const selectPeriodo = $('periodoMensual');
-  const idx = parseInt(selectPeriodo?.value || 0);
-  let periodo = periodos[idx];
-  let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
+  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
+    ? window.obtenerRangoFechasReportes()
+    : { R_INI: '', R_FIN: '', labelRango: 'Reporte', labelCorto: 'Reporte', esFiltroPersonalizado: false };
+  let periodoStr = rango.labelRango;
+  let safeFileName = (rango.labelCorto || 'Reporte').replace(/[^a-zA-Z0-9_\-]/g, '_');
 
   let hasData = false;
   let extras = [];
   if (fCargo === 'almuerzos extra') {
-    let pInicio = periodo ? periodo.inicio : '';
-    let pFin = periodo ? periodo.fin : '';
-    extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
+    extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
     if (q) {
       extras = extras.filter(ae =>
         (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
@@ -10138,7 +10493,10 @@ window.exportarExcelReporteCustom = function () {
     }
     hasData = extras.length > 0;
   } else {
-    hasData = _reportesCustomData.length > 0;
+    const baseData = (window._reportesCustomData && window._reportesCustomData.length)
+      ? window._reportesCustomData
+      : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
+    hasData = baseData.length > 0;
   }
 
   if (!hasData) {
@@ -10146,132 +10504,317 @@ window.exportarExcelReporteCustom = function () {
     return;
   }
 
-  let headersHtml = '';
-  let bodyHtml = '';
+  let tableContentHtml = '';
   let totalCols = 0;
 
   if (fCargo === 'almuerzos extra') {
-    headersHtml = '<th>Fecha</th><th>Descripción</th><th style="text-align:center;">Cantidad</th><th>Empresa/Destino</th><th>Observaciones</th><th>Tipo</th>';
     totalCols = 6;
-    bodyHtml = extras.map(ae => {
+    let totalCant = extras.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
+    let rowsHtml = extras.map((ae, idx) => {
       let dateStr = formatearFechaA_DMY(ae.fecha);
+      const rowBg = (idx % 2 === 0) ? '#ffffff' : '#f8fafc';
       return `<tr>
-            <td>${dateStr}</td>
-            <td>${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
-            <td style="text-align:center;">${ae.cantidad || 1}</td>
-            <td>${escapeHtml(ae.empresa || '—')}</td>
-            <td>${escapeHtml(ae.observaciones || '—')}</td>
-            <td>${escapeHtml(ae.tipo || 'Manual')}</td>
+            <td style="background-color:${rowBg}; font-family:Consolas, monospace; font-size:10pt; text-align:center; border:0.5pt solid #cbd5e1; height:26px; mso-number-format:\\@;">${dateStr}</td>
+            <td style="background-color:${rowBg}; font-weight:600; color:#0f172a; border:0.5pt solid #cbd5e1; padding:4px 8px; height:26px;">${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
+            <td style="background-color:${rowBg}; text-align:center; font-weight:bold; color:#0284c7; border:0.5pt solid #cbd5e1; height:26px;">${ae.cantidad || 1}</td>
+            <td style="background-color:${rowBg}; color:#334155; border:0.5pt solid #cbd5e1; padding:4px 8px; height:26px;">${escapeHtml(ae.empresa || '—')}</td>
+            <td style="background-color:${rowBg}; color:#475569; border:0.5pt solid #cbd5e1; padding:4px 8px; height:26px;">${escapeHtml(ae.observaciones || '—')}</td>
+            <td style="background-color:${rowBg}; text-align:center; font-weight:600; color:#047857; border:0.5pt solid #cbd5e1; height:26px;">${escapeHtml(ae.tipo || 'Manual')}</td>
           </tr>`;
     }).join('');
+
+    tableContentHtml = `
+      <thead>
+        <tr>
+          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:center; border:0.5pt solid #0369a1; font-size:10pt;">FECHA</th>
+          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #0369a1; font-size:10pt; padding-left:8px;">DESCRIPCIÓN</th>
+          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:center; border:0.5pt solid #0369a1; font-size:10pt;">CANTIDAD</th>
+          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #0369a1; font-size:10pt; padding-left:8px;">EMPRESA / DESTINO</th>
+          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #0369a1; font-size:10pt; padding-left:8px;">OBSERVACIONES</th>
+          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:center; border:0.5pt solid #0369a1; font-size:10pt;">TIPO</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+        <tr>
+          <td colspan="2" style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:left; height:32px; border:1pt solid #0f172a; font-size:10pt; padding-left:8px;">TOTAL ALMUERZOS EXTRAS CONSOLIDADOS</td>
+          <td style="background-color:#0f172a; color:#fde047; font-weight:bold; text-align:center; height:32px; border:1pt solid #0f172a; font-size:11pt;">${totalCant}</td>
+          <td colspan="3" style="background-color:#0f172a; color:#94a3b8; font-size:9pt; text-align:left; border:1pt solid #0f172a; padding-left:8px;">${extras.length} Registros de consumo</td>
+        </tr>
+      </tbody>
+    `;
   } else {
-    headersHtml = '<th>Empleado</th><th>Área</th>';
-    COLUMNAS_DISPONIBLES.forEach(col => {
-      if (columnasCustomActivas.includes(col.id)) {
-        headersHtml += `<th>${col.label}</th>`;
+    // 1. Columnas activas ordenadas
+    const activeCols = COLUMNAS_DISPONIBLES.filter(col => columnasCustomActivas.includes(col.id));
+    totalCols = activeCols.length + 2; // Empleado + Área + Columnas
+
+    // 2. Super-Headers organizados por categorías
+    const CAT_STYLES = {
+      asistencia: { label: 'ASISTENCIA Y PUNTUALIDAD', bg: '#065f46', color: '#ffffff' },
+      almuerzos: { label: 'ALMUERZOS', bg: '#0369a1', color: '#ffffff' },
+      permisos: { label: 'PERMISOS Y DESCUENTOS', bg: '#6d28d9', color: '#ffffff' },
+      extras: { label: 'HORAS EXTRAORDINARIAS', bg: '#1e40af', color: '#ffffff' },
+      campo: { label: 'TRABAJO EN CAMPO', bg: '#0e7490', color: '#ffffff' },
+      totalesExtras: { label: 'TOTALES EXTRAS NÓMINA', bg: '#1e1b4b', color: '#ffffff' },
+      general: { label: 'INFORMACIÓN GENERAL', bg: '#334155', color: '#ffffff' }
+    };
+
+    let superHeadersHtml = `<th colspan="2" style="background-color:#1e293b; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #334155; font-size:9.5pt; letter-spacing:0.5px;">DATOS DEL COLABORADOR</th>`;
+
+    let currentCat = null;
+    let currentCatCount = 0;
+    activeCols.forEach((col, idx) => {
+      const cat = col.cat || 'general';
+      if (cat !== currentCat) {
+        if (currentCat !== null) {
+          const cfg = CAT_STYLES[currentCat] || { label: currentCat.toUpperCase(), bg: '#334155', color: '#ffffff' };
+          superHeadersHtml += `<th colspan="${currentCatCount}" style="background-color:${cfg.bg}; color:${cfg.color}; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9pt; letter-spacing:0.5px;">${cfg.label}</th>`;
+        }
+        currentCat = cat;
+        currentCatCount = 1;
+      } else {
+        currentCatCount++;
+      }
+      if (idx === activeCols.length - 1) {
+        const cfg = CAT_STYLES[currentCat] || { label: currentCat.toUpperCase(), bg: '#334155', color: '#ffffff' };
+        superHeadersHtml += `<th colspan="${currentCatCount}" style="background-color:${cfg.bg}; color:${cfg.color}; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9pt; letter-spacing:0.5px;">${cfg.label}</th>`;
       }
     });
-    totalCols = columnasCustomActivas.length + 2;
 
+    // 3. Column Headers individuales con sus colores específicos
+    let colHeadersHtml = `
+      <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:left; border:0.5pt solid #475569; font-size:9.5pt; padding:4px 8px; min-width:200px;">COLABORADOR</th>
+      <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:left; border:0.5pt solid #475569; font-size:9.5pt; padding:4px 8px; min-width:130px;">ÁREA / CARGO</th>
+    `;
+    activeCols.forEach(col => {
+      colHeadersHtml += `<th style="background-color:${col.colorHeader || '#1e40af'}; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt; padding:4px 6px; text-transform:uppercase; min-width:85px;">${col.label}</th>`;
+    });
+
+    // 4. Filas de datos con Zebra Striping y destacados contextuales
     let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
 
-    bodyHtml = data.map(e => {
-      let rowHtml = `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
-      COLUMNAS_DISPONIBLES.forEach(col => {
-        if (columnasCustomActivas.includes(col.id)) {
-          const valor = e[col.id];
-          let contenido = '';
-          if (col.tipo === 'tiempo') {
-            contenido = minutosAHHMMSS(valor);
-          } else if (col.tipo === 'pct') {
-            contenido = `${valor}%`;
-          } else {
-            contenido = valor;
+    let rowsHtml = data.map((e, rowIndex) => {
+      const rowBg = (rowIndex % 2 === 0) ? '#ffffff' : '#f8fafc';
+      let rowCells = `
+        <td style="background-color:${rowBg}; color:#0f172a; font-weight:600; text-align:left; border:0.5pt solid #cbd5e1; padding:5px 8px; height:26px;">${escapeHtml(e.nombre)}</td>
+        <td style="background-color:${rowBg}; color:#475569; text-align:left; border:0.5pt solid #cbd5e1; padding:5px 8px; height:26px;">${escapeHtml(e.area || '—')}</td>
+      `;
+
+      activeCols.forEach(col => {
+        const valor = e[col.id];
+        let displayVal = '';
+        let cellBg = rowBg;
+        let cellColor = '#1e293b';
+        let cellWeight = 'normal';
+        let cellFont = 'Arial, sans-serif';
+        let borderCustom = '';
+
+        if (col.tipo === 'tiempo') {
+          const mins = Number(valor) || 0;
+          displayVal = (mins > 0) ? minutosAHHMMSS(mins) : '—';
+          cellFont = 'Consolas, monospace';
+          if (col.id === 'minutosAtrasos' && mins > 0) {
+            cellBg = '#fef3c7'; cellColor = '#92400e'; cellWeight = 'bold';
+          } else if (col.id === 'tiempoADescontar' && mins > 0) {
+            cellBg = '#ffe4e6'; cellColor = '#9f1239'; cellWeight = 'bold';
+          } else if (col.id === 'horasExtra50' && mins > 0) {
+            cellBg = '#eff6ff'; cellColor = '#1d4ed8'; cellWeight = 'bold';
+          } else if (col.id === 'horasExtra100' && mins > 0) {
+            cellBg = '#eef2ff'; cellColor = '#4338ca'; cellWeight = 'bold';
+          } else if (col.id === 'totalExtras50' && mins > 0) {
+            cellBg = '#dbeafe'; cellColor = '#1e3a8a'; cellWeight = 'bold';
+            borderCustom = 'border-left:1pt solid #93c5fd; border-right:1pt solid #93c5fd;';
+          } else if (col.id === 'totalExtras100' && mins > 0) {
+            cellBg = '#e0e7ff'; cellColor = '#312e81'; cellWeight = 'bold';
+            borderCustom = 'border-left:1pt solid #a5b4fc; border-right:1pt solid #a5b4fc;';
+          } else if (col.cat === 'campo' && mins > 0) {
+            cellBg = '#ecfeff'; cellColor = '#0891b2'; cellWeight = 'bold';
+          } else if (col.cat === 'permisos' && mins > 0) {
+            cellBg = '#f5f3ff'; cellColor = '#7c3aed'; cellWeight = 'bold';
+          } else if (mins === 0) {
+            cellColor = '#94a3b8';
           }
-          rowHtml += `<td style="text-align:center;">${contenido}</td>`;
+        } else if (col.tipo === 'pct') {
+          const num = Number(valor) || 0;
+          displayVal = `${num}%`;
+          cellWeight = 'bold';
+          if (num >= 90) {
+            cellBg = '#dcfce7'; cellColor = '#15803d';
+          } else if (num >= 75) {
+            cellBg = '#fef9c3'; cellColor = '#854d0e';
+          } else {
+            cellBg = '#fee2e2'; cellColor = '#991b1b';
+          }
+        } else {
+          const num = Number(valor) || 0;
+          displayVal = num;
+          if (col.id === 'faltas') {
+            if (num > 0) {
+              cellBg = '#fee2e2'; cellColor = '#991b1b'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'atrasos') {
+            if (num > 0) {
+              cellBg = '#fef3c7'; cellColor = '#92400e'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'asistencias') {
+            if (num > 0) {
+              cellBg = '#ecfdf5'; cellColor = '#047857'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'almPlanta' || col.id === 'almFuera') {
+            if (num > 0) {
+              cellBg = '#f0f9ff'; cellColor = '#0369a1'; cellWeight = '600';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (num === 0) {
+            cellColor = '#94a3b8';
+          }
         }
+
+        rowCells += `<td style="background-color:${cellBg}; color:${cellColor}; font-weight:${cellWeight}; font-family:${cellFont}; font-size:9.5pt; text-align:center; border:0.5pt solid #cbd5e1; height:26px; padding:3px 6px; ${borderCustom} mso-number-format:\\@;">${displayVal}</td>`;
       });
-      rowHtml += '</tr>';
-      return rowHtml;
+
+      return `<tr>${rowCells}</tr>`;
     }).join('');
+
+    // 5. Fila de Totales / Promedios consolidada
+    let totalsCellsHtml = `<td colspan="2" style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:left; height:34px; border:1pt solid #0f172a; font-size:10pt; padding:6px 10px; letter-spacing:0.5px;">TOTALES / PROMEDIOS (${data.length} COLABORADORES)</td>`;
+
+    activeCols.forEach(col => {
+      if (col.tipo === 'pct') {
+        const avg = data.length ? Math.round(data.reduce((acc, e) => acc + (Number(e[col.id]) || 0), 0) / data.length) : 0;
+        totalsCellsHtml += `<td style="background-color:#0f172a; color:#4ade80; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt; mso-number-format:\\@;">${avg}%</td>`;
+      } else if (col.tipo === 'tiempo') {
+        const sum = data.reduce((acc, e) => acc + (Number(e[col.id]) || 0), 0);
+        totalsCellsHtml += `<td style="background-color:#0f172a; color:#fde047; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(sum)}</td>`;
+      } else {
+        const sum = data.reduce((acc, e) => acc + (Number(e[col.id]) || 0), 0);
+        totalsCellsHtml += `<td style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt;">${sum}</td>`;
+      }
+    });
+
+    tableContentHtml = `
+      <thead>
+        <tr>${superHeadersHtml}</tr>
+        <tr>${colHeadersHtml}</tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+        <tr>${totalsCellsHtml}</tr>
+      </tbody>
+    `;
   }
 
-  // Formato HTML premium nativo para Excel
+  // Signature columns count
+  const sigCol1 = Math.max(1, Math.floor(totalCols / 3));
+  const sigCol2 = Math.max(1, Math.floor(totalCols / 3));
+  const sigCol3 = Math.max(1, totalCols - sigCol1 - sigCol2);
+
+  // Formato HTML corporativo premium para Microsoft Excel
   let excelHtml = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <meta charset="utf-8">
-          <!--[if gte mso 9]>
-          <xml>
-            <x:ExcelWorkbook>
-              <x:ExcelWorksheets>
-                <x:ExcelWorksheet>
-                  <x:Name>Reporte Asistencia</x:Name>
-                  <x:WorksheetOptions>
-                    <x:DisplayGridlines/>
-                  </x:WorksheetOptions>
-                </x:ExcelWorksheet>
-              </x:ExcelWorksheets>
-            </x:ExcelWorkbook>
-          </xml>
-          <![endif]-->
-          <style>
-            table { border-collapse:collapse; font-family:Arial, sans-serif; }
-            th { background-color:#1e40af; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #cbd5e1; font-size:11px; text-transform:uppercase; }
-            td { border:0.5pt solid #cbd5e1; height:26px; font-size:11px; }
-            .title-cell { font-size:16px; font-weight:bold; color:#1e40af; height:45px; text-align:left; }
-            .meta-cell { font-size:10px; color:#64748b; height:20px; text-align:left; }
-          </style>
-        </head>
-        <body>
-          <table>
-            <tr><td colspan="${totalCols}" class="title-cell">TCONTROL S.A. - REPORTE DE ASISTENCIA</td></tr>
-            <tr><td colspan="${totalCols}" class="meta-cell">Periodo: ${periodoStr} | Generado: ${formatearTimestampCompleto(new Date())}</td></tr>
-            <tr><td colspan="${totalCols}" style="height:15px;"></td></tr>
-            <thead>
-              <tr>${headersHtml}</tr>
-            </thead>
-            <tbody>
-              ${bodyHtml}
-            </tbody>
-            <tfoot>
-              <tr><td colspan="${totalCols}" style="height:12px;"></td></tr>
-              <tr><td colspan="${totalCols}" style="font-size:8pt; color:#64748b; font-style:italic;">CONFIDENCIAL — TCONTROL S.A. | Información laboral protegida por la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador). Exclusivo para gestión interna y auditoría patronal autorizada.</td></tr>
-            </tfoot>
-          </table>
-        </body>
-        </html>
-      `;
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <!--[if gte mso 9]>
+      <xml>
+        <x:ExcelWorkbook>
+          <x:ExcelWorksheets>
+            <x:ExcelWorksheet>
+              <x:Name>Reporte Asistencia</x:Name>
+              <x:WorksheetOptions>
+                <x:DisplayGridlines/>
+                <x:Print>
+                  <x:Orientation>Landscape</x:Orientation>
+                </x:Print>
+              </x:WorksheetOptions>
+            </x:ExcelWorksheet>
+          </x:ExcelWorksheets>
+        </x:ExcelWorkbook>
+      </xml>
+      <![endif]-->
+      <style>
+        table { border-collapse:collapse; font-family:Arial, sans-serif; }
+        th { font-family:Arial, sans-serif; }
+        td { font-family:Arial, sans-serif; }
+      </style>
+    </head>
+    <body>
+      <table>
+        <!-- BANNER DE ENCABEZADO CORPORATIVO -->
+        <tr>
+          <td colspan="${totalCols}" style="background-color:#0f172a; color:#ffffff; font-size:15pt; font-weight:bold; height:42px; text-align:center; vertical-align:middle; border:1pt solid #0f172a; letter-spacing:1px;">
+            TCONTROL S.A. &mdash; REPORTE CONSOLIDADO DE ASISTENCIA Y NÓMINA
+          </td>
+        </tr>
+        <tr>
+          <td colspan="${totalCols}" style="background-color:#1e293b; color:#94a3b8; font-size:9pt; height:24px; text-align:center; vertical-align:middle; border:1pt solid #1e293b;">
+            ${rango.esFiltroPersonalizado ? 'Rango de Fechas' : 'Período Nómina'}: <strong style="color:#38bdf8;">${periodoStr}</strong> &nbsp;|&nbsp; 
+            Filtro: <strong style="color:#ffffff;">${fCargo ? fCargo.toUpperCase() : 'TODOS LOS COLABORADORES'}</strong> &nbsp;|&nbsp; 
+            Generado: <strong style="color:#ffffff;">${formatearTimestampCompleto(new Date())}</strong>
+          </td>
+        </tr>
+        <tr><td colspan="${totalCols}" style="height:12px; border:none;"></td></tr>
+
+        ${tableContentHtml}
+
+        <!-- PIE DE PÁGINA Y AUDITORÍA PATRONAL -->
+        <tr><td colspan="${totalCols}" style="height:14px; border:none;"></td></tr>
+        <tr>
+          <td colspan="${totalCols}" style="background-color:#f8fafc; color:#64748b; font-size:8pt; font-style:italic; border:0.5pt solid #cbd5e1; height:24px; padding:4px 8px; text-align:center;">
+            CONFIDENCIAL &mdash; TCONTROL S.A. | Información laboral protegida por la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador) y el Código del Trabajo. Exclusivo para gestión interna y auditoría patronal autorizada.
+          </td>
+        </tr>
+        <tr><td colspan="${totalCols}" style="height:35px; border:none;"></td></tr>
+        <tr>
+          <td colspan="${sigCol1}" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
+            ELABORADO POR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Supervisor de Turno / RRHH</span>
+          </td>
+          <td colspan="${sigCol2}" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
+            REVISADO POR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Jefatura de Talento Humano</span>
+          </td>
+          <td colspan="${sigCol3}" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
+            APROBADO POR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Gerencia General / Auditoría</span>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
 
   const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
   link.setAttribute("href", url);
-  link.setAttribute("download", `Reporte_Asistencia_${periodoStr.replace(/ /g, '_')}.xls`);
+  link.setAttribute("download", `Reporte_Asistencia_${safeFileName}.xls`);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  mostrarToast('Reporte exportado a Excel con éxito', 'success');
+  mostrarToast('Reporte exportado a Excel con estilos premium', 'success');
 };
 
 window.exportarGoogleSheetsReporteCustom = async function () {
   let q = ($('searchReportesCustom')?.value || '').toLowerCase();
   let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-  const selectPeriodo = $('periodoMensual');
-  const idx = parseInt(selectPeriodo?.value || 0);
-  let periodo = periodos[idx];
-  let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
+  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
+    ? window.obtenerRangoFechasReportes()
+    : { R_INI: '', R_FIN: '', labelRango: 'Reporte', labelCorto: 'Reporte', esFiltroPersonalizado: false };
 
-  // Nombre de hoja seguro (max 30 chars, sin caracteres ilegales)
-  let nombreHoja = `Rep_${periodoStr.replace(/ — /g, '_').replace(/ /g, '_')}`;
+  // Nombre de hoja seguro (max 30 chars, sin caracteres ilegales para pestaña de Google Sheets)
+  let prefix = fCargo === 'almuerzos extra' ? 'AlmExt' : 'Rep';
+  let safeTabName = `${prefix}_${(rango.labelCorto || 'Rep').replace(/[^a-zA-Z0-9]/g, '_')}`.substring(0, 30);
+  let nombreHoja = safeTabName;
 
   let hasData = false;
   let extras = [];
   if (fCargo === 'almuerzos extra') {
-    let pInicio = periodo ? periodo.inicio : '';
-    let pFin = periodo ? periodo.fin : '';
-    extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
+    extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
     if (q) {
       extras = extras.filter(ae =>
         (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
@@ -10282,7 +10825,10 @@ window.exportarGoogleSheetsReporteCustom = async function () {
     }
     hasData = extras.length > 0;
   } else {
-    hasData = _reportesCustomData.length > 0;
+    const baseData = (window._reportesCustomData && window._reportesCustomData.length)
+      ? window._reportesCustomData
+      : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
+    hasData = baseData.length > 0;
   }
 
   if (!hasData) {
@@ -10367,17 +10913,15 @@ window.exportarGoogleSheetsReporteCustom = async function () {
 window.imprimirReporteCustom = function () {
   let q = ($('searchReportesCustom')?.value || '').toLowerCase();
   let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-  const selectPeriodo = $('periodoMensual');
-  const idx = parseInt(selectPeriodo?.value || 0);
-  let periodo = periodos[idx];
-  let periodoStr = periodo ? periodo.label.replace('⭐ ', '').replace(' (Actual)', '') : 'Reporte';
+  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
+    ? window.obtenerRangoFechasReportes()
+    : { R_INI: '', R_FIN: '', labelRango: 'Reporte', labelCorto: 'Reporte', esFiltroPersonalizado: false };
+  let periodoStr = rango.labelRango;
 
   let hasData = false;
   let extras = [];
   if (fCargo === 'almuerzos extra') {
-    let pInicio = periodo ? periodo.inicio : '';
-    let pFin = periodo ? periodo.fin : '';
-    extras = window.obtenerAlmuerzosExtraConsolidados(pInicio, pFin);
+    extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
     if (q) {
       extras = extras.filter(ae =>
         (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
@@ -10388,7 +10932,10 @@ window.imprimirReporteCustom = function () {
     }
     hasData = extras.length > 0;
   } else {
-    hasData = _reportesCustomData.length > 0;
+    const baseData = (window._reportesCustomData && window._reportesCustomData.length)
+      ? window._reportesCustomData
+      : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
+    hasData = baseData.length > 0;
   }
 
   if (!hasData) {
@@ -10542,7 +11089,7 @@ window.imprimirReporteCustom = function () {
         <body>
           <div class="header">
             <h1>${tituloReporte}</h1>
-            <p>Período de Consulta: ${periodoStr}</p>
+            <p>${rango.esFiltroPersonalizado ? 'Filtro de Fechas: ' : 'Período: '}${periodoStr}</p>
           </div>
           <div class="info-meta">
             <div>Generado el: ${formatearTimestampCompleto(new Date())}</div>
@@ -14540,7 +15087,13 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   }
 
   // Faltante de jornada ordinaria (8h = 480 min)
-  let faltanteJornada = esFestivo ? 0 : Math.max(0, 480 - netWorked);
+  let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+  let faltanteJornada = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
+
+  // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
+  if (!esFestivo && atrasoMins > faltanteJornada) {
+    atrasoMins = faltanteJornada;
+  }
 
   // Modo actual
   const todosRegsConModo = regsDia.filter(r => r.modo);
@@ -14598,6 +15151,7 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
     regsDia,
     periodosDia,
     netWorked,
+    netWorkedOrdinario,
     atrasoMins,
     faltanteJornada,
     modActual,
@@ -14669,42 +15223,27 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
     }
   }
 
-  // Sanitizar tiempos iniciales para garantizar exclusividad mutua
+  // Asignar tiempos existentes directamente sin restricciones artificiales
   let cleanJust = justMins;
   let cleanPers = persMins;
   let cleanMed = medMins;
-  const numActivos = (cleanJust > 0 ? 1 : 0) + (cleanPers > 0 ? 1 : 0) + (cleanMed > 0 ? 1 : 0);
-  if (numActivos > 1) {
-    if (razonActual === 'Permiso Médico') { cleanJust = 0; cleanPers = 0; }
-    else if (razonActual === 'Permiso Personal') { cleanJust = 0; cleanMed = 0; }
-    else if (cleanJust > 0) { cleanPers = 0; cleanMed = 0; }
-    else if (cleanMed > 0) { cleanJust = 0; cleanPers = 0; }
-  }
 
   // Si es cumpleaños del colaborador y tiene horas trabajadas con faltante/atraso, aplicar beneficio institucional automático
   if (esCumpleHoy) {
     if (tieneAsistencia && cleanJust === 0 && cleanPers === 0 && cleanMed === 0 && faltanteJornada > 0) {
-      cleanJust = Math.min(240, faltanteJornada);
+      cleanJust = 240;
       if (!comentario) comentario = 'Beneficio institucional por cumpleaños (4 horas)';
     } else if (!tieneAsistencia && !razonActual) {
       if (!comentario) comentario = 'Día de cumpleaños del colaborador';
     }
   }
 
-  // Límite máximo de minutos permitido
-  const maxPermitido = tieneAsistencia ? faltanteJornada : 480;
-  if (tieneAsistencia) {
-    cleanJust = Math.min(cleanJust, maxPermitido);
-    cleanPers = Math.min(cleanPers, maxPermitido);
-    cleanMed = Math.min(cleanMed, maxPermitido);
-  }
-
   const elJust = document.getElementById('modalJornadaMinsJustificado');
   const elPers = document.getElementById('modalJornadaMinsPersonal');
   const elMed = document.getElementById('modalJornadaMinsMedico');
-  if (elJust) { elJust.max = maxPermitido; elJust.value = cleanJust; }
-  if (elPers) { elPers.max = maxPermitido; elPers.value = cleanPers; }
-  if (elMed) { elMed.max = maxPermitido; elMed.value = cleanMed; }
+  if (elJust) { elJust.max = 720; elJust.value = cleanJust; }
+  if (elPers) { elPers.max = 720; elPers.value = cleanPers; }
+  if (elMed) { elMed.max = 720; elMed.value = cleanMed; }
 
   window.actualizarEtiquetasMinutosModal();
 
@@ -14753,11 +15292,6 @@ window.cerrarModalGestionJornada = function () {
 };
 
 window.actualizarEtiquetasMinutosModal = function (origen) {
-  const ctx = window._modalJornadaContexto;
-  const tieneAsistencia = ctx?.tieneAsistencia || false;
-  const faltante = ctx ? Math.max(0, 480 - (ctx.netWorked || 0)) : 0;
-  const maxPermitido = tieneAsistencia ? faltante : 480;
-
   const elJust = document.getElementById('modalJornadaMinsJustificado');
   const elPers = document.getElementById('modalJornadaMinsPersonal');
   const elMed = document.getElementById('modalJornadaMinsMedico');
@@ -14766,52 +15300,10 @@ window.actualizarEtiquetasMinutosModal = function (origen) {
   let pers = parseInt(elPers?.value || '0') || 0;
   let med = parseInt(elMed?.value || '0') || 0;
 
-  // 1. Exclusividad mutua estricta: si se escribe en uno, los otros se limpian a 0
-  if (origen === 'justificado' && just > 0) {
-    if (elPers && elPers.value != 0) { elPers.value = 0; pers = 0; }
-    if (elMed && elMed.value != 0) { elMed.value = 0; med = 0; }
-  } else if (origen === 'personal' && pers > 0) {
-    if (elJust && elJust.value != 0) { elJust.value = 0; just = 0; }
-    if (elMed && elMed.value != 0) { elMed.value = 0; med = 0; }
-  } else if (origen === 'medico' && med > 0) {
-    if (elJust && elJust.value != 0) { elJust.value = 0; just = 0; }
-    if (elPers && elPers.value != 0) { elPers.value = 0; pers = 0; }
-  } else if (!origen) {
-    const act = (just > 0 ? 1 : 0) + (pers > 0 ? 1 : 0) + (med > 0 ? 1 : 0);
-    if (act > 1) {
-      if (med > 0) { just = 0; pers = 0; if (elJust) elJust.value = 0; if (elPers) elPers.value = 0; }
-      else if (pers > 0) { just = 0; if (elJust) elJust.value = 0; }
-    }
-  }
-
-  // 2. Control de tope máximo permitido
-  if (tieneAsistencia) {
-    if (just > maxPermitido) {
-      just = maxPermitido;
-      if (elJust) elJust.value = maxPermitido;
-      if (typeof mostrarToast === 'function' && origen === 'justificado') {
-        mostrarToast(`⚠️ El tiempo justificado no puede superar el faltante de la jornada (${maxPermitido} min)`, 'warn');
-      }
-    }
-    if (pers > maxPermitido) {
-      pers = maxPermitido;
-      if (elPers) elPers.value = maxPermitido;
-      if (typeof mostrarToast === 'function' && origen === 'personal') {
-        mostrarToast(`⚠️ El permiso personal no puede superar el faltante de la jornada (${maxPermitido} min)`, 'warn');
-      }
-    }
-    if (med > maxPermitido) {
-      med = maxPermitido;
-      if (elMed) elMed.value = maxPermitido;
-      if (typeof mostrarToast === 'function' && origen === 'medico') {
-        mostrarToast(`⚠️ El permiso médico no puede superar el faltante de la jornada (${maxPermitido} min)`, 'warn');
-      }
-    }
-  } else {
-    if (just > 480) { just = 480; if (elJust) elJust.value = 480; }
-    if (pers > 480) { pers = 480; if (elPers) elPers.value = 480; }
-    if (med > 480) { med = 480; if (elMed) elMed.value = 480; }
-  }
+  // Límite técnico máximo de 720 min (12 horas) por categoría
+  if (just > 720) { just = 720; if (elJust) elJust.value = 720; }
+  if (pers > 720) { pers = 720; if (elPers) elPers.value = 720; }
+  if (med > 720) { med = 720; if (elMed) elMed.value = 720; }
 
   const fnFormat = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS : (m => `${m} min`);
 
@@ -14828,11 +15320,7 @@ window.actualizarEtiquetasMinutosModal = function (origen) {
   const total = just + pers + med;
   if (totalTxt) {
     totalTxt.textContent = `Total Permisos: ${fnFormat(total)} (${total} min)`;
-    if (tieneAsistencia && total > faltante) {
-      totalTxt.style.color = '#dc2626';
-    } else {
-      totalTxt.style.color = '#15803d';
-    }
+    totalTxt.style.color = '#15803d';
   }
 };
 
@@ -14848,13 +15336,25 @@ window.recalcularTiemposModalJornada = function () {
       const esFestivo = ctx?.esFestivo || false;
       if (!esFestivo && dur > 240) dur -= 45;
       dur = Math.max(0, dur);
-      const falt = esFestivo ? 0 : Math.max(0, 480 - dur);
 
-      let refEntrada = esFestivo ? 420 : 450;
+      let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+      let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+      let ordE = Math.max(refEntrada, mE);
+      let ordS = Math.min(refSalida, mS);
+      let ordDur = (ordS > ordE) ? (ordS - ordE) : 0;
+      if (!esFestivo && ordDur > 240) ordDur -= 45;
+      ordDur = Math.max(0, ordDur);
+      const falt = esFestivo ? 0 : Math.max(0, 480 - ordDur);
+
       let atraso = (mE > refEntrada + 5) ? (mE - refEntrada) : 0;
+      // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
+      if (!esFestivo && atraso > falt) {
+        atraso = falt;
+      }
 
       if (ctx) {
         ctx.netWorked = dur;
+        ctx.netWorkedOrdinario = ordDur;
         ctx.faltanteJornada = falt;
         ctx.atrasoMins = atraso;
         ctx.tieneAsistencia = true;
@@ -14863,13 +15363,13 @@ window.recalcularTiemposModalJornada = function () {
       document.getElementById('modalJornadaInfoAtraso').textContent = (typeof minutosAHHMMSS === 'function') ? (atraso > 0 ? minutosAHHMMSS(atraso) : '00:00:00') : `${atraso} min`;
       document.getElementById('modalJornadaInfoFaltante').textContent = (typeof minutosAHHMMSS === 'function') ? (falt > 0 ? minutosAHHMMSS(falt) : '00:00:00') : `${falt} min`;
 
-      // Ajustar max en inputs
+      // Permitir permisos intermedios con tope técnico de hasta 720 min (12 horas)
       const elJust = document.getElementById('modalJornadaMinsJustificado');
       const elPers = document.getElementById('modalJornadaMinsPersonal');
       const elMed = document.getElementById('modalJornadaMinsMedico');
-      if (elJust) elJust.max = falt;
-      if (elPers) elPers.max = falt;
-      if (elMed) elMed.max = falt;
+      if (elJust) elJust.max = 720;
+      if (elPers) elPers.max = 720;
+      if (elMed) elMed.max = 720;
 
       // Actualizar estado de la Sección 2 (se desactiva si hay horas)
       window.actualizarEstadoSeccionRazon();
@@ -14935,7 +15435,7 @@ window.alCambiarRazonModalJornada = function (valor) {
 window.aplicarAccionRapidaModal = function (accion) {
   const ctx = window._modalJornadaContexto;
   if (!ctx) return;
-  const faltante = Math.max(0, 480 - (ctx.netWorked || 0));
+  const faltante = ctx.faltanteJornada || 0;
   const atraso = ctx.atrasoMins || 0;
 
   const elJust = document.getElementById('modalJornadaMinsJustificado');
@@ -14983,7 +15483,7 @@ window.guardarModalGestionJornada = async function () {
 
   const tieneHoras = Boolean(hEntrada || hSalida);
   const tieneAsistencia = Boolean(ctx.tieneAsistencia || tieneHoras || (ctx.netWorked > 0));
-  const faltanteJornada = ctx ? Math.max(0, 480 - (ctx.netWorked || 0)) : 0;
+  const faltanteJornada = ctx ? (ctx.faltanteJornada || 0) : 0;
 
   let razonFinal = '';
   if (!tieneAsistencia) {
@@ -14995,31 +15495,16 @@ window.guardarModalGestionJornada = async function () {
     }
   }
 
-  // 1. VALIDACIÓN: Exclusividad mutua de tipo de justificación/permiso
-  const camposActivos = (minsJust > 0 ? 1 : 0) + (minsPers > 0 ? 1 : 0) + (minsMed > 0 ? 1 : 0);
-  if (camposActivos > 1) {
-    if (typeof mostrarToast === 'function') {
-      mostrarToast('❌ Solo puede asignar un tipo de justificación o permiso por jornada (Justificado, Personal o Médico). Corrija los valores antes de guardar.', 'error');
-    }
-    return;
-  }
-
-  // 2. VALIDACIÓN: No exceder el faltante de la jornada ordinaria
+  // 1. VALIDACIÓN: Límite técnico de 720 min por categoría
   const totalPermisos = minsJust + minsPers + minsMed;
-  if (tieneAsistencia && totalPermisos > faltanteJornada) {
+  if (minsJust > 720 || minsPers > 720 || minsMed > 720) {
     if (typeof mostrarToast === 'function') {
-      mostrarToast(`❌ El tiempo de permiso (${totalPermisos} min) excede el faltante de la jornada (${faltanteJornada} min).`, 'error');
-    }
-    return;
-  }
-  if (!tieneAsistencia && totalPermisos > 480) {
-    if (typeof mostrarToast === 'function') {
-      mostrarToast(`❌ El tiempo de permiso (${totalPermisos} min) no puede superar las 8 horas (480 min).`, 'error');
+      mostrarToast('❌ El tiempo asignado a un permiso no puede superar las 12 horas (720 min).', 'error');
     }
     return;
   }
 
-  // 3. VALIDACIÓN: Si no tiene asistencia ni horas ni permisos, debe tener una razón de ausencia
+  // 2. VALIDACIÓN: Si no tiene asistencia ni horas ni permisos, debe tener una razón de ausencia
   if (!tieneAsistencia && !razonFinal && totalPermisos === 0) {
     if (typeof mostrarToast === 'function') {
       mostrarToast('⚠️ Seleccione una razón de ausencia en la Sección 2 para el día no laborado.', 'warn');
@@ -15166,7 +15651,17 @@ window.guardarModalGestionJornada = async function () {
           fecha_falta: fecha,
           razon_ausencia: razonFinal
         }).catch(err => console.warn("Aviso Firestore ausencia:", err)));
-      } else if (typeof jsonpRequest === 'function') {
+      }
+      if (fecha < hoy && window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+        backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+          empleadoId: empleadoId,
+          tipo: mappedTipo,
+          fecha: fecha,
+          campo: 'justificado',
+          valor: 'SI',
+          razon_justificac: razonFinal
+        }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+      } else if (typeof jsonpRequest === 'function' && !window.FirebaseBackend) {
         backgroundTasks.push(jsonpRequest({
           accion: 'guardarRegistro',
           id: empleadoId,
@@ -15252,6 +15747,26 @@ window.guardarModalGestionJornada = async function () {
           backgroundTasks.push(window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad, supervisorId }).catch(err => console.warn("Aviso Firestore modalidad:", err)));
         } else if (typeof jsonpRequest === 'function') {
           backgroundTasks.push(jsonpRequest({ accion: 'guardarModalidadSupervisor', empleadoId, fecha, modalidad, supervisorId }).catch(err => console.warn("Aviso Sheets modalidad:", err)));
+        }
+      }
+
+      // Almuerzo u Horas Extras si no se enviaron horas en la entrada
+      if (!hEntrada) {
+        if (almuerzoVal && almuerzoVal !== (ctx.almuerzoActual || 'NO')) {
+          if (window.FirebaseBackend && window.FirebaseBackend.actualizarAlmuerzoSupervisor) {
+            backgroundTasks.push(window.FirebaseBackend.actualizarAlmuerzoSupervisor({ empleadoId, almuerzo: almuerzoVal, fecha }).catch(err => console.warn("Aviso almuerzo modal:", err)));
+          }
+        }
+        if (horasExtrasVal && horasExtrasVal !== (ctx.horasExtrasActual || 'NO')) {
+          if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+            backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+              empleadoId,
+              fecha,
+              tipo: 'ENTRADA',
+              campo: 'horasExtra',
+              valor: horasExtrasVal
+            }).catch(err => console.warn("Aviso extras modal:", err)));
+          }
         }
       }
     }

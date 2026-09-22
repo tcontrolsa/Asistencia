@@ -1573,7 +1573,7 @@ function guardarRegistro(data) {
     // Determinar Modo (OFICINA o CAMPO)
     const modo = data.modo || "OFICINA";
     
-    // Determinar DÃ­a y Horas Extra automÃ¡ticas para CAMPO
+    // Determinar Día y Horas Extra automáticas para CAMPO o salida > 45 min pos-jornada
     const diaDesc = obtenerDiaEcuador(fechaRegistro);
     let horasExtra = "NO";
     let autoriza = data.autoriza || "";
@@ -1581,6 +1581,20 @@ function guardarRegistro(data) {
     if (modo === "CAMPO") {
       horasExtra = "SI";
       if (!autoriza) autoriza = "SISTEMA (CAMPO)";
+    } else if (data.tipo === 'SALIDA') {
+      const hVal = data.hora || Utilities.formatDate(ahora, Session.getScriptTimeZone(), "HH:mm:ss");
+      const hPartes = String(hVal).trim().split(':');
+      if (hPartes.length >= 2) {
+        const minsSalida = parseInt(hPartes[0], 10) * 60 + parseInt(hPartes[1], 10);
+        const diaU = (diaDesc || '').toUpperCase();
+        const esSab = diaU.includes('SÁB') || diaU.includes('SAB');
+        const esDom = diaU.includes('DOM');
+        const refSalida = esSab ? 900 : (esDom ? 450 : 975); // 16:15 = 975 min, Sábado 15:00 = 900 min
+        if (minsSalida - refSalida > 45) {
+          horasExtra = "SI";
+          if (!autoriza) autoriza = "SISTEMA (>45 MIN)";
+        }
+      }
     }
     
     // Validar duplicados bÃ¡sicos (solo para registros que NO sean FALTA ni ESTADO ni CAMPO)
@@ -3585,6 +3599,7 @@ function actualizarRegistroArchivado(params) {
     const data = sheet.getDataRange().getValues();
     const tz = Session.getScriptTimeZone();
     let filaIndex = -1;
+    let filaFallback = -1;
     
     var normFechaStr = function(val) {
       if (!val) return '';
@@ -3597,17 +3612,29 @@ function actualizarRegistroArchivado(params) {
       return s;
     };
     var targetFechaNorm = normFechaStr(fecha);
+    var targetTipoNorm = String(tipo || '').trim().toUpperCase();
     
-    for (let i = 1; i < data.length; i++) {
+    // Búsqueda en reversa (de abajo hacia arriba) para encontrar registros recientes al instante
+    for (let i = data.length - 1; i >= 1; i--) {
       let rowFecha = normFechaStr(data[i][COLUMNAS.FECHA]);
       if (!rowFecha && data[i][COLUMNAS.TIMESTAMP]) {
         rowFecha = normFechaStr(data[i][COLUMNAS.TIMESTAMP]);
       }
       
-      if (String(data[i][COLUMNAS.ID]).trim() === eid && rowFecha === targetFechaNorm && String(data[i][COLUMNAS.TIPO]).trim() === tipo) {
-        filaIndex = i + 1;
-        break;
+      let rowId = String(data[i][COLUMNAS.ID] || '').trim();
+      let rowTipo = String(data[i][COLUMNAS.TIPO] || '').trim().toUpperCase();
+
+      if (rowId === eid && rowFecha === targetFechaNorm) {
+        if (!targetTipoNorm || rowTipo === targetTipoNorm || (["ENTRADA", "ENTRADA_CAMPO", "RETORNO_CAMPO"].includes(rowTipo) && ["ENTRADA", "ENTRADA_CAMPO"].includes(targetTipoNorm))) {
+          filaIndex = i + 1;
+          break;
+        } else if (filaFallback === -1) {
+          filaFallback = i + 1;
+        }
       }
+    }
+    if (filaIndex === -1 && filaFallback !== -1) {
+      filaIndex = filaFallback;
     }
     
     if (filaIndex !== -1) {
@@ -3642,7 +3669,9 @@ function actualizarRegistroArchivado(params) {
         if (params.horasExtra) sheet.getRange(filaIndex, COLUMNAS.HORAS_EXTRA + 1).setValue(params.horasExtra);
         return { ok: true, timestamp: tsFinal, fecha: fFinal, hora: hFinal };
       }
-      else if (campo === 'almuerzo') colIdx = COLUMNAS.ALMUERZO;
+      
+      var colIdx = -1;
+      if (campo === 'almuerzo') colIdx = COLUMNAS.ALMUERZO;
       else if (campo === 'modo' || campo === 'ubicacion' || campo === 'modalidad') colIdx = COLUMNAS.MODO;
       else if (campo === 'horasExtra') colIdx = COLUMNAS.HORAS_EXTRA;
       else if (campo === 'razon_entrada_tardia') colIdx = COLUMNAS.RAZON_ENTRADA_TARDIA;
@@ -3656,6 +3685,9 @@ function actualizarRegistroArchivado(params) {
       
       if (colIdx !== -1) {
         sheet.getRange(filaIndex, colIdx + 1).setValue(valor);
+        if (params.modo && colIdx !== COLUMNAS.MODO) sheet.getRange(filaIndex, COLUMNAS.MODO + 1).setValue(params.modo);
+        if (params.almuerzo && colIdx !== COLUMNAS.ALMUERZO) sheet.getRange(filaIndex, COLUMNAS.ALMUERZO + 1).setValue(params.almuerzo);
+        if (params.horasExtra && colIdx !== COLUMNAS.HORAS_EXTRA) sheet.getRange(filaIndex, COLUMNAS.HORAS_EXTRA + 1).setValue(params.horasExtra);
         return { ok: true };
       }
       return { ok: false, error: "Campo no mapeado para Sheets" };
@@ -3762,26 +3794,31 @@ function actualizarAlmuerzoSupervisor(params) {
     
     if (!sheetRegistros) return { error: "Hoja REGISTROS no encontrada" };
     
-    // Buscar el registro de este empleado para la fecha especificada (pasada o actual)
+    // Buscar el registro de este empleado para la fecha especificada (pasada o actual) en reversa
     const data = sheetRegistros.getDataRange().getValues();
     let filaPreferida = -1;
     let filaCualquiera = -1;
     let valorAnterior = "";
     let empleadoNombre = "";
     
-    for (let i = 1; i < data.length; i++) {
-      const fechaCell = data[i][COLUMNAS.FECHA];
-      let fechaStr = '';
-      if (fechaCell instanceof Date) {
-        fechaStr = Utilities.formatDate(fechaCell, timeZone, 'yyyy-MM-dd');
-      } else if (typeof fechaCell === 'string') {
-        fechaStr = fechaCell.trim().substring(0, 10);
-      }
-      
+    var normFechaLocal = function(val) {
+      if (!val) return '';
+      if (val instanceof Date) return Utilities.formatDate(val, timeZone, 'yyyy-MM-dd');
+      var s = String(val).trim();
+      var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (mYMD) return mYMD[1] + '-' + String(mYMD[2]).padStart(2, '0') + '-' + String(mYMD[3]).padStart(2, '0');
+      var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (mDMY) return mDMY[3] + '-' + String(mDMY[2]).padStart(2, '0') + '-' + String(mDMY[1]).padStart(2, '0');
+      return s.substring(0, 10);
+    };
+    var targetFechaNorm = normFechaLocal(targetFecha);
+    
+    for (let i = data.length - 1; i >= 1; i--) {
+      const fechaStr = normFechaLocal(data[i][COLUMNAS.FECHA]) || normFechaLocal(data[i][COLUMNAS.TIMESTAMP]);
       const id = data[i][COLUMNAS.ID]?.toString().trim() || '';
       const tipo = data[i][COLUMNAS.TIPO]?.toString().toUpperCase() || '';
       
-      if (fechaStr === targetFecha && id === empleadoId) {
+      if (fechaStr === targetFechaNorm && id === empleadoId) {
         if (["ENTRADA", "ENTRADA_CAMPO", "RETORNO_CAMPO", "SOLO_ALMUERZO"].includes(tipo)) {
           filaPreferida = i + 1;
           valorAnterior = data[i][COLUMNAS.ALMUERZO]?.toString() || '';
@@ -4317,12 +4354,6 @@ function parsearTimestampGAS(tsString) {
 // ================================================================
 function guardarPermisoSupervisor(params) {
   try {
-    const SUPERVISORES_AUTORIZADOS = ['7', '1058'];
-    const supervisorId = String(params.supervisorId || '').trim();
-    if (!SUPERVISORES_AUTORIZADOS.includes(supervisorId)) {
-      return { ok: false, error: 'No autorizado para modificar permisos.' };
-    }
-
     const empleadoId = String(params.empleadoId || '').trim();
     const fecha      = String(params.fecha || '').trim();        // YYYY-MM-DD
     const tipo       = String(params.tipo  || '').trim();        // 'personal' | 'medico'
@@ -4346,16 +4377,24 @@ function guardarPermisoSupervisor(params) {
     let filaIndex = -1;
     let fallbackIndex = -1;
 
-    for (let i = 1; i < data.length; i++) {
+    var normFechaPerm = function(val) {
+      if (!val) return '';
+      if (val instanceof Date) return Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+      var s = String(val).trim();
+      var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (mYMD) return mYMD[1] + '-' + String(mYMD[2]).padStart(2, '0') + '-' + String(mYMD[3]).padStart(2, '0');
+      var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (mDMY) return mDMY[3] + '-' + String(mDMY[2]).padStart(2, '0') + '-' + String(mDMY[1]).padStart(2, '0');
+      return s.substring(0, 10);
+    };
+    var targetFechaNorm = normFechaPerm(fecha);
+
+    for (let i = data.length - 1; i >= 1; i--) {
       const rEmpId = String(data[i][COLUMNAS.ID] || '').trim();
       const rTipo  = String(data[i][COLUMNAS.TIPO] || '').trim().toUpperCase();
-      let fStr = '';
-      if (data[i][COLUMNAS.FECHA] instanceof Date) {
-        fStr = Utilities.formatDate(data[i][COLUMNAS.FECHA], tz, 'yyyy-MM-dd');
-      } else {
-        fStr = String(data[i][COLUMNAS.FECHA] || '').trim();
-      }
-      if (rEmpId === empleadoId && fStr === fecha) {
+      const fStr = normFechaPerm(data[i][COLUMNAS.FECHA]) || normFechaPerm(data[i][COLUMNAS.TIMESTAMP]);
+      
+      if (rEmpId === empleadoId && fStr === targetFechaNorm) {
         if (rTipo === 'ENTRADA') {
           filaIndex = i + 1; // 1-indexed
           break;
@@ -4561,14 +4600,9 @@ kpiVacacionesIndividual: !empIdReq ? vacacionesPorEmpleado : null
 
 function guardarModalidadSupervisor(params) {
   try {
-    const supervisorId = String(params.supervisorId || '').trim();
-    if (!supervisorId) {
-      return { ok: false, error: 'Supervisor no especificado.' };
-    }
-
     const empleadoId = String(params.empleadoId || '').trim();
     const fecha      = String(params.fecha || '').trim();        // YYYY-MM-DD
-    const modalidad  = String(params.modalidad || '').trim().toUpperCase(); // 'EMPRESA' | 'CAMPO' | 'MIXTO'
+    const modalidad  = String(params.modalidad || params.modo || '').trim().toUpperCase(); // 'EMPRESA' | 'CAMPO' | 'MIXTO'
 
     if (!empleadoId || !fecha || !modalidad) {
       return { ok: false, error: 'Parámetros inválidos.' };
@@ -4581,15 +4615,23 @@ function guardarModalidadSupervisor(params) {
     const tz   = Session.getScriptTimeZone();
     let count = 0;
 
-    for (let i = 1; i < data.length; i++) {
+    var normFechaMod = function(val) {
+      if (!val) return '';
+      if (val instanceof Date) return Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+      var s = String(val).trim();
+      var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (mYMD) return mYMD[1] + '-' + String(mYMD[2]).padStart(2, '0') + '-' + String(mYMD[3]).padStart(2, '0');
+      var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (mDMY) return mDMY[3] + '-' + String(mDMY[2]).padStart(2, '0') + '-' + String(mDMY[1]).padStart(2, '0');
+      return s.substring(0, 10);
+    };
+    var targetFechaNorm = normFechaMod(fecha);
+
+    for (let i = data.length - 1; i >= 1; i--) {
       const rEmpId = String(data[i][COLUMNAS.ID] || '').trim();
-      let fStr = '';
-      if (data[i][COLUMNAS.FECHA] instanceof Date) {
-        fStr = Utilities.formatDate(data[i][COLUMNAS.FECHA], tz, 'yyyy-MM-dd');
-      } else {
-        fStr = String(data[i][COLUMNAS.FECHA] || '').trim();
-      }
-      if (rEmpId === empleadoId && fStr === fecha) {
+      const fStr = normFechaMod(data[i][COLUMNAS.FECHA]) || normFechaMod(data[i][COLUMNAS.TIMESTAMP]);
+      
+      if (rEmpId === empleadoId && fStr === targetFechaNorm) {
         // Columna L (MODO: 11) - en Sheets es 1-indexed (col L es col 12)
         sheet.getRange(i + 1, COLUMNAS.MODO + 1).setValue(modalidad);
         count++;

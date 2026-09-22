@@ -9,11 +9,11 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260918_01">
+  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260922_02">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260918_08"></script>
+  <script src="./JS/firebase_backend.js?v=20260922_06"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -113,10 +113,716 @@
       transform: translateY(-1px);
       box-shadow: 0 2px 6px rgba(220,38,38,0.12);
     }
-    .chip-item i {
-      font-size: 10px;
+    /* ========================================================
+       DISEÑO MODERNO Y OPTIMIZADO: PANEL REPORTES
+       ======================================================== */
+    .reportes-toolbar-container {
+      background: #ffffff;
+      border: 1px solid var(--g200);
+      border-radius: 14px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
+    .reportes-toolbar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .reportes-group-left {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .reportes-group-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .reportes-control-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      padding: 4px 10px;
+      height: 32px;
+      transition: all 0.2s ease;
+    }
+    .reportes-control-pill:hover,
+    .reportes-control-pill:focus-within {
+      border-color: #94a3b8;
+      background: #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+    .reportes-control-pill .control-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .select-clean {
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #1e293b;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .date-input-clean {
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #1e293b;
+      cursor: pointer;
+      padding: 0 2px;
+      width: 120px;
+    }
+    .range-separator {
+      font-size: 10px;
+      color: #94a3b8;
+      padding: 0 2px;
+    }
+    .btn-clear-date {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: #ef4444;
+      font-size: 12px;
+      padding: 0 2px;
+      display: flex;
+      align-items: center;
+      transition: transform 0.15s;
+    }
+    .btn-clear-date:hover {
+      transform: scale(1.15);
+      color: #dc2626;
+    }
+    .date-presets-group {
+      display: inline-flex;
+      align-items: center;
+      background: #f1f5f9;
+      padding: 2px;
+      border-radius: 8px;
+      gap: 2px;
+      border: 1px solid #e2e8f0;
+    }
+    .btn-date-preset {
+      border: none;
+      background: transparent;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-date-preset:hover {
+      background: #ffffff;
+      color: #0f172a;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .btn-date-preset.active {
+      background: #2563eb;
+      color: #ffffff;
+    }
+    .badge-rango-activo {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .badge-rango-filtro {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+    .badge-rango-periodo {
+      background: #f8fafc;
+      color: #334155;
+      border: 1px solid #e2e8f0;
+    }
+    .btn-export {
+      padding: 6px 13px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+    .btn-export:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+      filter: brightness(1.05);
+    }
+    .btn-export-excel {
+      background: #16a34a;
+      color: #ffffff;
+    }
+    .btn-export-sheets {
+      background: #0f9d58;
+      color: #ffffff;
+    }
+    .btn-export-print {
+      background: #2563eb;
+      color: #ffffff;
+    }
+    .reportes-search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 200px;
+      max-width: 300px;
+    }
+    .reportes-search-wrap .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      font-size: 11px;
+    }
+    .search-input-compact {
+      width: 100%;
+      height: 32px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 4px 10px 4px 30px;
+      font-size: 12px;
+      color: #1e293b;
+      background: #ffffff;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .search-input-compact:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+    }
+    .reportes-quick-filters {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .btn-filter-pill {
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-filter-pill:hover {
+      background: #f1f5f9;
+      color: #1e293b;
+      border-color: #cbd5e1;
+    }
+    .btn-filter-pill.active {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: #2563eb;
+      box-shadow: 0 1px 4px rgba(37, 99, 235, 0.2);
+    }
+    .btn-filter-pill.btn-pill-desv {
+      border-color: #ddd6fe;
+      background: #f5f3ff;
+      color: #7c3aed;
+    }
+    .btn-filter-pill.btn-pill-elim {
+      border-color: #fecdd3;
+      background: #fff1f2;
+      color: #e11d48;
+    }
+    .reportes-templates-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #f8fafc;
+      padding: 3px 8px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .templates-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      margin-right: 2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-template-pill {
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      color: #334155;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 5px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+    .btn-template-pill:hover {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+    .btn-toggle-cols {
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 700;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      transition: all 0.15s;
+    }
+    .btn-toggle-cols:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+    .btn-toggle-cols .toggle-arrow {
+      font-size: 9px;
+      transition: transform 0.2s;
+    }
+    .reportes-toggles-minor {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toggle-checkbox-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      margin: 0;
+      user-select: none;
+    }
+    .toggle-checkbox-label input {
+      cursor: pointer;
+      accent-color: #2563eb;
+    }
+    .reporte-custom-counter {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #475569;
+      background: #f1f5f9;
+      padding: 5px 10px;
+      border-radius: 7px;
+      white-space: nowrap;
+      margin-left: auto;
+    }
+    .reports-columns-drawer {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+      animation: fadeInDrawer 0.2s ease-out;
+    }
+    @keyframes fadeInDrawer {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .drawer-title {
+      font-size: 12px;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .drawer-hint {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 400;
+    }
+    .drawer-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-drawer-link {
+      background: none;
+      border: none;
+      color: #2563eb;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 6px;
+    }
+    .btn-drawer-link:hover {
+      text-decoration: underline;
+    }
+    .btn-drawer-close {
+      background: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      color: #64748b;
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-drawer-close:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+    .columns-selector-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .reportes-table-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .table-wrapper-enhanced {
+      position: relative;
+      background: #ffffff;
+    }
+    .reportes-table-card .table-scroll-wrap {
+      max-height: calc(100vh - 245px);
+      min-height: 440px;
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+    #reporteCustomScroll table.employee-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+    }
+    #reporteCustomScroll thead th {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+      white-space: nowrap;
+      user-select: none;
+    }
+    #reporteCustomScroll thead th:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 30;
+      background: #f8fafc;
+      border-right: 1px solid #e2e8f0;
+    }
+    #reporteCustomScroll tbody td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 12px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    #reporteCustomScroll tbody td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 10;
+      background: #ffffff;
+      border-right: 1px solid #f1f5f9;
+      box-shadow: 3px 0 6px -2px rgba(0, 0, 0, 0.03);
+    }
+    #reporteCustomScroll tbody tr {
+      transition: background-color 0.15s ease;
+    }
+    #reporteCustomScroll tbody tr:nth-child(even) {
+      background-color: #fafbfc;
+    }
+    #reporteCustomScroll tbody tr:nth-child(even) td:first-child {
+      background-color: #fafbfc;
+    }
+    #reporteCustomScroll tbody tr:hover {
+      background-color: #f1f5f9 !important;
+    }
+    #reporteCustomScroll tbody tr:hover td:first-child {
+      background-color: #f1f5f9 !important;
+      border-left: 3.5px solid #2563eb;
+    }
+    /* Insignias de métricas para la tabla online */
+    .rep-badge-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+      line-height: 1;
+      font-family: 'Fira Code', monospace;
+    }
+    .rep-badge-asis { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .rep-badge-falta-alert { background: #fef2f2; color: #b91c1c; border: 1px solid #fecdd3; font-weight: 800; box-shadow: 0 1px 2px rgba(185,28,28,0.08); }
+    .rep-badge-falta-zero { color: #94a3b8; font-weight: 600; }
+    .rep-badge-atraso-alert { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; font-weight: 800; }
+    .rep-badge-atraso-zero { color: #94a3b8; font-weight: 600; }
+    .rep-badge-alm { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+    .rep-badge-pct-hi { background: #ecfdf5; color: #047857; border: 1px solid #6ee7b7; font-weight: 800; }
+    .rep-badge-pct-mid { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; font-weight: 700; }
+    .rep-badge-pct-low { background: #fef2f2; color: #b91c1c; border: 1px solid #fecdd3; font-weight: 800; }
+    .rep-badge-ex50 { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 700; }
+    .rep-badge-ex100 { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-weight: 700; }
+    .rep-badge-campo { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; font-weight: 700; }
+    .rep-badge-totextra { background: #e0e7ff; color: #312e81; border: 1.5px solid #a5b4fc; font-weight: 800; box-shadow: 0 1px 2px rgba(49,46,129,0.08); }
+    .rep-badge-perm { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; font-weight: 700; }
     
+    /* Fila sticky de Totales / Promedios */
+    tr.rep-totals-row {
+      position: sticky;
+      bottom: 0;
+      z-index: 25;
+      background: #0f172a !important;
+      color: #ffffff !important;
+      box-shadow: 0 -3px 8px rgba(0, 0, 0, 0.12);
+    }
+    tr.rep-totals-row td {
+      position: sticky;
+      bottom: 0;
+      background: #0f172a !important;
+      color: #ffffff !important;
+      border-top: 2px solid #334155 !important;
+      border-bottom: none !important;
+      padding: 10px 12px !important;
+      font-weight: 800 !important;
+    }
+    tr.rep-totals-row td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 26;
+      background: #0f172a !important;
+      border-right: 1px solid #334155 !important;
+      color: #38bdf8 !important;
+    }
+
+    /* ESTILOS PREMIUM PARA LA PESTAÑA ASISTENCIA */
+    .asistencia-table-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #asistenciaTableScrollWrap {
+      max-height: calc(100vh - 290px);
+      min-height: 440px;
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+    #asistenciaTablaContainer table.employee-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+    }
+    #asistenciaTablaContainer thead th {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+      white-space: nowrap;
+      user-select: none;
+    }
+    #asistenciaTablaContainer thead th:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 30;
+      background: #f8fafc;
+      border-right: 1px solid #e2e8f0;
+    }
+    #asistenciaTablaContainer tbody td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 12px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    #asistenciaTablaContainer tbody td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 10;
+      background: #ffffff;
+      border-right: 1px solid #f1f5f9;
+      box-shadow: 3px 0 6px -2px rgba(0, 0, 0, 0.03);
+    }
+    #asistenciaTablaContainer tbody tr {
+      transition: background-color 0.15s ease;
+    }
+    #asistenciaTablaContainer tbody tr:nth-child(even) {
+      background-color: #fafbfc;
+    }
+    #asistenciaTablaContainer tbody tr:nth-child(even) td:first-child {
+      background-color: #fafbfc;
+    }
+    #asistenciaTablaContainer tbody tr:hover {
+      background-color: #f1f5f9 !important;
+    }
+    #asistenciaTablaContainer tbody tr:hover td:first-child {
+      background-color: #f1f5f9 !important;
+      border-left: 3.5px solid #2563eb;
+    }
+
+    /* Toggle moderno de almuerzo (Sí / No) */
+    .almuerzo-toggle-modern {
+      display: inline-flex;
+      background: #f1f5f9;
+      padding: 2.5px;
+      border-radius: 20px;
+      border: 1px solid #e2e8f0;
+      gap: 3px;
+      align-items: center;
+    }
+    .almuerzo-btn-toggle {
+      border: none;
+      background: transparent;
+      padding: 3px 10px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #64748b;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+    .almuerzo-btn-toggle.active-si {
+      background: #047857;
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(4, 120, 87, 0.3);
+    }
+    .almuerzo-btn-toggle.active-no {
+      background: #475569;
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(71, 85, 105, 0.3);
+    }
+    .almuerzo-btn-toggle:hover:not(.active-si):not(.active-no) {
+      background: #e2e8f0;
+      color: #1e293b;
+    }
+    .almuerzo-btn-toggle.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Select moderno para razón de ausencia */
+    .select-ausencia-modern {
+      font-size: 10.5px;
+      font-weight: 600;
+      border-radius: 8px;
+      padding: 4px 8px;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s ease;
+      width: 100%;
+      min-width: 125px;
+    }
+    .select-ausencia-modern:focus {
+      box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+    }
+
+    /* Chips y Badges auxiliares */
+    .rep-asis-empty {
+      color: #cbd5e1;
+      font-weight: 600;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .rep-asis-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #f8fafc;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+    .delta-badge {
+      font-size: 9.5px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-left: 3px;
+      background: #fef3c7;
+      color: #b45309;
+    }
+
     @media print {
       body * {
         visibility: hidden !important;
@@ -789,117 +1495,140 @@
 
       <!-- PANEL REPORTES -->
       <div id="panel-reportes" class="panel">
-        <div class="dashboard-header-sticky" style="position: sticky; top: 0; z-index: 100; background: #f8fafc; padding: 10px 0; border-bottom: 1px solid var(--g200); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
-          <!-- Periodo Dropdown -->
-          <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.02);">
-            <span style="font-size:11px; font-weight:700; color:var(--g600);"><i class="fas fa-calendar-alt" style="color:var(--red);"></i> Período:</span>
-            <select id="periodoMensual" class="filter-select" onchange="syncPeriodo('rep')" style="border:none; outline:none; font-family:'Plus Jakarta Sans', sans-serif; font-size:11.5px; font-weight:600; color:var(--g700); cursor:pointer; padding:2px; background: transparent;"></select>
-          </div>
+        <!-- BARRA SUPERIOR DE REPORTES: COMPACTA, ELEGANTE Y OPTIMIZADA -->
+        <div class="reportes-toolbar-container">
+          <!-- FILA 1: CONTROL DE TIEMPO (PERIODO / RANGO / PRESETS) Y EXPORTACIONES -->
+          <div class="reportes-toolbar-row reportes-row-primary">
+            <div class="reportes-group-left">
+              <!-- Selector Período Mensual (26 al 25) -->
+              <div class="reportes-control-pill" title="Seleccionar Período Oficial de Nómina">
+                <span class="control-label"><i class="fas fa-calendar-alt" style="color:var(--red);"></i> Período:</span>
+                <select id="periodoMensual" class="filter-select select-clean" onchange="syncPeriodo('rep')"></select>
+              </div>
 
-          <!-- Buscar Empleado -->
-          <div style="flex: 1; min-width: 200px; max-width: 300px; position: relative;">
-            <input type="text" id="searchReportes" class="search-input" placeholder="Buscar empleado..." style="margin: 0; border-radius: 10px; padding: 6px 12px 6px 32px; font-size: 12px; height: 32px; width: 100%;">
-            <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--g400); font-size: 11px;"></i>
-          </div>
+              <!-- Filtro de Rango de Fechas Personalizado -->
+              <div class="reportes-control-pill date-range-pill" title="Filtrar por rango de fechas específico">
+                <span class="control-label"><i class="fas fa-calendar-day" style="color:var(--blue);"></i> Fechas:</span>
+                <input type="date" id="filtroFechaReportesInicio" onchange="filtrarReportePorRangoFechas()" title="Fecha Desde" class="date-input-clean">
+                <span class="range-separator"><i class="fas fa-arrow-right"></i></span>
+                <input type="date" id="filtroFechaReportesFinalizacion" onchange="filtrarReportePorRangoFechas()" title="Fecha Hasta" class="date-input-clean">
+                <button type="button" onclick="limpiarFiltroRangoFechasReportes()" id="btnLimpiarFechaRep" class="btn-clear-date" style="display:none;" title="Limpiar filtro de fechas">
+                  <i class="fas fa-times-circle"></i>
+                </button>
+              </div>
 
-          <!-- Filtrar por Rango de Fechas -->
-          <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.02);">
-            <span style="font-size:11px; font-weight:700; color:var(--g600);"><i class="fas fa-calendar-day" style="color:var(--blue);"></i> Período:</span>
-            <input type="date" id="filtroFechaReportesInicio" onchange="filtrarReportePorRangoFechas()" style="border:none; outline:none; font-family:'Plus Jakarta Sans', sans-serif; font-size:11.5px; font-weight:600; color:var(--g700); cursor:pointer; padding:2px;" title="Fecha Inicio">
-            <span style="font-size:11px; color:var(--g400);">a</span>
-            <input type="date" id="filtroFechaReportesFinalizacion" onchange="filtrarReportePorRangoFechas()" style="border:none; outline:none; font-family:'Plus Jakarta Sans', sans-serif; font-size:11.5px; font-weight:600; color:var(--g700); cursor:pointer; padding:2px;" title="Fecha Final">
-            <button onclick="limpiarFiltroRangoFechasReportes()" id="btnLimpiarFechaRep" style="display:none; border:none; background:none; cursor:pointer; color:var(--rose); font-size:11px; padding:2px 4px; line-height:1;" title="Limpiar fechas"><i class="fas fa-times-circle"></i></button>
-          </div>
+              <!-- Botones Presets Rápidos de Fechas -->
+              <div class="date-presets-group">
+                <button type="button" class="btn-date-preset active" data-preset="periodo" onclick="aplicarPresetFechasReporte('periodo')" title="Ver mes completo del período actual">Mes Completo</button>
+                <button type="button" class="btn-date-preset" data-preset="quincena1" onclick="aplicarPresetFechasReporte('quincena1')" title="1ª Quincena: 26 al 10">1ª Quincena</button>
+                <button type="button" class="btn-date-preset" data-preset="quincena2" onclick="aplicarPresetFechasReporte('quincena2')" title="2ª Quincena: 11 al 25">2ª Quincena</button>
+                <button type="button" class="btn-date-preset" data-preset="hoy" onclick="aplicarPresetFechasReporte('hoy')" title="Ver solo registros de hoy">Hoy</button>
+              </div>
 
-          <!-- Columnas Visibles Dropdown Button -->
-          <div style="position: relative;">
-            <button onclick="event.stopPropagation(); document.getElementById('monthlyColsDropdown').classList.toggle('hidden')" class="btn" style="padding:6px 12px; border-radius:10px; font-size:12px; font-weight:600; border:1px solid var(--g200); background:#ffffff; color:var(--g600); display:flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.02); height:32px;">
-              <i class="fas fa-columns" style="color:var(--red);"></i> Columnas Visibles
-            </button>
-            <div id="monthlyColsDropdown" class="hidden">
+              <!-- Badge Dinámico de Estado del Rango Activo -->
+              <div id="badgeEstadoRangoReporte" class="badge-rango-activo" style="display:none;"></div>
+            </div>
+
+            <!-- Botones de Exportación / Acciones -->
+            <div class="reportes-group-actions">
+              <button type="button" class="btn-export btn-export-excel" onclick="exportarExcelReporteCustom()" title="Descargar reporte en formato Microsoft Excel (.xls)">
+                <i class="fas fa-file-excel"></i> <span>Excel</span>
+              </button>
+              <button type="button" class="btn-export btn-export-sheets" onclick="exportarGoogleSheetsReporteCustom()" title="Exportar pestaña directa en tu archivo de Google Sheets">
+                <i class="fab fa-google-drive"></i> <span>Google Sheets</span>
+              </button>
+              <button type="button" class="btn-export btn-export-print" onclick="imprimirReporteCustom()" title="Imprimir o guardar como PDF">
+                <i class="fas fa-print"></i> <span>Imprimir / PDF</span>
+              </button>
             </div>
           </div>
 
-          <!-- Opción Ver Desvinculados -->
-          <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid #ddd6fe; box-shadow:0 1px 3px rgba(124,58,237,0.06); height:32px;">
-            <label style="font-size:11.5px; font-weight:700; color:#6d28d9; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin:0;" title="Ver colaboradores desvinculados y sus registros históricos">
-              <input type="checkbox" id="chkIncluirDesvinculadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()" style="cursor:pointer; accent-color:#7c3aed;">
-              <i class="fas fa-user-slash" style="color:#7c3aed;"></i> Ver Desvinculados
-            </label>
-          </div>
+          <!-- FILA 2: BÚSQUEDA, FILTROS RÁPIDOS, PLANTILLAS Y CONFIGURADOR DE COLUMNAS -->
+          <div class="reportes-toolbar-row reportes-row-secondary">
+            <div class="reportes-search-wrap">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" id="searchReportesCustom" class="search-input-compact" placeholder="Buscar por colaborador, cédula o área...">
+              <input type="hidden" id="searchReportes" value="">
+            </div>
 
-          <!-- Opción Incluir Eliminados -->
-          <div style="display:flex; align-items:center; gap:6px; background:#ffffff; padding:4px 10px; border-radius:10px; border:1px solid var(--g200); box-shadow:0 1px 3px rgba(0,0,0,0.02); height:32px;">
-            <label style="font-size:11.5px; font-weight:700; color:#334155; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin:0;" title="Incluir otros colaboradores inactivos o eliminados de base">
-              <input type="checkbox" id="chkIncluirEliminadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()" style="cursor:pointer; accent-color:#e11d48;">
-              <i class="fas fa-user-minus" style="color:#e11d48;"></i> Incluir Eliminados
-            </label>
+            <!-- Filtros Rápidos de Colaboradores -->
+            <div class="reportes-quick-filters" id="filtrosRapidosCargo">
+              <button type="button" class="btn-filter-pill active" onclick="setFiltroRapidoReporte('', this)">TODOS</button>
+              <button type="button" class="btn-filter-pill" onclick="setFiltroRapidoReporte('pasante', this)">Pasante</button>
+              <button type="button" class="btn-filter-pill" onclick="setFiltroRapidoReporte('sin asistencia', this)">Sin Asistencia</button>
+              <button type="button" class="btn-filter-pill" onclick="setFiltroRapidoReporte('almuerzos extra', this)"><i class="fas fa-utensils"></i> Almuerzos Extra</button>
+              <button type="button" class="btn-filter-pill btn-pill-desv" onclick="setFiltroRapidoReporte('desvinculados', this)" title="Ver solo colaboradores desvinculados"><i class="fas fa-user-slash"></i> Desvinculados</button>
+              <button type="button" class="btn-filter-pill btn-pill-elim" onclick="setFiltroRapidoReporte('eliminados', this)" title="Ver colaboradores eliminados con histórico"><i class="fas fa-user-minus"></i> Eliminados</button>
+            </div>
+            <input type="hidden" id="filtroCargoReporte" value="">
+
+            <!-- Plantillas de Columnas Rápidas -->
+            <div class="reportes-templates-group">
+              <span class="templates-label"><i class="fas fa-layer-group" style="color:var(--blue);"></i> Vistas:</span>
+              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('almuerzos')" title="Ver columnas de almuerzos en planta y fuera"><i class="fas fa-utensils"></i> Almuerzos</button>
+              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('extras')" title="Ver horas extra 50%, 100% y campo"><i class="fas fa-clock"></i> H. Extra</button>
+              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('asistencias')" title="Ver asistencias, atrasos y puntualidad"><i class="fas fa-calendar-check"></i> Asistencia</button>
+              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('completo')" title="Ver todas las columnas"><i class="fas fa-th"></i> Completo</button>
+            </div>
+
+            <!-- Botón Desplegable para Configurar Columnas -->
+            <div class="reportes-columns-tools">
+              <button type="button" id="btnToggleColsLayout" class="btn-toggle-cols" onclick="toggleSelectorColumnas()" title="Abrir/Cerrar selector interactivo de columnas">
+                <i class="fas fa-columns" style="color:var(--red);"></i> Columnas (<span id="lblCountColsActivas">0</span>) <i class="fas fa-chevron-down toggle-arrow"></i>
+              </button>
+            </div>
+
+            <!-- Checkboxes auxiliares discretos -->
+            <div class="reportes-toggles-minor">
+              <label class="toggle-checkbox-label" title="Incluir desvinculados en el cálculo general">
+                <input type="checkbox" id="chkIncluirDesvinculadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()">
+                <span>+ Desvinculados</span>
+              </label>
+              <label class="toggle-checkbox-label" title="Incluir eliminados en el cálculo general">
+                <input type="checkbox" id="chkIncluirEliminadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()">
+                <span>+ Eliminados</span>
+              </label>
+            </div>
+
+            <!-- Contador de Resultados / Estado -->
+            <div id="reporteCustomInfo" class="reporte-custom-counter">Cargando...</div>
           </div>
         </div>
 
-        <!-- Creador Interactivo de Reportes Unificado -->
-        <div class="metric-card" style="padding: 24px; background:white; border-radius:16px; border:1px solid var(--g200); box-shadow:var(--shadow-sm); margin-bottom: 24px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap:wrap; gap:16px;">
-            <div>
-              <h2 style="font-size: 20px; font-weight:800; color:var(--g800); margin:0;"><i class="fas fa-magic" style="color:var(--red); margin-right:8px;"></i> Creador Interactivo de Reportes</h2>
-              <p style="font-size: 12px; color:var(--g500); margin:4px 0 0 0;">Configura y diseña tus reportes personalizados en tiempo real. Haz clic en las columnas.</p>
+        <!-- PANEL COLAPSABLE: PERSONALIZADOR DE COLUMNAS INTERACTIVO -->
+        <div id="reportsLayoutContainer" class="reports-columns-drawer" style="display:none;">
+          <div class="drawer-header">
+            <div class="drawer-title">
+              <i class="fas fa-sliders-h" style="color:var(--blue);"></i>
+              <strong>Personalizar Columnas del Reporte</strong>
+              <span class="drawer-hint">(Haz clic sobre cada columna para activarla o desactivarla en la tabla y exportaciones)</span>
             </div>
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-              <button class="btn" onclick="restablecerColumnasDefault()" style="padding:8px 12px; border-radius:10px; font-size:13px; font-weight:600; border:1px solid var(--g300); background:#ffffff; color:var(--g600); display:flex; align-items:center; gap:6px; cursor:pointer; box-shadow:var(--shadow-sm); transition:all 0.2s;" title="Restablecer columnas por defecto"><i class="fas fa-undo-alt"></i> Restablecer</button>
-              <button class="btn btn-success" onclick="exportarExcelReporteCustom()" style="padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; background:var(--green); border:none; color:white; display:flex; align-items:center; gap:8px; cursor:pointer; box-shadow:0 2px 4px rgba(22,163,74,0.15); transition:transform 0.2s;"><i class="fas fa-file-excel"></i> Exportar Excel</button>
-              <button class="btn btn-primary" onclick="exportarGoogleSheetsReporteCustom()" style="padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; background:#0f9d58; border:none; color:white; display:flex; align-items:center; gap:8px; cursor:pointer; box-shadow:0 2px 4px rgba(15,157,88,0.15); transition:transform 0.2s;" title="Crear pestaña y exportar en tu archivo original de Google Sheets"><i class="fab fa-google-drive"></i> Exportar Google Sheets</button>
-              <button class="btn" onclick="imprimirReporteCustom()" style="padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; background:#3b82f6; border:none; color:white; display:flex; align-items:center; gap:8px; cursor:pointer; box-shadow:0 2px 4px rgba(59,130,246,0.15); transition:transform 0.2s;"><i class="fas fa-print"></i> Imprimir Reporte</button>
+            <div class="drawer-actions">
+              <button type="button" class="btn-drawer-link" onclick="restablecerColumnasDefault()">
+                <i class="fas fa-undo-alt"></i> Restablecer por Defecto
+              </button>
+              <button type="button" class="btn-drawer-close" onclick="toggleSelectorColumnas()" title="Cerrar selector de columnas">
+                <i class="fas fa-times"></i>
+              </button>
             </div>
           </div>
+          <div id="columnasSelectorInteractivo" class="columns-selector-chips"></div>
+        </div>
 
-          <!-- Plantillas Rápidas de Reportes -->
-          <div style="background:#f8fafc; padding:12px 18px; border-radius:12px; margin-bottom:20px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; border:1px solid var(--g200); box-shadow:inset 0 1px 2px rgba(0,0,0,0.01);">
-            <span style="font-size:11.5px; font-weight:800; color:var(--g600); text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:6px; margin-right:4px;"><i class="fas fa-file-invoice" style="color:var(--blue);"></i> Plantillas rápidas:</span>
-            <button onclick="cargarPlantillaReporte('almuerzos')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #bbf7d0; background:#f0fdf4; color:#166534; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Reporte de Almuerzos en planta y fuera"><i class="fas fa-utensils"></i> Almuerzos</button>
-            <button onclick="cargarPlantillaReporte('extras')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #fed7aa; background:#fff7ed; color:#9a3412; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Reporte de Horas Extra y Campo"><i class="fas fa-clock"></i> Horas Extra</button>
-            <button onclick="cargarPlantillaReporte('asistencias')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #bfdbfe; background:#eff6ff; color:#1e40af; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Reporte de Asistencias, Faltas y Atrasos"><i class="fas fa-calendar-check"></i> Asistencias y Atrasos</button>
-            <button onclick="cargarPlantillaReporte('completo')" class="btn" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; border:1px solid #e9d5ff; background:#faf5ff; color:#6b21a8; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.02);" title="Mostrar todas las columnas disponibles"><i class="fas fa-globe"></i> Reporte Completo</button>
+        <!-- TABLA DE REPORTES OPTIMIZADA CON MÁXIMO ESPACIO VERTICAL -->
+        <div class="reportes-table-card">
+          <div class="top-scroll-wrapper" id="customRepTopScroll" style="overflow-x: auto; overflow-y: hidden; height: 12px; margin-bottom: 2px;">
+            <div class="top-scroll-dummy" style="height: 1px; width: 100%;"></div>
           </div>
-
-          <!-- Selector de Columnas Interactivo Rediseñado -->
-          <div style="background:#f8fafc; padding:12px; border-radius:12px; border:1px solid var(--g200); margin-bottom:16px;" id="reportsLayoutContainer">
-            <div style="font-size:12px; font-weight:700; color:var(--g700); margin-bottom:8px; display:flex; align-items:center; gap:6px;"><i class="fas fa-sliders-h"></i> Columnas a mostrar en el reporte <span style="font-size:11px; font-weight:500; color:var(--g400);">(Haz clic para activar/desactivar)</span></div>
-            <div id="columnasSelectorInteractivo" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-          </div>
-
-          <!-- Search and Table -->
-          <div style="border-top:1px dashed var(--g300); padding-top:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-              <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                <div class="search-box" style="margin:0;"><input type="text" id="searchReportesCustom" class="search-input" placeholder="Filtrar por empleado o área..." style="max-width:320px; border-radius:10px;"></div>
-                <div class="quick-filters" id="filtrosRapidosCargo" style="display:flex; gap:6px; flex-wrap:wrap;">
-                  <button class="btn btn-filter active" onclick="setFiltroRapidoReporte('', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">TODOS</button>
-                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('pasante', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Pasante</button>
-                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('sin asistencia', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Sin Asistencia</button>
-                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('almuerzos extra', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid var(--g200); background:#f8fafc; color:var(--g600); cursor:pointer;">Almuerzos Extra</button>
-                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('desvinculados', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid #ddd6fe; background:#f5f3ff; color:#7c3aed; font-weight:700; cursor:pointer;" title="Filtrar exclusivamente personal desvinculado"><i class="fas fa-user-slash"></i> Desvinculados</button>
-                  <button class="btn btn-filter" onclick="setFiltroRapidoReporte('eliminados', this)" style="padding:6px 12px; border-radius:12px; font-size:12px; border:1px solid #fecdd3; background:#fff1f2; color:#e11d48; font-weight:700; cursor:pointer;">🗑️ Eliminados</button>
-                </div>
-                <input type="hidden" id="filtroCargoReporte" value="">
-              </div>
-              <div id="reporteCustomInfo" style="font-size:12px; font-weight:700; color:var(--g600); background:#f1f5f9; padding:6px 12px; border-radius:8px;">Cargando...</div>
-            </div>
-            
-            <div class="top-scroll-wrapper" id="customRepTopScroll" style="overflow-x: auto; overflow-y: hidden; height: 12px; margin-bottom: 2px;">
-              <div class="top-scroll-dummy" style="height: 1px; width: 100%;"></div>
-            </div>
-            <div class="table-wrapper" style="box-shadow:none; border:1px solid var(--g200); border-radius:12px; overflow:hidden;">
-              <div id="tablaReportesCustomWrapper">
-                <div class="scroll-hint" style="background:#f8fafc; border-bottom:1px solid var(--g200);"><i class="fas fa-arrows-alt-h"></i> Arrastra para desplazarte lateralmente — Clic en columna para ordenar</div>
-                <div class="table-scroll-wrap" id="reporteCustomScroll" style="max-height:480px; overflow-y:auto;">
-                  <table class="employee-table table-compact">
-                    <thead>
-                      <tr id="reporteCustomHeaders"></tr>
-                    </thead>
-                    <tbody id="reporteCustomBody"></tbody>
-                  </table>
-                </div>
-              </div>
+          <div class="table-wrapper-enhanced" id="tablaReportesCustomWrapper">
+            <div class="scroll-hint" style="background:#f8fafc; border-bottom:1px solid var(--g200); padding: 4px 12px; font-size: 11px; color: var(--g500);"><i class="fas fa-arrows-alt-h"></i> Desplazamiento lateral disponible — Haz clic en una columna para ordenar — Haz clic en un empleado para ver su desglose individual</div>
+            <div class="table-scroll-wrap" id="reporteCustomScroll">
+              <table class="employee-table table-compact">
+                <thead>
+                  <tr id="reporteCustomHeaders"></tr>
+                </thead>
+                <tbody id="reporteCustomBody"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1050,8 +1779,12 @@
               </div>
             </div>
           </div>
-          <div class="table-wrapper">
-            <div id="asistenciaTablaContainer"></div>
+          <div class="reportes-table-card asistencia-table-card">
+            <div class="table-wrapper-enhanced">
+              <div class="table-scroll-wrap" id="asistenciaTableScrollWrap">
+                <div id="asistenciaTablaContainer"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -4238,8 +4971,8 @@
             </div>
           </div>
 
-          <div style="font-size:13.5px; color:#64748b; margin-top:10px; display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-shield-alt" style="color:#6366f1; font-size:15px;"></i> <span>Regla de control: Solo se admite un tipo de justificación por jornada y no puede exceder el tiempo faltante.</span>
+          <div style="font-size:13.5px; color:#1e293b; margin-top:10px; display:flex; align-items:center; gap:8px; background:#eff6ff; padding:10px 14px; border-radius:8px; border:1px solid #bfdbfe;">
+            <i class="fas fa-info-circle" style="color:#2563eb; font-size:16px;"></i> <span><strong>Tiempos independientes:</strong> Puede ingresar permisos intermedios o parciales libremente. Cada concepto se suma a su propia categoría sin descontar de las horas extras.</span>
           </div>
 
           <!-- Botones de Acción Rápida de Tiempos -->
@@ -4316,10 +5049,10 @@
 
   <script src="./JS/openwa_service.js?v=20260917_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20260918_16"></script>
+  <script src="./JS/supervisor_core.js?v=20260922_06"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
-  <script src="./JS/supervisor/supervisor_mapa.js?v=20260917_05"></script>
+  <script src="./JS/supervisor/supervisor_mapa.js?v=20260922_05"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260917_05"></script>
 
   <script>
