@@ -175,12 +175,34 @@ window.FirebaseBackend = {
                         return { ok: true, almuerzos: [], error: eAlm.message || eAlm.toString(), desdeCache: false };
                     }
                 case 'obtenerVacacionesEmpleado':
+                    // Retorno instantáneo desde caché local si está disponible (< 6 horas) y no es forzado
+                    if (!params.force) {
+                        try {
+                            const storedVac = localStorage.getItem('tcontrol_vacaciones_cache_v3') || localStorage.getItem('tcontrol_vacaciones_cache_v2');
+                            if (storedVac) {
+                                const parsedVac = JSON.parse(storedVac);
+                                const ageMs = parsedVac.lastSync ? (Date.now() - new Date(parsedVac.lastSync).getTime()) : Infinity;
+                                if (ageMs < 6 * 3600 * 1000 && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
+                                    window.kpiVacaciones = parsedVac.kpiVacaciones;
+                                    window._kpiVacacionesCache = parsedVac.kpiVacaciones;
+                                    window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
+                                    return {
+                                        ok: true,
+                                        vacaciones: parsedVac.vacaciones || [],
+                                        kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
+                                        kpiVacacionesIndividual: parsedVac.kpiVacacionesIndividual,
+                                        desdeCache: true
+                                    };
+                                }
+                            }
+                        } catch (eC) { }
+                    }
                     if (this._pendingVacacionesPromise) {
                         return await this._pendingVacacionesPromise;
                     }
                     this._pendingVacacionesPromise = (async () => {
                         try {
-                            const raw = await this._jsonp(params, 0, 1, 45000);
+                            const raw = await this._jsonp(params, 0, 1, 15000);
                             if (raw && raw.ok) {
                                 const rawIndiv = raw.kpiVacacionesIndividual || {};
                                 const kpiIndivLimpio = {};
@@ -842,9 +864,17 @@ window.FirebaseBackend = {
                 } catch (e) { console.warn("Error consultando archivados:", e); }
             };
 
-            if (params.force || !archivadosData.registros || archivadosData.registros.length === 0 || horasArchivados > 0.5) {
-                console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
-                await _fetchArchivados();
+            const tieneSincronizacionPrevia = Boolean(archivadosData.lastSync);
+            if (params.force || !tieneSincronizacionPrevia) {
+                if (params.asyncSync && tieneSincronizacionPrevia) {
+                    _fetchArchivados();
+                } else {
+                    console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
+                    await _fetchArchivados();
+                }
+            } else if (horasArchivados > 4) {
+                // Sincronización en segundo plano sin congelar la interfaz
+                _fetchArchivados();
             }
 
             // Filtrar archivados del empleado actual y mapearlos al formato esperado
@@ -955,8 +985,9 @@ window.FirebaseBackend = {
         let fechaRegistro = ahora;
 
         const esMarcacionOrdinaria = (tipo) => {
-            const t = String(tipo || '').toUpperCase();
-            return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(t) || t.includes('CAMPO');
+            const t = String(tipo || '').toUpperCase().trim();
+            if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') return false;
+            return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'ENTRADA_CAMPO', 'SALIDA_CAMPO', 'RETORNO_CAMPO'].includes(t);
         };
         const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 
@@ -977,9 +1008,39 @@ window.FirebaseBackend = {
         const dia = fechaRegistro.getDate().toString().padStart(2, '0');
         const fechaStr = `${fechaRegistro.getFullYear()}-${mes}-${dia}`;
 
-        const h = ahora.getHours().toString().padStart(2, '0');
-        const m = ahora.getMinutes().toString().padStart(2, '0');
-        const s = ahora.getSeconds().toString().padStart(2, '0');
+        const hoyStrLocal = this._hoyStr();
+        const esFechaPasada = (fechaStr < hoyStrLocal);
+
+        // =========================================================================
+        // VERIFICAR EN REGISTROS ANTES DE GUARDAR EN FIREBASE:
+        // Si es una ausencia (VACACIONES, CAMPO, PERMISO, etc.) en fecha pasada o archivada,
+        // NUNCA guardar como documento nuevo en Firestore, porque al archivar duplicaría
+        // la fila en la hoja REGISTROS. Se debe actualizar directamente en Google Sheets.
+        // =========================================================================
+        if (esAusenciaTipo(data.tipo) && (esFechaPasada || String(data.docId || '').startsWith('arch_'))) {
+            console.log(`ℹ️ [guardarRegistro] Ausencia en fecha pasada o archivada (${fechaStr}). Actualizando directamente en REGISTROS sin crear duplicado en Firestore.`);
+            
+            // 1. Limpiar cualquier documento huérfano previo en Firestore para evitar que se archive
+            try {
+                await this.eliminarRegistroFirestorePorFecha(empleadoId, fechaStr);
+            } catch (eClean) { }
+
+            // 2. Actualizar directamente en Google Sheets REGISTROS
+            const modoAus = data.modo || "OFICINA";
+            const sheetsRes = await this.actualizarRegistroGeneral({
+                empleadoId: empleadoId,
+                tipo: data.tipo,
+                fecha: fechaStr,
+                campo: 'justificado',
+                valor: 'SI',
+                razon_justificac: data.razon_ausencia || data.observacion || data.razon_justificac || data.tipo,
+                razon_ausencia: data.razon_ausencia || data.observacion || data.razon_justificac || data.tipo,
+                quien_justifica: data.quien_justifica || 'Supervisor',
+                modo: modoAus
+            });
+
+            return sheetsRes || { ok: true, msg: `${data.tipo} actualizado con éxito en REGISTROS` };
+        }
 
         let horaStr = "00:00:00";
         if (data.hora && String(data.hora).trim() !== "") {
@@ -1835,6 +1896,29 @@ window.FirebaseBackend = {
             return { ok: true };
         }
         return { error: "ID de documento faltante" };
+    },
+
+    async eliminarRegistroFirestorePorFecha(empleadoId, fecha) {
+        if (!empleadoId || !fecha) return;
+        try {
+            const eidStr = String(empleadoId).trim();
+            const snap = await db.collection('registros')
+                .where('empleadoId', '==', eidStr)
+                .get();
+            const docsToDelete = [];
+            snap.forEach(doc => {
+                const docData = this._processDoc(doc.id, doc.data());
+                if (docData && docData.fecha === fecha) {
+                    docsToDelete.push(doc.id);
+                }
+            });
+            for (const dId of docsToDelete) {
+                await db.collection('registros').doc(dId).delete();
+                console.log(`🗑️ [Firestore] Eliminado doc huérfano ${dId} de fecha ${fecha}`);
+            }
+        } catch (err) {
+            console.warn("⚠️ Aviso al limpiar Firestore por fecha:", err.message);
+        }
     },
 
     async guardarConfiguraciones(params) {
@@ -3668,8 +3752,9 @@ window.FirebaseBackend = {
 
         // Si el tipo es de ausencia, calcular dinámicamente hora y razon_ausencia si no están
         const esMarcacionOrdinaria = (tipo) => {
-            const t = String(tipo || '').toUpperCase();
-            return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(t) || t.includes('CAMPO');
+            const t = String(tipo || '').toUpperCase().trim();
+            if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') return false;
+            return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'ENTRADA_CAMPO', 'SALIDA_CAMPO', 'RETORNO_CAMPO'].includes(t);
         };
         const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 

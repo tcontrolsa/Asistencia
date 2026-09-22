@@ -2444,17 +2444,17 @@ function cargarAsistencia() {
                         <select onchange="window.guardarRazonAusenciaGlobal('${e.id}', this.value)" onclick="event.stopPropagation();" class="select-ausencia-modern" style="border:1px solid ${razonAusenciaHoy ? '#fdba74' : '#cbd5e1'}; background:${razonAusenciaHoy ? '#fff7ed' : '#ffffff'}; color:${razonAusenciaHoy ? '#c2410c' : '#475569'};">
                             <option value="">${razonAusenciaHoy ? 'Cambiar Razón...' : '+ Agregar Razón'}</option>
                             <option value="Vacación" ${razonAusenciaHoy === 'Vacación' ? 'selected' : ''}>🏖️ Vacación</option>
-                            <option value="Permiso Médico" ${razonAusenciaHoy === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
-                            <option value="Permiso Personal" ${razonAusenciaHoy === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
-                            <option value="Calamidad Doméstica" ${razonAusenciaHoy === 'Calamidad Doméstica' ? 'selected' : ''}>🏠 Calamidad Dom.</option>
-                            <option value="Salida a Campo" ${razonAusenciaHoy === 'Salida a Campo' || razonAusenciaHoy === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Salida a Campo</option>
-                            <option value="Cumpleaños" ${razonAusenciaHoy === 'Cumpleaños' ? 'selected' : ''}>🎂 Cumpleaños</option>
-                            <option value="Salida Justificada" ${razonAusenciaHoy === 'Salida Justificada' ? 'selected' : ''}>✅ Salida Justificada</option>
-                            <option value="Otro" ${razonAusenciaHoy && !['Vacación', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Trabajo de Campo', 'Salida a Campo', 'Cumpleaños', 'Salida Justificada'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
+                            <optgroup label="📋 Permiso Justificado">
+                                <option value="Permiso Personal" ${razonAusenciaHoy === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
+                                <option value="Permiso Médico" ${razonAusenciaHoy === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
+                                <option value="Falta Justificada" ${razonAusenciaHoy === 'Falta Justificada' ? 'selected' : ''}>✅ Falta Justificada</option>
+                            </optgroup>
+                            <option value="Campo" ${razonAusenciaHoy === 'Campo' || razonAusenciaHoy === 'Salida a Campo' || razonAusenciaHoy === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Campo</option>
+                            <option value="Otro" ${razonAusenciaHoy && !['Vacación', 'Permiso Médico', 'Permiso Personal', 'Falta Justificada', 'Campo', 'Salida a Campo', 'Trabajo de Campo'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
                         </select>
                     </div>
                   `;
-        if (razonAusenciaHoy && !['Vacación', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Trabajo de Campo', 'Salida a Campo', 'Cumpleaños', 'Salida Justificada'].includes(razonAusenciaHoy)) {
+        if (razonAusenciaHoy && !['Vacación', 'Permiso Médico', 'Permiso Personal', 'Falta Justificada', 'Campo', 'Salida a Campo', 'Trabajo de Campo'].includes(razonAusenciaHoy)) {
           selectHtml += `<div style="font-size:10px; color:#4338ca; margin-top:3px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
         }
         ausenciaHtml = selectHtml;
@@ -2883,9 +2883,11 @@ window.guardarRazonAusenciaFecha = async function (empleadoId, fecha, valorSelec
   }
 
   const mappedTipo = mapRazonAusenciaATipo(razonFinal);
+  const esFechaPasada = (fecha < hoy);
+  const emp = empCache.find(x => x.id === empleadoId);
+  const yaArchivado = Boolean((emp?.registros || []).some(r => r.fecha === fecha && (String(r.id || '').startsWith('arch_') || r.archivado)));
 
   // Optimistic update of local cache
-  const emp = empCache.find(x => x.id === empleadoId);
   let originalRegs = null;
   if (emp) {
     originalRegs = JSON.parse(JSON.stringify(emp.registros || []));
@@ -2917,21 +2919,52 @@ window.guardarRazonAusenciaFecha = async function (empleadoId, fecha, valorSelec
   if (bgSync) bgSync.classList.remove('hidden');
   try {
     let res;
-    if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
-      res = await window.FirebaseBackend.guardarRegistro({
-        id: empleadoId,
-        tipo: mappedTipo,
-        fecha_falta: fecha,
-        razon_ausencia: razonFinal
-      });
+    if (esFechaPasada || yaArchivado) {
+      // ACTUALIZAR DIRECTAMENTE EN REGISTROS (SHEETS) SIN CREAR DUPLICADO EN FIRESTORE
+      if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+        res = await window.FirebaseBackend.actualizarRegistroGeneral({
+          empleadoId: empleadoId,
+          tipo: mappedTipo,
+          fecha: fecha,
+          campo: 'justificado',
+          valor: 'SI',
+          razon_justificac: razonFinal,
+          razon_ausencia: razonFinal,
+          quien_justifica: 'Supervisor'
+        });
+      } else {
+        res = await jsonpRequest({
+          accion: 'actualizarRegistroArchivado',
+          empleadoId: empleadoId,
+          tipo: mappedTipo,
+          fecha: fecha,
+          campo: 'justificado',
+          valor: 'SI',
+          razon_justificac: razonFinal,
+          razon_ausencia: razonFinal,
+          quien_justifica: 'Supervisor'
+        });
+      }
+      if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
+        window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha).catch(() => {});
+      }
     } else {
-      res = await jsonpRequest({
-        accion: 'guardarRegistro',
-        id: empleadoId,
-        tipo: mappedTipo,
-        fecha_falta: fecha,
-        razon_ausencia: razonFinal
-      });
+      if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
+        res = await window.FirebaseBackend.guardarRegistro({
+          id: empleadoId,
+          tipo: mappedTipo,
+          fecha_falta: fecha,
+          razon_ausencia: razonFinal
+        });
+      } else {
+        res = await jsonpRequest({
+          accion: 'guardarRegistro',
+          id: empleadoId,
+          tipo: mappedTipo,
+          fecha_falta: fecha,
+          razon_ausencia: razonFinal
+        });
+      }
     }
 
     if (res && (res.ok || !res.error)) {
@@ -3976,16 +4009,33 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === String(id).trim());
   if (!e) return;
 
-  // Cargar vacaciones del empleado en segundo plano para no demorar la visualización
+  // Precargar saldo y lista de vacaciones inmediatamente desde memoria/caché local
   let vacacionesList = [];
+  let vacEmpInicial = null;
+  try {
+    const vCache = window._vacacionesCache || (JSON.parse(localStorage.getItem('tcontrol_vacaciones_cache_v3') || '{}').vacaciones || []);
+    if (Array.isArray(vCache)) {
+      vacacionesList = vCache.filter(v => String(v.empleadoId || v.id || '').trim() === String(id).trim());
+    }
+    const kpiIndiv = window.kpiVacacionesIndividual || (JSON.parse(localStorage.getItem('tcontrol_vacaciones_cache_v3') || '{}').kpiVacacionesIndividual || {});
+    if (kpiIndiv && kpiIndiv[id]) {
+      vacEmpInicial = kpiIndiv[id];
+    }
+  } catch (e) { }
+
+  // Actualizar vacaciones en segundo plano sin bloquear
   jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: id }).then(function (vacRes) {
     if (vacRes && !vacRes.error) {
-      vacacionesList = vacRes.vacaciones || [];
-      rebuildTable();
+      const nuevasVacs = (vacRes.vacaciones || []).filter(v => String(v.empleadoId || v.id || '').trim() === String(id).trim());
+      const cambioVacs = JSON.stringify(nuevasVacs) !== JSON.stringify(vacacionesList);
+      vacacionesList = nuevasVacs;
+      if (cambioVacs) {
+        rebuildTable();
+      }
       actualizarCardVacaciones(vacRes.vacacionesTomadasHoy, vacRes.vacacionesRestantesHoy);
     }
   }).catch(err => {
-    console.error("Error al precargar vacaciones en segundo plano:", err);
+    console.warn("Aviso al consultar vacaciones en segundo plano:", err);
   });
 
   // Obtener el período seleccionado o el actual por defecto
@@ -4015,15 +4065,26 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   }
 
   // Cargar historial completo de registros archivados si es necesario (ej: periodos anteriores o rango personalizado)
+  const esPeriodoActual = (indexPeriodo === 0 && !customInicio);
   if (!e._historialCompletoCargado && (window.FirebaseBackend || typeof jsonpRequest === 'function')) {
     e._historialCompletoCargado = true;
     (async () => {
       try {
         let fullRegs = null;
         if (window.FirebaseBackend && window.USE_FIREBASE) {
-          fullRegs = await window.FirebaseBackend.obtenerRegistros({ empleadoId: id, force: false, incluirArchivados: true });
+          fullRegs = await window.FirebaseBackend.obtenerRegistros({
+            empleadoId: id,
+            force: false,
+            incluirArchivados: !esPeriodoActual,
+            asyncSync: true
+          });
         } else if (typeof jsonpRequest === 'function') {
-          fullRegs = await jsonpRequest({ accion: 'obtenerRegistros', empleadoId: id, force: false, incluirArchivados: true });
+          fullRegs = await jsonpRequest({
+            accion: 'obtenerRegistros',
+            empleadoId: id,
+            force: false,
+            incluirArchivados: !esPeriodoActual
+          });
         }
         if (Array.isArray(fullRegs) && fullRegs.length > 0) {
           const existingMap = new Map();
@@ -4195,7 +4256,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         const ex = porDia[fechaNorm].registros.find(x => {
           const exTipo = String(x.tipo || '').toUpperCase();
           const exH = (x.hora || '').slice(0, 5);
-          return (ex.id && r.id && ex.id === r.id) || (exTipo === rTipo && exH === rH);
+          return (x.id && r.id && x.id === r.id) || (exTipo === rTipo && exH === rH);
         });
         if (ex) {
           if (!ex.timestamp && r.timestamp) ex.timestamp = r.timestamp;
@@ -5287,6 +5348,10 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       </div>
     </div>`;
   cambiarPanel('detalle');
+
+  if (vacEmpInicial) {
+    actualizarCardVacaciones(vacEmpInicial.tomadas, vacEmpInicial.restantes);
+  }
 
   if (window.fechaEnfocarDetalleActual) {
     const fEnf = window.fechaEnfocarDetalleActual;
@@ -6684,6 +6749,7 @@ function mapRazonAusenciaATipo(razon) {
   if (r.includes('vacación') || r.includes('vacacion') || r.includes('vacaciones')) return 'VACACIONES';
   if (r.includes('médico') || r.includes('medico')) return 'PERMISO_MEDICO';
   if (r.includes('personal')) return 'PERMISO_PERSONAL';
+  if (r.includes('falta justificada') || r.includes('salida justificada')) return 'FALTA_JUSTIFICADA';
   if (r.includes('doméstica') || r.includes('domestica') || r.includes('calamidad')) return 'CALAMIDAD_DOMESTICA';
   if (r.includes('campo')) return 'TRABAJO_DE_CAMPO';
   return r.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, '_');
@@ -7662,50 +7728,64 @@ async function eliminarRegistroSupervisor(docId, empleadoId, fecha, tipo) {
 // ARCHIVADO A GOOGLE SHEETS
 // ============================================================
 async function iniciarArchivadoFirebase() {
-  const isAdmin = (typeof esAdminMaster === 'function') ? esAdminMaster() : !!window.isMaster;
-  if (!isAdmin) { mostrarToast('Solo el Administrador General (1058) puede realizar esta acción.', 'error'); return; }
-  mostrarLoader(true);
-  let infoDias = "No se pudo determinar el registro más antiguo.";
-  let diasSugeridos = 60;
-
-  try {
-    // Buscar el registro más antiguo para informar al usuario
-    const oldSnap = await db.collection('registros').orderBy('fecha', 'asc').limit(1).get();
-
-    if (!oldSnap.empty) {
-      const oldestDateStr = oldSnap.docs[0].data().fecha;
-      let oldestDate;
-      if (oldestDateStr.includes('/')) {
-        const parts = oldestDateStr.split('/');
-        oldestDate = new Date(parts[2], parts[1] - 1, parts[0]);
-      } else {
-        oldestDate = new Date(oldestDateStr);
-      }
-
-      if (!isNaN(oldestDate)) {
-        const diffTime = Math.abs(new Date() - oldestDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        infoDias = `Tu registro más antiguo es del ${oldestDateStr} (hace ${diffDays} días).`;
-        if (diffDays > 60) diasSugeridos = 60;
-        else diasSugeridos = Math.max(1, diffDays - 10); // Sugerir dejar al menos 10 días
-      }
-    }
-  } catch (e) {
-    console.warn("No se pudo pre-cargar el análisis de BD:", e);
+  if (window._archivandoEnProgreso) {
+    console.warn("⚠️ Archivado ya en ejecución. Ignorando llamada duplicada.");
+    return;
   }
 
-  mostrarLoader(false);
+  const isAdmin = (typeof esAdminMaster === 'function') ? esAdminMaster() : !!window.isMaster;
+  if (!isAdmin) { mostrarToast('Solo el Administrador General (1058) puede realizar esta acción.', 'error'); return; }
 
-  const diasArchivar = prompt(`📊 Análisis de Base de Datos:\n${infoDias}\n\n¿Registros más antiguos a cuántos días deseas archivar y borrar de Firebase?\n\n(Recomendado: ${diasSugeridos})`, diasSugeridos.toString());
-
-  if (!diasArchivar || isNaN(diasArchivar)) return;
-
-  const diasNum = parseInt(diasArchivar);
-  if (!confirm(`¿Estás seguro de mover permanentemente los registros y solicitudes de invitados de hace más de ${diasNum} días a las hojas de cálculo REGISTROS y ALMUERZOS_EXTRA?\n\nEsto limpiará tu Firebase y mantendrá la base liviana y de alta velocidad. Esta acción es irreversible en Firebase.`)) return;
-
-  mostrarLoader(true);
+  const btn = $('btnArchivar');
+  window._archivandoEnProgreso = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    btn.style.pointerEvents = 'none';
+  }
 
   try {
+    mostrarLoader(true);
+    let infoDias = "No se pudo determinar el registro más antiguo.";
+    let diasSugeridos = 60;
+
+    try {
+      // Buscar el registro más antiguo para informar al usuario
+      const oldSnap = await db.collection('registros').orderBy('fecha', 'asc').limit(1).get();
+
+      if (!oldSnap.empty) {
+        const oldestDateStr = oldSnap.docs[0].data().fecha;
+        let oldestDate;
+        if (oldestDateStr.includes('/')) {
+          const parts = oldestDateStr.split('/');
+          oldestDate = new Date(parts[2], parts[1] - 1, parts[0]);
+        } else {
+          oldestDate = new Date(oldestDateStr);
+        }
+
+        if (!isNaN(oldestDate)) {
+          const diffTime = Math.abs(new Date() - oldestDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          infoDias = `Tu registro más antiguo es del ${oldestDateStr} (hace ${diffDays} días).`;
+          if (diffDays > 60) diasSugeridos = 60;
+          else diasSugeridos = Math.max(1, diffDays - 10); // Sugerir dejar al menos 10 días
+        }
+      }
+    } catch (e) {
+      console.warn("No se pudo pre-cargar el análisis de BD:", e);
+    }
+
+    mostrarLoader(false);
+
+    const diasArchivar = prompt(`📊 Análisis de Base de Datos:\n${infoDias}\n\n¿Registros más antiguos a cuántos días deseas archivar y borrar de Firebase?\n\n(Recomendado: ${diasSugeridos})`, diasSugeridos.toString());
+
+    if (!diasArchivar || isNaN(diasArchivar)) return;
+
+    const diasNum = parseInt(diasArchivar);
+    if (!confirm(`¿Estás seguro de mover permanentemente los registros y solicitudes de invitados de hace más de ${diasNum} días a las hojas de cálculo REGISTROS y ALMUERZOS_EXTRA?\n\nEsto limpiará tu Firebase y mantendrá la base liviana y de alta velocidad. Esta acción es irreversible en Firebase.`)) return;
+
+    mostrarLoader(true);
+
     const limite = new Date();
     limite.setDate(limite.getDate() - diasNum);
     const y = limite.getFullYear();
@@ -7976,8 +8056,15 @@ async function iniciarArchivadoFirebase() {
     await cargarDatosCompletos(true);
   } catch (err) {
     console.error("Error archivando:", err);
-    mostrarLoader(false);
     mostrarToast(`Error en el proceso de archivado: ${err.message || err}`, 'error');
+  } finally {
+    window._archivandoEnProgreso = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    }
+    mostrarLoader(false);
   }
 }
 window.iniciarArchivadoFirebase = iniciarArchivadoFirebase;
@@ -8275,30 +8362,66 @@ window.guardarEventoFuturo = async function () {
     const emp = (empCache || []).find(x => String(x.id) === String(eid));
 
     for (const f of fechas) {
-      const regParams = {
-        accion: 'guardarRegistro',
-        id: eid,
-        empleadoId: eid,
-        tipo: tipo,
-        fecha: f,
-        fecha_falta: f,
-        hora: '00:00:00',
-        modo: 'EMPRESA',
-        almuerzo: '',
-        horasExtra: 'NO',
-        observacion: observacion,
-        observaciones: observacion,
-        razon_ausencia: observacion,
-        razon_justificac: observacion,
-        justificado: 'SI',
-        quien_justifica: 'Supervisor'
-      };
+      const esFechaPasada = (f < hoy);
+      const yaArchivado = Boolean((emp?.registros || []).some(r => r.fecha === f && (String(r.id || '').startsWith('arch_') || r.archivado)));
 
       let res = null;
-      if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarRegistro === 'function') {
-        res = await window.FirebaseBackend.guardarRegistro(regParams);
+      if (esFechaPasada || yaArchivado) {
+        // ACTUALIZAR DIRECTAMENTE EN REGISTROS (SHEETS)
+        if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+          res = await window.FirebaseBackend.actualizarRegistroGeneral({
+            empleadoId: eid,
+            tipo: tipo,
+            fecha: f,
+            campo: 'justificado',
+            valor: 'SI',
+            razon_justificac: observacion,
+            razon_ausencia: observacion,
+            quien_justifica: 'Supervisor',
+            modo: 'EMPRESA'
+          });
+        } else {
+          res = await jsonpRequest({
+            accion: 'actualizarRegistroArchivado',
+            empleadoId: eid,
+            tipo: tipo,
+            fecha: f,
+            campo: 'justificado',
+            valor: 'SI',
+            razon_justificac: observacion,
+            razon_ausencia: observacion,
+            quien_justifica: 'Supervisor',
+            modo: 'EMPRESA'
+          });
+        }
+        if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
+          window.FirebaseBackend.eliminarRegistroFirestorePorFecha(eid, f).catch(() => {});
+        }
       } else {
-        res = await jsonpRequest(regParams);
+        const regParams = {
+          accion: 'guardarRegistro',
+          id: eid,
+          empleadoId: eid,
+          tipo: tipo,
+          fecha: f,
+          fecha_falta: f,
+          hora: '00:00:00',
+          modo: 'EMPRESA',
+          almuerzo: '',
+          horasExtra: 'NO',
+          observacion: observacion,
+          observaciones: observacion,
+          razon_ausencia: observacion,
+          razon_justificac: observacion,
+          justificado: 'SI',
+          quien_justifica: 'Supervisor'
+        };
+
+        if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarRegistro === 'function') {
+          res = await window.FirebaseBackend.guardarRegistro(regParams);
+        } else {
+          res = await jsonpRequest(regParams);
+        }
       }
 
       if (res && res.ok) {
@@ -15644,31 +15767,62 @@ window.guardarModalGestionJornada = async function () {
     const backgroundTasks = [];
 
     if (esAusenciaCompleta) {
-      if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
-        backgroundTasks.push(window.FirebaseBackend.guardarRegistro({
-          id: empleadoId,
-          tipo: mappedTipo,
-          fecha_falta: fecha,
-          razon_ausencia: razonFinal
-        }).catch(err => console.warn("Aviso Firestore ausencia:", err)));
-      }
-      if (fecha < hoy && window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
-        backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
-          empleadoId: empleadoId,
-          tipo: mappedTipo,
-          fecha: fecha,
-          campo: 'justificado',
-          valor: 'SI',
-          razon_justificac: razonFinal
-        }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
-      } else if (typeof jsonpRequest === 'function' && !window.FirebaseBackend) {
-        backgroundTasks.push(jsonpRequest({
-          accion: 'guardarRegistro',
-          id: empleadoId,
-          tipo: mappedTipo,
-          fecha_falta: fecha,
-          razon_ausencia: razonFinal
-        }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+      const esFechaPasada = (fecha < hoy);
+      const yaArchivado = Boolean((emp?.registros || []).some(r => r.fecha === fecha && (String(r.id || '').startsWith('arch_') || r.archivado)));
+
+      if (esFechaPasada || yaArchivado) {
+        // ACTUALIZAR DIRECTAMENTE EN REGISTROS (SHEETS) SIN CREAR DUPLICADOS EN FIRESTORE
+        if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
+          backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+            empleadoId: empleadoId,
+            tipo: mappedTipo,
+            fecha: fecha,
+            campo: 'justificado',
+            valor: 'SI',
+            razon_justificac: razonFinal,
+            razon_ausencia: razonFinal,
+            quien_justifica: 'Supervisor',
+            modo: modalidad
+          }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+        } else if (typeof jsonpRequest === 'function') {
+          backgroundTasks.push(jsonpRequest({
+            accion: 'actualizarRegistroArchivado',
+            empleadoId: empleadoId,
+            tipo: mappedTipo,
+            fecha: fecha,
+            campo: 'justificado',
+            valor: 'SI',
+            razon_justificac: razonFinal,
+            razon_ausencia: razonFinal,
+            quien_justifica: 'Supervisor',
+            modo: modalidad
+          }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+        }
+
+        // Si existía un documento previo en Firestore para esta fecha y empleado, limpiarlo para evitar duplicidad al archivar
+        if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
+          backgroundTasks.push(window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha).catch(() => {}));
+        }
+      } else {
+        // Fecha actual / futura no archivada: guardar en Firestore
+        if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
+          backgroundTasks.push(window.FirebaseBackend.guardarRegistro({
+            id: empleadoId,
+            tipo: mappedTipo,
+            fecha_falta: fecha,
+            razon_ausencia: razonFinal,
+            modo: modalidad
+          }).catch(err => console.warn("Aviso Firestore ausencia:", err)));
+        } else if (typeof jsonpRequest === 'function') {
+          backgroundTasks.push(jsonpRequest({
+            accion: 'guardarRegistro',
+            id: empleadoId,
+            tipo: mappedTipo,
+            fecha_falta: fecha,
+            razon_ausencia: razonFinal,
+            modo: modalidad
+          }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+        }
       }
     } else {
       if (hEntrada && fullTsEntrada) {

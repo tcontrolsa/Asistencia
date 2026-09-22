@@ -182,6 +182,26 @@ function doPost(e) {
       }
       
       if (data.accion === 'archivarRegistros') {
+        var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || "GMT-5";
+        var normDate = function(v) {
+          if (!v) return '';
+          if (v instanceof Date) return Utilities.formatDate(v, tz, "yyyy-MM-dd");
+          var s = String(v).trim();
+          var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+          if (mDMY) return mDMY[3] + '-' + ('0' + mDMY[2]).slice(-2) + '-' + ('0' + mDMY[1]).slice(-2);
+          var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+          if (mYMD) return mYMD[1] + '-' + ('0' + mYMD[2]).slice(-2) + '-' + ('0' + mYMD[3]).slice(-2);
+          return s;
+        };
+        var normTime = function(v) {
+          if (!v) return '';
+          if (v instanceof Date) return Utilities.formatDate(v, tz, "HH:mm");
+          var s = String(v).trim();
+          var m = s.match(/^(\d{1,2}):(\d{2})/);
+          if (m) return ('0' + m[1]).slice(-2) + ':' + m[2];
+          return s;
+        };
+
         var sheetRegs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
         if (!sheetRegs) {
           sheetRegs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('REGISTROS');
@@ -198,8 +218,48 @@ function doPost(e) {
         if ((!registros || registros.length === 0) && (!almuerzosExtra || almuerzosExtra.length === 0)) {
           return ContentService.createTextOutput(JSON.stringify({ok: true, mensaje: "Sin registros para archivar" })).setMimeType(ContentService.MimeType.JSON);
         }
+
+        // Cachear claves existentes de REGISTROS para evitar duplicados
+        var existingRegKeys = {};
+        var existingAbsenceRow = {}; // kFecha + '|' + kId -> rowIndex (1-indexed)
+        var lastRowRegs = sheetRegs.getLastRow();
+        if (lastRowRegs > 1) {
+          var dataExistenteRegs = sheetRegs.getRange(2, 1, lastRowRegs - 1, 6).getValues();
+          for (var k = 0; k < dataExistenteRegs.length; k++) {
+            var fRow = dataExistenteRegs[k];
+            var kFecha = normDate(fRow[0]);
+            var kId = String(fRow[1]).trim();
+            var kTipo = String(fRow[3]).trim().toUpperCase();
+            var kHora = normTime(fRow[5]);
+            if (kFecha && kId) {
+              existingRegKeys[kFecha + '|' + kId + '|' + kTipo + '|' + kHora] = true;
+              if (esAusenciaTipo(kTipo) || kTipo === 'FALTA') {
+                existingAbsenceRow[kFecha + '|' + kId] = k + 2;
+              }
+            }
+          }
+        }
+
+        // Cachear claves existentes de VACACIONES para evitar duplicados
+        var existingVacKeys = {};
+        var lastRowVacs = sheetVacs.getLastRow();
+        if (lastRowVacs > 1) {
+          var dataExistenteVacs = sheetVacs.getRange(2, 1, lastRowVacs - 1, 4).getValues();
+          for (var kv = 0; kv < dataExistenteVacs.length; kv++) {
+            var vRow = dataExistenteVacs[kv];
+            var vFecha = normDate(vRow[0]);
+            var vId = String(vRow[1]).trim();
+            var vTipo = String(vRow[3]).trim().toUpperCase();
+            if (vFecha && vId) {
+              existingVacKeys[vFecha + '|' + vId + '|' + vTipo] = true;
+            }
+          }
+        }
+
         var filasRegs = [];
         var filasVacs = [];
+        var omitidosRegs = 0;
+
         for (var i = 0; i < registros.length; i++) {
           var r = registros[i];
           var tsStr = r.timestamp ? String(r.timestamp) : new Date().toISOString();
@@ -232,6 +292,12 @@ function doPost(e) {
           var esVacaciones = (String(r_tipo).toUpperCase() === 'VACACIONES' || String(r_tipo).toUpperCase() === 'VACACION');
 
           if (esVacaciones) {
+            var keyVac = normDate(r_fecha) + '|' + String(r_id).trim() + '|' + String(r_tipo).trim().toUpperCase();
+            if (existingVacKeys[keyVac]) {
+              omitidosRegs++;
+              continue;
+            }
+            existingVacKeys[keyVac] = true;
             // Rellenar únicamente FECHA, ID, TIPO, TIMESTAMP
             var rowVac = [
               r_fecha, r_id, '', r_tipo, '', '', '', '', '', tsStr,
@@ -239,6 +305,32 @@ function doPost(e) {
             ];
             filasVacs.push(rowVac);
           } else {
+            var normF = normDate(r_fecha);
+            var normId = String(r_id).trim();
+            var normT = String(r_tipo).trim().toUpperCase();
+            var keyReg = normF + '|' + normId + '|' + normT + '|' + normTime(r_hora);
+            if (existingRegKeys[keyReg]) {
+              omitidosRegs++;
+              continue;
+            }
+
+            var keyAbs = normF + '|' + normId;
+            if ((esAusenciaTipo(normT) || normT === 'FALTA') && existingAbsenceRow[keyAbs]) {
+              var targetRow = existingAbsenceRow[keyAbs];
+              sheetRegs.getRange(targetRow, COLUMNAS.TIPO + 1).setValue(r_tipo);
+              sheetRegs.getRange(targetRow, COLUMNAS.HORA + 1).setValue(r_hora || '00:00:00');
+              sheetRegs.getRange(targetRow, COLUMNAS.JUSTIFICADO + 1).setValue(r_justificado || 'SI');
+              sheetRegs.getRange(targetRow, COLUMNAS.RAZON_AUSENCIA + 1).setValue(r_razonJustificac || r_tipo);
+              if (r_modo) sheetRegs.getRange(targetRow, COLUMNAS.MODO + 1).setValue(r_modo);
+              if (r_quienJustifica) sheetRegs.getRange(targetRow, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(r_quienJustifica);
+              omitidosRegs++;
+              continue;
+            }
+
+            existingRegKeys[keyReg] = true;
+            if (esAusenciaTipo(normT) || normT === 'FALTA') {
+              existingAbsenceRow[keyAbs] = sheetRegs.getLastRow() + filasRegs.length + 1;
+            }
             filasRegs.push([
               r_fecha, r_id, r_nombre, r_tipo, r_almuerzo, r_hora, r_lat, r_lng, r_dispositivo, tsStr,
               r_dia, r_modo, r_horasExtra, r_autoriza, r_razonSalidaTemprana, r_quienJustifica,
@@ -256,12 +348,30 @@ function doPost(e) {
 
         // Archivado en bloque de Almuerzos Extra / Invitados
         var filasAlm = [];
+        var omitidosAlm = 0;
         if (almuerzosExtra && almuerzosExtra.length > 0) {
           var sheetAlm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ALMUERZOS_EXTRA');
           if (!sheetAlm) {
             sheetAlm = SpreadsheetApp.getActiveSpreadsheet().insertSheet('ALMUERZOS_EXTRA');
             sheetAlm.appendRow(["FECHA", "NOMBRE", "EMPRESA", "TIPO", "CANTIDAD", "HORA_REGISTRO", "TIMESTAMP", "OBSERVACIONES", "SUPERVISOR_ID"]);
           }
+
+          var existingAlmKeys = {};
+          var lastRowAlm = sheetAlm.getLastRow();
+          if (lastRowAlm > 1) {
+            var dataExistenteAlm = sheetAlm.getRange(2, 1, lastRowAlm - 1, 6).getValues();
+            for (var ka = 0; ka < dataExistenteAlm.length; ka++) {
+              var aRow = dataExistenteAlm[ka];
+              var aFecha = normDate(aRow[0]);
+              var aNombre = String(aRow[1]).trim().toUpperCase();
+              var aTipo = String(aRow[3]).trim().toUpperCase();
+              var aHora = normTime(aRow[5]);
+              if (aFecha && aNombre) {
+                existingAlmKeys[aFecha + '|' + aNombre + '|' + aTipo + '|' + aHora] = true;
+              }
+            }
+          }
+
           for (var j = 0; j < almuerzosExtra.length; j++) {
             var a = almuerzosExtra[j];
             var a_fecha = a.fecha || '';
@@ -274,6 +384,12 @@ function doPost(e) {
             var a_obs = a.observacionesCompletas || a.observaciones || '';
             var a_supId = a.empleadoId || a.supervisorId || '';
 
+            var keyAlm = normDate(a_fecha) + '|' + String(a_nombre).trim().toUpperCase() + '|' + String(a_tipo).trim().toUpperCase() + '|' + normTime(a_hora);
+            if (existingAlmKeys[keyAlm]) {
+              omitidosAlm++;
+              continue;
+            }
+            existingAlmKeys[keyAlm] = true;
             filasAlm.push([a_fecha, a_nombre, a_empresa, a_tipo, a_cantidad, a_hora, a_ts, a_obs, a_supId]);
           }
           if (filasAlm.length > 0) {
@@ -285,7 +401,9 @@ function doPost(e) {
           ok: true, 
           guardados: filasRegs.length, 
           vacacionesGuardadas: filasVacs.length,
-          almuerzosExtraGuardados: filasAlm.length
+          almuerzosExtraGuardados: filasAlm.length,
+          omitidosDuplicadosRegs: omitidosRegs,
+          omitidosDuplicadosAlm: omitidosAlm
         })).setMimeType(ContentService.MimeType.JSON);
       }
       
@@ -556,44 +674,25 @@ function procesarAccion(params) {
         var fechaStr = '';
         var horaStr = '';
 
-        // 1. Extraer prioritariamente desde TIMESTAMP
-        if (tsVal) {
+        // 1. Extraer prioritariamente desde columna FECHA (A) usando normFechaStr
+        if (fechaVal) {
+          fechaStr = normFechaStr(fechaVal);
+        }
+
+        // 2. Si no hay FECHA, extraer desde TIMESTAMP (J)
+        if (!fechaStr && tsVal) {
           var parsedTs = parsearTimestampGAS(tsVal);
           if (parsedTs) {
             fechaStr = parsedTs.fecha;
-            horaStr = parsedTs.hora;
+            if (!horaVal) horaStr = parsedTs.hora;
           }
         }
 
-        // Fallback a columnas FECHA y HORA si no se pudo extraer de TIMESTAMP
-        if (!fechaStr) {
-          if (fechaVal instanceof Date) {
-            fechaStr = Utilities.formatDate(fechaVal, tz, 'yyyy-MM-dd');
-          } else if (fechaVal) {
-            var s = String(fechaVal).trim();
-            if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-              fechaStr = s.slice(0, 10);
-            } else {
-              var mYMD = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-              if (mYMD) {
-                fechaStr = mYMD[1] + '-' + mYMD[2].padStart(2, '0') + '-' + mYMD[3].padStart(2, '0');
-              } else {
-                var mDMY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-                if (mDMY) {
-                  fechaStr = mDMY[3] + '-' + mDMY[2].padStart(2, '0') + '-' + mDMY[1].padStart(2, '0');
-                } else {
-                  var d = new Date(s);
-                  fechaStr = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-                }
-              }
-            }
-          }
-        }
-
-        if (!horaStr) {
+        // Extraer HORA
+        if (!horaStr && horaVal) {
           if (horaVal instanceof Date) {
             horaStr = Utilities.formatDate(horaVal, tz, 'HH:mm:ss');
-          } else if (horaVal) {
+          } else {
             var h = String(horaVal).trim();
             if (/^\d{4}-\d{2}-\d{2}T/.test(h)) {
               horaStr = h.split('T')[1].split('.')[0].substring(0, 8);
@@ -613,6 +712,7 @@ function procesarAccion(params) {
       }
       return { ok: true, registros: registros };
 
+    case 'justificarDia':
     case 'actualizarRegistroArchivado':
     case 'actualizarRegistroGeneral':
       return actualizarRegistroArchivado(params);
@@ -1021,6 +1121,18 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
 function formatearFecha(fecha, formato = "yyyy-MM-dd") {
   if (!fecha) return "";
   return Utilities.formatDate(fecha, Session.getScriptTimeZone(), formato);
+}
+
+function normFechaStr(val) {
+  if (!val) return '';
+  var tz = Session.getScriptTimeZone() || "GMT-5";
+  if (val instanceof Date) return Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+  var s = String(val).trim();
+  var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (mYMD) return mYMD[1] + '-' + String(mYMD[2]).padStart(2, '0') + '-' + String(mYMD[3]).padStart(2, '0');
+  var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (mDMY) return mDMY[3] + '-' + String(mDMY[2]).padStart(2, '0') + '-' + String(mDMY[1]).padStart(2, '0');
+  return s;
 }
 
 function formatearHoraCell(val) {
@@ -1547,8 +1659,9 @@ function guardarRegistro(data) {
     // NO la fecha de hoy.
     // =========================================================
     const esMarcacionOrdinaria = (tipo) => {
-      const t = String(tipo || '').toUpperCase();
-      return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(t) || t.includes('CAMPO');
+      const t = String(tipo || '').toUpperCase().trim();
+      if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') return false;
+      return ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'ENTRADA_CAMPO', 'SALIDA_CAMPO', 'RETORNO_CAMPO'].includes(t);
     };
     const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 
@@ -1664,35 +1777,36 @@ function guardarRegistro(data) {
       return { error: "No se puede registrar el estado: no tienes ENTRADA registrada hoy." };
     }
     
-    // SI YA EXISTE UN REGISTRO DE AUSENCIA PARA ESTE EMPLEADO Y FECHA, ACTUALIZARLO EN LUGAR DE AGREGAR UNO NUEVO
+    // SI YA EXISTE UN REGISTRO DE AUSENCIA PARA ESTE EMPLEADO Y FECHA EN REGISTROS, ACTUALIZARLO EN LUGAR DE DUPLICAR
     if (esAusenciaTipo(data.tipo)) {
       const lastRow = hoja.getLastRow();
       if (lastRow > 1) {
         const rango = hoja.getRange(2, 1, lastRow - 1, 22).getValues(); // Column A to V (A=0, V=21)
+        const targetFechaNorm = normFechaStr(fechaStr);
         for (let i = rango.length - 1; i >= 0; i--) {
-          const fFecha = rango[i][COLUMNAS.FECHA] instanceof Date
-            ? formatearFecha(rango[i][COLUMNAS.FECHA])
-            : rango[i][COLUMNAS.FECHA]?.toString() || '';
+          const fFecha = normFechaStr(rango[i][COLUMNAS.FECHA]) || (rango[i][COLUMNAS.TIMESTAMP] ? normFechaStr(rango[i][COLUMNAS.TIMESTAMP]) : '');
           const fId    = rango[i][COLUMNAS.ID]?.toString().trim() || '';
-          const fTipo  = rango[i][COLUMNAS.TIPO]?.toString() || '';
+          const fTipo  = rango[i][COLUMNAS.TIPO]?.toString().trim().toUpperCase() || '';
           
-          if (fId === data.id.toString().trim() && fFecha === fechaStr && esAusenciaTipo(fTipo)) {
+          if (fId === data.id.toString().trim() && fFecha === targetFechaNorm && (esAusenciaTipo(fTipo) || fTipo === 'FALTA')) {
             const filaReal = i + 2;
             hoja.getRange(filaReal, COLUMNAS.TIPO + 1).setValue(data.tipo);
-            hoja.getRange(filaReal, COLUMNAS.RAZON_AUSENCIA + 1).setValue(data.razon_ausencia || "");
+            hoja.getRange(filaReal, COLUMNAS.HORA + 1).setValue("00:00:00");
+            hoja.getRange(filaReal, COLUMNAS.RAZON_AUSENCIA + 1).setValue(data.razon_ausencia || data.razon_justificac || data.tipo);
             
             // Actualizar timestamp para registrar la modificación
             hoja.getRange(filaReal, COLUMNAS.TIMESTAMP + 1).setValue(fechaRegistro);
             
-            // Si el supervisor asigna una justificación
-            if (data.justificado) {
-              hoja.getRange(filaReal, COLUMNAS.JUSTIFICADO + 1).setValue(data.justificado);
-            }
+            // Justificación
+            hoja.getRange(filaReal, COLUMNAS.JUSTIFICADO + 1).setValue(data.justificado || 'SI');
             if (data.quien_justifica) {
               hoja.getRange(filaReal, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(data.quien_justifica);
             }
+            if (modo) {
+              hoja.getRange(filaReal, COLUMNAS.MODO + 1).setValue(modo);
+            }
             
-            return { ok: true, msg: `${data.tipo} actualizado con éxito en histórico` };
+            return { ok: true, msg: `${data.tipo} actualizado con éxito en REGISTROS histórico` };
           }
         }
       }
@@ -3615,6 +3729,7 @@ function actualizarRegistroArchivado(params) {
     var targetTipoNorm = String(tipo || '').trim().toUpperCase();
     
     // Búsqueda en reversa (de abajo hacia arriba) para encontrar registros recientes al instante
+    let dupIndices = [];
     for (let i = data.length - 1; i >= 1; i--) {
       let rowFecha = normFechaStr(data[i][COLUMNAS.FECHA]);
       if (!rowFecha && data[i][COLUMNAS.TIMESTAMP]) {
@@ -3626,15 +3741,26 @@ function actualizarRegistroArchivado(params) {
 
       if (rowId === eid && rowFecha === targetFechaNorm) {
         if (!targetTipoNorm || rowTipo === targetTipoNorm || (["ENTRADA", "ENTRADA_CAMPO", "RETORNO_CAMPO"].includes(rowTipo) && ["ENTRADA", "ENTRADA_CAMPO"].includes(targetTipoNorm))) {
-          filaIndex = i + 1;
-          break;
+          if (filaIndex === -1) {
+            filaIndex = i + 1;
+          } else if (esAusenciaTipo(rowTipo) || rowTipo === 'FALTA') {
+            dupIndices.push(i + 1);
+          }
         } else if (filaFallback === -1) {
           filaFallback = i + 1;
+        } else if (esAusenciaTipo(rowTipo) || rowTipo === 'FALTA') {
+          dupIndices.push(i + 1);
         }
       }
     }
     if (filaIndex === -1 && filaFallback !== -1) {
       filaIndex = filaFallback;
+    }
+    // Eliminar filas duplicadas de ausencia para este empleado y fecha (ej: FALTA previa que fue reemplazada)
+    for (let d = 0; d < dupIndices.length; d++) {
+      if (dupIndices[d] !== filaIndex) {
+        try { sheet.deleteRow(dupIndices[d]); } catch(eDup) {}
+      }
     }
     
     if (filaIndex !== -1) {
@@ -3674,20 +3800,28 @@ function actualizarRegistroArchivado(params) {
       if (campo === 'almuerzo') colIdx = COLUMNAS.ALMUERZO;
       else if (campo === 'modo' || campo === 'ubicacion' || campo === 'modalidad') colIdx = COLUMNAS.MODO;
       else if (campo === 'horasExtra') colIdx = COLUMNAS.HORAS_EXTRA;
+      else if (campo === 'tipo') colIdx = COLUMNAS.TIPO;
       else if (campo === 'razon_entrada_tardia') colIdx = COLUMNAS.RAZON_ENTRADA_TARDIA;
       else if (campo === 'razon_salida') colIdx = COLUMNAS.RAZON_SALIDA_TEMPRANA;
       else if (campo === 'justificado') {
-        sheet.getRange(filaIndex, 20 + 1).setValue('SI');
+        if (params.tipo) sheet.getRange(filaIndex, COLUMNAS.TIPO + 1).setValue(params.tipo);
+        sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue("00:00:00");
+        sheet.getRange(filaIndex, COLUMNAS.JUSTIFICADO + 1).setValue('SI');
         if (params.quien_justifica) sheet.getRange(filaIndex, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(params.quien_justifica);
-        if (params.razon_justificac) sheet.getRange(filaIndex, 21 + 1).setValue(params.razon_justificac);
+        if (params.razon_justificac || params.razon_ausencia) sheet.getRange(filaIndex, COLUMNAS.RAZON_JUSTIFICAC + 1).setValue(params.razon_justificac || params.razon_ausencia);
+        if (params.modo) sheet.getRange(filaIndex, COLUMNAS.MODO + 1).setValue(params.modo);
         return { ok: true };
       }
       
       if (colIdx !== -1) {
         sheet.getRange(filaIndex, colIdx + 1).setValue(valor);
+        if (params.tipo && colIdx !== COLUMNAS.TIPO) sheet.getRange(filaIndex, COLUMNAS.TIPO + 1).setValue(params.tipo);
+        if (colIdx === COLUMNAS.TIPO && esAusenciaTipo(valor)) sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue("00:00:00");
         if (params.modo && colIdx !== COLUMNAS.MODO) sheet.getRange(filaIndex, COLUMNAS.MODO + 1).setValue(params.modo);
         if (params.almuerzo && colIdx !== COLUMNAS.ALMUERZO) sheet.getRange(filaIndex, COLUMNAS.ALMUERZO + 1).setValue(params.almuerzo);
         if (params.horasExtra && colIdx !== COLUMNAS.HORAS_EXTRA) sheet.getRange(filaIndex, COLUMNAS.HORAS_EXTRA + 1).setValue(params.horasExtra);
+        if (params.razon_justificac || params.razon_ausencia) sheet.getRange(filaIndex, COLUMNAS.RAZON_JUSTIFICAC + 1).setValue(params.razon_justificac || params.razon_ausencia);
+        if (params.quien_justifica) sheet.getRange(filaIndex, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(params.quien_justifica);
         return { ok: true };
       }
       return { ok: false, error: "Campo no mapeado para Sheets" };

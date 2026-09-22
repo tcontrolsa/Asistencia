@@ -838,17 +838,193 @@ function verificarDistanciaEmpresa() {
     if (indicator) {
         indicator.textContent = `📍 ${Math.round(distancia)}m / ${radio}m`;
         indicator.classList.remove('hidden');
+    }
 
-        if (distancia <= radio) {
-            setTimeout(() => indicator.classList.add('hidden'), 3000);
-            return true;
-        } else {
-            mostrarToast(`❌ ${msgError} (${Math.round(distancia)}m)`, 'error');
-            return false;
+    if (distancia <= radio) {
+        if (indicator) setTimeout(() => indicator.classList.add('hidden'), 3000);
+        window._estaFueraArea = false;
+        window._distanciaFuera = Math.round(distancia);
+        const cardFuera = document.getElementById('contenedorBotonFueraArea');
+        if (cardFuera && cardFuera.getAttribute('data-reportado') !== 'true') {
+            cardFuera.style.display = 'none';
+        }
+        return true;
+    } else {
+        window._estaFueraArea = true;
+        window._distanciaFuera = Math.round(distancia);
+        const cardFuera = document.getElementById('contenedorBotonFueraArea');
+        if (cardFuera) {
+            cardFuera.style.display = 'block';
+        }
+        mostrarToast(`❌ ${msgError} (${Math.round(distancia)}m)`, 'error');
+        return false;
+    }
+}
+
+window.abrirModalReporteFueraArea = function () {
+    const existingModal = document.getElementById('modalReporteFueraArea');
+    if (existingModal) existingModal.remove();
+
+    const hoyStrLocal = getLocalHoyStr(new Date());
+    let tipoPrevio = 'VACACIONES';
+    let obsPrevia = '';
+    if (typeof empleado !== 'undefined' && empleado && empleado.id) {
+        const stored = localStorage.getItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`);
+        if (stored) {
+            try {
+                const p = JSON.parse(stored);
+                if (p.tipo) tipoPrevio = p.tipo;
+                if (p.observacion) obsPrevia = p.observacion;
+            } catch (e) { }
         }
     }
-    return false;
-}
+
+    const modal = document.createElement('div');
+    modal.id = 'modalReporteFueraArea';
+    modal.className = 'modal-backdrop-custom';
+    modal.style.cssText = `
+        position: fixed; inset: 0; z-index: 99999;
+        background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center; padding: 16px;
+    `;
+
+    modal.innerHTML = `
+        <div style="background: #ffffff; border-radius: 20px; width: 100%; max-width: 440px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; animation: zoomIn 0.25s ease;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 18px 20px; color: white; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="background: rgba(255,255,255,0.2); width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                        📍
+                    </div>
+                    <div>
+                        <h5 style="margin: 0; font-size: 16px; font-weight: 800; letter-spacing: 0.3px;">Reportar Estado de Hoy</h5>
+                        <div style="font-size: 11px; opacity: 0.9;">Fuera del Área de Registro</div>
+                    </div>
+                </div>
+                <button type="button" onclick="document.getElementById('modalReporteFueraArea').remove()" style="background: none; border: none; color: white; font-size: 22px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+            </div>
+
+            <!-- Body -->
+            <div style="padding: 20px;">
+                <!-- ALERTA INSTITUCIONAL OBLIGATORIA -->
+                <div style="background: #fff7ed; border: 1.5px solid #fdba74; border-left: 4px solid #ea580c; border-radius: 12px; padding: 12px 14px; margin-bottom: 18px;">
+                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                        <i class="fas fa-exclamation-triangle" style="color: #ea580c; font-size: 16px; margin-top: 2px;"></i>
+                        <div style="font-size: 12px; color: #9a3412; font-weight: 600; line-height: 1.45;">
+                            <strong>Aviso Importante:</strong> Debe regularizar este evento con su supervisor tal como ya está establecido institucionalmente.<br>
+                            <span style="color: #c2410c; font-weight: 800;">Recuerde que las faltas injustificadas son tomadas como vacaciones.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 12.5px; font-weight: 800; color: #334155; margin-bottom: 8px; text-transform: uppercase;">
+                        Seleccione su Estado de Hoy (Jornada Completa) *
+                    </label>
+                    <select id="selectEstadoFueraArea" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1.5px solid #cbd5e1; font-size: 14px; font-weight: 700; color: #0f172a; background: #f8fafc; outline: none; cursor: pointer;">
+                        <option value="VACACIONES" ${tipoPrevio === 'VACACIONES' ? 'selected' : ''}>🏖️ VACACIÓN</option>
+                        <optgroup label="📋 PERMISO JUSTIFICADO">
+                            <option value="PERMISO_PERSONAL" ${tipoPrevio === 'PERMISO_PERSONAL' ? 'selected' : ''}>👤 Permiso Personal</option>
+                            <option value="PERMISO_MEDICO" ${tipoPrevio === 'PERMISO_MEDICO' ? 'selected' : ''}>🩺 Permiso Médico</option>
+                            <option value="FALTA_JUSTIFICADA" ${tipoPrevio === 'FALTA_JUSTIFICADA' ? 'selected' : ''}>📋 Falta Justificada</option>
+                        </optgroup>
+                        <option value="TRABAJO_DE_CAMPO" ${tipoPrevio === 'TRABAJO_DE_CAMPO' ? 'selected' : ''}>🚗 CAMPO (Trabajo en Campo / Cliente)</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 18px;">
+                    <label style="display: block; font-size: 12.5px; font-weight: 800; color: #334155; margin-bottom: 8px; text-transform: uppercase;">
+                        Observaciones / Detalle (Opcional)
+                    </label>
+                    <textarea id="obsReporteFueraArea" rows="2" placeholder="Ej: Atendiendo cliente en campo, cita médica..." style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1.5px solid #cbd5e1; font-size: 13px; color: #0f172a; box-sizing: border-box; resize: none;">${escapeHtml(obsPrevia)}</textarea>
+                </div>
+
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" onclick="document.getElementById('modalReporteFueraArea').remove()" style="padding: 10px 18px; border-radius: 10px; background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 700; font-size: 13px; cursor: pointer;">
+                        Cancelar
+                    </button>
+                    <button type="button" onclick="window.guardarReporteFueraArea()" style="padding: 10px 22px; border-radius: 10px; background: #2563eb; border: none; color: white; font-weight: 800; font-size: 13px; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-check-circle"></i> Confirmar Reporte
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+};
+
+window.guardarReporteFueraArea = async function () {
+    const sel = document.getElementById('selectEstadoFueraArea');
+    if (!sel) return;
+    const tipo = sel.value;
+    const obs = document.getElementById('obsReporteFueraArea')?.value.trim() || '';
+    const hoyStrLocal = getLocalHoyStr(new Date());
+
+    let textoEstado = sel.options[sel.selectedIndex].text;
+
+    mostrarLoader(true);
+    try {
+        const payload = {
+            id: empleado.id,
+            empleadoId: empleado.id,
+            tipo: tipo,
+            fecha: hoyStrLocal,
+            fecha_falta: hoyStrLocal,
+            hora: '00:00:00',
+            modo: tipo === 'TRABAJO_DE_CAMPO' ? 'CAMPO' : 'OFICINA',
+            razon_ausencia: obs || textoEstado,
+            razon_justificac: obs || textoEstado,
+            justificado: 'SI',
+            quien_justifica: 'Colaborador (Reporte Fuera de Área)',
+            dispositivo: 'APP_COLABORADOR_EXTERNO'
+        };
+
+        if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarRegistro === 'function') {
+            await window.FirebaseBackend.guardarRegistro(payload);
+        } else if (typeof guardarRegistroAPI === 'function') {
+            await guardarRegistroAPI(payload);
+        }
+
+        // Guardar confirmación en localStorage
+        const infoReporte = {
+            tipo: tipo,
+            texto: textoEstado,
+            fecha: hoyStrLocal,
+            observacion: obs,
+            timestamp: new Date().toISOString()
+        };
+        localStorage.setItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`, JSON.stringify(infoReporte));
+
+        // Actualizar registrosCompletos localmente
+        if (!Array.isArray(registrosCompletos)) registrosCompletos = [];
+        registrosCompletos = registrosCompletos.filter(r => {
+            const rf = getVal(r, 'fecha', 0) || r.fecha || r[0];
+            return rf !== hoyStrLocal;
+        });
+        registrosCompletos.push({
+            fecha: hoyStrLocal,
+            tipo: tipo,
+            hora: '00:00:00',
+            razon_ausencia: obs || textoEstado,
+            justificado: 'SI',
+            modo: payload.modo
+        });
+
+        const m = document.getElementById('modalReporteFueraArea');
+        if (m) m.remove();
+
+        mostrarToast('✅ Estado de hoy reportado exitosamente', 'success');
+        if (typeof renderHomePage === 'function') {
+            renderHomePage();
+        }
+    } catch (err) {
+        console.error("Error al reportar fuera de área:", err);
+        mostrarToast('Error al enviar reporte: ' + err.message, 'error');
+    } finally {
+        mostrarLoader(false);
+    }
+};
 
 function solicitarPermisoGPS() {
     if (!navigator.geolocation) {
@@ -1505,7 +1681,12 @@ function horaLimiteAlmuerzoPasada() {
 }
 
 function iniciarRegistro(tipo) {
-    if (!verificarDistanciaEmpresa()) return;
+    if (!verificarDistanciaEmpresa()) {
+        if (typeof window.abrirModalReporteFueraArea === 'function') {
+            window.abrirModalReporteFueraArea();
+        }
+        return;
+    }
 
     const status = calcularStatusActual();
     const esReentrada = status.label.includes('PERMISO') || status.label.includes('CAMPO');
@@ -3329,6 +3510,46 @@ function renderHomePage() {
     const esAdmin = empleado.id === ADMIN_ID;
     const statusActual = calcularStatusActual();
 
+    // Detectar si el colaborador tiene un estado/ausencia reportado hoy (Vacación, Permiso, Campo, etc.)
+    const tiposAusenciaMap = {
+        'VACACIONES': { label: '🏖️ VACACIÓN', badge: 'Vacación', bg: '#eff6ff', color: '#1d4ed8', border: '#93c5fd' },
+        'VACACION': { label: '🏖️ VACACIÓN', badge: 'Vacación', bg: '#eff6ff', color: '#1d4ed8', border: '#93c5fd' },
+        'PERMISO_PERSONAL': { label: '👤 PERMISO PERSONAL', badge: 'Permiso Justificado', bg: '#fdf4ff', color: '#86198f', border: '#f0abfc' },
+        'PERMISO_MEDICO': { label: '🩺 PERMISO MÉDICO', badge: 'Permiso Justificado', bg: '#f0fdf4', color: '#15803d', border: '#86efac' },
+        'FALTA_JUSTIFICADA': { label: '📋 FALTA JUSTIFICADA', badge: 'Permiso Justificado', bg: '#fefce8', color: '#a16207', border: '#fde047' },
+        'TRABAJO_DE_CAMPO': { label: '🚗 CAMPO (Trabajo en Campo / Cliente)', badge: 'Trabajo en Campo', bg: '#fffbeb', color: '#b45309', border: '#fcd34d' },
+        'CAMPO': { label: '🚗 CAMPO (Trabajo en Campo / Cliente)', badge: 'Trabajo en Campo', bg: '#fffbeb', color: '#b45309', border: '#fcd34d' },
+        'PERMISO': { label: '📋 PERMISO JUSTIFICADO', badge: 'Permiso', bg: '#fdf4ff', color: '#86198f', border: '#f0abfc' }
+    };
+
+    let reporteFueraHoy = null;
+    const itemStorage = localStorage.getItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`);
+    if (itemStorage) {
+        try { reporteFueraHoy = JSON.parse(itemStorage); } catch (e) { }
+    }
+
+    // Buscar también en registrosCompletos de hoy
+    const regAusenciaHoy = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => {
+        const rf = getVal(r, 'fecha', 0) || r.fecha || r[0];
+        const rt = String(getVal(r, 'tipo', 3) || r.tipo || r[3] || '').toUpperCase();
+        return rf === hoyStrLocal && (tiposAusenciaMap[rt] || rt === 'FALTA');
+    }) : null;
+
+    let tipoEstadoHoy = null;
+    let detalleEstadoHoy = '';
+    let configEstado = null;
+
+    if (reporteFueraHoy && reporteFueraHoy.tipo) {
+        tipoEstadoHoy = reporteFueraHoy.tipo.toUpperCase();
+        detalleEstadoHoy = reporteFueraHoy.observacion || reporteFueraHoy.texto || '';
+        configEstado = tiposAusenciaMap[tipoEstadoHoy] || { label: reporteFueraHoy.texto || tipoEstadoHoy, badge: 'Reportado', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' };
+    } else if (regAusenciaHoy) {
+        const rt = String(getVal(regAusenciaHoy, 'tipo', 3) || regAusenciaHoy.tipo || regAusenciaHoy[3] || '').toUpperCase();
+        tipoEstadoHoy = rt;
+        detalleEstadoHoy = getVal(regAusenciaHoy, 'razon_ausencia', 10) || regAusenciaHoy.razon_ausencia || '';
+        configEstado = tiposAusenciaMap[tipoEstadoHoy] || (tipoEstadoHoy === 'FALTA' ? { label: '❌ FALTA REGISTRADA', badge: 'Falta', bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' } : { label: tipoEstadoHoy, badge: 'Ausencia', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' });
+    }
+
     // Detectar puntualidad del empleado según registros del mes
     function calcularInsigniaPersonal() {
         if (!registrosCompletos || registrosCompletos.length === 0) return null;
@@ -3527,11 +3748,63 @@ function renderHomePage() {
                     </div>
                 </div>
                 
+                <!-- SECCIÓN REPORTE FUERA DE ÁREA / ESTADO DE HOY -->
+                ${configEstado ? `
+                    <div class="card-reporte-fuera-confirmado" style="margin-top: 14px; margin-bottom: 8px; border-radius: 16px; border: 1.5px solid ${configEstado.border}; background: ${configEstado.bg}; padding: 14px 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); text-align: left;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="font-size: 11px; font-weight: 800; color: ${configEstado.color}; text-transform: uppercase; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-check-circle"></i> ESTADO DE HOY REPORTADO
+                            </span>
+                            <span style="font-size: 10.5px; font-weight: 700; background: white; color: ${configEstado.color}; padding: 2px 8px; border-radius: 10px; border: 1px solid ${configEstado.border};">
+                                ${configEstado.badge} • Jornada Completa
+                            </span>
+                        </div>
+                        
+                        <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 4px 0;">
+                            ${configEstado.label}
+                        </div>
+                        
+                        ${detalleEstadoHoy ? `<div style="font-size: 12px; color: #475569; margin-bottom: 8px; font-style: italic;">“${escapeHtml(detalleEstadoHoy)}”</div>` : ''}
+
+                        <!-- ALERTA INSTITUCIONAL OBLIGATORIA -->
+                        <div style="background: #fff7ed; border-left: 3.5px solid #ea580c; border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 11.5px; color: #9a3412; line-height: 1.45;">
+                            <div style="font-weight: 800; margin-bottom: 2px;"><i class="fas fa-exclamation-triangle" style="color: #ea580c;"></i> Regularización Obligatoria:</div>
+                            <div>Debe regularizar este evento con su supervisor tal como ya está establecido institucionalmente.</div>
+                            <div style="font-weight: 700; color: #c2410c; margin-top: 2px;">Recuerde que las faltas injustificadas son tomadas como vacaciones.</div>
+                        </div>
+
+                        <div style="margin-top: 10px; text-align: right;">
+                            <button type="button" onclick="window.abrirModalReporteFueraArea()" style="background: none; border: none; color: #2563eb; font-size: 11.5px; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 0;">
+                                <i class="fas fa-sync-alt"></i> Actualizar o cambiar estado reportado
+                            </button>
+                        </div>
+                    </div>
+                ` : `
+                    <div id="contenedorBotonFueraArea" data-reportado="false" style="margin-top: 12px; margin-bottom: 8px;">
+                        <div onclick="window.abrirModalReporteFueraArea()" style="background: #ffffff; border: 1.5px dashed #3b82f6; border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(59,130,246,0.06);">
+                            <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
+                                <div style="background: #eff6ff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #2563eb; flex-shrink: 0;">
+                                    📍
+                                </div>
+                                <div>
+                                    <div style="font-size: 12.5px; font-weight: 800; color: #1e3a8a;">¿Fuera del área de registro?</div>
+                                    <div style="font-size: 11px; color: #64748b; font-weight: 600;">Reporte aquí: Vacación, Permiso Justificado o Campo</div>
+                                </div>
+                            </div>
+                            <div style="background: #2563eb; color: white; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(37,99,235,0.25);">
+                                Reportar <i class="fas fa-chevron-right" style="font-size: 10px; margin-left: 2px;"></i>
+                            </div>
+                        </div>
+                    </div>
+                `}
+
                 <!-- Botón de Acción Único y Dinámico -->
                 <div class="main-action-wrapper">
                     ${(() => {
             let btn = { type: 'ENTRADA', label: 'REGISTRAR ENTRADA', class: 'bg-entrada', icon: 'fa-sign-in-alt', disabled: '' };
-            if (statusActual.label.includes('CAMPO')) {
+            if (configEstado && ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA'].includes(tipoEstadoHoy)) {
+                btn = { type: 'NONE', label: 'ESTADO REPORTADO HOY', class: 'bg-campo', icon: 'fa-calendar-check', disabled: 'disabled' };
+            } else if (statusActual.label.includes('CAMPO')) {
                 btn = { type: 'RETORNO_CAMPO', label: 'RETORNO DE CAMPO', class: 'bg-campo', icon: 'fa-undo', disabled: '' };
             } else if (tieneEntrada && !tieneSalida) {
                 if (statusActual.label.includes('PERMISO')) {
@@ -3547,7 +3820,9 @@ function renderHomePage() {
                             <div class="btn-type"><i class="fas ${btn.icon}"></i> ${btn.label}</div>
                             ${tieneSalida
                     ? `<div id="btnTime" class="btn-time" data-completa="true">COMPLETA</div>`
-                    : `<div id="btnTime" class="btn-time">--:--:--</div>`
+                    : (configEstado && ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA'].includes(tipoEstadoHoy)
+                        ? `<div id="btnTime" class="btn-time" data-completa="true">JORNADA COMPLETA</div>`
+                        : `<div id="btnTime" class="btn-time">--:--:--</div>`)
                 }
                         </button>
                         `;
@@ -3612,7 +3887,9 @@ function renderHomePage() {
         if (clockEl) clockEl.textContent = timeStr;
         if (btnTime) {
             if (btnTime.getAttribute('data-completa') === 'true') {
-                btnTime.textContent = 'COMPLETA';
+                if (!btnTime.textContent || btnTime.textContent === '--:--:--') {
+                    btnTime.textContent = 'COMPLETA';
+                }
             } else {
                 btnTime.textContent = timeStr;
             }
