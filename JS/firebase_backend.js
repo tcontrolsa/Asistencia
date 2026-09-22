@@ -1008,6 +1008,10 @@ window.FirebaseBackend = {
         const dia = fechaRegistro.getDate().toString().padStart(2, '0');
         const fechaStr = `${fechaRegistro.getFullYear()}-${mes}-${dia}`;
 
+        const h = ahora.getHours().toString().padStart(2, '0');
+        const m = ahora.getMinutes().toString().padStart(2, '0');
+        const s = ahora.getSeconds().toString().padStart(2, '0');
+
         const hoyStrLocal = this._hoyStr();
         const esFechaPasada = (fechaStr < hoyStrLocal);
 
