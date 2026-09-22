@@ -71,10 +71,10 @@ var COLUMNAS_DISPOSITIVOS = {
   ACTIVO: 4
 };
 
-// ========== LÃ“GICA DE CALENDARIO ECUADOR ==========
+// ========== LÓGICA DE CALENDARIO ECUADOR ==========
 function obtenerDiaEcuador(fecha) {
   if (!fecha) fecha = new Date();
-  const dias = ['DOMINGO', 'LUNES', 'MARTES', 'MIÃ‰RCOLES', 'JUEVES', 'VIERNES', 'SÃBADO'];
+  const dias = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
   const diaSemana = dias[fecha.getDay()];
   
   if (esFeriadoEcuador(fecha)) {
@@ -91,30 +91,30 @@ function esFeriadoEcuador(fecha) {
   
   // Feriados fijos Nacionales y Quito
   const feriadosFijos = [
-    '01/01', // AÃ±o Nuevo
-    '01/05', // DÃ­a del Trabajo
+    '01/01', // Año Nuevo
+    '01/05', // Día del Trabajo
     '24/05', // Batalla de Pichincha
     '10/08', // Primer Grito de Independencia
     '09/10', // Independencia de Guayaquil
-    '02/11', // DÃ­a de los Difuntos
+    '02/11', // Día de los Difuntos
     '03/11', // Independencia de Cuenca
-    '06/12', // FundaciÃ³n de Quito
+    '06/12', // Fundación de Quito
     '25/12'  // Navidad
   ];
   
   if (feriadosFijos.includes(fechaStr)) return true;
   
-  // Feriados mÃ³viles 2024 (Carnaval, Viernes Santo)
+  // Feriados móviles 2024 (Carnaval, Viernes Santo)
   if (y === 2024) {
     const moviles2024 = ['12/02', '13/02', '29/03'];
     if (moviles2024.includes(fechaStr)) return true;
   }
-  // Feriados mÃ³viles 2025
+  // Feriados móviles 2025
   if (y === 2025) {
     const moviles2025 = ['03/03', '04/03', '18/04'];
     if (moviles2025.includes(fechaStr)) return true;
   }
-  // Feriados mÃ³viles 2026
+  // Feriados móviles 2026
   if (y === 2026) {
     const moviles2026 = ['16/02', '17/02', '03/04', '26/06'];
     if (moviles2026.includes(fechaStr)) return true;
@@ -532,10 +532,10 @@ function procesarAccion(params) {
   const accion = params.accion;
   
   if (!accion) {
-    return { error: "No se especificÃ³ acciÃ³n" };
+    return { error: "No se especificó acción" };
   }
   
-  console.log("Procesando acciÃ³n:", accion, params);
+  console.log("Procesando acción:", accion, params);
   
   // Enrutamiento
   switch(accion) {
@@ -604,9 +604,6 @@ function procesarAccion(params) {
     
     case 'obtenerEstadisticasConsumo':
       return obtenerEstadisticasConsumo(params);
-    
-    case 'crearHojaConsumoAlmuerzos':
-      return crearHojaConsumoAlmuerzos(params);
 
     case 'actualizarAlmuerzoSupervisor':
       return actualizarAlmuerzoSupervisor(params);
@@ -617,7 +614,7 @@ function procesarAccion(params) {
     // MIGRACIÓN FIREBASE
     case 'exportarBaseDatosParaFirebase':
       return exportarBaseDatosParaFirebase();
-    // AdministraciÃ³n
+    // Administración
     case 'resetearPinesEmpleados':
       return resetearPinesEmpleados(params);
       
@@ -629,7 +626,7 @@ function procesarAccion(params) {
       if (typeof configData === 'string') {
         try {
           configData = JSON.parse(configData);
-        } catch(e) { return { error: "Formato de configuraciÃ³n invÃ¡lido" }; }
+        } catch(e) { return { error: "Formato de configuración inválido" }; }
       }
       return guardarConfiguraciones(configData);
 
@@ -644,9 +641,6 @@ function procesarAccion(params) {
 
     case 'toggleCulturaTcontrol':
       return { ok: true, habilitado: params.habilitado };
-
-    case 'toggleCulturaEmpleado':
-      return actualizarEmpleado(params.empleadoId || params.id, 'cultura_habilitada', params.habilitado);
 
     case 'obtenerConfiguracionWhatsApp':
       return obtenerConfiguracionWhatsApp();
@@ -746,10 +740,7 @@ function procesarAccion(params) {
       
     case 'registrarAlmuerzoExtra':
       return registrarAlmuerzoExtra(params);
-      
-    case 'eliminarAlmuerzoExtra':
-      return eliminarAlmuerzoExtra(params);
-      
+
     case 'obtenerEmpleadosTaller':
       return obtenerEmpleadosTaller();
       
@@ -989,6 +980,15 @@ function crearReporteGoogleSheets(params) {
     // Limitar longitud del nombre de la hoja (max 30 caracteres) y caracteres ilegales
     nombreReporte = nombreReporte.replace(/[\/\\\?\*\[\]:]/g, '_').substring(0, 30);
 
+    // Nunca sobrescribir (borrar) hojas del sistema: más abajo se elimina la hoja existente con el mismo nombre
+    const HOJAS_PROTEGIDAS = [HOJA_EMPLEADOS, HOJA_REGISTROS, HOJA_VACACIONES, HOJA_CALCULAR_VACACIONES, HOJA_DESVINCULADOS,
+      HOJA_DISPOSITIVOS, HOJA_ALMUERZOS_EXTRA, HOJA_CONFIGURACION, HOJA_LOGS_WHATSAPP, "ACTUALIZAR", "AUDITORIA_ALMUERZOS",
+      "BASE", "CONSUMO_ALMUERZOS", "CULTURA_PREGUNTAS", "HISTORIAL_MENU", "REPORTE_MANTENIMIENTO"];
+    const nombreUpper = nombreReporte.trim().toUpperCase();
+    if (HOJAS_PROTEGIDAS.some(function(h) { return String(h).toUpperCase() === nombreUpper; })) {
+      return { error: "Nombre de reporte no permitido: coincide con una hoja del sistema (" + nombreReporte + ")" };
+    }
+
     let headers = [];
     let filas = [];
     
@@ -1086,7 +1086,7 @@ function servirHtmlOriginal(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   } else if (pagina === "admin") {
     return HtmlService.createHtmlOutputFromFile("admin")
-      .setTitle("Panel de AdministraciÃ³n")
+      .setTitle("Panel de Administración")
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   } else if (pagina === "supervisor") {
     return HtmlService.createHtmlOutputFromFile("supervisor")
@@ -1100,8 +1100,16 @@ function servirHtmlOriginal(e) {
 }
 
 // =================== UTILIDADES ===================
+// Global para doPost (archivarRegistros) y actualizarRegistroArchivado, que la usan fuera de guardarRegistro.
+// Debe mantenerse igual a la versión local de guardarRegistro.
+function esAusenciaTipo(tipo) {
+  const t = String(tipo || '').toUpperCase().trim();
+  if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') return true;
+  return !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'ENTRADA_CAMPO', 'SALIDA_CAMPO', 'RETORNO_CAMPO'].includes(t);
+}
+
 function calcularDistancia(lat1, lon1, lat2, lon2) {
-  // Convertir a nÃºmeros por si acaso
+  // Convertir a números por si acaso
   lat1 = parseFloat(lat1);
   lon1 = parseFloat(lon1);
   lat2 = parseFloat(lat2);
@@ -1436,7 +1444,7 @@ function actualizarBaseCampo(empleadoId, lat, lng) {
       if (data[i][COLUMNAS_EMPLEADOS.ID].toString().trim() === idBuscar) {
         sheet.getRange(i + 1, COLUMNAS_EMPLEADOS.BASE_LAT + 1).setValue(lat);
         sheet.getRange(i + 1, COLUMNAS_EMPLEADOS.BASE_LNG + 1).setValue(lng);
-        return { ok: true, mensaje: "UbicaciÃ³n base actualizada correctamente" };
+        return { ok: true, mensaje: "Ubicación base actualizada correctamente" };
       }
     }
     return { error: "Empleado no encontrado" };
@@ -1654,7 +1662,7 @@ function guardarRegistro(data) {
     const ahora = new Date();
     
     // =========================================================
-    // CORRECCIÃ“N CRÃ TICA: Para tipo FALTA (justificaciÃ³n masiva)
+    // CORRECCIÓN CRÍTICA: Para tipo FALTA (justificación masiva)
     // usar la fecha enviada por el cliente (fecha_falta),
     // NO la fecha de hoy.
     // =========================================================
@@ -1710,7 +1718,7 @@ function guardarRegistro(data) {
       }
     }
     
-    // Validar duplicados bÃ¡sicos (solo para registros que NO sean FALTA ni ESTADO ni CAMPO)
+    // Validar duplicados básicos (solo para registros que NO sean FALTA ni ESTADO ni CAMPO)
     if (esMarcacionOrdinaria(data.tipo) && data.tipo !== 'ESTADO' && !String(data.tipo).toUpperCase().includes('CAMPO')) {
       const hoyStr = formatearFecha(ahora); // Para duplicados siempre usar hoy
       const lastRow = hoja.getLastRow();
@@ -1742,12 +1750,12 @@ function guardarRegistro(data) {
 
       if (modo === "CAMPO") {
         if (!infoEmpleado.baseLat || !infoEmpleado.baseLng) {
-          return { error: "Debes registrar primero tu ubicaciÃ³n base para modo campo" };
+          return { error: "Debes registrar primero tu ubicación base para modo campo" };
         }
         latTarget = parseFloat(infoEmpleado.baseLat);
         lngTarget = parseFloat(infoEmpleado.baseLng);
         radioTarget = 300;
-        msgError = "Fuera del rango de tu ubicaciÃ³n base de campo";
+        msgError = "Fuera del rango de tu ubicación base de campo";
       }
 
       const dist = calcularDistancia(latTarget, lngTarget, lat, lng);
@@ -1854,7 +1862,7 @@ function guardarRegistro(data) {
     nuevaFila[COLUMNAS.RAZON_AUSENCIA]       = data.razon_ausencia || "";
     
     hoja.appendRow(nuevaFila);
-    return { ok: true, msg: `${data.tipo} registrado con Ã©xito (${modo})` };
+    return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
     
   } catch (error) {
     console.error("Error en guardarRegistro:", error);
@@ -2405,7 +2413,7 @@ function desvincularDispositivo(empleadoId, deviceToken) {
       }
     }
     
-    return { error: "No se encontrÃ³ el dispositivo vinculado" };
+    return { error: "No se encontró el dispositivo vinculado" };
   } catch (error) {
     return { error: error.toString() };
   } finally {
@@ -2413,7 +2421,7 @@ function desvincularDispositivo(empleadoId, deviceToken) {
   }
 }
 
-// =================== FUNCIONES PARA ADMINISTRACIÃ“N ===================
+// =================== FUNCIONES PARA ADMINISTRACIÓN ===================
 function obtenerConfiguraciones() {
   try {
     let ss = SpreadsheetApp.getActive();
@@ -2425,7 +2433,7 @@ function obtenerConfiguraciones() {
         ubicacion: { lat: LAT_EMPRESA, lng: LNG_EMPRESA, radio: RADIO_METROS },
         horarios: { hora_almuerzo: "09:30", hora_entrada_limite: "07:45", hora_salida: "16:15", almuerzo_activo: true, hora_inicio: "07:30", hora_fin: "16:15", marcacion_automatica: false, tiempo_automatico: 10 },
         registro: { tolerancia_gps: 50, requiere_foto: false, permite_registro_manual: true },
-        otras: { whatsapp_number: "593963561149", mensaje_soporte: "Hola, necesito soporte tÃ©cnico para el sistema CONTROL 2026", modo_mantenimiento: false, mensaje_mantenimiento: "Sistema en mantenimiento. Intente mÃ¡s tarde." }
+        otras: { whatsapp_number: "593963561149", mensaje_soporte: "Hola, necesito soporte técnico para el sistema CONTROL 2026", modo_mantenimiento: false, mensaje_mantenimiento: "Sistema en mantenimiento. Intente más tarde." }
       };
       sheet.getRange(1, 1).setValue(JSON.stringify(configDefault));
     }
@@ -2454,11 +2462,11 @@ function guardarConfiguraciones(config) {
     if (!sheet) sheet = ss.insertSheet(HOJA_CONFIGURACION);
 
     if (!config.ubicacion || !config.horarios || !config.registro || !config.otras) {
-      return { error: "Estructura de configuraciÃ³n invÃ¡lida" };
+      return { error: "Estructura de configuración inválida" };
     }
 
     sheet.getRange(1, 1).setValue(JSON.stringify(config));
-    return { ok: true, mensaje: "ConfiguraciÃ³n guardada exitosamente" };
+    return { ok: true, mensaje: "Configuración guardada exitosamente" };
   } catch (error) {
     console.error("Error en guardarConfiguraciones:", error);
     return { error: error.toString() };
@@ -2492,7 +2500,7 @@ function agregarSupervisor(empleadoId) {
   try {
     lock.waitLock(15000);
     const idLimpio = empleadoId.toString().trim();
-    if (!idLimpio) return { error: "ID de empleado no vÃ¡lido" };
+    if (!idLimpio) return { error: "ID de empleado no válido" };
     
     const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
     const data = sheet.getDataRange().getValues();
@@ -2520,7 +2528,7 @@ function eliminarSupervisor(empleadoId) {
   try {
     lock.waitLock(15000);
     const idLimpio = empleadoId.toString().trim();
-    if (!idLimpio) return { error: "ID de empleado no vÃ¡lido" };
+    if (!idLimpio) return { error: "ID de empleado no válido" };
     
     const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
     const data = sheet.getDataRange().getValues();
@@ -3326,7 +3334,7 @@ function validarClaveGuardia(clave) {
 
 
 
-// =================== FUNCIONES PARA CATERING (VERSIÃ“N CORREGIDA) ===================
+// =================== FUNCIONES PARA CATERING (VERSIÓN CORREGIDA) ===================
 
 /**
  * Obtiene los consumos de hoy con su estado desde CONSUMO_ALMUERZOS
@@ -3338,12 +3346,12 @@ function obtenerConsumosHoyDetallados() {
     let sheet = ss.getSheetByName("CONSUMO_ALMUERZOS");
     
     if (!sheet) {
-      console.log("ðŸ“ Creando hoja CONSUMO_ALMUERZOS");
+      console.log("📝 Creando hoja CONSUMO_ALMUERZOS");
       sheet = ss.insertSheet("CONSUMO_ALMUERZOS");
       const headers = ["ID_EMPLEADO", "NOMBRE_EMPLEADO", "FECHA", "HORA_CONSUMO", "TIMESTAMP", "REGISTRADO_POR", "ESTADO"];
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#dc2626").setFontColor("#ffffff");
-      console.log("âœ… Hoja CONSUMO_ALMUERZOS creada");
+      console.log("✅ Hoja CONSUMO_ALMUERZOS creada");
       return new Map();
     }
     
@@ -3351,10 +3359,10 @@ function obtenerConsumosHoyDetallados() {
     const hoyStr = Utilities.formatDate(new Date(), timeZone, 'yyyy-MM-dd');
     const lastRow = sheet.getLastRow();
     
-    console.log(`ðŸ“Š CONSUMO_ALMUERZOS: ${lastRow} filas totales, buscando fecha: ${hoyStr}`);
+    console.log(`📊 CONSUMO_ALMUERZOS: ${lastRow} filas totales, buscando fecha: ${hoyStr}`);
     
     if (lastRow <= 1) {
-      console.log("âš ï¸ CONSUMO_ALMUERZOS vacÃ­a");
+      console.log("⚠️ CONSUMO_ALMUERZOS vacía");
       return new Map();
     }
     
@@ -3388,7 +3396,7 @@ function obtenerConsumosHoyDetallados() {
               consumido: true,
               hora: hora
             });
-            console.log(`  âœ“ ${id} - Consumo registrado a las ${hora}`);
+            console.log(`  ✓ ${id} - Consumo registrado a las ${hora}`);
           }
         }
       } catch (e) {
@@ -3396,7 +3404,7 @@ function obtenerConsumosHoyDetallados() {
       }
     });
     
-    console.log(`âœ… Consumos de hoy: ${contadorHoy} registros, ${consumosMap.size} empleados Ãºnicos`);
+    console.log(`✅ Consumos de hoy: ${contadorHoy} registros, ${consumosMap.size} empleados únicos`);
     return consumosMap;
   } catch (error) {
     console.error("âŒ Error en obtenerConsumosHoyDetallados:", error);
@@ -3421,7 +3429,7 @@ function obtenerListaCatering(params) {
     const hoy = new Date();
     const hoyStr = Utilities.formatDate(hoy, timeZone, 'yyyy-MM-dd');
     
-    console.log(`ðŸ½ï¸ Catering: Buscando para la fecha ${hoyStr}`);
+    console.log(`🍽️ Catering: Buscando para la fecha ${hoyStr}`);
     
     // Obtener consumos de hoy
     const consumosHoyMap = obtenerConsumosHoyDetallados();
@@ -3453,7 +3461,7 @@ function obtenerListaCatering(params) {
       const id = fila[COLUMNAS.ID]?.toString().trim() || '';
       
       if (fechaStr === hoyStr && tipo === "ENTRADA" && almuerzo === "SI" && id) {
-        // Evitar duplicados (solo primera entrada del dÃ­a)
+        // Evitar duplicados (solo primera entrada del día)
         if (!registrosHoyMap.has(id)) {
           // CORREGIDO: Formatear la hora correctamente
           let horaEntrada = '--:--';
@@ -3495,12 +3503,12 @@ function obtenerListaCatering(params) {
             nombre: nombre
           });
           
-          console.log(`  âœ“ Registro: ${id} - Almuerza en planta a las ${horaEntrada}`);
+          console.log(`  ✓ Registro: ${id} - Almuerza en planta a las ${horaEntrada}`);
         }
       }
     }
     
-    console.log(`ðŸ“‹ Registros de entrada hoy con almuerzo: ${registrosHoyMap.size}`);
+    console.log(`📋 Registros de entrada hoy con almuerzo: ${registrosHoyMap.size}`);
     
     // Construir lista de catering
     const listaCatering = [];
@@ -3508,7 +3516,7 @@ function obtenerListaCatering(params) {
     for (let i = 1; i < empleadosData.length; i++) {
       const fila = empleadosData[i];
       
-      // Verificar si estÃ¡ activo
+      // Verificar si está activo
       const activo = esEmpleadoActivo(fila[COLUMNAS_EMPLEADOS.ACTIVO]);
       if (!activo) continue;
       
@@ -3529,7 +3537,7 @@ function obtenerListaCatering(params) {
       listaCatering.push({
         id: id,
         nombre: fila[COLUMNAS_EMPLEADOS.NOMBRE]?.toString() || 'Sin nombre',
-        area: fila[COLUMNAS_EMPLEADOS.AREA]?.toString() || 'Sin Ã¡rea',
+        area: fila[COLUMNAS_EMPLEADOS.AREA]?.toString() || 'Sin área',
         foto_url: fotoUrl,
         hora_entrada: registro.hora, // Ahora es un string formateado correctamente
         consumido: consumido,
@@ -3545,7 +3553,7 @@ function obtenerListaCatering(params) {
       return horaA.localeCompare(horaB);
     });
     
-    console.log(`âœ… Catering completo: ${listaCatering.length} empleados`);
+    console.log(`✅ Catering completo: ${listaCatering.length} empleados`);
     console.log(`   - Consumidos: ${listaCatering.filter(e => e.consumido).length}`);
     console.log(`   - Pendientes: ${listaCatering.filter(e => !e.consumido).length}`);
     
@@ -3569,7 +3577,7 @@ function marcarAlmuerzoConsumido(params) {
     const empleadoId = params.empleadoId?.toString().trim();
     const empleadoNombre = params.nombre?.toString().trim() || '';
     
-    if (!empleadoId) return { error: "ID de empleado no vÃ¡lido" };
+    if (!empleadoId) return { error: "ID de empleado no válido" };
     
     const timeZone = Session.getScriptTimeZone();
     const hoyStr = Utilities.formatDate(new Date(), timeZone, 'yyyy-MM-dd');
@@ -3602,7 +3610,7 @@ function marcarAlmuerzoConsumido(params) {
         }
         
         if (id === empleadoId && fecha === hoyStr) {
-          console.log(`âš ï¸ ${empleadoId} ya consumiÃ³ hoy`);
+          console.log(`⚠️ ${empleadoId} ya consumió hoy`);
           return { error: "Este almuerzo ya fue marcado como consumido" };
         }
       }
@@ -3619,7 +3627,7 @@ function marcarAlmuerzoConsumido(params) {
       "CONSUMIDO"
     ]);
     
-    console.log(`âœ… Consumo registrado: ${empleadoNombre} (${empleadoId}) a las ${horaRegistro}`);
+    console.log(`✅ Consumo registrado: ${empleadoNombre} (${empleadoId}) a las ${horaRegistro}`);
     
     return { ok: true, mensaje: "Almuerzo marcado como consumido" };
   } catch (error) {
@@ -3631,7 +3639,7 @@ function marcarAlmuerzoConsumido(params) {
 }
 
 /**
- * Obtiene estadÃ­sticas de consumo
+ * Obtiene estadísticas de consumo
  */
 function obtenerEstadisticasConsumo(params) {
   try {
@@ -3643,7 +3651,7 @@ function obtenerEstadisticasConsumo(params) {
         total_consumos: 0, 
         consumos_hoy: 0, 
         historial: [],
-        mensaje: "Hoja CONSUMO_ALMUERZOS no existe aÃºn"
+        mensaje: "Hoja CONSUMO_ALMUERZOS no existe aún"
       };
     }
     
@@ -4209,7 +4217,7 @@ function obtenerDatosSupervisor(params) {
     return { error: error.toString() };
   }
 }
-// =================== COORDINACIÃ“N DE PRODUCCIÃ“N ===================
+// =================== COORDINACIÓN DE PRODUCCIÓN ===================
 
 function obtenerEmpleadosTaller() {
   try {
@@ -4275,7 +4283,7 @@ function actualizarAutorizacionExtras(empleadoId, autorizado, autorizaNombre) {
     const data = sheet.getDataRange().getValues();
     
     let filaEncontrada = -1;
-    // Buscar de atrÃ¡s hacia adelante para encontrar el registro mÃ¡s reciente de hoy
+    // Buscar de atrás hacia adelante para encontrar el registro más reciente de hoy
     for (let i = data.length - 1; i >= 1; i--) {
       const fechaFila = data[i][COLUMNAS.FECHA];
       let fStr = "";
@@ -4289,7 +4297,7 @@ function actualizarAutorizacionExtras(empleadoId, autorizado, autorizaNombre) {
     }
     
     if (filaEncontrada === -1) {
-      return { error: "No se encontrÃ³ registro para el empleado hoy. Debe marcar entrada primero." };
+      return { error: "No se encontró registro para el empleado hoy. Debe marcar entrada primero." };
     }
     
     // Actualizar columnas M y N

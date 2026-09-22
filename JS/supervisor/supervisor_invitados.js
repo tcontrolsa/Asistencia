@@ -26,7 +26,7 @@ function esRefrigerioGalletasItem(ae) {
 }
 
 window.cargarPanelInvitados = async function (force = false) {
-  const hoy = (typeof hoyStr !== 'undefined' && hoyStr) ? hoyStr : new Date().toISOString().slice(0, 10);
+  const hoy = (typeof hoyStr !== 'undefined' && hoyStr) ? hoyStr : getLocalHoyStr();
   const inputFecha = $('filtroFechaInvitados');
   if (inputFecha && !inputFecha.value) {
     inputFecha.value = hoy;
@@ -56,7 +56,7 @@ window.cargarPanelInvitados = async function (force = false) {
 };
 
 window.setFiltroFechaInvitadosHoy = function () {
-  const hoy = (typeof hoyStr !== 'undefined' && hoyStr) ? hoyStr : new Date().toISOString().slice(0, 10);
+  const hoy = (typeof hoyStr !== 'undefined' && hoyStr) ? hoyStr : getLocalHoyStr();
   const input = $('filtroFechaInvitados');
   if (input) {
     input.value = hoy;
@@ -67,7 +67,7 @@ window.setFiltroFechaInvitadosHoy = function () {
 window.setFiltroFechaInvitadosManana = function () {
   const ahora = new Date();
   ahora.setDate(ahora.getDate() + 1);
-  const manana = ahora.toISOString().slice(0, 10);
+  const manana = getLocalHoyStr(ahora);
   const input = $('filtroFechaInvitados');
   if (input) {
     input.value = manana;
@@ -195,10 +195,10 @@ window.filtrarTablaInvitados = function () {
   const queryBusqueda = ($('filtroBusquedaInvitados')?.value || '').toLowerCase().trim();
 
   // Sincronizar estilo activo de los botones pill de fecha
-  const hoyStrLocal = normalizarFechaStr(new Date().toISOString().slice(0, 10));
+  const hoyStrLocal = normalizarFechaStr(getLocalHoyStr());
   const ahoraDate = new Date();
   ahoraDate.setDate(ahoraDate.getDate() + 1);
-  const mananaStrLocal = normalizarFechaStr(ahoraDate.toISOString().slice(0, 10));
+  const mananaStrLocal = normalizarFechaStr(getLocalHoyStr(ahoraDate));
 
   const btnPillHoy = $('btnPillHoy');
   const btnPillManana = $('btnPillManana');
@@ -466,7 +466,7 @@ window.eliminarInvitadoSupervisor = async function (id) {
 };
 
 window.copiarResumenCocinaInvitados = function () {
-  const fechaFiltro = $('filtroFechaInvitados')?.value || (typeof hoyStr !== 'undefined' ? hoyStr : new Date().toISOString().slice(0, 10));
+  const fechaFiltro = $('filtroFechaInvitados')?.value || (typeof hoyStr !== 'undefined' ? hoyStr : getLocalHoyStr());
   const todos = window.obtenerListaConsolidadaInvitados().filter(i => i.fecha === fechaFiltro && i.estado !== 'CANCELADO');
 
   if (todos.length === 0) {
@@ -584,7 +584,7 @@ window.abrirModalSolicitudInvitadoSupervisor = function () {
     const modal = $('extraLunchModal');
     if (modal) {
       const f = $('visitanteFecha');
-      if (f) f.value = (typeof hoyStr !== 'undefined' ? hoyStr : new Date().toISOString().slice(0, 10));
+      if (f) f.value = (typeof hoyStr !== 'undefined' ? hoyStr : getLocalHoyStr());
       modal.classList.remove('hidden');
     }
   }
@@ -652,7 +652,7 @@ window.actualizarNotificacionesSupAdminInvitados = function () {
         badgeSubtab.style.background = '#ea580c';
       }
     } else {
-      const hoyStrLocal = normalizarFechaStr(new Date().toISOString().slice(0, 10));
+      const hoyStrLocal = normalizarFechaStr(getLocalHoyStr());
       const pedidosHoy = todos.filter(i => i.fecha === hoyStrLocal && i.estado !== 'CANCELADO');
       if (pedidosHoy.length > 0) {
         if (badgeNav) {
@@ -689,7 +689,7 @@ window.notificarManualSupAdminsWhatsApp = async function () {
   if (pendientes.length === 0) {
     const confirmarHoy = confirm("No hay solicitudes con estado 'SOLICITADO'. ¿Deseas enviar un recordatorio a los Sup. Admin con los pedidos activos del día de hoy?");
     if (!confirmarHoy) return;
-    const hoyStrLocal = normalizarFechaStr(new Date().toISOString().slice(0, 10));
+    const hoyStrLocal = normalizarFechaStr(getLocalHoyStr());
     const deHoy = todos.filter(i => i.fecha === hoyStrLocal && i.estado !== 'CANCELADO');
     if (deHoy.length === 0) {
       mostrarToast("No hay pedidos registrados para el día de hoy.", "info");

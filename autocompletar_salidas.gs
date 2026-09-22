@@ -151,6 +151,7 @@ function regularizarSalidasFinDeSemana(ssParam) {
   let modificaciones = 0;
   const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
   const diasCorregidosKeys = new Set();
+  const filasModificadas = new Set(); // índices de data[] a reescribir (no se reescribe toda la hoja)
 
   for (let i = 1; i < data.length; i++) {
     const fila = data[i];
@@ -220,6 +221,7 @@ function regularizarSalidasFinDeSemana(ssParam) {
           diasCorregidosKeys.add(`${empId}_${fClave}`);
         }
 
+        filasModificadas.add(i);
         modificaciones++;
         console.log(`🔧 [Regularizar Fin de Semana] Fila ${i + 1} regularizada: ${empNombre} (${empId}) - Fecha: ${fClave || fechaVal} | Hora: "${horaAnterior}" ➡️ "15:15:00"`);
       }
@@ -241,15 +243,19 @@ function regularizarSalidasFinDeSemana(ssParam) {
           if (autVal.includes('SISTEMA') || autVal.includes('>45 MIN')) {
             fila[colHE] = 'NO';
             fila[colAutoriza] = '';
+            filasModificadas.add(i);
           }
         }
       }
     }
   }
 
-  // Guardar en bloque
+  // Guardar solo las filas modificadas: reescribir toda la hoja pisaría ediciones concurrentes
+  // (supervisor, archivador) hechas mientras se procesaba y convertiría fórmulas en valores.
   if (modificaciones > 0) {
-    sheetRegs.getRange(1, 1, lastRow, lastCol).setValues(data);
+    filasModificadas.forEach(i => {
+      sheetRegs.getRange(i + 1, 1, 1, lastCol).setValues([data[i]]);
+    });
     console.log(`✅ [Regularizar Fin de Semana] Proceso completado exitosamente. Se regularizaron ${modificaciones} registros de fin de semana a 15:15:00.`);
   } else {
     console.log("✅ [Regularizar Fin de Semana] Todos los registros de fin de semana ya cumplen el criterio (15:15:00).");
@@ -393,11 +399,16 @@ function autoCompletarSalidasFaltantesSheets() {
     const fila = regsData[i];
     let fechaFila = fila[colRegFecha];
     let fStr = '';
-    
+
     if (fechaFila instanceof Date) {
       fStr = Utilities.formatDate(fechaFila, tz, 'yyyy-MM-dd');
     } else if (fechaFila) {
       fStr = String(fechaFila).trim();
+      // Normalizar dd/mm/yyyy y yyyy/mm/dd: si la SALIDA quedó en otro formato no se detectaría y se insertaría una duplicada
+      const mDMY = fStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+      const mYMD = fStr.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+      if (mYMD) fStr = `${mYMD[1]}-${mYMD[2].padStart(2, '0')}-${mYMD[3].padStart(2, '0')}`;
+      else if (mDMY) fStr = `${mDMY[3]}-${mDMY[2].padStart(2, '0')}-${mDMY[1].padStart(2, '0')}`;
     }
     
     if (fStr && fechasAProcesar.includes(fStr)) {

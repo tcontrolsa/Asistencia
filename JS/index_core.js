@@ -685,7 +685,7 @@ function abrirWhatsAppSoporte() {
     // Campo de fecha del incidente
     const dateGroup = document.createElement('div');
     dateGroup.style.textAlign = 'left';
-    const hoyFormateado = new Date().toISOString().split('T')[0];
+    const hoyFormateado = getLocalHoyStr();
     dateGroup.innerHTML = `
                 <label style="font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 6px; display: block;">Fecha del Incidente o Solicitud:</label>
                 <input type="date" id="soporte-fecha" class="form-control" value="${hoyFormateado}" style="font-size: 13px; border-radius: 10px; border: 1.5px solid #cbd5e1; padding: 8px 10px; width: 100%; box-sizing: border-box;">
@@ -963,7 +963,7 @@ window.guardarReporteFueraArea = async function () {
 
     let textoEstado = sel.options[sel.selectedIndex].text;
 
-    mostrarLoader(true);
+    showLoading(true);
     try {
         const payload = {
             id: empleado.id,
@@ -980,11 +980,13 @@ window.guardarReporteFueraArea = async function () {
             dispositivo: 'APP_COLABORADOR_EXTERNO'
         };
 
+        let res = null;
         if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarRegistro === 'function') {
-            await window.FirebaseBackend.guardarRegistro(payload);
+            res = await window.FirebaseBackend.guardarRegistro(payload);
         } else if (typeof guardarRegistroAPI === 'function') {
-            await guardarRegistroAPI(payload);
+            res = await guardarRegistroAPI(payload);
         }
+        if (res && res.error) throw new Error(res.error);
 
         // Guardar confirmación en localStorage
         const infoReporte = {
@@ -1022,7 +1024,7 @@ window.guardarReporteFueraArea = async function () {
         console.error("Error al reportar fuera de área:", err);
         mostrarToast('Error al enviar reporte: ' + err.message, 'error');
     } finally {
-        mostrarLoader(false);
+        showLoading(false);
     }
 };
 
@@ -6437,7 +6439,7 @@ window.abrirModalSolicitudInvitado = function (tipo) {
     const ahora = new Date();
     const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : ahora.toISOString().slice(0, 10);
     const manana = new Date(ahora.getTime() + 86400000);
-    const mananaStr = manana.toISOString().slice(0, 10);
+    const mananaStr = getLocalHoyStr(manana);
 
     const minDia = ahora.getHours() * 60 + ahora.getMinutes();
     const almuerzoExtraHoyAbierto = minDia <= 580; // 09:40
@@ -6776,9 +6778,7 @@ window.cancelarSolicitudInvitado = async function (id, tipo) {
     const lista = window._misSolicitudesInvitadosHoy || [];
     const sol = lista.find(s => s.id === id);
     const fechaSol = sol?.fecha || '';
-    const hoyStrLocal = (typeof normalizarFechaStr === 'function') 
-        ? normalizarFechaStr(new Date().toISOString().slice(0, 10)) 
-        : new Date().toISOString().slice(0, 10);
+    const hoyStrLocal = getLocalHoyStr();
     const esParaHoy = (fechaSol === hoyStrLocal || !fechaSol);
 
     if (esParaHoy) {

@@ -123,6 +123,11 @@ function tienePermisoAdmin(idOrSession) {
 }
 window.tienePermisoAdmin = tienePermisoAdmin;
 
+// Literal JS seguro para argumentos dentro de atributos onclick="...": soporta nombres con comillas o apóstrofos (D'ALESSANDRO)
+function jsAttr(valor) {
+  return escapeHtml(JSON.stringify(String(valor ?? '')));
+}
+
 function getLocalHoyStr(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -758,7 +763,7 @@ function obtenerBadgeEstadoEmpleado(e) {
   // Detectar razones de ausencia / permiso
   let razon = e.razon_ausencia || e.razon_permiso || e._razonAusenciaHoy || '';
   if (!razon && Array.isArray(e.registros)) {
-    const hoy = typeof obtenerFechaHoyLocal === 'function' ? obtenerFechaHoyLocal() : new Date().toISOString().split('T')[0];
+    const hoy = getLocalHoyStr();
     const fReg = e.registros.find(r => {
       const t = String(r.tipo).toUpperCase();
       return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
@@ -1903,7 +1908,7 @@ function cargarDashboard() {
                 <div style="font-size:10px; color:var(--g400); font-weight:600;">${fechaLegible}</div>
                 <div style="font-weight:700; color:var(--red); font-size:13px; display:flex; align-items:center; gap:6px;">
                   <span>${labelTiempo}</span>
-                  <button class="btn-primary" style="padding:4px 8px; font-size:10px; border-radius:4px; font-weight:600;" onclick="window.mostrarModalJustificar('${item.empId}', '${escapeHtml(item.nombre)}', '${item.fecha}', '${labelTiempo}', '${item.razon}')">Justificar</button>
+                  <button class="btn-primary" style="padding:4px 8px; font-size:10px; border-radius:4px; font-weight:600;" onclick="window.mostrarModalJustificar(${jsAttr(item.empId)}, ${jsAttr(item.nombre)}, ${jsAttr(item.fecha)}, ${jsAttr(labelTiempo)}, ${jsAttr(item.razon)})">Justificar</button>
                 </div>
               </div>
             </div>`;
@@ -5138,17 +5143,17 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
               <span class="detail-status-dot ${(e.esEliminado || e.esDesvinculado) ? 'dot-inactive' : 'dot-active'}" title="${(e.esEliminado || e.esDesvinculado) ? 'Inactivo' : 'Activo'}"></span>
             </div>
             <div class="detail-identity-info">
-              <div class="detail-name-heading" ${esMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado('${e.id}', 'nombre', '${e.nombre}')" title="Clic para editar nombre"` : ''}>
+              <div class="detail-name-heading" ${esMaster ? `style="cursor:pointer" onclick="editarMetaEmpleado(${jsAttr(e.id)}, 'nombre', ${jsAttr(e.nombre)})" title="Clic para editar nombre"` : ''}>
                 ${escapeHtml(e.nombre)}
               </div>
               <div class="detail-chips-row">
                 <span class="emp-chip chip-id" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id', '${e.id}')" title="ID Firebase"` : ''}>
                   <i class="fas fa-id-card"></i> ${escapeHtml(e.id)}
                 </span>
-                <span class="emp-chip chip-area" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'area', '${e.area || ''}')" title="Área / Departamento"` : ''}>
+                <span class="emp-chip chip-area" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado(${jsAttr(e.id)}, 'area', ${jsAttr(e.area)})" title="Área / Departamento"` : ''}>
                   <i class="fas fa-building"></i> ${escapeHtml(e.area || 'Sin área')}
                 </span>
-                <span class="emp-chip chip-cargo" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'cargo', '${e.cargo || ''}')" title="Cargo"` : ''}>
+                <span class="emp-chip chip-cargo" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado(${jsAttr(e.id)}, 'cargo', ${jsAttr(e.cargo)})" title="Cargo"` : ''}>
                   <i class="fas fa-briefcase"></i> ${escapeHtml(e.cargo || 'General')}
                 </span>
                 <span class="emp-chip ${e.id_dispositivo ? 'chip-rol-si' : 'chip-rol-no'}" ${esMaster ? `class="editable-cell" onclick="editarMetaEmpleado('${e.id}', 'id_dispositivo', '${e.id_dispositivo || ''}')" title="Rol de Pagos"` : ''}>
@@ -5173,7 +5178,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             <button type="button" class="btn-action-detail btn-action-edit" onclick="window.abrirModalEditarEmpleado('${e.id}')" title="Abrir ficha completa para editar datos del colaborador (Nombre, Área, Cargo, PIN, Rol, WhatsApp, etc.)">
               <i class="fas fa-user-pen"></i> <span>Editar Datos</span>
             </button>
-            <button type="button" class="btn-action-detail btn-action-reset" onclick="window.resetearPasswordEmpleado('${e.id}', '${escapeHtml(e.nombre)}')" title="Resetear contraseña para permitir que el colaborador vuelva a vincular su dispositivo">
+            <button type="button" class="btn-action-detail btn-action-reset" onclick="window.resetearPasswordEmpleado(${jsAttr(e.id)}, ${jsAttr(e.nombre)})" title="Resetear contraseña para permitir que el colaborador vuelva a vincular su dispositivo">
               <i class="fas fa-key"></i> <span>Resetear PIN</span>
             </button>
           </div>
@@ -6058,7 +6063,7 @@ window.renderDirectorioCards = function (lista) {
               <button type="button" class="dir-btn-action btn-wp" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" title="Enviar WhatsApp directo">
                 <i class="fab fa-whatsapp"></i>
               </button>
-              <button type="button" class="dir-btn-action btn-key" onclick="window.resetearPasswordEmpleado('${emp.id}', '${escapeHtml(emp.nombre)}')" title="Resetear contraseña / PIN de vinculación">
+              <button type="button" class="dir-btn-action btn-key" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear contraseña / PIN de vinculación">
                 <i class="fas fa-key"></i>
               </button>
               <button type="button" class="dir-btn-action" onclick="window.mostrarModalFuturos('${emp.id}')" title="Programar evento o ausencia (permiso, vacación)" style="background:#faf5ff; border-color:#e9d5ff; color:#7e22ce;">
@@ -6209,7 +6214,7 @@ window.renderDirectorioTabla = function (lista) {
                 <button type="button" class="dir-table-btn" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" title="Enviar WhatsApp" style="color:#16a34a; border-color:#bbf7d0; background:#f0fdf4;">
                   <i class="fab fa-whatsapp"></i>
                 </button>
-                <button type="button" class="dir-table-btn" onclick="window.resetearPasswordEmpleado('${emp.id}', '${escapeHtml(emp.nombre)}')" title="Resetear Contraseña / PIN" style="color:#be123c; border-color:#fecdd3; background:#fff1f2;">
+                <button type="button" class="dir-table-btn" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear Contraseña / PIN" style="color:#be123c; border-color:#fecdd3; background:#fff1f2;">
                   <i class="fas fa-key"></i>
                 </button>
                 <button type="button" class="dir-table-btn" onclick="window.mostrarModalFuturos('${emp.id}')" title="Programar Ausencia o Permiso" style="color:#7c3aed; border-color:#ddd6fe; background:#f5f3ff;">
@@ -9016,52 +9021,9 @@ function cargarPanelActual() {
 }
 
 // ============================================================
-// GESTIÓN DE SESIÓN SUPERVISOR Y ROLES
+// GESTIÓN DE SESIÓN SUPERVISOR
+// (getSupervisorRole, esAdminMaster y tienePermisoAdmin están definidos al inicio del archivo)
 // ============================================================
-function getSupervisorRole(idOrSession, supObj) {
-  let id = "";
-  let supData = supObj;
-  if (idOrSession && typeof idOrSession === 'object') {
-    id = String(idOrSession.id || '').trim();
-    if (!supData) supData = idOrSession;
-  } else {
-    id = String(idOrSession || '').trim();
-  }
-
-  if (id === "1058") return 'ADMIN_MASTER';
-
-  const emp = supData || (typeof empCache !== 'undefined' ? empCache.find(x => String(x.id).trim() === id) : null);
-  const supVal = String(emp?.supervisor || emp?.rol || '').trim().toUpperCase();
-
-  if (supVal === 'SUPERVISOR ADMIN' || supVal === 'SUPERVISOR_ADMIN' || supVal === 'ADMIN_SUPERVISOR' || supVal === 'ADMIN') {
-    return 'SUPERVISOR_ADMIN';
-  }
-  if (supVal === 'SI' || supVal === 'SUPERVISOR') {
-    return 'SUPERVISOR';
-  }
-  return 'EMPLEADO';
-}
-window.getSupervisorRole = getSupervisorRole;
-
-function esAdminMaster(idOrSession) {
-  let sessionData = idOrSession;
-  if (!sessionData) {
-    try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
-  }
-  return getSupervisorRole(sessionData) === 'ADMIN_MASTER';
-}
-window.esAdminMaster = esAdminMaster;
-
-function tienePermisoAdmin(idOrSession) {
-  let sessionData = idOrSession;
-  if (!sessionData) {
-    try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
-  }
-  const rol = getSupervisorRole(sessionData);
-  return rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN';
-}
-window.tienePermisoAdmin = tienePermisoAdmin;
-
 async function intentarLoginSupervisor() {
   const user = $('supUser').value.trim();
   const pin = $('supPin').value.trim();

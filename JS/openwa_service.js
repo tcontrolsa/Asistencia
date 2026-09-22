@@ -1196,7 +1196,8 @@
                 return { ejecutado: false, motivo: `Aún no se alcanza la hora de corte (${horaCorte})` };
             }
 
-            const fechaHoyStr = ahora.toISOString().split('T')[0];
+            // Fecha local (no UTC): con toISOString, después de las 19:00 en Ecuador ya sería "mañana"
+            const fechaHoyStr = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`;
             const checkKey = `tcontrol_waha_autocheck_${fechaHoyStr}`;
             if (!forzar && localStorage.getItem(checkKey)) {
                 return { ejecutado: false, motivo: `El chequeo automático de hoy (${fechaHoyStr}) ya fue procesado` };
