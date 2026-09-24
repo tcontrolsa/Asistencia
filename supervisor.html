@@ -974,12 +974,12 @@
         <!-- 2. CONTENEDOR DEL LOGO (BAJADO POR LA GRÚA Y TRANSFORMADO POR EL RAYO) -->
         <div class="splash-logo-container">
           <!-- Logo Inicial (Gris/Metálico) -->
-          <img src="./logo gris-blanco.png" alt="TCONTROL" class="splash-logo-img logo-state-initial"
-            onerror="this.src='./logo-blanco.png'">
+          <img src="./assets/images/logo gris-blanco.png" alt="TCONTROL" class="splash-logo-img logo-state-initial"
+            onerror="this.src='./assets/images/logo-blanco.png'">
           
           <!-- Logo Transformado (Vibrante Rojo y Blanco con Rayo) -->
-          <img src="./logo rojo_blanco.png" alt="TCONTROL" class="splash-logo-img logo-state-transformed"
-            onerror="this.src='./logo-blanco.png'">
+          <img src="./assets/images/logo rojo_blanco.png" alt="TCONTROL" class="splash-logo-img logo-state-transformed"
+            onerror="this.src='./assets/images/logo-blanco.png'">
 
           <div id="splashLogoFallback" style="display:none;" class="splash-logo">🛡️</div>
 
@@ -3611,7 +3611,7 @@
           <!-- TARJETA AVATAR + DATOS PRINCIPALES -->
           <div class="modal-edit-profile-card">
             <div id="editDirFotoPreviewContainer" class="modal-edit-avatar-box">
-              <img id="editDirFotoPreview" src="./Logotipo T Control.png" alt="Foto Colaborador" onerror="this.src='./Logotipo T Control.png'">
+              <img id="editDirFotoPreview" src="./assets/images/Logotipo T Control.png" alt="Foto Colaborador" onerror="this.src='./assets/images/Logotipo T Control.png'">
               <button type="button" class="modal-edit-avatar-btn" onclick="triggerPhotoUpload(document.getElementById('editDirEmpIdOriginal').value)" title="Cambiar Fotografía">
                 <i class="fas fa-camera"></i>
               </button>
@@ -4928,10 +4928,10 @@
             </div>
           </div>
 
-          <!-- Aviso explicativo cuando la Sección 2 está bloqueada por haber registrado asistencia -->
+          <!-- Aviso explicativo cuando hay horas de asistencia registradas -->
           <div id="modalJornadaAvisoSeccion2Inactiva" style="display:none; margin-top:12px; padding:10px 14px; background:#f1f5f9; border-left:4px solid #6366f1; border-radius:8px; font-size:13.5px; color:#475569; font-weight:600; align-items:center; gap:8px;">
             <i class="fas fa-info-circle" style="color:#6366f1; font-size:16px;"></i>
-            <span>Esta sección se desactiva porque el colaborador tiene marcaciones registradas. Los atrasos y justificaciones se gestionan por minutos en la <strong>Sección 3</strong>.</span>
+            <span>Tiene horas de asistencia ingresadas en la <strong>Sección 1</strong>. Los permisos parciales se gestionan en la <strong>Sección 3</strong>. Si desea cambiar a una <em>ausencia de día completo</em>, seleccione un motivo arriba y las horas se limpiarán automáticamente.</span>
           </div>
         </div>
 
@@ -5055,11 +5055,14 @@
 
   <script src="./JS/openwa_service.js?v=20260922_10"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20260922_10"></script>
+  <script src="./JS/supervisor_core.js?v=20260923_01"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260922_05"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260922_10"></script>
+  <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
+  <script src="./JS/supervisor/supervisor_directorio.js?v=20260923_01"></script>
+  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20260923_01"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

@@ -127,7 +127,7 @@ function jsonpRequest(params) {
         url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
         
         // Inyectar credenciales de sesión si existen
-        const session = localStorage.getItem('SUPERVISOR_SESSION');
+        const session = localStorage.getItem('GUARDIA_SESSION') || localStorage.getItem('SUPERVISOR_SESSION');
         if (session) {
             const data = JSON.parse(session);
             url.searchParams.append('empleadoId', data.id);
@@ -313,7 +313,7 @@ async function login() {
         } else if (res.ok) {
             // Guardar sesión genérica para el terminal de guardia
             const sessionData = { id: 'GUARDIA', token: deviceToken, timestamp: new Date().getTime() };
-            localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
+            localStorage.setItem('GUARDIA_SESSION', JSON.stringify(sessionData));
             
             $('vLogin').classList.add('hidden');
             $('vTerm').classList.remove('hidden');
@@ -340,7 +340,7 @@ function generarDeviceToken() {
 }
 
 function logout() {
-    localStorage.removeItem('SUPERVISOR_SESSION');
+    localStorage.removeItem('GUARDIA_SESSION');
     $('vTerm').classList.add('hidden');
     $('vLogin').classList.remove('hidden');
     $('iClave').value = '';
@@ -516,7 +516,7 @@ function limpiarDatosEmpleado() {
 }
 
 function verificarEstadoSesion() {
-    const session = localStorage.getItem('SUPERVISOR_SESSION');
+    const session = localStorage.getItem('GUARDIA_SESSION') || localStorage.getItem('SUPERVISOR_SESSION');
     if (session) {
         $('vLogin').classList.add('hidden');
         $('vTerm').classList.remove('hidden');

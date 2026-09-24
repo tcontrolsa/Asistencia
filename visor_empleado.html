@@ -749,8 +749,44 @@
         window.selectedIdx = -1;
         window.simulatedEmpId = null;
 
+        function verificarAccesoVisor() {
+            const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+            let autorizado = false;
+            if (sessionStr) {
+                try {
+                    const session = JSON.parse(sessionStr);
+                    const rol = (session.rol || '').toUpperCase();
+                    const id = String(session.id || '').trim();
+                    if (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN' || id === '1058') {
+                        autorizado = true;
+                    }
+                } catch (e) {}
+            }
+            if (!autorizado) {
+                document.body.innerHTML = `
+                    <div style="min-height: 100vh; display:flex; align-items:center; justify-content:center; padding:20px; font-family:'Plus Jakarta Sans',sans-serif; background:#0b0f19;">
+                        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:24px; padding:40px 30px; max-width:440px; width:100%; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+                            <div style="width:76px; height:76px; margin:0 auto 20px; border-radius:50%; background:rgba(220,38,38,0.15); border:1.5px solid rgba(220,38,38,0.4); display:flex; align-items:center; justify-content:center; font-size:32px; color:#ef4444;">
+                                <i class="fas fa-user-secret"></i>
+                            </div>
+                            <h2 style="font-size:22px; font-weight:800; color:#f8fafc; margin-bottom:12px; font-family:'Outfit',sans-serif;">Simulador Protegido</h2>
+                            <p style="font-size:14px; color:#94a3b8; line-height:1.6; margin-bottom:28px;">
+                                El simulador e inspector de credenciales contiene funciones de acceso administrativo. Se requiere sesión activa de Administrador.
+                            </p>
+                            <a href="supervisor.html" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px; background:linear-gradient(135deg, #dc2626, #b91c1c); color:white; font-weight:700; border-radius:12px; text-decoration:none; box-shadow:0 8px 24px rgba(220,38,38,0.35);">
+                                <i class="fas fa-lock"></i> Iniciar Sesión de Administrador
+                            </a>
+                        </div>
+                    </div>
+                `;
+                return false;
+            }
+            return true;
+        }
+
         // Cargar datos al cargar la página
         window.onload = async function() {
+            if (!verificarAccesoVisor()) return;
             try {
                 const querySnap = await db.collection('empleados').get();
                 window.allEmpleados = [];

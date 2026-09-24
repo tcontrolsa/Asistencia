@@ -162,6 +162,38 @@
             return this.config;
         },
 
+        // Helper para resolver instancia Firestore activa
+        _obtenerDb() {
+            if (typeof window !== 'undefined') {
+                if (window.db) return window.db;
+                if (typeof db !== 'undefined' && db) return db;
+                if (window.firebase && typeof window.firebase.firestore === 'function') {
+                    try { return window.firebase.firestore(); } catch(e) {}
+                }
+            }
+            return null;
+        },
+
+        // Refrescar URL desde Firestore (útil cuando el túnel Cloudflare HTTPS se levantó posteriormente)
+        async refrescarUrlDesdeFirestore() {
+            const fdb = this._obtenerDb();
+            if (!fdb) return null;
+            try {
+                const snap = await fdb.collection('configuracion').doc('whatsapp').get();
+                if (snap && snap.exists) {
+                    const d = snap.data() || {};
+                    if (d.servidorUrl && d.servidorUrl !== this.config.servidorUrl) {
+                        this.config.servidorUrl = d.servidorUrl;
+                        try { localStorage.setItem('tcontrol_config_whatsapp', JSON.stringify(this.config)); } catch(e) {}
+                        return d.servidorUrl;
+                    }
+                }
+            } catch(e) {
+                console.warn('[OpenWA] Aviso al refrescar configuración desde Firestore:', e);
+            }
+            return null;
+        },
+
         // Helper para armar cabeceras con API Key si existe
         _obtenerHeaders(customApiKey = null) {
             const headers = {
@@ -330,6 +362,10 @@
             let timeoutId = null;
 
             if (this._esInseguroEnHttps(urlBase)) {
+                const urlRefrescada = await this.refrescarUrlDesdeFirestore();
+                if (urlRefrescada && !this._esInseguroEnHttps(urlRefrescada)) {
+                    return this.probarConexion(urlRefrescada, apiKeyCustom);
+                }
                 return {
                     ok: false,
                     error: `Bloqueo de Contenido Mixto: La aplicación web se ejecuta en HTTPS seguro, pero la URL configurada para WhatsApp es HTTP insegura (${urlBase}). Los navegadores de celulares y computadoras bloquean estas conexiones. Ejecuta 'iniciar_tunel_whatsapp.bat' en el PC principal para habilitar el túnel HTTPS.`
@@ -531,6 +567,10 @@
             }
 
             if (this._esInseguroEnHttps(urlBase)) {
+                const urlRefrescada = await this.refrescarUrlDesdeFirestore();
+                if (urlRefrescada && !this._esInseguroEnHttps(urlRefrescada)) {
+                    return this.enviarMensajeTexto(numeroDestino, mensajeTexto, urlRefrescada);
+                }
                 return {
                     ok: false,
                     error: `Bloqueo de Contenido Mixto: La aplicación corre en HTTPS, pero el servidor WhatsApp está en HTTP (${urlBase}). Los celulares y navegadores bloquean estas conexiones. Inicia el túnel Cloudflare en el PC con iniciar_tunel_whatsapp.bat.`
@@ -633,6 +673,10 @@
             }
 
             if (this._esInseguroEnHttps(urlBase)) {
+                const urlRefrescada = await this.refrescarUrlDesdeFirestore();
+                if (urlRefrescada && !this._esInseguroEnHttps(urlRefrescada)) {
+                    return this.enviarMensajeImagen(numeroDestino, mensajeTexto, base64Imagen, urlRefrescada);
+                }
                 return {
                     ok: false,
                     error: `Bloqueo de Contenido Mixto: La aplicación corre en HTTPS, pero el servidor WhatsApp está en HTTP (${urlBase}). Los celulares y navegadores bloquean estas conexiones. Inicia el túnel Cloudflare en el PC con iniciar_tunel_whatsapp.bat.`

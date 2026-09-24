@@ -449,6 +449,46 @@ function iniciarRotacion() {
   }, 1000);
 }
 
+function verificarAccesoUbicacion() {
+  const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+  let autorizado = false;
+  if (sessionStr) {
+    try {
+      const session = JSON.parse(sessionStr);
+      if (session && session.id) {
+        autorizado = true;
+      }
+    } catch(e) {}
+  }
+  if (!autorizado) {
+    const appWrapper = document.querySelector('.app-wrapper') || document.body;
+    appWrapper.innerHTML = `
+      <div style="position:fixed; inset:0; z-index:99999; background:rgba(11,15,25,0.94); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; padding:20px; font-family:'Inter',sans-serif;">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:24px; padding:40px 30px; max-width:440px; width:100%; text-align:center; box-shadow:0 25px 60px rgba(0,0,0,0.5);">
+          <div style="width:76px; height:76px; margin:0 auto 20px; border-radius:50%; background:rgba(220,38,38,0.15); border:1.5px solid rgba(220,38,38,0.4); display:flex; align-items:center; justify-content:center; font-size:32px; color:#ef4444;">
+            <i class="fas fa-satellite-dish"></i>
+          </div>
+          <h2 style="font-size:22px; font-weight:800; color:#f8fafc; margin-bottom:12px; font-family:'Outfit',sans-serif;">Rastreo Satelital Protegido</h2>
+          <p style="font-size:14px; color:#94a3b8; line-height:1.6; margin-bottom:28px;">
+            El mapa de monitoreo de personal en tiempo real requiere autenticación activa de Supervisor.
+          </p>
+          <a href="supervisor.html" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px; background:linear-gradient(135deg, #dc2626, #b91c1c); color:white; font-weight:700; border-radius:12px; text-decoration:none; box-shadow:0 8px 24px rgba(220,38,38,0.35);">
+            <i class="fas fa-lock-open"></i> Iniciar Sesión de Supervisor
+          </a>
+        </div>
+      </div>
+    `;
+    const loader = document.getElementById('loader');
+    if (loader) loader.style.display = 'none';
+    return false;
+  }
+  return true;
+}
+
 // Iniciar aplicación
-initMap();
-cargar(false);
+if (typeof verificarAccesoUbicacion === 'function' && !verificarAccesoUbicacion()) {
+  // Acceso denegado
+} else {
+  initMap();
+  cargar(false);
+}

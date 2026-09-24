@@ -711,6 +711,7 @@ function procesarAccion(params) {
     case 'actualizarRegistroGeneral':
       return actualizarRegistroArchivado(params);
       
+    case 'eliminarRegistro':
     case 'eliminarRegistroArchivado':
       return eliminarRegistroArchivado(params);
 
@@ -3770,6 +3771,23 @@ function actualizarRegistroArchivado(params) {
         try { sheet.deleteRow(dupIndices[d]); } catch(eDup) {}
       }
     }
+
+    // Si se está actualizando a un tipo distinto de VACACIONES, limpiar cualquier registro huérfano en la hoja VACACIONES
+    if (targetTipoNorm && targetTipoNorm !== 'VACACIONES' && targetTipoNorm !== 'VACACION') {
+      try {
+        const sheetVac = SpreadsheetApp.getActive().getSheetByName(HOJA_VACACIONES);
+        if (sheetVac) {
+          const vacData = sheetVac.getDataRange().getValues();
+          for (let j = vacData.length - 1; j >= 1; j--) {
+            let vFecha = normFechaStr(vacData[j][0]) || normFechaStr(vacData[j][9]);
+            let vId = String(vacData[j][1] || '').trim();
+            if (vId === eid && vFecha === targetFechaNorm) {
+              sheetVac.deleteRow(j + 1);
+            }
+          }
+        }
+      } catch (eVac) {}
+    }
     
     if (filaIndex !== -1) {
       if (campo === 'timestamp') {
@@ -3882,34 +3900,64 @@ function actualizarRegistroArchivado(params) {
 }
 
 /**
- * Elimina un registro de la hoja REGISTROS
+ * Elimina registros de la hoja REGISTROS y VACACIONES para un empleado y fecha
  */
 function eliminarRegistroArchivado(params) {
   try {
-    const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_REGISTROS);
-    if (!sheet) return { ok: false, error: "Hoja REGISTROS no encontrada" };
+    const eid = String(params.empleadoId || '').trim();
+    const fecha = String(params.fecha || '').trim();
+    const tipo = params.tipo ? String(params.tipo).trim().toUpperCase() : '';
     
-    const eid = String(params.empleadoId).trim();
-    const fecha = params.fecha;
-    const tipo = params.tipo;
-    
-    const data = sheet.getDataRange().getValues();
+    if (!eid || !fecha) return { ok: false, error: "Faltan parámetros empleadoId o fecha" };
+
     const tz = Session.getScriptTimeZone();
-    
-    for (let i = data.length - 1; i >= 1; i--) {
-      let fStr = '';
-      if (data[i][COLUMNAS.FECHA] instanceof Date) {
-        fStr = Utilities.formatDate(data[i][COLUMNAS.FECHA], tz, 'yyyy-MM-dd');
-      } else {
-        fStr = String(data[i][COLUMNAS.FECHA]).trim();
-      }
-      
-      if (String(data[i][COLUMNAS.ID]).trim() === eid && fStr === fecha && String(data[i][COLUMNAS.TIPO]).trim() === tipo) {
-        sheet.deleteRow(i + 1);
-        return { ok: true };
+    var normFecha = function(val) {
+      if (!val) return '';
+      if (val instanceof Date) return Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+      var s = String(val).trim();
+      var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (mYMD) return mYMD[1] + '-' + String(mYMD[2]).padStart(2, '0') + '-' + String(mYMD[3]).padStart(2, '0');
+      var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (mDMY) return mDMY[3] + '-' + String(mDMY[2]).padStart(2, '0') + '-' + String(mDMY[1]).padStart(2, '0');
+      return s.substring(0, 10);
+    };
+    var targetFechaNorm = normFecha(fecha);
+
+    let eliminados = 0;
+    const ss = SpreadsheetApp.getActive();
+    const sheet = ss.getSheetByName(HOJA_REGISTROS);
+    if (sheet) {
+      const data = sheet.getDataRange().getValues();
+      for (let i = data.length - 1; i >= 1; i--) {
+        let fStr = normFecha(data[i][COLUMNAS.FECHA]) || normFecha(data[i][COLUMNAS.TIMESTAMP]);
+        let rId = String(data[i][COLUMNAS.ID] || '').trim();
+        let rTipo = String(data[i][COLUMNAS.TIPO] || '').trim().toUpperCase();
+
+        if (rId === eid && fStr === targetFechaNorm) {
+          if (!tipo || tipo === 'TODOS' || rTipo === tipo) {
+            sheet.deleteRow(i + 1);
+            eliminados++;
+            if (tipo && tipo !== 'TODOS') break;
+          }
+        }
       }
     }
-    return { ok: false, error: "Registro no encontrado en Sheets" };
+
+    // También limpiar si existía entrada en hoja VACACIONES
+    const sheetVac = ss.getSheetByName(HOJA_VACACIONES);
+    if (sheetVac) {
+      const vacData = sheetVac.getDataRange().getValues();
+      for (let j = vacData.length - 1; j >= 1; j--) {
+        let vFecha = normFecha(vacData[j][0]) || normFecha(vacData[j][9]);
+        let vId = String(vacData[j][1] || '').trim();
+        if (vId === eid && vFecha === targetFechaNorm) {
+          sheetVac.deleteRow(j + 1);
+          eliminados++;
+        }
+      }
+    }
+
+    return { ok: true, eliminados: eliminados };
   } catch (error) {
     return { ok: false, error: error.toString() };
   }

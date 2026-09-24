@@ -373,6 +373,30 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+window.escapeHtml = escapeHtml;
+
+function normalizarFechaStr(fecha) {
+    if (!fecha) return '';
+    if (fecha instanceof Date && !isNaN(fecha.getTime())) {
+        const y = fecha.getFullYear();
+        const m = String(fecha.getMonth() + 1).padStart(2, '0');
+        const d = String(fecha.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const s = String(fecha).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(s)) {
+        const parts = s.split(/[-/]/);
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return s;
+}
+window.normalizarFechaStr = normalizarFechaStr;
+
+function generarDeviceToken(prefix = 'DEV') {
+    return prefix + '_' + Math.random().toString(36).substr(2, 9).toUpperCase();
+}
+window.generarDeviceToken = generarDeviceToken;
 
 // ========== MÓDULO LEGAL Y PROTECCIÓN DE DATOS PERSONALES (LOPDP ECUADOR) ==========
 window.TCONTROL_LEGAL = {

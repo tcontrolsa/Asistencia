@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#dc2626">
+    <title>Sin Conexión — TCONTROL</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Outfit:wght@600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #1e293b;
+            --brand: #dc2626;
+            --brand-glow: rgba(220, 38, 38, 0.25);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-glass: rgba(255, 255, 255, 0.08);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 50% 10%, rgba(220, 38, 38, 0.12) 0%, transparent 50%),
+                radial-gradient(circle at 80% 90%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .offline-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-glass);
+            border-radius: 28px;
+            max-width: 420px;
+            width: 100%;
+            padding: 44px 28px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 40px var(--brand-glow);
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .icon-circle {
+            width: 92px;
+            height: 92px;
+            margin: 0 auto 24px;
+            border-radius: 50%;
+            background: rgba(220, 38, 38, 0.12);
+            border: 2px solid rgba(220, 38, 38, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ef4444;
+            font-size: 38px;
+            position: relative;
+        }
+
+        .icon-pulse {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid rgba(220, 38, 38, 0.4);
+            animation: pulseRing 2s infinite;
+        }
+
+        @keyframes pulseRing {
+            0% { transform: scale(1); opacity: 0.8; }
+            100% { transform: scale(1.35); opacity: 0; }
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 26px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        p {
+            font-size: 14.5px;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 28px;
+        }
+
+        .brand-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #ef4444;
+            background: rgba(220, 38, 38, 0.1);
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .btn-retry {
+            width: 100%;
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            padding: 14px 20px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 8px 24px rgba(220, 38, 38, 0.35);
+            transition: all 0.2s ease;
+        }
+
+        .btn-retry:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px rgba(220, 38, 38, 0.45);
+        }
+
+        .btn-retry:active {
+            transform: translateY(0);
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="offline-card">
+    <div class="brand-badge">
+        <i class="fas fa-shield-alt"></i> TCONTROL Asistencia
+    </div>
+    
+    <div class="icon-circle">
+        <div class="icon-pulse"></div>
+        <i class="fas fa-wifi-slash"></i>
+    </div>
+
+    <h1>Sin Conexión a Internet</h1>
+    <p>
+        No se pudo establecer comunicación con el servidor. Revisa tu conexión a datos móviles o Wi-Fi para continuar registrando tu asistencia.
+    </p>
+
+    <button class="btn-retry" onclick="reintentarConexion()">
+        <i class="fas fa-rotate-right" id="retryIcon"></i>
+        <span>Reintentar Conexión</span>
+    </button>
+
+    <div class="hint">
+        <i class="fas fa-info-circle"></i> Los registros sincronizados localmente se enviarán automáticamente al reconectar.
+    </div>
+</div>
+
+<script>
+    function reintentarConexion() {
+        const icon = document.getElementById('retryIcon');
+        if (icon) icon.classList.add('fa-spin');
+        
+        setTimeout(() => {
+            if (navigator.onLine) {
+                window.location.href = './index.html';
+            } else {
+                if (icon) icon.classList.remove('fa-spin');
+                alert('Aún no se detecta conexión a Internet. Por favor verifica tu red.');
+            }
+        }, 800);
+    }
+
+    // Auto-recuperación si vuelve la conexión
+    window.addEventListener('online', () => {
+        window.location.href = './index.html';
+    });
+</script>
+
+</body>
+</html>

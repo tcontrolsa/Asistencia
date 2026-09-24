@@ -30,11 +30,12 @@ var ENCABEZADOS_OFICIALES = [
 function ejecutarArchivadoDiario() {
   console.log("=== INICIANDO ARCHIVADO AUTOMÁTICO DIARIO DE FIRESTORE ===");
   
-  // 1. Calcular límite de fecha de corte (cualquier registro anterior a la fecha actual/hoy)
+  // 1. Calcular límite de fecha de corte (hace DIAS_A_MANTENER días)
   const limite = new Date();
-  limite.setHours(0, 0, 0, 0); // Hoy a las 00:00:00 local
+  limite.setDate(limite.getDate() - DIAS_A_MANTENER);
+  limite.setHours(0, 0, 0, 0); // Corte exacto de días de antigüedad a las 00:00:00 local
   const limitDateNormalized = limite.getTime();
-  console.log("Fecha límite de corte (hoy a las 00:00:00): " + limite.toString() + " (Normalized: " + limitDateNormalized + ")");
+  console.log("Fecha límite de corte (" + DIAS_A_MANTENER + " días atrás): " + limite.toString() + " (Normalized: " + limitDateNormalized + ")");
 
   // 2. Descargar TODOS los registros de Firestore recursivamente usando paginación
   const documentos = obtenerTodosLosRegistrosFirestore();

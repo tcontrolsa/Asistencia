@@ -803,9 +803,9 @@ function abrirPanelAdmin() {
 }
 
 // ========== FUNCIONES DE DISTANCIA ==========
-function verificarDistanciaEmpresa() {
+function verificarDistanciaEmpresa(silencioso = false) {
     if (!posicion.lat || !posicion.lng) {
-        mostrarToast('Obteniendo ubicación...', 'info');
+        if (!silencioso) mostrarToast('Obteniendo ubicación...', 'info');
         return false;
     }
 
@@ -813,7 +813,7 @@ function verificarDistanciaEmpresa() {
     const lng = parseFloat(posicion.lng);
 
     if (isNaN(lat) || isNaN(lng)) {
-        mostrarToast('Coordenadas inválidas', 'error');
+        if (!silencioso) mostrarToast('Coordenadas inválidas', 'error');
         return false;
     }
 
@@ -824,7 +824,7 @@ function verificarDistanciaEmpresa() {
 
     if (currentMode === 'CAMPO') {
         if (!empleado.baseLat || !empleado.baseLng) {
-            mostrarToast('❌ Debes registrar la ubicación del proyecto primero', 'error');
+            if (!silencioso) mostrarToast('❌ Debes registrar la ubicación del proyecto primero', 'error');
             return false;
         }
         targetLat = parseFloat(empleado.baseLat);
@@ -840,28 +840,38 @@ function verificarDistanciaEmpresa() {
         indicator.classList.remove('hidden');
     }
 
+    const tieneMarcacionHoy = Boolean(typeof estado !== 'undefined' && estado && (estado.tieneEntrada || estado.tieneSalida));
+    const cardFuera = document.getElementById('contenedorBotonFueraArea');
+
     if (distancia <= radio) {
         if (indicator) setTimeout(() => indicator.classList.add('hidden'), 3000);
         window._estaFueraArea = false;
         window._distanciaFuera = Math.round(distancia);
-        const cardFuera = document.getElementById('contenedorBotonFueraArea');
-        if (cardFuera && cardFuera.getAttribute('data-reportado') !== 'true') {
+        if (cardFuera) {
             cardFuera.style.display = 'none';
         }
         return true;
     } else {
         window._estaFueraArea = true;
         window._distanciaFuera = Math.round(distancia);
-        const cardFuera = document.getElementById('contenedorBotonFueraArea');
+        // La opción de reporte solo se muestra si el colaborador NO ha registrado asistencia presencial hoy
         if (cardFuera) {
-            cardFuera.style.display = 'block';
+            cardFuera.style.display = !tieneMarcacionHoy ? 'block' : 'none';
         }
-        mostrarToast(`❌ ${msgError} (${Math.round(distancia)}m)`, 'error');
+        if (!silencioso) {
+            mostrarToast(`❌ ${msgError} (${Math.round(distancia)}m)`, 'error');
+        }
         return false;
     }
 }
 
 window.abrirModalReporteFueraArea = function () {
+    // Si el colaborador ya tiene registrada su jornada (Entrada o Salida), no aplica reporte de ausencia
+    if (typeof estado !== 'undefined' && estado && (estado.tieneEntrada || estado.tieneSalida)) {
+        mostrarToast('Ya registraste tu jornada de asistencia el día de hoy.', 'info');
+        return;
+    }
+
     const existingModal = document.getElementById('modalReporteFueraArea');
     if (existingModal) existingModal.remove();
 
@@ -1042,7 +1052,7 @@ function solicitarPermisoGPS() {
             posicion = { lat: lat, lng: lng };
             gpsActivo = true;
             console.log("Ubicación obtenida del GPS:", posicion);
-            verificarDistanciaEmpresa();
+            verificarDistanciaEmpresa(true);
         },
         (error) => {
             console.error('GPS error:', error);
@@ -1593,6 +1603,12 @@ async function procederConRegistro() {
         estado.tieneEntrada = true;
         estado.horaEntrada = horaActual24;
         estado.almuerzo = empleado.almuerzo;
+        try {
+            const hoyStrLocal = getLocalHoyStr(new Date());
+            localStorage.removeItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`);
+        } catch (e) { }
+        const cardFuera = document.getElementById('contenedorBotonFueraArea');
+        if (cardFuera) cardFuera.style.display = 'none';
     } else {
         estado.tieneSalida = true;
         estado.horaSalida = horaActual24;
@@ -1683,8 +1699,8 @@ function horaLimiteAlmuerzoPasada() {
 }
 
 function iniciarRegistro(tipo) {
-    if (!verificarDistanciaEmpresa()) {
-        if (typeof window.abrirModalReporteFueraArea === 'function') {
+    if (!verificarDistanciaEmpresa(false)) {
+        if (tipo === 'ENTRADA' && typeof window.abrirModalReporteFueraArea === 'function') {
             window.abrirModalReporteFueraArea();
         }
         return;
@@ -2975,7 +2991,7 @@ function renderAuthScreen() {
                 <div id="pinScreen" class="hidden">
                     <div class="glass-card">
                         <div class="text-center mb-4">
-                            <img src="./Logotipo T Control.png" alt="TCONTROL" style="width: clamp(140px, 45vw, 190px); max-height: 72px; object-fit: contain; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
+                            <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" style="width: clamp(140px, 45vw, 190px); max-height: 72px; object-fit: contain; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
                             <h3 class="h5 fw-bold" style="color: #0f172a;">Acceso Seguro al Sistema</h3>
                             <p class="text-muted small">Ingresa tus credenciales para continuar</p>
                         </div>
@@ -3019,7 +3035,7 @@ function renderAuthScreen() {
                 <div id="registroInicialScreen" class="hidden">
                     <div class="glass-card">
                         <div class="text-center mb-3">
-                            <img src="./Logotipo T Control.png" alt="TCONTROL" style="width: clamp(130px, 42vw, 175px); max-height: 64px; object-fit: contain; margin-bottom: 14px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
+                            <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" style="width: clamp(130px, 42vw, 175px); max-height: 64px; object-fit: contain; margin-bottom: 14px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
                             <h3 class="h5 fw-bold" id="registroTitle" style="color: #0f172a;">Vincular Dispositivo</h3>
                             <p class="text-muted small" id="registroSubtitle">Ingresa tu ID de empleado para continuar</p>
                         </div>
@@ -3525,31 +3541,34 @@ function renderHomePage() {
     };
 
     let reporteFueraHoy = null;
-    const itemStorage = localStorage.getItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`);
-    if (itemStorage) {
-        try { reporteFueraHoy = JSON.parse(itemStorage); } catch (e) { }
-    }
-
-    // Buscar también en registrosCompletos de hoy
-    const regAusenciaHoy = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => {
-        const rf = getVal(r, 'fecha', 0) || r.fecha || r[0];
-        const rt = String(getVal(r, 'tipo', 3) || r.tipo || r[3] || '').toUpperCase();
-        return rf === hoyStrLocal && (tiposAusenciaMap[rt] || rt === 'FALTA');
-    }) : null;
-
     let tipoEstadoHoy = null;
     let detalleEstadoHoy = '';
     let configEstado = null;
 
-    if (reporteFueraHoy && reporteFueraHoy.tipo) {
-        tipoEstadoHoy = reporteFueraHoy.tipo.toUpperCase();
-        detalleEstadoHoy = reporteFueraHoy.observacion || reporteFueraHoy.texto || '';
-        configEstado = tiposAusenciaMap[tipoEstadoHoy] || { label: reporteFueraHoy.texto || tipoEstadoHoy, badge: 'Reportado', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' };
-    } else if (regAusenciaHoy) {
-        const rt = String(getVal(regAusenciaHoy, 'tipo', 3) || regAusenciaHoy.tipo || regAusenciaHoy[3] || '').toUpperCase();
-        tipoEstadoHoy = rt;
-        detalleEstadoHoy = getVal(regAusenciaHoy, 'razon_ausencia', 10) || regAusenciaHoy.razon_ausencia || '';
-        configEstado = tiposAusenciaMap[tipoEstadoHoy] || (tipoEstadoHoy === 'FALTA' ? { label: '❌ FALTA REGISTRADA', badge: 'Falta', bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' } : { label: tipoEstadoHoy, badge: 'Ausencia', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' });
+    // Solo evaluar reporte de estado o ausencia si NO tiene marcación presencial de Entrada ni Salida hoy
+    if (!tieneEntrada && !tieneSalida) {
+        const itemStorage = localStorage.getItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`);
+        if (itemStorage) {
+            try { reporteFueraHoy = JSON.parse(itemStorage); } catch (e) { }
+        }
+
+        // Buscar también en registrosCompletos de hoy (solo tipos de ausencia explícitos del catálogo, NUNCA FALTA automática)
+        const regAusenciaHoy = Array.isArray(registrosCompletos) ? registrosCompletos.find(r => {
+            const rf = getVal(r, 'fecha', 0) || r.fecha || r[0];
+            const rt = String(getVal(r, 'tipo', 3) || r.tipo || r[3] || '').toUpperCase();
+            return rf === hoyStrLocal && Boolean(tiposAusenciaMap[rt]);
+        }) : null;
+
+        if (reporteFueraHoy && reporteFueraHoy.tipo) {
+            tipoEstadoHoy = reporteFueraHoy.tipo.toUpperCase();
+            detalleEstadoHoy = reporteFueraHoy.observacion || reporteFueraHoy.texto || '';
+            configEstado = tiposAusenciaMap[tipoEstadoHoy] || { label: reporteFueraHoy.texto || tipoEstadoHoy, badge: 'Reportado', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' };
+        } else if (regAusenciaHoy) {
+            const rt = String(getVal(regAusenciaHoy, 'tipo', 3) || regAusenciaHoy.tipo || regAusenciaHoy[3] || '').toUpperCase();
+            tipoEstadoHoy = rt;
+            detalleEstadoHoy = getVal(regAusenciaHoy, 'razon_ausencia', 10) || regAusenciaHoy.razon_ausencia || '';
+            configEstado = tiposAusenciaMap[tipoEstadoHoy] || { label: tipoEstadoHoy, badge: 'Ausencia', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' };
+        }
     }
 
     // Detectar puntualidad del empleado según registros del mes
@@ -3654,7 +3673,7 @@ function renderHomePage() {
 
                     <!-- Header con Logotipo Oficial T Control -->
                     <div class="credencial-brand-header">
-                        <img src="Logotipo T Control.png" alt="TCONTROL - Tecnología en Control Industrial" class="credencial-logo-img">
+                        <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL - Tecnología en Control Industrial" class="credencial-logo-img">
                     </div>
 
                     <div class="photo-name-section">
@@ -3751,7 +3770,7 @@ function renderHomePage() {
                 </div>
                 
                 <!-- SECCIÓN REPORTE FUERA DE ÁREA / ESTADO DE HOY -->
-                ${configEstado ? `
+                ${(configEstado && !tieneEntrada && !tieneSalida) ? `
                     <div class="card-reporte-fuera-confirmado" style="margin-top: 14px; margin-bottom: 8px; border-radius: 16px; border: 1.5px solid ${configEstado.border}; background: ${configEstado.bg}; padding: 14px 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); text-align: left;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                             <span style="font-size: 11px; font-weight: 800; color: ${configEstado.color}; text-transform: uppercase; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 5px;">
@@ -3781,8 +3800,8 @@ function renderHomePage() {
                             </button>
                         </div>
                     </div>
-                ` : `
-                    <div id="contenedorBotonFueraArea" data-reportado="false" style="margin-top: 12px; margin-bottom: 8px;">
+                ` : (!tieneEntrada && !tieneSalida ? `
+                    <div id="contenedorBotonFueraArea" data-reportado="false" style="display: ${Boolean(window._estaFueraArea) ? 'block' : 'none'}; margin-top: 12px; margin-bottom: 8px;">
                         <div onclick="window.abrirModalReporteFueraArea()" style="background: #ffffff; border: 1.5px dashed #3b82f6; border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(59,130,246,0.06);">
                             <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
                                 <div style="background: #eff6ff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #2563eb; flex-shrink: 0;">
@@ -3798,13 +3817,13 @@ function renderHomePage() {
                             </div>
                         </div>
                     </div>
-                `}
+                ` : '')}
 
                 <!-- Botón de Acción Único y Dinámico -->
                 <div class="main-action-wrapper">
                     ${(() => {
             let btn = { type: 'ENTRADA', label: 'REGISTRAR ENTRADA', class: 'bg-entrada', icon: 'fa-sign-in-alt', disabled: '' };
-            if (configEstado && ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA'].includes(tipoEstadoHoy)) {
+            if (!tieneEntrada && !tieneSalida && configEstado && ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA'].includes(tipoEstadoHoy)) {
                 btn = { type: 'NONE', label: 'ESTADO REPORTADO HOY', class: 'bg-campo', icon: 'fa-calendar-check', disabled: 'disabled' };
             } else if (statusActual.label.includes('CAMPO')) {
                 btn = { type: 'RETORNO_CAMPO', label: 'RETORNO DE CAMPO', class: 'bg-campo', icon: 'fa-undo', disabled: '' };
@@ -3822,7 +3841,7 @@ function renderHomePage() {
                             <div class="btn-type"><i class="fas ${btn.icon}"></i> ${btn.label}</div>
                             ${tieneSalida
                     ? `<div id="btnTime" class="btn-time" data-completa="true">COMPLETA</div>`
-                    : (configEstado && ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA'].includes(tipoEstadoHoy)
+                    : (!tieneEntrada && configEstado && ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA'].includes(tipoEstadoHoy)
                         ? `<div id="btnTime" class="btn-time" data-completa="true">JORNADA COMPLETA</div>`
                         : `<div id="btnTime" class="btn-time">--:--:--</div>`)
                 }

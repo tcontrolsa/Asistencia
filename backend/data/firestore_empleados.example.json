@@ -1,0 +1,22 @@
+[
+  {
+    "name": "projects/tcontrol-asistencia/databases/(default)/documents/empleados/0001",
+    "fields": {
+      "id": { "stringValue": "0001" },
+      "nombre": { "stringValue": "EJEMPLO USUARIO DEMO" },
+      "cargo": { "stringValue": "Operador Demostración" },
+      "area": { "stringValue": "TALLER" },
+      "activo": { "stringValue": "SI" },
+      "supervisor": { "stringValue": "NO" },
+      "esSupervisor": { "stringValue": "" },
+      "authExtras": { "stringValue": "NO" },
+      "fechaNacimiento": { "stringValue": "1990-01-01" },
+      "foto_url": { "stringValue": "" },
+      "deviceToken": { "stringValue": "DEV_DEMO1234" },
+      "id_dispositivo": { "stringValue": "" },
+      "pin": { "stringValue": "" },
+      "baseLat": { "nullValue": null },
+      "baseLng": { "nullValue": null }
+    }
+  }
+]

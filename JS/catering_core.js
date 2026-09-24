@@ -126,7 +126,7 @@ function jsonpRequest(params) {
     url.searchParams.append('apiKey', 'TCONTROL_SECURE_2026_XYZ');
 
         // Inyectar credenciales de sesión si existen
-        const session = localStorage.getItem('SUPERVISOR_SESSION');
+        const session = localStorage.getItem('CATERING_SESSION') || localStorage.getItem('SUPERVISOR_SESSION');
         if (session) {
             const data = JSON.parse(session);
             url.searchParams.append('empleadoId', data.id);
@@ -477,7 +477,7 @@ async function intentarLoginCatering() {
         } else if (res && res.valido) {
             if (res.empleado.esSupervisor) {
                 const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
-                localStorage.setItem('SUPERVISOR_SESSION', JSON.stringify(sessionData));
+                localStorage.setItem('CATERING_SESSION', JSON.stringify(sessionData));
                 $('login-catering').classList.add('hidden');
                 cargarDatos();
             } else {
@@ -510,7 +510,7 @@ function generarDeviceToken() {
 }
 
 function verificarEstadoSesion() {
-    const session = localStorage.getItem('SUPERVISOR_SESSION');
+    const session = localStorage.getItem('CATERING_SESSION') || localStorage.getItem('SUPERVISOR_SESSION');
     if (session) {
         $('login-catering').classList.add('hidden');
         cargarDatos();

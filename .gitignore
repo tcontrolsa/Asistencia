@@ -34,6 +34,11 @@ build/
 *.key
 *.cert
 *.crt
+firestore_empleados.json
+output.json
+backend/data/firestore_empleados.json
+backend/data/output.json
+tools/scratch/
 
 # Python & Entornos Virtuales
 __pycache__/

@@ -1,7 +1,7 @@
 // config.js
 const CONFIG = {
     // 🔴 REEMPLAZA CON LA URL DE TU APPS SCRIPT PUBLICADA 🔴
-    API_URL: 'https://script.google.com/macros/s/AKfycbwpG1d9FoP6Iqszcf0xWNxgB-f-pduqWLkPYOQ7fhyDZ4m0MXIEoG_cqgMOXr9mUd9C/exec',
+    API_URL: 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec',
     
     // Configuración de la empresa
     EMPRESA: {

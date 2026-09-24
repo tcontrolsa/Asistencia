@@ -4,15 +4,19 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.79';
+const CACHE_NAME = 'tcontrol-v1.83';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
 const PRECACHE_URLS = [
   './index.html',
+  './offline.html',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
+  './assets/icons/icon-192.png',
+  './assets/icons/icon-512.png',
+  './assets/images/Logotipo T Control.png',
+  './assets/images/logo-blanco.png',
+  './assets/images/logo rojo_blanco.png',
   './CSS/index.css',
   './JS/openwa_service.js',
   './JS/tcontrol_core.js',
@@ -22,6 +26,7 @@ const PRECACHE_URLS = [
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
+  'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Outfit:wght@600;800&display=swap',
   'https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js'
 ];
@@ -35,9 +40,13 @@ self.addEventListener('install', event => {
       // Cachear recursos locales de forma obligatoria
       return cache.addAll([
         './index.html',
+        './offline.html',
         './manifest.json',
-        './icon-192.png',
-        './icon-512.png',
+        './assets/icons/icon-192.png',
+        './assets/icons/icon-512.png',
+        './assets/images/Logotipo T Control.png',
+        './assets/images/logo-blanco.png',
+        './assets/images/logo rojo_blanco.png',
         './CSS/index.css',
         './JS/openwa_service.js',
         './JS/tcontrol_core.js',
@@ -107,7 +116,36 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ── 4. App Shell y recursos estáticos: Network First con fallback a caché ──
+  // ── 4. Assets estáticos (Imágenes, Fuentes, CSS, CDNs): Stale-While-Revalidate ──
+  const esAssetEstatico = url.pathname.includes('/assets/') ||
+                          url.pathname.endsWith('.png') ||
+                          url.pathname.endsWith('.jpg') ||
+                          url.pathname.endsWith('.svg') ||
+                          url.pathname.endsWith('.woff2') ||
+                          url.hostname.includes('fonts.googleapis.com') ||
+                          url.hostname.includes('fonts.gstatic.com') ||
+                          url.hostname.includes('cdnjs.cloudflare.com');
+
+  if (esAssetEstatico) {
+    event.respondWith(
+      caches.match(event.request).then(cachedResponse => {
+        const fetchPromise = fetch(event.request)
+          .then(networkResponse => {
+            if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+              const clone = networkResponse.clone();
+              caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone).catch(() => {}));
+            }
+            return networkResponse;
+          })
+          .catch(() => cachedResponse);
+
+        return cachedResponse || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // ── 5. App Shell y navegación: Network First con fallback a caché y offline ──
   event.respondWith(
     fetch(event.request)
       .then(networkResponse => {
@@ -125,7 +163,7 @@ self.addEventListener('fetch', event => {
             return cachedResponse;
           }
           if (event.request.mode === 'navigate') {
-            return caches.match('./index.html');
+            return caches.match('./index.html').then(r => r || caches.match(OFFLINE_URL));
           }
           return new Response('', {
             status: 503,

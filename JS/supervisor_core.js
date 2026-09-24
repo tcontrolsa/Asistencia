@@ -5372,1312 +5372,8 @@ window.volverADirectorio = volverADirectorio;
 
 // ============================================================
 // MÓDULO DIRECTORIO DE COLABORADORES
+// Extraido a: JS/supervisor/supervisor_directorio.js
 // ============================================================
-window.directorioFiltroKpi = 'todos';
-window.directorioVista = localStorage.getItem('TCONTROL_DIR_VISTA') || 'grid';
-window.directorioUltimaLista = [];
-
-window.setFiltroKpiDirectorio = function (filtro, elCard) {
-  window.directorioFiltroKpi = filtro;
-  document.querySelectorAll('.directorio-kpi-grid .kpi-card').forEach(c => c.classList.remove('active'));
-  const card = elCard || (filtro === 'cumpleanos' ? $('kpiDirCardCumpleanos') : (filtro === 'todos' ? $('kpiDirCardTodos') : null));
-  if (card) card.classList.add('active');
-  filtrarDirectorio();
-};
-
-window.cambiarVistaDirectorio = function (vista) {
-  window.directorioVista = vista;
-  localStorage.setItem('TCONTROL_DIR_VISTA', vista);
-
-  const btnGrid = $('btnDirVistaGrid');
-  const btnTabla = $('btnDirVistaTabla');
-  const containerGrid = $('directorioGridContainer');
-  const containerTabla = $('directorioTablaContainer');
-
-  if (btnGrid) btnGrid.classList.toggle('active', vista === 'grid');
-  if (btnTabla) btnTabla.classList.toggle('active', vista === 'tabla');
-
-  if (containerGrid) containerGrid.style.display = (vista === 'grid') ? 'grid' : 'none';
-  if (containerTabla) containerTabla.style.display = (vista === 'tabla') ? 'block' : 'none';
-};
-
-window.limpiarBuscadorDirectorio = function () {
-  const input = $('srchDirectorio');
-  if (input) input.value = '';
-  filtrarDirectorio();
-};
-
-window.limpiarTodosFiltrosDirectorio = function () {
-  const input = $('srchDirectorio');
-  const selArea = $('filtroAreaDirectorio');
-  const selRol = $('filtroRolDirectorio');
-  const selEstado = $('filtroEstadoDirectorio');
-  const selAlm = $('filtroAlmuerzoDirectorio');
-  const selCumple = $('filtroCumpleanosDirectorio');
-
-  if (input) input.value = '';
-  if (selArea) selArea.value = '';
-  if (selRol) selRol.value = '';
-  if (selEstado) selEstado.value = '';
-  if (selAlm) selAlm.value = '';
-  if (selCumple) selCumple.value = '';
-
-  window.directorioFiltroKpi = 'todos';
-  document.querySelectorAll('.directorio-kpi-grid .kpi-card').forEach(c => c.classList.remove('active'));
-  const cardTodos = $('kpiDirCardTodos');
-  if (cardTodos) cardTodos.classList.add('active');
-
-  filtrarDirectorio();
-};
-
-window.renderBannerCumpleanosDirectorio = function (listaCumples) {
-  const banner = $('dirBannerCumpleanos');
-  if (!banner) return;
-
-  if (!listaCumples || listaCumples.length === 0) {
-    banner.style.display = 'none';
-    banner.innerHTML = '';
-    return;
-  }
-
-  // Ordenar por días faltantes (hoy primero)
-  listaCumples.sort((a, b) => a.estado.diasFaltan - b.estado.diasFaltan);
-
-  const hayHoy = listaCumples.some(item => item.estado.esHoy);
-
-  const chipsHtml = listaCumples.map(item => {
-    const e = item.emp;
-    const st = item.estado;
-    const nombreFmt = (typeof obtenerPrimerNombreYPrimerApellido === 'function')
-      ? obtenerPrimerNombreYPrimerApellido(e.nombre)
-      : (e.nombre || 'Colaborador');
-    const edadStr = st.edad ? ` (${st.edad} años)` : '';
-
-    if (st.esHoy) {
-      return `
-        <div style="background:#fef3c7; border:1.5px solid #f59e0b; border-radius:10px; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; box-shadow:0 2px 5px rgba(245,158,11,0.15);">
-          <span style="font-size:16px;">🎂</span>
-          <div>
-            <div style="font-weight:800; font-size:12px; color:#92400e;">¡Hoy! ${escapeHtml(nombreFmt)}${edadStr}</div>
-            <div style="font-size:10px; color:#b45309;">${escapeHtml(e.cargo || e.area || '')}</div>
-          </div>
-          <button type="button" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" style="background:#16a34a; color:white; border:none; border-radius:6px; padding:4px 9px; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px; margin-left:4px;" title="Felicitar por WhatsApp">
-            <i class="fab fa-whatsapp"></i> Felicitar
-          </button>
-        </div>`;
-    }
-
-    const diasText = st.diasFaltan === 1 ? 'Mañana' : `En ${st.diasFaltan} días`;
-    return `
-      <div style="background:#ffffff; border:1px solid #fed7aa; border-radius:10px; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
-        <span style="font-size:14px; color:#ea580c;">🎉</span>
-        <div>
-          <div style="font-weight:750; font-size:11.5px; color:#1e293b;">${escapeHtml(nombreFmt)}${edadStr}</div>
-          <div style="font-size:10px; color:#ea580c; font-weight:600;">${diasText} (${st.fechaLegible})</div>
-        </div>
-        <button type="button" onclick="window.abrirModalMensajeIndividualWhatsApp('${e.id}')" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; border-radius:6px; padding:3px 7px; font-size:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:3px; margin-left:2px;" title="Enviar WhatsApp">
-          <i class="fab fa-whatsapp"></i>
-        </button>
-      </div>`;
-  }).join('');
-
-  banner.innerHTML = `
-    <div style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border:1px solid #fde68a; border-radius:14px; padding:12px 16px; box-shadow:0 3px 8px rgba(245,158,11,0.08);">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:18px;">${hayHoy ? '🎂' : '🗓️'}</span>
-          <span style="font-weight:800; font-size:13px; color:#92400e;">
-            ${hayHoy ? '¡Cumpleaños de Hoy y Próximos Colaboradores!' : 'Próximos Cumpleaños (15 días)'}
-          </span>
-          <span style="background:#fde68a; color:#78350f; padding:1px 7px; border-radius:20px; font-size:10.5px; font-weight:800;">${listaCumples.length}</span>
-        </div>
-        <button type="button" onclick="window.setFiltroKpiDirectorio('cumpleanos')" style="background:none; border:none; color:#b45309; font-size:11.5px; font-weight:700; cursor:pointer; text-decoration:underline;">
-          Ver todos en la lista →
-        </button>
-      </div>
-      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-        ${chipsHtml}
-      </div>
-    </div>`;
-
-  banner.style.display = 'block';
-};
-
-window.cargarDirectorio = function () {
-  if (!empCache || empCache.length === 0) {
-    return;
-  }
-
-  // 1. Calcular KPIs
-  const total = empCache.length;
-  const activos = empCache.filter(e => e.activo !== 'NO').length;
-  const inactivos = empCache.filter(e => e.activo === 'NO').length;
-  const supervisores = empCache.filter(e => {
-    const sup = String(e.supervisor || '').toUpperCase();
-    return sup === 'SI' || sup === 'SUPERVISOR ADMIN';
-  }).length;
-  const conWp = empCache.filter(e => e.telefono && String(e.telefono).trim().length >= 7).length;
-
-  // Calcular cumpleaños de colaboradores activos (hoy y próximos 30 días)
-  let countCumpleanosHoy = 0;
-  let countCumpleanosProximos = 0;
-  const listaCumplesCercanos = [];
-
-  empCache.forEach(e => {
-    if (e.activo === 'NO') return;
-    const rawN = (typeof obtenerFechaNacimientoEmpleado === 'function')
-      ? obtenerFechaNacimientoEmpleado(e)
-      : (e.fechaNacimiento || e.fecha_nacimiento || '');
-    const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
-      ? obtenerEstadoCumpleanos(rawN)
-      : null;
-    if (!estadoC) return;
-    if (estadoC.esHoy) {
-      countCumpleanosHoy++;
-      listaCumplesCercanos.push({ emp: e, estado: estadoC });
-    } else if (estadoC.diasFaltan <= 30) {
-      countCumpleanosProximos++;
-      if (estadoC.diasFaltan <= 15) {
-        listaCumplesCercanos.push({ emp: e, estado: estadoC });
-      }
-    }
-  });
-
-  const totalCumpleanos = countCumpleanosHoy + countCumpleanosProximos;
-
-  if ($('dirKpiTotal')) $('dirKpiTotal').textContent = total;
-  if ($('dirKpiActivos')) $('dirKpiActivos').textContent = activos;
-  if ($('dirKpiInactivos')) $('dirKpiInactivos').textContent = inactivos;
-  if ($('dirKpiSupervisores')) $('dirKpiSupervisores').textContent = supervisores;
-  if ($('dirKpiWhatsApp')) $('dirKpiWhatsApp').textContent = conWp;
-  if ($('dirKpiCumpleanos')) $('dirKpiCumpleanos').textContent = totalCumpleanos;
-  if ($('dirKpiCumpleanosSub')) {
-    $('dirKpiCumpleanosSub').textContent = countCumpleanosHoy > 0
-      ? `🎂 ${countCumpleanosHoy} Hoy · ${countCumpleanosProximos} próx.`
-      : `${totalCumpleanos} en próx. 30 días`;
-  }
-
-  // Renderizar banner interactivo de cumpleaños si hay cumpleañeros cercanos
-  if (typeof renderBannerCumpleanosDirectorio === 'function') {
-    renderBannerCumpleanosDirectorio(listaCumplesCercanos);
-  }
-
-  // 2. Poblar selector y datalists de Áreas y Cargos
-  const selArea = $('filtroAreaDirectorio');
-  const valAreaActual = selArea ? selArea.value : '';
-  const areasSet = new Set();
-  const cargosSet = new Set();
-
-  empCache.forEach(e => {
-    if (e.area && String(e.area).trim()) areasSet.add(String(e.area).trim().toUpperCase());
-    if (e.cargo && String(e.cargo).trim()) cargosSet.add(String(e.cargo).trim());
-  });
-
-  const areasSorted = Array.from(areasSet).sort((a, b) => a.localeCompare(b));
-  const cargosSorted = Array.from(cargosSet).sort((a, b) => a.localeCompare(b));
-
-  if (selArea) {
-    let optsHtml = '<option value="">🏢 Todas las áreas</option>';
-    areasSorted.forEach(a => {
-      optsHtml += `<option value="${escapeHtml(a)}" ${a === valAreaActual ? 'selected' : ''}>${escapeHtml(a)}</option>`;
-    });
-    selArea.innerHTML = optsHtml;
-  }
-
-  // Datalists para los modales
-  const dlAreas = $('listaAreasDirectorioDatalist');
-  if (dlAreas) {
-    dlAreas.innerHTML = areasSorted.map(a => `<option value="${escapeHtml(a)}">`).join('');
-  }
-  const dlCargos = $('listaCargosDirectorioDatalist');
-  if (dlCargos) {
-    dlCargos.innerHTML = cargosSorted.map(c => `<option value="${escapeHtml(c)}">`).join('');
-  }
-
-  // 3. Restaurar vista preferida (grid vs tabla)
-  cambiarVistaDirectorio(window.directorioVista || 'grid');
-
-  // 4. Ejecutar filtrado y renderizado
-  filtrarDirectorio();
-};
-
-window.filtrarDirectorio = function () {
-  if (!empCache) return;
-
-  const srchEl = $('srchDirectorio');
-  const term = srchEl ? srchEl.value.trim().toLowerCase() : '';
-  const areaFiltro = $('filtroAreaDirectorio') ? $('filtroAreaDirectorio').value.toUpperCase() : '';
-  const rolFiltro = $('filtroRolDirectorio') ? $('filtroRolDirectorio').value : '';
-  const estadoFiltro = $('filtroEstadoDirectorio') ? $('filtroEstadoDirectorio').value : '';
-  const almFiltro = $('filtroAlmuerzoDirectorio') ? $('filtroAlmuerzoDirectorio').value : '';
-  const cumpleFiltro = $('filtroCumpleanosDirectorio') ? $('filtroCumpleanosDirectorio').value : '';
-  const kpiFiltro = window.directorioFiltroKpi || 'todos';
-
-  // Botón limpiar búsqueda
-  const btnLimpiar = $('btnLimpiarSrchDir');
-  if (btnLimpiar) btnLimpiar.style.display = term ? 'block' : 'none';
-
-  // Indicador de filtros activos
-  const indicadorFiltros = $('dirFiltroActivoIndicator');
-  const hayFiltrosActivos = (term !== '' || areaFiltro !== '' || rolFiltro !== '' || (estadoFiltro !== '' && estadoFiltro !== 'SI') || almFiltro !== '' || cumpleFiltro !== '' || kpiFiltro !== 'todos');
-  if (indicadorFiltros) indicadorFiltros.style.display = hayFiltrosActivos ? 'block' : 'none';
-
-  // Filtrar empleados
-  const filtrados = empCache.filter(emp => {
-    // 1. Buscador texto
-    if (term) {
-      const matchId = String(emp.id || '').toLowerCase().includes(term);
-      const matchNom = String(emp.nombre || '').toLowerCase().includes(term);
-      const matchArea = String(emp.area || '').toLowerCase().includes(term);
-      const matchCargo = String(emp.cargo || '').toLowerCase().includes(term);
-      const matchTel = String(emp.telefono || '').toLowerCase().includes(term);
-      const rawNac = (typeof obtenerFechaNacimientoEmpleado === 'function')
-        ? obtenerFechaNacimientoEmpleado(emp)
-        : (emp.fechaNacimiento || emp.fecha_nacimiento || '');
-      const matchNac = rawNac ? String(rawNac).toLowerCase().includes(term) : false;
-      if (!matchId && !matchNom && !matchArea && !matchCargo && !matchTel && !matchNac) return false;
-    }
-
-    // 2. Filtro Área
-    if (areaFiltro && String(emp.area || '').toUpperCase() !== areaFiltro) {
-      return false;
-    }
-
-    // 3. Filtro Rol
-    if (rolFiltro) {
-      const sup = String(emp.supervisor || '').toUpperCase();
-      if (rolFiltro === 'SUPERVISOR_ADMIN' && sup !== 'SUPERVISOR ADMIN') return false;
-      if (rolFiltro === 'SUPERVISOR' && sup !== 'SI' && sup !== 'SUPERVISOR ADMIN') return false;
-      if (rolFiltro === 'REGULAR' && (sup === 'SI' || sup === 'SUPERVISOR ADMIN')) return false;
-    }
-
-    // 4. Filtro Estado (Activo / Inactivo)
-    if (estadoFiltro) {
-      const esActivo = emp.activo !== 'NO';
-      if (estadoFiltro === 'SI' && !esActivo) return false;
-      if (estadoFiltro === 'NO' && esActivo) return false;
-    }
-
-    // 5. Filtro Almuerzo Hoy
-    if (almFiltro) {
-      const almEmp = (typeof resolverAlmuerzoHoyEmpleado === 'function')
-        ? resolverAlmuerzoHoyEmpleado(emp)
-        : (emp.almuerzoHoy || '');
-      if (almFiltro === 'SI' && almEmp !== 'SI') return false;
-      if (almFiltro === 'NO' && almEmp !== 'NO') return false;
-      if (almFiltro === 'SIN_ASIGNAR' && almEmp !== '') return false;
-    }
-
-    // 6. Filtro Cumpleaños Dropdown
-    if (cumpleFiltro) {
-      const rawN = (typeof obtenerFechaNacimientoEmpleado === 'function')
-        ? obtenerFechaNacimientoEmpleado(emp)
-        : (emp.fechaNacimiento || emp.fecha_nacimiento || '');
-      const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
-        ? obtenerEstadoCumpleanos(rawN)
-        : null;
-      if (!estadoC) return false;
-      if (cumpleFiltro === 'HOY' && !estadoC.esHoy) return false;
-      if (cumpleFiltro === '7' && (estadoC.diasFaltan < 0 || estadoC.diasFaltan > 7)) return false;
-      if (cumpleFiltro === '15' && (estadoC.diasFaltan < 0 || estadoC.diasFaltan > 15)) return false;
-      if (cumpleFiltro === '30' && (estadoC.diasFaltan < 0 || estadoC.diasFaltan > 30)) return false;
-    }
-
-    // 7. Filtro KPI clicado
-    if (kpiFiltro === 'activos' && emp.activo === 'NO') return false;
-    if (kpiFiltro === 'inactivos' && emp.activo !== 'NO') return false;
-    if (kpiFiltro === 'supervisores') {
-      const sup = String(emp.supervisor || '').toUpperCase();
-      if (sup !== 'SI' && sup !== 'SUPERVISOR ADMIN') return false;
-    }
-    if (kpiFiltro === 'whatsapp') {
-      if (!emp.telefono || String(emp.telefono).trim().length < 7) return false;
-    }
-    if (kpiFiltro === 'cumpleanos') {
-      const rawN = (typeof obtenerFechaNacimientoEmpleado === 'function')
-        ? obtenerFechaNacimientoEmpleado(emp)
-        : (emp.fechaNacimiento || emp.fecha_nacimiento || '');
-      const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
-        ? obtenerEstadoCumpleanos(rawN)
-        : null;
-      if (!estadoC || (!estadoC.esHoy && estadoC.diasFaltan > 30)) return false;
-    }
-
-    return true;
-  });
-
-  window.directorioUltimaLista = filtrados;
-
-  // Actualizar contadores
-  if ($('dirConteoFiltrados')) $('dirConteoFiltrados').textContent = filtrados.length;
-  if ($('dirConteoTotal')) $('dirConteoTotal').textContent = empCache.length;
-
-  // Renderizar vistas
-  const emptyState = $('directorioEmptyState');
-  const containerGrid = $('directorioGridContainer');
-  const containerTabla = $('directorioTablaContainer');
-
-  if (filtrados.length === 0) {
-    if (emptyState) emptyState.style.display = 'block';
-    if (containerGrid) containerGrid.innerHTML = '';
-    if ($('tbodyDirectorioTabla')) $('tbodyDirectorioTabla').innerHTML = '';
-  } else {
-    if (emptyState) emptyState.style.display = 'none';
-    renderDirectorioCards(filtrados);
-    renderDirectorioTabla(filtrados);
-  }
-};
-
-function normalizarEstadoAlmuerzo(val) {
-  if (!val) return '';
-  const v = String(val).toUpperCase().trim();
-  if (v === 'SI' || v === 'SÍ' || v === 'PLANTA') return 'SI';
-  if (v === 'NO' || v === 'FUERA') return 'NO';
-  return '';
-}
-window.normalizarEstadoAlmuerzo = normalizarEstadoAlmuerzo;
-
-function resolverAlmuerzoHoyEmpleado(emp, targetFecha) {
-  if (!emp) return '';
-  const fHoy = targetFecha || hoy || getLocalHoyStr();
-  let val = emp.almuerzoHoy;
-  if (!val && Array.isArray(emp.registros)) {
-    const reg = emp.registros.find(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO' || r.tipo === 'ENTRADA_CAMPO') && normalizarFechaStr(r.fecha) === fHoy);
-    if (reg && reg.almuerzo) val = reg.almuerzo;
-  }
-  return normalizarEstadoAlmuerzo(val);
-}
-window.resolverAlmuerzoHoyEmpleado = resolverAlmuerzoHoyEmpleado;
-
-// ============================================================
-// UTILIDADES PARA FECHA DE NACIMIENTO EN DIRECTORIO
-// ============================================================
-function obtenerFechaNacimientoEmpleado(emp) {
-  if (!emp) return '';
-  let val = emp.fechaNacimiento || emp.fecha_nacimiento || emp.fNacimiento || emp.fechanacimiento || '';
-  if (val && typeof val === 'object') {
-    if (typeof val.toDate === 'function') {
-      val = val.toDate();
-    } else if (val.seconds !== undefined) {
-      val = new Date(val.seconds * 1000);
-    }
-  }
-  if (val instanceof Date && !isNaN(val)) {
-    const yyyy = val.getFullYear();
-    const mm = String(val.getMonth() + 1).padStart(2, '0');
-    const dd = String(val.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  return String(val || '').trim();
-}
-window.obtenerFechaNacimientoEmpleado = obtenerFechaNacimientoEmpleado;
-
-function normalizarFechaParaInput(val) {
-  if (!val) return '';
-  let s = String(val).trim().split('T')[0];
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  if (s.includes('/')) {
-    const p = s.split('/');
-    if (p.length === 3) {
-      if (p[2].length === 4) {
-        // DD/MM/YYYY -> YYYY-MM-DD
-        const dd = p[0].padStart(2, '0');
-        const mm = p[1].padStart(2, '0');
-        return `${p[2]}-${mm}-${dd}`;
-      } else if (p[0].length === 4) {
-        // YYYY/MM/DD -> YYYY-MM-DD
-        const mm = p[1].padStart(2, '0');
-        const dd = p[2].padStart(2, '0');
-        return `${p[0]}-${mm}-${dd}`;
-      }
-    }
-  }
-  if (s.includes('-')) {
-    const p = s.split('-');
-    if (p.length === 3 && p[2].length === 4) {
-      // DD-MM-YYYY -> YYYY-MM-DD
-      const dd = p[0].padStart(2, '0');
-      const mm = p[1].padStart(2, '0');
-      return `${p[2]}-${mm}-${dd}`;
-    }
-  }
-  return s;
-}
-window.normalizarFechaParaInput = normalizarFechaParaInput;
-
-function calcularEdad(fechaVal) {
-  if (!fechaVal) return null;
-  const norm = normalizarFechaParaInput(fechaVal);
-  if (!norm || !/^\d{4}-\d{2}-\d{2}$/.test(norm)) return null;
-  const [anioStr, mesStr, diaStr] = norm.split('-');
-  const anio = parseInt(anioStr, 10);
-  const mes = parseInt(mesStr, 10) - 1;
-  const dia = parseInt(diaStr, 10);
-  if (isNaN(anio) || isNaN(mes) || isNaN(dia)) return null;
-
-  const hoyD = new Date();
-  let edad = hoyD.getFullYear() - anio;
-  const m = hoyD.getMonth() - mes;
-  if (m < 0 || (m === 0 && hoyD.getDate() < dia)) {
-    edad--;
-  }
-  return (edad >= 0 && edad < 120) ? edad : null;
-}
-window.calcularEdad = calcularEdad;
-
-function esCumpleanosFecha(fechaVal) {
-  if (!fechaVal) return false;
-  const norm = normalizarFechaParaInput(fechaVal);
-  if (!norm || !/^\d{4}-\d{2}-\d{2}$/.test(norm)) return false;
-  const parts = norm.split('-');
-  const mes = parseInt(parts[1], 10);
-  const dia = parseInt(parts[2], 10);
-  const hoyD = new Date();
-  return (hoyD.getMonth() + 1 === mes && hoyD.getDate() === dia);
-}
-window.esCumpleanosFecha = esCumpleanosFecha;
-
-function formatearFechaNacimientoLegible(fechaVal) {
-  if (!fechaVal) return '';
-  const norm = normalizarFechaParaInput(fechaVal);
-  if (!norm || !/^\d{4}-\d{2}-\d{2}$/.test(norm)) return String(fechaVal);
-  const [yyyy, mmStr, ddStr] = norm.split('-');
-  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-  const mIdx = parseInt(mmStr, 10) - 1;
-  const mesNom = meses[mIdx] || mmStr;
-  return `${parseInt(ddStr, 10)} ${mesNom} ${yyyy}`;
-}
-window.formatearFechaNacimientoLegible = formatearFechaNacimientoLegible;
-
-function obtenerEstadoCumpleanos(fechaVal) {
-  if (!fechaVal) return null;
-  const norm = normalizarFechaParaInput(fechaVal);
-  if (!norm || !/^\d{4}-\d{2}-\d{2}$/.test(norm)) return null;
-  const [anioStr, mesStr, diaStr] = norm.split('-');
-  const anio = parseInt(anioStr, 10);
-  const mes = parseInt(mesStr, 10) - 1;
-  const dia = parseInt(diaStr, 10);
-  if (isNaN(mes) || isNaN(dia)) return null;
-
-  const hoyD = new Date();
-  const hoyAnio = hoyD.getFullYear();
-  const hoyCero = new Date(hoyAnio, hoyD.getMonth(), hoyD.getDate(), 0, 0, 0, 0);
-
-  // Fecha de cumpleaños este año
-  let proximoCump = new Date(hoyAnio, mes, dia, 0, 0, 0, 0);
-
-  // Si ya pasó este año, el próximo es el año que viene
-  if (proximoCump.getTime() < hoyCero.getTime()) {
-    proximoCump = new Date(hoyAnio + 1, mes, dia, 0, 0, 0, 0);
-  }
-
-  const diffMs = proximoCump.getTime() - hoyCero.getTime();
-  const diasFaltan = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  const esHoy = (diasFaltan === 0);
-  const edadCumplida = (!isNaN(anio) && anio > 1900) ? (proximoCump.getFullYear() - anio) : null;
-  const fLegible = formatearFechaNacimientoLegible(fechaVal);
-
-  return {
-    esHoy,
-    esProximo: (diasFaltan > 0 && diasFaltan <= 30),
-    diasFaltan,
-    edad: edadCumplida,
-    fechaLegible: fLegible
-  };
-}
-window.obtenerEstadoCumpleanos = obtenerEstadoCumpleanos;
-
-function capitalizarPalabra(str) {
-  if (!str) return '';
-  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-}
-window.capitalizarPalabra = capitalizarPalabra;
-
-function obtenerPrimerNombreYPrimerApellido(nombreCompleto) {
-  if (!nombreCompleto) return 'Colaborador';
-  const clean = String(nombreCompleto).trim();
-  if (!clean) return 'Colaborador';
-  const partes = clean.split(/\s+/);
-
-  if (partes.length === 1) {
-    return capitalizarPalabra(partes[0]);
-  }
-  if (partes.length === 2) {
-    return `${capitalizarPalabra(partes[1])} ${capitalizarPalabra(partes[0])}`;
-  }
-  if (partes.length >= 3) {
-    // Formato oficial habitual en nóminas de Ecuador:
-    // [APELLIDO PATERNO] [APELLIDO MATERNO] [PRIMER NOMBRE] [SEGUNDO NOMBRE...]
-    // Ejemplo: ABALCO CHUQUIN NAYDELIN RUBIELA -> Naydelin Abalco
-    const primerApellido = capitalizarPalabra(partes[0]);
-    const primerNombre = capitalizarPalabra(partes[2]);
-    return `${primerNombre} ${primerApellido}`;
-  }
-  return clean;
-}
-window.obtenerPrimerNombreYPrimerApellido = obtenerPrimerNombreYPrimerApellido;
-
-window.renderDirectorioCards = function (lista) {
-  const container = $('directorioGridContainer');
-  if (!container) return;
-
-  container.innerHTML = lista.map(emp => {
-    const esActivo = emp.activo !== 'NO';
-    const supUpper = String(emp.supervisor || '').toUpperCase();
-    const esAdmin = supUpper === 'SUPERVISOR ADMIN';
-    const esSup = supUpper === 'SI';
-
-    let rolBadge = `<span class="dir-badge-pill dir-badge-rol-reg"><i class="fas fa-user"></i> Empleado</span>`;
-    if (esAdmin) {
-      rolBadge = `<span class="dir-badge-pill dir-badge-rol-admin"><i class="fas fa-crown"></i> Sup. Admin</span>`;
-    } else if (esSup) {
-      rolBadge = `<span class="dir-badge-pill dir-badge-rol-sup"><i class="fas fa-user-shield"></i> Supervisor</span>`;
-    }
-
-    const rawTel = (emp.telefono || '').toString().trim();
-    let wpBadgeHtml = '';
-    if (rawTel && rawTel.length >= 7) {
-      wpBadgeHtml = `
-            <a href="javascript:void(0)" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" title="Enviar WhatsApp a ${escapeHtml(emp.nombre)}" style="color:#16a34a; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-size:11.5px;">
-              <i class="fab fa-whatsapp" style="font-size:13px;"></i> ${escapeHtml(rawTel)}
-            </a>`;
-    } else {
-      wpBadgeHtml = `
-            <span style="color:#94a3b8; font-size:11px; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" onclick="window.abrirModalEditarEmpleado('${emp.id}')" title="Clic para agregar WhatsApp">
-              <i class="fab fa-whatsapp" style="color:#cbd5e1;"></i> Sin registrar
-            </span>`;
-    }
-
-    const rawFNac = obtenerFechaNacimientoEmpleado(emp);
-    const estadoC = obtenerEstadoCumpleanos(rawFNac);
-    const fNacLegible = estadoC ? estadoC.fechaLegible : formatearFechaNacimientoLegible(rawFNac);
-
-    let fNacCardHtml = '';
-    if (estadoC && estadoC.esHoy) {
-      fNacCardHtml = `
-            <span style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 3px rgba(245,158,11,0.2);" title="¡Hoy es su cumpleaños! Fecha: ${escapeHtml(fNacLegible)}">
-              🎂 ¡Hoy! ${estadoC.edad !== null ? `(${estadoC.edad} años)` : ''}
-            </span>`;
-    } else if (estadoC && estadoC.diasFaltan <= 7) {
-      fNacCardHtml = `
-            <span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:750; display:inline-flex; align-items:center; gap:4px;" title="Próximo cumpleaños en ${estadoC.diasFaltan} días (${escapeHtml(fNacLegible)})">
-              🎉 En ${estadoC.diasFaltan} día${estadoC.diasFaltan > 1 ? 's' : ''} ${estadoC.edad !== null ? `(${estadoC.edad} a.)` : ''}
-            </span>`;
-    } else if (estadoC && estadoC.diasFaltan <= 30) {
-      fNacCardHtml = `
-            <span style="background:#f0f9ff; color:#0369a1; border:1px solid #bae6fd; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" title="Cumpleaños próximo: ${escapeHtml(fNacLegible)}">
-              🗓️ En ${estadoC.diasFaltan} días ${estadoC.edad !== null ? `(${estadoC.edad} a.)` : ''}
-            </span>`;
-    } else if (fNacLegible) {
-      const edadEmp = calcularEdad(rawFNac);
-      fNacCardHtml = `
-            <span style="color:#1e293b; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="Fecha de nacimiento">
-              ${escapeHtml(fNacLegible)} ${edadEmp !== null ? `<span style="color:#64748b; font-size:10.5px; font-weight:500;">(${edadEmp} a.)</span>` : ''}
-            </span>`;
-    } else {
-      fNacCardHtml = `
-            <span style="color:#94a3b8; font-size:11px; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" onclick="window.abrirModalEditarEmpleado('${emp.id}')" title="Clic para registrar fecha de nacimiento">
-              <i class="fas fa-calendar-plus" style="color:#cbd5e1;"></i> Sin registrar
-            </span>`;
-    }
-
-    const almNorm = resolverAlmuerzoHoyEmpleado(emp);
-    let almBadge = `<span style="font-size:10px; color:#94a3b8; font-weight:600;"><i class="fas fa-minus-circle"></i> Sin registro</span>`;
-    if (almNorm === 'SI') {
-      almBadge = `<span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:750;"><i class="fas fa-utensils"></i> Planta</span>`;
-    } else if (almNorm === 'NO') {
-      almBadge = `<span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:750;"><i class="fas fa-motorcycle"></i> Fuera</span>`;
-    }
-
-    // Foto con marco
-    const fotoHtml = (typeof photoCell === 'function') ? photoCell(emp, 'medium') : `
-          <div style="width:58px; height:58px; border-radius:50%; background:linear-gradient(135deg, var(--red), var(--red-dk)); color:white; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px;">
-            ${(emp.nombre || '?').charAt(0)}
-          </div>`;
-
-    return `
-          <div class="dir-emp-card">
-            <!-- Header de Tarjeta -->
-            <div class="dir-card-header">
-              <div class="dir-photo-container" onclick="mostrarDetalle('${emp.id}')" title="Ver detalle completo de asistencia">
-                ${fotoHtml}
-                <div class="dir-status-dot ${esActivo ? 'active' : 'inactive'}" title="${esActivo ? 'Usuario Activo' : 'Usuario Inactivo'}"></div>
-              </div>
-              <div style="flex:1; min-width:0;">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px;">
-                  <h4 style="margin:0; font-size:13.5px; font-weight:750; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" onclick="mostrarDetalle('${emp.id}')" title="${escapeHtml(emp.nombre)}">
-                    ${escapeHtml(emp.nombre)}
-                  </h4>
-                  ${rolBadge}
-                </div>
-                <div style="display:flex; gap:6px; align-items:center; margin-top:3px; font-size:11px; color:#64748b; font-weight:600;">
-                  <span style="background:#f1f5f9; padding:1px 6px; border-radius:4px; font-family:'Fira Code', monospace;">ID: ${escapeHtml(emp.id)}</span>
-                  <span>·</span>
-                  <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(emp.cargo || 'Sin cargo')}">${escapeHtml(emp.cargo || 'Sin cargo')}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Cuerpo de Tarjeta -->
-            <div class="dir-card-body">
-              <div class="dir-info-row">
-                <span><i class="fas fa-building" style="color:#64748b; margin-right:4px;"></i> Área:</span>
-                <strong style="color:#1e293b; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(emp.area || 'Sin área')}</strong>
-              </div>
-              <div class="dir-info-row">
-                <span><i class="fas fa-cake-candles" style="color:#f59e0b; margin-right:4px;"></i> F. Nacimiento:</span>
-                <div>${fNacCardHtml}</div>
-              </div>
-              <div class="dir-info-row">
-                <span><i class="fas fa-phone-alt" style="color:#64748b; margin-right:4px;"></i> Contacto:</span>
-                <div>${wpBadgeHtml}</div>
-              </div>
-              <div class="dir-info-row">
-                <span><i class="fas fa-user-check" style="color:#64748b; margin-right:4px;"></i> Estado:</span>
-                ${esActivo
-        ? `<span style="background:#dcfce7; color:#15803d; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:750; border:1px solid #bbf7d0;"><i class="fas fa-check-circle" style="font-size:8px;"></i> Activo</span>`
-        : `<span style="background:#fee2e2; color:#be123c; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:750; border:1px solid #fecaca;"><i class="fas fa-ban" style="font-size:8px;"></i> Inactivo</span>`
-      }
-              </div>
-              <div class="dir-info-row">
-                <span><i class="fas fa-utensils" style="color:#64748b; margin-right:4px;"></i> Almuerzo Hoy:</span>
-                <div style="display:flex; align-items:center; gap:6px;">
-                  ${almBadge}
-                  <select onchange="window.cambiarAlmuerzoDirectorio('${emp.id}', this.value)" class="dir-alm-select ${almNorm === 'SI' ? 'is-planta' : (almNorm === 'NO' ? 'is-fuera' : 'is-none')}" title="Cambiar almuerzo de hoy para este colaborador">
-                    <option value="SI" ${almNorm === 'SI' ? 'selected' : ''}>Planta (Sí)</option>
-                    <option value="NO" ${almNorm === 'NO' ? 'selected' : ''}>Fuera (No)</option>
-                    <option value="" ${!almNorm ? 'selected' : ''}>— Sin asignar —</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <!-- Barra de Acciones Rápidas -->
-            <div class="dir-card-actions">
-              <button type="button" class="dir-btn-action btn-edit" onclick="window.abrirModalEditarEmpleado('${emp.id}')" title="Editar ficha completa del usuario (Área, Cargo, PIN, Rol, WhatsApp)">
-                <i class="fas fa-user-edit"></i> Editar
-              </button>
-              <button type="button" class="dir-btn-action btn-detail" onclick="mostrarDetalle('${emp.id}')" title="Ver expediente de asistencia 360 y registros">
-                <i class="fas fa-id-badge"></i> Detalle
-              </button>
-              <button type="button" class="dir-btn-action btn-wp" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" title="Enviar WhatsApp directo">
-                <i class="fab fa-whatsapp"></i>
-              </button>
-              <button type="button" class="dir-btn-action btn-key" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear contraseña / PIN de vinculación">
-                <i class="fas fa-key"></i>
-              </button>
-              <button type="button" class="dir-btn-action" onclick="window.mostrarModalFuturos('${emp.id}')" title="Programar evento o ausencia (permiso, vacación)" style="background:#faf5ff; border-color:#e9d5ff; color:#7e22ce;">
-                <i class="fas fa-calendar-plus"></i>
-              </button>
-              <button type="button" class="dir-btn-action" onclick="window.mostrarModalCampoSupervisor('${emp.id}')" title="Registrar salida o trabajo en campo" style="background:#f0fdf4; border-color:#bbf7d0; color:#15803d;">
-                <i class="fas fa-hammer"></i>
-              </button>
-            </div>
-          </div>`;
-  }).join('');
-};
-
-window.renderDirectorioTabla = function (lista) {
-  const tbody = $('tbodyDirectorioTabla');
-  if (!tbody) return;
-
-  tbody.innerHTML = lista.map(emp => {
-    const esActivo = emp.activo !== 'NO';
-    const supUpper = String(emp.supervisor || '').toUpperCase();
-    const esAdmin = supUpper === 'SUPERVISOR ADMIN';
-    const esSup = supUpper === 'SI';
-
-    let rolBadge = `<span class="dir-badge-pill dir-badge-rol-reg"><i class="fas fa-user"></i> Empleado</span>`;
-    if (esAdmin) {
-      rolBadge = `<span class="dir-badge-pill dir-badge-rol-admin"><i class="fas fa-crown"></i> Sup. Admin</span>`;
-    } else if (esSup) {
-      rolBadge = `<span class="dir-badge-pill dir-badge-rol-sup"><i class="fas fa-user-shield"></i> Supervisor</span>`;
-    }
-
-    const rawTel = (emp.telefono || '').toString().trim();
-    let wpCell = `<span style="color:#94a3b8; font-size:11px;">—</span>`;
-    if (rawTel && rawTel.length >= 7) {
-      wpCell = `
-            <a href="javascript:void(0)" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" style="color:#16a34a; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-size:11.5px;" title="Enviar WhatsApp">
-              <i class="fab fa-whatsapp"></i> ${escapeHtml(rawTel)}
-            </a>`;
-    }
-
-    const almNorm = resolverAlmuerzoHoyEmpleado(emp);
-
-    const fotoMini = (typeof photoCell === 'function') ? photoCell(emp, 'small') : `
-          <div style="width:30px; height:30px; border-radius:50%; background:var(--blue); color:white; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">
-            ${(emp.nombre || '?').charAt(0)}
-          </div>`;
-
-    return `
-          <tr style="border-bottom:1px solid #f1f5f9; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
-            <!-- Colaborador -->
-            <td style="padding:10px 12px;">
-              <div style="display:flex; align-items:center; gap:10px;">
-                <div style="cursor:pointer;" onclick="mostrarDetalle('${emp.id}')" title="Ver detalle">
-                  ${fotoMini}
-                </div>
-                <div>
-                  <div style="font-weight:750; font-size:12px; color:#0f172a; cursor:pointer;" onclick="mostrarDetalle('${emp.id}')" title="${escapeHtml(emp.nombre)}">
-                    ${escapeHtml(emp.nombre)}
-                  </div>
-                  <div style="font-size:10.5px; color:#64748b; font-family:'Fira Code', monospace; margin-top:1px;">
-                    ID: <strong>${escapeHtml(emp.id)}</strong>
-                  </div>
-                </div>
-              </div>
-            </td>
-
-            <!-- Área & Cargo -->
-            <td style="padding:10px 12px; font-size:11.5px;">
-              <div style="font-weight:700; color:#1e293b;">${escapeHtml(emp.area || '—')}</div>
-              <div style="font-size:10.5px; color:#64748b;">${escapeHtml(emp.cargo || '—')}</div>
-            </td>
-
-            <!-- F. Nacimiento -->
-            <td style="padding:10px 12px; font-size:11.5px; white-space:nowrap;">
-              ${(() => {
-                const rawN = obtenerFechaNacimientoEmpleado(emp);
-                const estadoC = (typeof obtenerEstadoCumpleanos === 'function')
-                  ? obtenerEstadoCumpleanos(rawN)
-                  : null;
-                const fLegible = estadoC ? estadoC.fechaLegible : formatearFechaNacimientoLegible(rawN);
-                const edad = estadoC ? estadoC.edad : calcularEdad(rawN);
-
-                if (estadoC && estadoC.esHoy) {
-                  return `
-                    <div style="display:flex; flex-direction:column; gap:2px;">
-                      <span style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:2.5px 8px; border-radius:6px; font-size:10.5px; font-weight:800; display:inline-flex; align-items:center; gap:4px; width:fit-content; box-shadow:0 1px 3px rgba(245,158,11,0.2);" title="¡Hoy es su cumpleaños!">
-                        🎂 ¡Hoy! ${edad !== null ? `(${edad} años)` : ''}
-                      </span>
-                      <span style="color:#475569; font-size:10.5px; font-weight:600;">${escapeHtml(fLegible)}</span>
-                    </div>`;
-                }
-                if (estadoC && estadoC.diasFaltan <= 7) {
-                  return `
-                    <div style="display:flex; flex-direction:column; gap:2px;">
-                      <span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:800; display:inline-flex; align-items:center; gap:4px; width:fit-content;" title="Próximo cumpleaños en ${estadoC.diasFaltan} días">
-                        🎉 En ${estadoC.diasFaltan} día${estadoC.diasFaltan > 1 ? 's' : ''} ${edad !== null ? `(${edad} a.)` : ''}
-                      </span>
-                      <span style="color:#64748b; font-size:10.5px;">${escapeHtml(fLegible)}</span>
-                    </div>`;
-                }
-                if (estadoC && estadoC.diasFaltan <= 30) {
-                  return `
-                    <div style="display:flex; flex-direction:column; gap:2px;">
-                      <span style="background:#f0f9ff; color:#0369a1; border:1px solid #bae6fd; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:4px; width:fit-content;" title="Cumpleaños próximo en ${estadoC.diasFaltan} días">
-                        🗓️ En ${estadoC.diasFaltan} días ${edad !== null ? `(${edad} a.)` : ''}
-                      </span>
-                      <span style="color:#64748b; font-size:10.5px;">${escapeHtml(fLegible)}</span>
-                    </div>`;
-                }
-                if (fLegible) {
-                  return `
-                    <div style="display:flex; flex-direction:column; gap:1px;">
-                      <span style="font-weight:700; color:#1e293b; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">
-                        <i class="fas fa-cake-candles" style="color:#f59e0b; font-size:10px;"></i> ${escapeHtml(fLegible)}
-                      </span>
-                      ${edad !== null ? `<span style="font-size:10.5px; color:#64748b;">${edad} años</span>` : ''}
-                    </div>`;
-                }
-                return `
-                  <span style="color:#94a3b8; font-size:11px; cursor:pointer;" onclick="window.abrirModalEditarEmpleado('${emp.id}')" title="Clic para registrar fecha de nacimiento">
-                    <i class="fas fa-calendar-plus" style="color:#cbd5e1; margin-right:3px;"></i>—
-                  </span>`;
-              })()}
-            </td>
-
-            <!-- Contacto WhatsApp -->
-            <td style="padding:10px 12px;">
-              ${wpCell}
-            </td>
-
-            <!-- Almuerzo Hoy -->
-            <td style="padding:10px 12px; text-align:center;">
-              <select onchange="window.cambiarAlmuerzoDirectorio('${emp.id}', this.value)" class="dir-alm-select ${almNorm === 'SI' ? 'is-planta' : (almNorm === 'NO' ? 'is-fuera' : 'is-none')}" title="Almuerzo de hoy: clic para modificar">
-                <option value="SI" ${almNorm === 'SI' ? 'selected' : ''}>🍱 Planta (Sí)</option>
-                <option value="NO" ${almNorm === 'NO' ? 'selected' : ''}>🥪 Fuera (No)</option>
-                <option value="" ${!almNorm ? 'selected' : ''}>⚪ Sin registro</option>
-              </select>
-            </td>
-
-            <!-- Acciones Rápidas -->
-            <td style="padding:10px 12px; text-align:center;">
-              <div class="dir-table-actions">
-                <button type="button" class="dir-table-btn" onclick="window.abrirModalEditarEmpleado('${emp.id}')" title="Editar Ficha de Usuario" style="color:#2563eb; border-color:#bfdbfe; background:#eff6ff;">
-                  <i class="fas fa-user-edit"></i>
-                </button>
-                <button type="button" class="dir-table-btn" onclick="mostrarDetalle('${emp.id}')" title="Ver Detalle de Asistencia 360" style="color:#475569;">
-                  <i class="fas fa-id-badge"></i>
-                </button>
-                <button type="button" class="dir-table-btn" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" title="Enviar WhatsApp" style="color:#16a34a; border-color:#bbf7d0; background:#f0fdf4;">
-                  <i class="fab fa-whatsapp"></i>
-                </button>
-                <button type="button" class="dir-table-btn" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear Contraseña / PIN" style="color:#be123c; border-color:#fecdd3; background:#fff1f2;">
-                  <i class="fas fa-key"></i>
-                </button>
-                <button type="button" class="dir-table-btn" onclick="window.mostrarModalFuturos('${emp.id}')" title="Programar Ausencia o Permiso" style="color:#7c3aed; border-color:#ddd6fe; background:#f5f3ff;">
-                  <i class="fas fa-calendar-plus"></i>
-                </button>
-                <button type="button" class="dir-table-btn" onclick="window.mostrarModalCampoSupervisor('${emp.id}')" title="Registrar Trabajo en Campo" style="color:#059669; border-color:#a7f3d0; background:#ecfdf5;">
-                  <i class="fas fa-hammer"></i>
-                </button>
-              </div>
-            </td>
-          </tr>`;
-  }).join('');
-};
-
-window.cambiarAlmuerzoDirectorio = async function (empleadoId, nuevoEstado) {
-  if (!empleadoId) return;
-  const estadoNorm = normalizarEstadoAlmuerzo(nuevoEstado); // 'SI', 'NO', or ''
-  const fHoy = hoy || getLocalHoyStr();
-
-  const idx = empCache.findIndex(e => String(e.id).trim() === String(empleadoId).trim());
-  if (idx === -1) return;
-
-  const emp = empCache[idx];
-  const estadoAnterior = emp.almuerzoHoy || '';
-
-  // Actualización optimista inmediata en memoria
-  emp.almuerzoHoy = estadoNorm;
-
-  if (!emp.registros) emp.registros = [];
-  let reg = emp.registros.find(r => (r.tipo === 'ENTRADA' || r.tipo === 'SOLO_ALMUERZO' || r.tipo === 'ENTRADA_CAMPO') && normalizarFechaStr(r.fecha) === fHoy);
-  let regAnterior = reg ? reg.almuerzo : null;
-
-  if (reg) {
-    reg.almuerzo = estadoNorm;
-  } else if (estadoNorm) {
-    // Crear registro local SOLO_ALMUERZO para sincronizar conteos y reportes
-    emp.registros.push({
-      id: `${emp.id}_SOLO_ALMUERZO_${fHoy}`,
-      empleadoId: emp.id,
-      nombre: emp.nombre,
-      fecha: fHoy,
-      tipo: 'SOLO_ALMUERZO',
-      almuerzo: estadoNorm,
-      hora: new Date().toLocaleTimeString('es-EC', { hour12: false })
-    });
-  }
-
-  // Refrescar UI y KPIs de inmediato
-  if (typeof filtrarDirectorio === 'function') filtrarDirectorio();
-  if (typeof cargarAsistencia === 'function') cargarAsistencia();
-  if (typeof cargarDashboard === 'function') cargarDashboard();
-
-  const etiquetaAlm = estadoNorm === 'SI' ? 'Planta' : (estadoNorm === 'NO' ? 'Fuera' : 'Sin asignar');
-  mostrarToast(`Almuerzo hoy: ${etiquetaAlm}`, 'info');
-
-  try {
-    const res = await jsonpRequest({
-      accion: 'actualizarAlmuerzoSupervisor',
-      empleadoId: empleadoId,
-      almuerzo: estadoNorm,
-      fecha: fHoy
-    });
-    if (res && !res.error) {
-      mostrarToast(`Almuerzo guardado correctamente (${etiquetaAlm})`, 'success');
-      limpiarCachesLocales();
-    } else {
-      mostrarToast(res?.error || 'Error al guardar almuerzo en servidor', 'error');
-      // Revertir optimismo
-      emp.almuerzoHoy = estadoAnterior;
-      if (reg) reg.almuerzo = regAnterior;
-      if (typeof filtrarDirectorio === 'function') filtrarDirectorio();
-      if (typeof cargarAsistencia === 'function') cargarAsistencia();
-      if (typeof cargarDashboard === 'function') cargarDashboard();
-    }
-  } catch (err) {
-    console.error("Error en cambiarAlmuerzoDirectorio:", err);
-    mostrarToast('Error de conexión al actualizar almuerzo', 'error');
-    emp.almuerzoHoy = estadoAnterior;
-    if (reg) reg.almuerzo = regAnterior;
-    if (typeof filtrarDirectorio === 'function') filtrarDirectorio();
-    if (typeof cargarAsistencia === 'function') cargarAsistencia();
-    if (typeof cargarDashboard === 'function') cargarDashboard();
-  }
-};
-
-// ============================================================
-// EXPORTACIÓN A EXCEL DEL DIRECTORIO
-// ============================================================
-window.exportarDirectorioExcel = async function () {
-
-  const lista = (window.directorioUltimaLista && window.directorioUltimaLista.length > 0)
-    ? window.directorioUltimaLista
-    : (empCache || []);
-
-  if (lista.length === 0) {
-    mostrarToast('No hay colaboradores para exportar', 'warning');
-    return;
-  }
-
-  mostrarLoader(true);
-  try {
-    await window.asegurarXLSX();
-    const headers = [
-      "Cédula / ID",
-      "Nombre Completo",
-      "Área / Departamento",
-      "Cargo",
-      "WhatsApp / Teléfono",
-      "Fecha de Nacimiento",
-      "Edad",
-      "PIN / Contraseña",
-      "Rol en el Sistema",
-      "Estado Nómina",
-      "Cultura Tcontrol",
-      "Rol de Pagos",
-      "Almuerzo Hoy"
-    ];
-
-    const rows = lista.map(emp => {
-      const supUpper = String(emp.supervisor || '').toUpperCase();
-      const rolTexto = (supUpper === 'SUPERVISOR ADMIN') ? 'Supervisor Admin' : (supUpper === 'SI' ? 'Supervisor' : 'Empleado Regular');
-      const estadoTexto = (emp.activo === 'NO') ? 'Inactivo' : 'Activo';
-      const culturaTexto = (emp.cultura_habilitada === false || emp.cultura_activa === false) ? 'Exonerado' : 'Habilitado';
-      const rolPagosTexto = emp.id_dispositivo ? 'Vinculado' : 'Sin Rol';
-      const almNorm = resolverAlmuerzoHoyEmpleado(emp);
-      const almuerzoTexto = almNorm === 'SI' ? 'Planta' : (almNorm === 'NO' ? 'Fuera' : 'Sin registro');
-      const rawNac = obtenerFechaNacimientoEmpleado(emp);
-      const edadCalc = calcularEdad(rawNac);
-      const fNacTexto = formatearFechaNacimientoLegible(rawNac);
-
-      return [
-        emp.id ? String(emp.id) : '',
-        emp.nombre || '',
-        emp.area || 'SIN ASIGNAR',
-        emp.cargo || 'SIN ASIGNAR',
-        emp.telefono || '',
-        fNacTexto || '',
-        edadCalc !== null ? edadCalc : '',
-        emp.pin ? String(emp.pin) : '',
-        rolTexto,
-        estadoTexto,
-        culturaTexto,
-        rolPagosTexto,
-        almuerzoTexto
-      ];
-    });
-
-    const dataAoA = [headers, ...rows];
-    const ws = XLSX.utils.aoa_to_sheet(dataAoA);
-
-    // Ajustar anchos de columnas
-    ws['!cols'] = [
-      { wch: 16 }, // Cédula
-      { wch: 32 }, // Nombre
-      { wch: 22 }, // Área
-      { wch: 22 }, // Cargo
-      { wch: 18 }, // WhatsApp
-      { wch: 18 }, // Fecha de Nacimiento
-      { wch: 8 },  // Edad
-      { wch: 12 }, // PIN
-      { wch: 20 }, // Rol
-      { wch: 14 }, // Estado
-      { wch: 18 }, // Cultura
-      { wch: 15 }, // Rol de Pagos
-      { wch: 16 }  // Almuerzo
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Directorio Colaboradores");
-
-    const hoyStr = getLocalHoyStr();
-    const filename = `Directorio_Personal_TCONTROL_${hoyStr}.xlsx`;
-    XLSX.writeFile(wb, filename);
-
-    mostrarLoader(false);
-    mostrarToast(`Directorio exportado exitosamente (${rows.length} colaboradores)`, 'success');
-  } catch (err) {
-    mostrarLoader(false);
-    console.error("Error al exportar directorio a Excel:", err);
-    mostrarToast('Error al generar archivo Excel: ' + err.message, 'error');
-  }
-};
-
-// ============================================================
-// MODALES DE EDICIÓN Y CREACIÓN DE USUARIOS EN DIRECTORIO
-// ============================================================
-window.abrirModalEditarEmpleado = function (empleadoId) {
-  if (!empCache) return;
-  const emp = empCache.find(e => e.id === empleadoId);
-  if (!emp) {
-    mostrarToast('Colaborador no encontrado', 'error');
-    return;
-  }
-
-  if ($('editDirEmpIdOriginal')) $('editDirEmpIdOriginal').value = emp.id;
-  if ($('editDirId')) $('editDirId').value = emp.id;
-  if ($('editDirIdBadge')) $('editDirIdBadge').textContent = emp.id;
-  if ($('editDirNombreBadge')) $('editDirNombreBadge').textContent = emp.nombre;
-  if ($('editDirNombre')) $('editDirNombre').value = emp.nombre || '';
-  if ($('editDirArea')) $('editDirArea').value = emp.area || '';
-  if ($('editDirCargo')) $('editDirCargo').value = emp.cargo || '';
-  if ($('editDirTelefono')) $('editDirTelefono').value = emp.telefono || '';
-  if ($('editDirPin')) $('editDirPin').value = emp.pin || '';
-
-  const fNacInputVal = normalizarFechaParaInput(obtenerFechaNacimientoEmpleado(emp));
-  if ($('editDirFechaNacimiento')) $('editDirFechaNacimiento').value = fNacInputVal;
-
-  const supUpper = String(emp.supervisor || '').toUpperCase();
-  if ($('editDirSupervisor')) {
-    if (supUpper === 'SUPERVISOR ADMIN') $('editDirSupervisor').value = 'SUPERVISOR ADMIN';
-    else if (supUpper === 'SI') $('editDirSupervisor').value = 'SI';
-    else $('editDirSupervisor').value = 'NO';
-  }
-
-  if ($('editDirActivo')) {
-    $('editDirActivo').value = (emp.activo === 'NO') ? 'NO' : 'SI';
-  }
-
-  if ($('editDirCultura')) {
-    $('editDirCultura').value = (emp.cultura_habilitada === false || emp.cultura_activa === false) ? 'NO' : 'SI';
-  }
-
-  const imgPreview = $('editDirFotoPreview');
-  if (imgPreview) {
-    imgPreview.src = emp.foto_url || './Logotipo T Control.png';
-  }
-
-  const modal = $('modalEditarEmpleadoDirectorio');
-  if (modal) modal.classList.remove('hidden');
-};
-
-window.cerrarModalEditarEmpleadoDirectorio = function () {
-  const modal = $('modalEditarEmpleadoDirectorio');
-  if (modal) modal.classList.add('hidden');
-};
-
-window.guardarEdicionEmpleadoDirectorio = async function () {
-  const id = $('editDirId') ? $('editDirId').value.trim() : '';
-  const nombre = $('editDirNombre') ? $('editDirNombre').value.trim() : '';
-  const area = $('editDirArea') ? $('editDirArea').value.trim().toUpperCase() : '';
-  const cargo = $('editDirCargo') ? $('editDirCargo').value.trim() : '';
-  const telefono = $('editDirTelefono') ? $('editDirTelefono').value.trim() : '';
-  const pin = $('editDirPin') ? $('editDirPin').value.trim() : '';
-  const supervisor = $('editDirSupervisor') ? $('editDirSupervisor').value : 'NO';
-  const activo = $('editDirActivo') ? $('editDirActivo').value : 'SI';
-  const cultura = $('editDirCultura') ? $('editDirCultura').value : 'SI';
-  const fechaNacimiento = $('editDirFechaNacimiento') ? $('editDirFechaNacimiento').value.trim() : '';
-
-  if (!id || !nombre || !area || !cargo) {
-    mostrarToast('Por favor, completa los campos obligatorios (*)', 'warning');
-    return;
-  }
-
-  const empActual = (empCache || []).find(e => String(e.id).trim() === String(id).trim());
-  let pinFinal = pin;
-  if (!pinFinal && empActual) {
-    pinFinal = empActual.pin || '';
-  } else if (pinFinal && (pinFinal.length !== 4 || isNaN(pinFinal))) {
-    mostrarToast('Si ingresas un PIN, debe tener exactamente 4 dígitos numéricos', 'warning');
-    return;
-  }
-
-  const datos = {
-    nombre: nombre,
-    area: area,
-    cargo: cargo,
-    telefono: telefono,
-    pin: pinFinal,
-    supervisor: supervisor,
-    activo: activo,
-    cultura_habilitada: (cultura === 'SI'),
-    cultura_activa: (cultura === 'SI'),
-    fechaNacimiento: fechaNacimiento
-  };
-
-  mostrarLoader(true);
-  try {
-    let res = null;
-    if (window.FirebaseBackend && window.USE_FIREBASE) {
-      res = await window.FirebaseBackend.actualizarEmpleado({
-        empleadoId: id,
-        datos: datos
-      });
-    } else {
-      res = await jsonpRequest({
-        accion: 'actualizarEmpleado',
-        empleadoId: id,
-        datos: JSON.stringify(datos)
-      });
-    }
-
-    mostrarLoader(false);
-
-    if (res && (res.ok || !res.error)) {
-      // Actualizar registro en empCache
-      const idx = empCache.findIndex(e => e.id === id);
-      if (idx > -1) {
-        Object.assign(empCache[idx], datos);
-      }
-
-      cerrarModalEditarEmpleadoDirectorio();
-      mostrarToast(`¡Colaborador ${nombre} actualizado exitosamente!`, 'success');
-
-      // Refrescar vistas
-      cargarDirectorio();
-      if (typeof cargarAsistencia === 'function' && panelActual === 'asistencia') {
-        cargarAsistencia();
-      }
-    } else {
-      mostrarToast(res?.error || 'Error al actualizar colaborador', 'error');
-    }
-  } catch (err) {
-    mostrarLoader(false);
-    console.error("Error al guardar edición de empleado:", err);
-    mostrarToast('Error de conexión al guardar cambios', 'error');
-  }
-};
-
-window.obtenerSiguienteIdDisponible = function () {
-  const todos = [...(empCache || []), ...(window.empEliminadosCache || [])];
-  const idsNumericos = todos
-    .map(e => {
-      const clean = String(e.id || '').trim();
-      if (/^\d+$/.test(clean)) {
-        return parseInt(clean, 10);
-      }
-      return null;
-    })
-    .filter(num => num !== null && num > 0);
-
-  if (idsNumericos.length === 0) return '1';
-
-  const ocupados = new Set(todos.map(e => String(e.id || '').trim()));
-  let maxId = Math.max(...idsNumericos);
-  let siguiente = maxId + 1;
-  while (ocupados.has(String(siguiente))) {
-    siguiente++;
-  }
-  return String(siguiente);
-};
-
-window.abrirModalNuevoEmpleadoDirectorio = function () {
-  const form = $('formNuevoEmpleadoDirectorio');
-  if (form) form.reset();
-  if ($('nuevoDirFechaNacimiento')) $('nuevoDirFechaNacimiento').value = '';
-
-  // Autocalcular y rellenar el siguiente ID disponible
-  const siguienteId = window.obtenerSiguienteIdDisponible();
-  if ($('nuevoDirId')) {
-    $('nuevoDirId').value = siguienteId;
-  }
-
-  const modal = $('modalNuevoEmpleadoDirectorio');
-  if (modal) modal.classList.remove('hidden');
-};
-
-window.cerrarModalNuevoEmpleadoDirectorio = function () {
-  const modal = $('modalNuevoEmpleadoDirectorio');
-  if (modal) modal.classList.add('hidden');
-};
-
-window.guardarNuevoEmpleadoDirectorio = async function () {
-  const id = $('nuevoDirId') ? $('nuevoDirId').value.trim() : '';
-  const nombre = $('nuevoDirNombre') ? $('nuevoDirNombre').value.trim() : '';
-  const area = $('nuevoDirArea') ? $('nuevoDirArea').value.trim().toUpperCase() : '';
-  const cargo = $('nuevoDirCargo') ? $('nuevoDirCargo').value.trim() : '';
-  const telefono = $('nuevoDirTelefono') ? $('nuevoDirTelefono').value.trim() : '';
-  const fechaNacimiento = $('nuevoDirFechaNacimiento') ? $('nuevoDirFechaNacimiento').value.trim() : '';
-  const supervisor = $('nuevoDirSupervisor') ? $('nuevoDirSupervisor').value : 'NO';
-
-  if (!id || !nombre || !area || !cargo) {
-    mostrarToast('Por favor, completa todos los campos requeridos (*)', 'warning');
-    return;
-  }
-
-  // Validar si ya existe el ID
-  if (empCache && empCache.some(e => String(e.id).trim() === String(id).trim())) {
-    mostrarToast(`Ya existe un colaborador con el ID ${id}`, 'error');
-    return;
-  }
-
-  const empObj = {
-    id: id,
-    nombre: nombre,
-    area: area,
-    cargo: cargo,
-    pin: '', // Clave vacía: el usuario creará su propio PIN/contraseña en su primer inicio de sesión
-    telefono: telefono,
-    supervisor: supervisor,
-    activo: 'SI',
-    cultura_habilitada: true,
-    cultura_activa: true,
-    fechaNacimiento: fechaNacimiento,
-    fecha_ingreso: (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0],
-    creado: new Date().toISOString()
-  };
-
-  mostrarLoader(true);
-  try {
-    let res = null;
-    if (window.FirebaseBackend && window.USE_FIREBASE) {
-      res = await window.FirebaseBackend.actualizarMasivoEmpleados({
-        empleados: [empObj]
-      });
-    } else {
-      res = await jsonpRequest({
-        accion: 'actualizarMasivoEmpleados',
-        empleados: JSON.stringify([empObj])
-      });
-    }
-
-    mostrarLoader(false);
-
-    if (res && (res.ok || !res.error)) {
-      // Agregar a empCache local
-      if (empCache) {
-        empCache.push(empObj);
-        empCache.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
-      }
-
-      cerrarModalNuevoEmpleadoDirectorio();
-      mostrarToast(`¡Colaborador ${nombre} registrado con éxito!`, 'success');
-
-      // Identificar al supervisor en sesión para el reporte
-      let creadorNombre = 'Supervisor';
-      try {
-        const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
-        if (sessionStr) {
-          const sess = JSON.parse(sessionStr);
-          const supEmp = (empCache || []).find(x => String(x.id).trim() === String(sess.id).trim());
-          creadorNombre = supEmp?.nombre || sess.nombre || `Supervisor (${sess.id})`;
-        }
-      } catch(e) {}
-
-      // Enviar notificación con enlace al nuevo colaborador y alerta a supervisores
-      if (window.OpenWAService && typeof window.OpenWAService.notificarNuevoEmpleadoRegistrado === 'function') {
-        window.OpenWAService.notificarNuevoEmpleadoRegistrado(empObj, creadorNombre).then(waRes => {
-          if (waRes && waRes.ok) {
-            if (waRes.enviadoColaborador) {
-              mostrarToast(`📲 Notificación y enlace enviados al WhatsApp de ${nombre}`, 'success');
-            } else if (telefono) {
-              mostrarToast(`Colaborador guardado. (Nota WhatsApp: no se pudo entregar al colaborador)`, 'info');
-            }
-            if (waRes.supervisoresNotificados > 0) {
-              console.log(`[OpenWA] ${waRes.supervisoresNotificados} supervisores alertados sobre el nuevo usuario.`);
-            }
-          }
-        }).catch(errWa => {
-          console.warn("Error enviando notificaciones WhatsApp:", errWa);
-        });
-      }
-
-      cargarDirectorio();
-    } else {
-      mostrarToast(res?.error || 'Error al registrar colaborador', 'error');
-    }
-  } catch (err) {
-    mostrarLoader(false);
-    console.error("Error al registrar nuevo empleado:", err);
-    mostrarToast('Error de conexión al registrar colaborador', 'error');
-  }
-};
-
 // ============================================================
 // MODAL PERMISO SUPERVISOR
 // ============================================================
@@ -9473,1737 +8169,8 @@ if ($('togglePin')) {
 
 // ============================================================
 // CREADOR INTERACTIVO DE REPORTES CUSTOM
+// Extraido a: JS/supervisor/supervisor_reportes_custom.js
 // ============================================================
-const DEFAULT_COLUMNAS_CUSTOM = ['area', 'asistencias', 'faltas', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
-
-function obtenerColumnasCustomActivas() {
-  const saved = localStorage.getItem('columnasCustomActivasReporte');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    } catch (e) { }
-  }
-  return [...DEFAULT_COLUMNAS_CUSTOM];
-}
-
-function guardarColumnasCustomActivas(columnas) {
-  localStorage.setItem('columnasCustomActivasReporte', JSON.stringify(columnas));
-}
-
-let columnasCustomActivas = obtenerColumnasCustomActivas();
-window.columnasCustomActivas = columnasCustomActivas;
-window.obtenerColumnasCustomActivas = obtenerColumnasCustomActivas;
-let _sortCustomReport = { col: 'nombre', dir: 'asc' };
-
-window.inicializarReporteInteractivo = function () {
-  actualizarReporteInteractivo();
-};
-
-window.actualizarReporteInteractivo = function () {
-  const rango = window.obtenerRangoFechasReportes();
-  const bodyT = $('reporteCustomBody');
-
-  // Asegurar que selectores de periodo tengan opciones si aún no las tienen
-  const selectPeriodo = $('periodoMensual');
-  if (selectPeriodo && (!selectPeriodo.options || selectPeriodo.options.length === 0)) {
-    const listaP = (periodos && periodos.length) ? periodos : ((typeof generarPeriodos === 'function') ? generarPeriodos() : []);
-    selectPeriodo.innerHTML = listaP.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
-  }
-
-  const emps = (empCache && empCache.length) ? empCache : (window.empCache || []);
-  const tieneEmpleados = (emps && emps.length) || (window.empEliminadosCache && window.empEliminadosCache.length) || (window._cacheDesvinculados && window._cacheDesvinculados.length);
-
-  if (!tieneEmpleados) {
-    if (bodyT) {
-      bodyT.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:45px; color:var(--g500);">
-        <i class="fas fa-spinner fa-spin" style="font-size:24px; color:var(--blue); margin-bottom:10px; display:block;"></i>
-        Cargando datos de colaboradores y registros...
-      </td></tr>`;
-    }
-    if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = 'Cargando información...';
-    return;
-  }
-
-  cargarReportes();
-  renderizarColumnasInteractivas();
-  filtrarReporteInteractivo();
-};
-
-window.renderizarColumnasInteractivas = function () {
-  const container = $('columnasSelectorInteractivo');
-  if (!container) return;
-
-  container.innerHTML = '';
-
-  COLUMNAS_DISPONIBLES.forEach(col => {
-    const isActiva = columnasCustomActivas.includes(col.id);
-    const chip = document.createElement('div');
-    chip.className = `chip-item ${isActiva ? 'activa' : 'disponible'}`;
-    
-    if (isActiva) {
-      chip.style.borderColor = col.color || '#2563eb';
-      chip.style.backgroundColor = col.colorBg || '#eff6ff';
-      chip.style.color = col.color || '#1e40af';
-      chip.innerHTML = `<i class="fas ${col.icono || 'fa-check-circle'}" style="color:${col.color || '#2563eb'};"></i> <span style="font-weight:700;">${col.label}</span>`;
-    } else {
-      chip.style.borderColor = 'var(--g200)';
-      chip.style.backgroundColor = '#ffffff';
-      chip.style.color = 'var(--g600)';
-      chip.innerHTML = `<i class="fas ${col.icono || 'fa-circle'}" style="opacity:0.4;"></i> <span>${col.label}</span>`;
-    }
-
-    chip.addEventListener('click', () => {
-      if (isActiva) {
-        quitarColumnaCustom(col.id);
-      } else {
-        agregarColumnaCustom(col.id);
-      }
-    });
-
-    container.appendChild(chip);
-  });
-
-  if ($('lblCountColsActivas')) {
-    $('lblCountColsActivas').textContent = columnasCustomActivas.length;
-  }
-};
-
-window.toggleSelectorColumnas = function () {
-  const c = $('reportsLayoutContainer');
-  if (!c) return;
-  const isOculto = c.style.display === 'none' || getComputedStyle(c).display === 'none';
-  c.style.display = isOculto ? 'block' : 'none';
-  const btn = $('btnToggleColsLayout');
-  if (btn) {
-    btn.classList.toggle('active', isOculto);
-    btn.style.background = isOculto ? '#eff6ff' : '#ffffff';
-    btn.style.borderColor = isOculto ? '#2563eb' : 'var(--g300)';
-    btn.style.color = isOculto ? '#1e40af' : 'var(--g700)';
-  }
-};
-
-window.agregarColumnaCustom = function (colId) {
-  if (!columnasCustomActivas.includes(colId)) {
-    columnasCustomActivas.push(colId);
-    guardarColumnasCustomActivas(columnasCustomActivas);
-    renderizarColumnasInteractivas();
-    filtrarReporteInteractivo();
-  }
-};
-
-window.quitarColumnaCustom = function (colId) {
-  const idx = columnasCustomActivas.indexOf(colId);
-  if (idx > -1) {
-    columnasCustomActivas.splice(idx, 1);
-    guardarColumnasCustomActivas(columnasCustomActivas);
-    renderizarColumnasInteractivas();
-    filtrarReporteInteractivo();
-  }
-};
-
-// Drag and Drop helpers
-window.allowDropCustom = function (e) {
-  e.preventDefault();
-};
-
-window.dragCustom = function (e, colId) {
-  e.dataTransfer.setData("text/plain", colId);
-};
-
-window.dropCustom = function (e, target) {
-  e.preventDefault();
-  const colId = e.dataTransfer.getData("text/plain");
-  if (!colId) return;
-
-  if (target === 'activas') {
-    agregarColumnaCustom(colId);
-  } else {
-    quitarColumnaCustom(colId);
-  }
-};
-
-window.sortReporteCustom = function (colId) {
-  if (_sortCustomReport.col === colId) {
-    _sortCustomReport.dir = _sortCustomReport.dir === 'asc' ? 'desc' : 'asc';
-  } else {
-    _sortCustomReport.col = colId;
-    _sortCustomReport.dir = 'asc';
-  }
-  filtrarReporteInteractivo();
-};
-
-window.setFiltroRapidoReporte = function (cargoVal, btnElement) {
-  if (cargoVal === 'desvinculados') {
-    const chkDesv = $('chkIncluirDesvinculadosRep');
-    if (chkDesv && !chkDesv.checked) chkDesv.checked = true;
-  } else if (cargoVal === 'eliminados') {
-    const chk = $('chkIncluirEliminadosRep');
-    if (chk && !chk.checked) chk.checked = true;
-  }
-  if ($('filtroCargoReporte')) {
-    $('filtroCargoReporte').value = cargoVal;
-  }
-  if (btnElement && btnElement.parentElement) {
-    const btns = btnElement.parentElement.querySelectorAll('.btn-filter, .btn-filter-pill');
-    btns.forEach(b => b.classList.remove('active'));
-    btnElement.classList.add('active');
-    // Actualizar el estilo visual para mostrar el botón activo con un color de fondo diferente
-    btns.forEach(b => {
-      b.style.background = '#f8fafc';
-      b.style.color = 'var(--g600)';
-      b.style.borderColor = 'var(--g200)';
-    });
-    const isElim = cargoVal === 'eliminados';
-    const isDesv = cargoVal === 'desvinculados';
-    btnElement.style.background = isDesv ? '#7c3aed' : (isElim ? '#e11d48' : 'var(--blue)');
-    btnElement.style.color = '#fff';
-    btnElement.style.borderColor = isDesv ? '#7c3aed' : (isElim ? '#e11d48' : 'var(--blue)');
-  }
-  if (typeof actualizarReporteInteractivo === 'function') actualizarReporteInteractivo();
-  if (typeof cargarReportes === 'function') cargarReportes();
-  filtrarReporteInteractivo();
-};
-
-window.obtenerDatosFiltradosReporteCustom = function (q = '', fCargo = '') {
-  q = (q || '').toLowerCase();
-  fCargo = (fCargo || '').toLowerCase();
-
-  const baseData = (window._reportesCustomData && window._reportesCustomData.length)
-    ? window._reportesCustomData
-    : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
-
-  return baseData.filter(e => {
-    let matchQ = !q || (e.nombre || '').toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q) || String(e.id || '').toLowerCase().includes(q);
-    let matchCargo = !fCargo;
-    if (fCargo === 'desvinculados') {
-      matchCargo = !!e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado' || (e.estadoBadge && e.estadoBadge.toLowerCase().includes('desvinculado')) || (e.motivo_salida && e.motivo_salida.length > 0);
-    } else if (fCargo === 'eliminados') {
-      matchCargo = !!e.esEliminado || e.activo === false || (e.area || '').toLowerCase() === 'eliminado' || (e.cargo || '').toLowerCase() === 'eliminado';
-    } else if (fCargo === 'sin asistencia') {
-      matchCargo = (e.asistencias === 0 || !e.asistencias);
-    } else if (fCargo) {
-      matchCargo = (e.cargo || '').toLowerCase() === fCargo;
-    }
-    return matchQ && matchCargo;
-  });
-};
-
-window.filtrarReporteInteractivo = function () {
-  let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-  let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-
-  const headerTr = $('reporteCustomHeaders');
-  const bodyT = $('reporteCustomBody');
-  if (!bodyT) return;
-
-  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
-    ? window.obtenerRangoFechasReportes()
-    : { R_INI: '', R_FIN: '', labelRango: '', labelCorto: '', esFiltroPersonalizado: false, indexPeriodo: 0 };
-
-  // Actualizar badge visual de estado del rango si existe
-  const badgeRango = $('badgeEstadoRangoReporte');
-  if (badgeRango) {
-    if (rango.esFiltroPersonalizado) {
-      badgeRango.className = 'badge-rango-activo badge-rango-filtro';
-      badgeRango.innerHTML = `<i class="fas fa-filter"></i> Filtro: <strong>${escapeHtml(rango.labelRango)}</strong>`;
-      badgeRango.style.display = 'inline-flex';
-    } else {
-      badgeRango.className = 'badge-rango-activo badge-rango-periodo';
-      badgeRango.innerHTML = `<i class="fas fa-calendar-alt"></i> Período: <strong>${escapeHtml(rango.labelRango)}</strong>`;
-      badgeRango.style.display = 'inline-flex';
-    }
-  }
-
-  // Headers
-  function sortIconCustom(colId) {
-    if (_sortCustomReport.col !== colId) return '<i class="fas fa-sort" style="opacity:.2;margin-left:4px;font-size:9px"></i>';
-    return _sortCustomReport.dir === 'asc'
-      ? '<i class="fas fa-sort-up" style="color:var(--red);margin-left:4px;font-size:9px"></i>'
-      : '<i class="fas fa-sort-down" style="color:var(--red);margin-left:4px;font-size:9px"></i>';
-  }
-
-  if (fCargo === 'almuerzos extra') {
-    // Ocultar personalizador de columnas cuando se muestran almuerzos extra
-    if ($('reportsLayoutContainer')) {
-      $('reportsLayoutContainer').style.display = 'none';
-    }
-
-    let extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
-
-    if (q) {
-      extras = extras.filter(ae =>
-        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
-        (ae.observaciones || '').toLowerCase().includes(q) ||
-        (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
-      );
-    }
-
-    // Ordenar
-    if (_sortCustomReport.col) {
-      extras.sort((a, b) => {
-        let va = a[_sortCustomReport.col] ?? '';
-        let vb = b[_sortCustomReport.col] ?? '';
-        if (typeof va === 'string') {
-          return _sortCustomReport.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-        }
-        return _sortCustomReport.dir === 'asc' ? va - vb : vb - va;
-      });
-    }
-
-    let headersHtml = `
-          <th onclick="sortReporteCustom('fecha')" style="cursor:pointer">Fecha ${sortIconCustom('fecha')}</th>
-          <th onclick="sortReporteCustom('nombre')" style="cursor:pointer">Descripción ${sortIconCustom('nombre')}</th>
-          <th onclick="sortReporteCustom('cantidad')" style="text-align:center; cursor:pointer">Cantidad ${sortIconCustom('cantidad')}</th>
-          <th onclick="sortReporteCustom('empresa')" style="cursor:pointer">Empresa/Destino ${sortIconCustom('empresa')}</th>
-          <th onclick="sortReporteCustom('observaciones')" style="cursor:pointer">Observaciones ${sortIconCustom('observaciones')}</th>
-          <th onclick="sortReporteCustom('tipo')" style="cursor:pointer">Tipo ${sortIconCustom('tipo')}</th>
-        `;
-
-    if (headerTr) headerTr.innerHTML = headersHtml;
-
-    if (!extras.length) {
-      bodyT.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No hay almuerzos extras registrados en este rango/período (${escapeHtml(rango.labelRango)}).</td></tr>`;
-      if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = `Mostrando 0 registros (0 almuerzos extras) | ${rango.labelRango}`;
-      return;
-    }
-
-    bodyT.innerHTML = extras.map(ae => {
-      let dateStr = formatearFechaA_DMY(ae.fecha);
-      return `<tr>
-            <td style="font-family:'Fira Code',monospace;font-size:11px">${dateStr}</td>
-            <td>
-              <div class="employee-cell">
-                <div class="employee-photo-placeholder" style="background:var(--indigo-lt); color:var(--indigo); display:flex; align-items:center; justify-content:center;"><i class="fas fa-utensils"></i></div>
-                <strong>${escapeHtml(ae.nombre || 'Almuerzo Extra')}</strong>
-              </div>
-            </td>
-            <td style="text-align:center"><span class="pill late" style="font-weight:700;font-size:11px;padding:2px 7px">${ae.cantidad || 1}</span></td>
-            <td>${escapeHtml(ae.empresa || '—')}</td>
-            <td>${escapeHtml(ae.observaciones || '—')}</td>
-            <td><span class="pill ok" style="font-size:10px;padding:2px 7px">${escapeHtml(ae.tipo || 'Manual')}</span></td>
-          </tr>`;
-    }).join('');
-
-    if ($('reporteCustomInfo')) {
-      let totalCant = extras.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
-      $('reporteCustomInfo').textContent = `Mostrando ${extras.length} registros (${totalCant} almuerzos extras) | ${rango.labelRango}`;
-    }
-    return;
-  }
-
-  let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
-
-  // Ordenar
-  if (_sortCustomReport.col) {
-    data = [...data].sort((a, b) => {
-      let va = a[_sortCustomReport.col] ?? 0;
-      let vb = b[_sortCustomReport.col] ?? 0;
-      if (typeof va === 'string') return _sortCustomReport.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-      return _sortCustomReport.dir === 'asc' ? va - vb : vb - va;
-    });
-  }
-
-  let headersHtml = `<th onclick="sortReporteCustom('nombre')" style="cursor:pointer; min-width:230px; background:#f8fafc; border-bottom:2.5px solid #2563eb;">
-    <div style="display:flex; align-items:center; gap:6px;">
-      <i class="fas fa-user-tie" style="color:#2563eb; font-size:12px;"></i>
-      <span style="font-weight:700; color:#1e293b;">COLABORADOR</span>
-      ${sortIconCustom('nombre')}
-    </div>
-  </th>`;
-
-  COLUMNAS_DISPONIBLES.forEach(col => {
-    if (columnasCustomActivas.includes(col.id)) {
-      const iconHtml = col.icono ? `<i class="fas ${col.icono}" style="color:${col.color || '#2563eb'}; font-size:11px; margin-right:4px;"></i>` : '';
-      if (col.id === 'area') {
-        headersHtml += `<th onclick="sortReporteCustom('area')" style="cursor:pointer; min-width:140px; background:#f8fafc; border-bottom:2.5px solid #64748b;">
-          <div style="display:flex; align-items:center; gap:5px;">
-            ${iconHtml}<span style="font-weight:700; color:#334155;">ÁREA</span> ${sortIconCustom('area')}
-          </div>
-        </th>`;
-      } else {
-        headersHtml += `<th onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer; min-width:115px; background:${col.colorBg || '#f8fafc'}; border-bottom:2.5px solid ${col.color || '#2563eb'};">
-          <div style="display:flex; align-items:center; justify-content:center; gap:4px;" title="${col.catLabel || col.label}">
-            ${iconHtml}<span style="color:${col.color || '#1e293b'}; font-weight:700;">${col.label}</span> ${sortIconCustom(col.id)}
-          </div>
-        </th>`;
-      }
-    }
-  });
-
-  if (headerTr) headerTr.innerHTML = headersHtml;
-
-  if (!data.length) {
-    bodyT.innerHTML = `<tr><td colspan="${columnasCustomActivas.length + 1}" style="text-align:center; padding:35px; color:var(--g500);"><i class="fas fa-search" style="font-size:22px; margin-bottom:8px; display:block; color:var(--blue);"></i> No se encontraron resultados para el rango/período (<strong>${escapeHtml(rango.labelRango)}</strong>).</td></tr>`;
-    if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = `Mostrando 0 colaboradores | ${rango.labelRango}`;
-    return;
-  }
-
-  bodyT.innerHTML = data.map(e => {
-    let nombreEmpDisplay = escapeHtml(e.nombre);
-    if (e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado') {
-      const fSalidaStr = (e.fecha_salida || e.fechaDesvinculacion) ? (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) : '';
-      nombreEmpDisplay += ` <span class="pill" style="font-size:9.5px; padding:2px 7px; background:#f5f3ff; color:#7c3aed; font-weight:700; border:1px solid #ddd6fe;" title="Colaborador Desvinculado"><i class="fas fa-user-slash"></i> Desvinculado</span>`;
-      if (fSalidaStr) {
-        nombreEmpDisplay += ` <span style="font-size:10px; color:#8b5cf6; font-weight:600; margin-left:2px;">(Salida: ${fSalidaStr})</span>`;
-      }
-    } else if (e.esEliminado) {
-      nombreEmpDisplay += ` <span class="pill" style="font-size:9px; padding:1px 6px; background:#ffe4e6; color:#e11d48; font-weight:700; border:1px solid #fecdd3;" title="Colaborador eliminado con registros históricos">🗑️ Eliminado</span>`;
-    }
-    let rowHtml = `<tr onclick="mostrarDetalle('${e.id}', ${rango.indexPeriodo}, '${rango.R_INI}', '${rango.R_FIN}')" style="cursor:pointer" title="Ver detalle de asistencia de ${escapeHtml(e.nombre)}">
-      <td><div class="employee-cell">${photoCell(e)}<span style="font-weight:600; color:#0f172a;">${nombreEmpDisplay}</span></div></td>`;
-
-    COLUMNAS_DISPONIBLES.forEach(col => {
-      if (columnasCustomActivas.includes(col.id)) {
-        const valor = e[col.id];
-        let contenido = '';
-
-        if (col.id === 'area') {
-          contenido = `<span style="color:#475569; font-weight:600; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-building" style="font-size:9px; opacity:0.4;"></i> ${escapeHtml(valor || '—')}</span>`;
-          rowHtml += `<td>${contenido}</td>`;
-        } else {
-          if (col.id === 'asistencias') {
-            contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
-          } else if (col.id === 'faltas') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle" style="font-size:8.5px;"></i> ${valor}</span>`
-              : `<span class="rep-badge-falta-zero">0</span>`;
-          } else if (col.id === 'atrasos') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-atraso-alert"><i class="fas fa-clock" style="font-size:8.5px;"></i> ${valor}</span>`
-              : `<span class="rep-badge-atraso-zero">0</span>`;
-          } else if (col.id === 'minutosAtrasos') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-atraso-alert">${minutosAHHMMSS(valor)}</span>`
-              : `<span style="font-family:'Fira Code',monospace; font-size:11px; color:#94a3b8;">00:00:00</span>`;
-          } else if (col.id === 'almPlanta' || col.id === 'almFuera') {
-            contenido = `<span class="rep-badge-pill rep-badge-alm"><i class="fas fa-utensils" style="font-size:8.5px;"></i> ${valor}</span>`;
-          } else if (col.id === 'puntualidad') {
-            if (valor >= 90) {
-              contenido = `<span class="rep-badge-pill rep-badge-pct-hi"><i class="fas fa-star" style="font-size:8.5px;"></i> ${valor}%</span>`;
-            } else if (valor >= 75) {
-              contenido = `<span class="rep-badge-pill rep-badge-pct-mid">${valor}%</span>`;
-            } else {
-              contenido = `<span class="rep-badge-pill rep-badge-pct-low"><i class="fas fa-exclamation-circle" style="font-size:8.5px;"></i> ${valor}%</span>`;
-            }
-          } else if (col.id === 'horasExtra50') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-ex50">${minutosAHHMMSS(valor)}</span>`
-              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
-          } else if (col.id === 'horasExtra100') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-ex100">${minutosAHHMMSS(valor)}</span>`
-              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
-          } else if (col.id === 'totalExtras50') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-totextra">${minutosAHHMMSS(valor)}</span>`
-              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">00:00:00</span>`;
-          } else if (col.id === 'totalExtras100') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-totextra" style="background:#ede9fe; color:#4338ca; border-color:#c7d2fe;">${minutosAHHMMSS(valor)}</span>`
-              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">00:00:00</span>`;
-          } else if (col.cat === 'campo') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-campo">${minutosAHHMMSS(valor)}</span>`
-              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
-          } else if (col.cat === 'permisos') {
-            contenido = (valor > 0)
-              ? `<span class="rep-badge-pill rep-badge-perm" style="background:${col.colorBg}; color:${col.color}; border-color:${col.color}40;">${minutosAHHMMSS(valor)}</span>`
-              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
-          } else {
-            contenido = `<span style="font-family:'Fira Code',monospace; font-size:11px;">${valor}</span>`;
-          }
-          rowHtml += `<td style="text-align:center;">${contenido}</td>`;
-        }
-      }
-    });
-
-    rowHtml += '</tr>';
-    return rowHtml;
-  }).join('');
-
-  let footerHtml = `<tr class="rep-totals-row">
-        <td style="padding:10px 14px;">
-          <div style="display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-calculator" style="color:#38bdf8;"></i>
-            <span>TOTALES / PROMEDIOS</span>
-          </div>
-        </td>`;
-
-  COLUMNAS_DISPONIBLES.forEach(col => {
-    if (columnasCustomActivas.includes(col.id)) {
-      if (col.id === 'area') {
-        footerHtml += `<td style="text-align:center; color:#64748b;">—</td>`;
-      } else {
-        let total = 0;
-        let count = 0;
-        data.forEach(e => {
-          let val = parseFloat(e[col.id]) || 0;
-          total += val;
-          count++;
-        });
-
-        let displayVal = '';
-        if (col.tipo === 'tiempo') {
-          displayVal = minutosAHHMMSS(total);
-        } else if (col.tipo === 'pct') {
-          let avg = count ? Math.round(total / count) : 0;
-          displayVal = `${avg}%`;
-        } else {
-          displayVal = total;
-        }
-        footerHtml += `<td style="text-align:center;">
-          <span style="font-family:'Fira Code',monospace; font-size:11.5px; font-weight:800; color:#ffffff;">${displayVal}</span>
-        </td>`;
-      }
-    }
-  });
-  footerHtml += '</tr>';
-
-  bodyT.innerHTML += footerHtml;
-
-  // Sync double scrollbars
-  const tableScroll = $('reporteCustomScroll');
-  const topScroll = $('customRepTopScroll');
-  if (tableScroll && topScroll) {
-    const dummy = topScroll.querySelector('.top-scroll-dummy');
-    if (dummy) {
-      setTimeout(() => {
-        dummy.style.width = tableScroll.scrollWidth + 'px';
-        topScroll.scrollLeft = tableScroll.scrollLeft;
-      }, 50);
-    }
-  }
-
-  if (typeof initScrollSync === 'function') {
-    initScrollSync('customRepTopScroll', 'reporteCustomScroll');
-  }
-
-  if ($('reporteCustomInfo')) {
-    let infoRango = rango.esFiltroPersonalizado ? ` | Filtro: ${rango.labelRango}` : ` | ${rango.labelRango}`;
-    $('reporteCustomInfo').textContent = `Mostrando ${data.length} de ${empCache.length} colaboradores${infoRango}`;
-  }
-};
-
-window.restablecerColumnasDefault = function () {
-  // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
-  if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
-    $('filtroCargoReporte').value = '';
-    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter, #filtrosRapidosCargo .btn-filter-pill');
-    btns.forEach(b => {
-      b.classList.remove('active');
-      b.style.background = '#f8fafc';
-      b.style.color = 'var(--g600)';
-      b.style.borderColor = 'var(--g200)';
-    });
-    const btnTodos = Array.from(btns).find(b => b.textContent.trim().toUpperCase() === 'TODOS');
-    if (btnTodos) {
-      btnTodos.classList.add('active');
-      btnTodos.style.background = 'var(--blue)';
-      btnTodos.style.color = '#fff';
-      btnTodos.style.borderColor = 'var(--blue)';
-    }
-  }
-  columnasCustomActivas = [...DEFAULT_COLUMNAS_CUSTOM];
-  guardarColumnasCustomActivas(columnasCustomActivas);
-  renderizarColumnasInteractivas();
-  filtrarReporteInteractivo();
-  mostrarToast('Columnas restablecidas por defecto', 'info');
-};
-
-window.cargarPlantillaReporte = function (tipo) {
-  // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
-  if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
-    $('filtroCargoReporte').value = '';
-    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter, #filtrosRapidosCargo .btn-filter-pill');
-    btns.forEach(b => {
-      b.classList.remove('active');
-      b.style.background = '#f8fafc';
-      b.style.color = 'var(--g600)';
-      b.style.borderColor = 'var(--g200)';
-    });
-    const btnTodos = Array.from(btns).find(b => b.textContent.trim().toUpperCase() === 'TODOS');
-    if (btnTodos) {
-      btnTodos.classList.add('active');
-      btnTodos.style.background = 'var(--blue)';
-      btnTodos.style.color = '#fff';
-      btnTodos.style.borderColor = 'var(--blue)';
-    }
-  }
-  if (tipo === 'almuerzos') {
-    columnasCustomActivas = ['asistencias', 'almPlanta', 'almFuera'];
-    mostrarToast('Plantilla de Almuerzos cargada', 'success');
-  } else if (tipo === 'extras') {
-    columnasCustomActivas = ['horasExtra50', 'horasExtra100', 'horasCampoNormales', 'horasCampo50', 'horasCampo100', 'totalExtras50', 'totalExtras100'];
-    mostrarToast('Plantilla de Horas Extra cargada', 'success');
-  } else if (tipo === 'asistencias') {
-    columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'];
-    mostrarToast('Plantilla de Asistencia y Atrasos cargada', 'success');
-  } else if (tipo === 'completo') {
-    columnasCustomActivas = COLUMNAS_DISPONIBLES.map(c => c.id);
-    mostrarToast('Plantilla de Reporte Completo cargada', 'success');
-  }
-  guardarColumnasCustomActivas(columnasCustomActivas);
-  renderizarColumnasInteractivas();
-  filtrarReporteInteractivo();
-};
-
-window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, customInicio = null, customFin = null) {
-  const empIdStr = String(empleadoId || '').trim();
-  let e = empCache.find(x => String(x.id).trim() === empIdStr)
-       || (window.empEliminadosCache || []).find(x => String(x.id).trim() === empIdStr)
-       || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === empIdStr);
-  if (!e) {
-    mostrarToast('Empleado no encontrado', 'error');
-    return;
-  }
-  let periodo = periodos[indexPeriodo] || periodos[0];
-  if (!periodo) {
-    mostrarToast('Periodo no encontrado', 'error');
-    return;
-  }
-
-  const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
-  const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
-
-  let R_INI = customInicio || (periodo ? periodo.inicio : '');
-  let R_FIN = customFin || (periodo ? periodo.fin : '');
-
-  let todosRegs = (e.registros || []).map(r => {
-    const fNorm = normalizarFechaStr(r.fecha);
-    return fNorm ? { ...r, fecha: fNorm } : r;
-  });
-  let regs = todosRegs.filter(r => r.fecha >= R_INI && r.fecha <= R_FIN);
-
-  let porDia = {};
-  [...regs].sort((a, b) => {
-    if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
-    return String(a.hora || '').localeCompare(String(b.hora || ''));
-  }).forEach(r => {
-    const fechaNorm = normalizarFechaStr(r.fecha);
-    if (!fechaNorm) return;
-    if (!porDia[fechaNorm]) porDia[fechaNorm] = { registros: [], almuerzo: null };
-    porDia[fechaNorm].registros.push(r);
-    if (r.tipo === 'ENTRADA' && r.almuerzo) porDia[fechaNorm].almuerzo = r.almuerzo;
-  });
-
-  let fechasOrdenadas = Object.keys(porDia).filter(f => f && /^\d{4}-\d{2}-\d{2}$/.test(f)).sort((a, b) => b.localeCompare(a));
-
-  let bodyHtml = '';
-
-  // Inicializar acumuladores totales
-  let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0, totSalidaTemprana = 0;
-  let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
-  let totExtra50 = 0, totExtra100 = 0;
-  let totDescuentoBruto = 0;
-  let rowCounter = 0;
-
-  fechasOrdenadas.forEach(f => {
-    const regsDia = porDia[f].registros;
-    const d = porDia[f];
-    const dayOfWeek = new Date(f + 'T12:00:00').getDay();
-    const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
-    const isJustificado = regsDia.some(r => {
-      if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
-      if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
-      const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
-      if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
-      return false;
-    });
-
-    let periodosDia = [];
-    let entradaPendiente = null;
-    let ultimoSalidaMins = null;
-    let ultimoSalidaReg = null;
-
-    let sortedRegs = [...regsDia].sort((a, b) => {
-      if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
-      return String(a.hora || '').localeCompare(String(b.hora || ''));
-    });
-
-    sortedRegs.forEach(r => {
-      const tipo = String(r.tipo || '').toUpperCase();
-      if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO') {
-        entradaPendiente = r;
-      } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
-        if (entradaPendiente) {
-          periodosDia.push({ entrada: entradaPendiente, salida: r });
-          entradaPendiente = null;
-        } else {
-          periodosDia.push({ entrada: null, salida: r });
-        }
-      }
-    });
-    if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
-    if (periodosDia.length === 0) periodosDia.push({ entrada: null, salida: null });
-
-    let horaE = periodosDia.map(p => p.entrada ? formatearHora(p.entrada.hora || p.entrada.timestamp) : '--:--').join(', ');
-    let horaS = periodosDia.map(p => p.salida ? formatearHora(p.salida.hora || p.salida.timestamp) : '--:--').join(', ');
-
-    let aBadgeVal = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'SI' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? 'NO' : '—';
-
-    let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
-    let atrasoMins = 0;
-    if (primerReg) {
-      let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
-      let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
-      if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
-    }
-
-    let razonAusenciaVal = '';
-    let razonJustificadaVal = '';
-    regsDia.forEach(r => {
-      if (r.razon_ausencia) {
-        razonAusenciaVal = r.razon_ausencia;
-      } else if (r.tipo && esAusenciaTipo(r.tipo)) {
-        const t = r.tipo.toUpperCase();
-        if (t === 'VACACIONES' || t === 'VACACION') razonAusenciaVal = 'Vacación';
-        else if (t === 'PERMISO_MEDICO') razonAusenciaVal = 'Permiso Médico';
-        else if (t === 'PERMISO_PERSONAL') razonAusenciaVal = 'Permiso Personal';
-        else if (t === 'CALAMIDAD_DOMESTICA') razonAusenciaVal = 'Calamidad Doméstica';
-        else if (t === 'CUMPLEAÑOS' || t === 'CUMPLEANOS') razonAusenciaVal = 'Cumpleaños';
-        else if (t === 'SALIDA_JUSTIFICADA') razonAusenciaVal = 'Salida Justificada';
-      }
-      if (r.razon_justificac) razonJustificadaVal = r.razon_justificac;
-    });
-
-    let razonText = razonAusenciaVal || razonJustificadaVal || '—';
-
-    let h50 = 0, h100 = 0, hCN = 0, hC50 = 0, hC100 = 0;
-    let minutosTrabajadosHoy = 0;
-    let tiempoPersonal = 0;
-    let tiempoMedico = 0;
-    let tiempoPorJustificar = 0;
-
-
-
-    ultimoSalidaMins = null;
-    ultimoSalidaReg = null;
-
-    let processedLunchGap = false;
-    periodosDia.forEach(p => {
-      if (!p.entrada || !p.salida) return;
-      let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
-      let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
-      if (mE === null || mS === null || mS <= mE) return;
-
-      let duracion = mS - mE;
-      minutosTrabajadosHoy += duracion;
-
-      if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
-        let gap = mE - ultimoSalidaMins;
-        if (!processedLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
-          let lunchMins = Math.min(45, gap);
-          gap -= lunchMins;
-          processedLunchGap = true;
-        }
-        if (gap > 0) {
-          let clasif = clasificarGap(ultimoSalidaReg, gap);
-          if (clasif.tipo === 'medico') {
-            tiempoMedico += gap;
-          } else if (clasif.tipo === 'personal') {
-            tiempoPersonal += gap;
-          } else {
-            tiempoPorJustificar += gap;
-          }
-        }
-      }
-      ultimoSalidaMins = mS;
-      ultimoSalidaReg = p.salida;
-    });
-
-    // Descontar almuerzo
-    let netWorked = minutosTrabajadosHoy;
-    if (!esFestivo && netWorked > 240) {
-      netWorked -= 45;
-    }
-
-    let ultSalReg = [...regsDia].reverse().find(r => {
-      const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
-      return t.includes('SALIDA');
-    });
-    if (ultSalReg) {
-      let mS = obtenerMinutos(ultSalReg.hora || ultSalReg.timestamp);
-      if (mS !== null) ultimoSalidaMins = mS;
-    }
-
-    let minsSalidaTemprana = 0;
-    let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
-    if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
-      minsSalidaTemprana = refSalida - ultimoSalidaMins;
-    }
-
-    // Horas extras independientes (no compensan faltantes)
-    let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI') || regsDia.some(r => (r.autoriza || '').includes('CAMPO'));
-    if (esFestivo && netWorked > 60) {
-      autorizadoGlobal = true;
-    } else if (!esFestivo && netWorked >= 600) {
-      autorizadoGlobal = true;
-    }
-
-    periodosDia.forEach(p => {
-      if (!p.entrada || !p.salida) return;
-      let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
-      let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
-      if (mE === null || mS === null || mS <= mE) return;
-      let duracion = mS - mE;
-      let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
-
-      if (esFestivo) {
-        if (enCampo) {
-          if (autorizadoGlobal) hC100 += duracion;
-        } else {
-          if (autorizadoGlobal) h100 += duracion;
-        }
-      } else {
-        let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
-        if (enCampo) {
-          if (mS <= H_INI || mE >= H_FIN) {
-            hC50 += duracion;
-          } else {
-            let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-            let mExtra = duracion - mNormal;
-            hCN += mNormal;
-            hC50 += mExtra;
-          }
-        } else {
-          if (autorizadoGlobal && mS > H_FIN) {
-            h50 += (mS - Math.max(mE, H_FIN));
-          }
-        }
-      }
-    });
-
-    let tiempoJustificado = 0;
-    const hasCumpleanos = regsDia.some(r => {
-      const raz = String(r.razon_ausencia || '').toLowerCase();
-      const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
-      return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
-    });
-    if (hasCumpleanos) tiempoJustificado += 240;
-
-    const esHoyOFuturo = f >= getLocalHoyStr();
-    if (isJustificado || esHoyOFuturo) {
-      tiempoPorJustificar = 0;
-    } else {
-      const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-      const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-      const medMins = (entradaDia && entradaDia.permiso_medico_mins) ? Number(entradaDia.permiso_medico_mins) : 0;
-      tiempoPersonal += persMins;
-      tiempoMedico += medMins;
-      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
-      let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
-      let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
-      let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
-      tiempoPorJustificar += unaccountedMissing;
-    }
-
-    // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
-    let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
-    if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
-      atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
-    }
-
-    // Ajustar atrasos y salida temprana descontando permisos
-    const originalAtrasoMins = atrasoMins;
-    const originalSalidaTemprana = minsSalidaTemprana;
-    if (isJustificado) {
-      atrasoMins = 0;
-      minsSalidaTemprana = 0;
-    } else {
-      const permisosTotales = tiempoPersonal + tiempoMedico + tiempoJustificado;
-      atrasoMins = Math.max(0, originalAtrasoMins - permisosTotales);
-      const permisosRestantes = Math.max(0, permisosTotales - originalAtrasoMins);
-      minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
-    }
-    // Horas netas trabajadas e independientes de permisos personales
-    const descuentoDia = tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins);
-    totDescuentoBruto += descuentoDia;
-
-    // Acumuladores
-    totTP += tiempoPersonal;
-    totTM += tiempoMedico;
-    totTJ += tiempoPorJustificar;
-    totHoras += netWorked;
-    totAtrasos += atrasoMins;
-    totSalidaTemprana += minsSalidaTemprana;
-    totH50 += h50;
-    totH100 += h100;
-    totHCN += hCN;
-    totHC50 += hC50;
-    totHC100 += hC100;
-    totExtra50 += (h50 + hC50);
-    totExtra100 += (h100 + hC100);
-
-    // Formatear fecha para mostrar
-    let dObj = new Date(f + 'T12:00:00');
-    const diasSemana = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
-    let fechaEx = `${diasSemana[dObj.getDay()]} ${f.slice(8, 10)}/${f.slice(5, 7)}`;
-
-    // Contador para zebra striping
-    const rowBg = (rowCounter % 2 === 0) ? '#ffffff' : '#f8fafc';
-    rowCounter++;
-    const tdTime = `style="background-color:${rowBg}; border:0.5pt solid #cbd5e1; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`;
-
-      let tdDescStyle = (descuentoDia > 0)
-        ? `style="background-color:#ffe4e6; color:#9f1239; font-weight:bold; border:0.5pt solid #fecdd3; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdAtrasoStyle = (atrasoMins > 0)
-        ? `style="background-color:#fef3c7; color:#92400e; font-weight:bold; border:0.5pt solid #fde68a; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdSalidaTempStyle = (minsSalidaTemprana > 0)
-        ? `style="background-color:#ffedd5; color:#c2410c; font-weight:bold; border:0.5pt solid #fed7aa; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdH50Style = (h50 > 0)
-        ? `style="background-color:#eff6ff; color:#1d4ed8; font-weight:bold; border:0.5pt solid #bfdbfe; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdH100Style = (h100 > 0)
-        ? `style="background-color:#eef2ff; color:#4338ca; font-weight:bold; border:0.5pt solid #c7d2fe; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdHCNStyle = (hCN > 0)
-        ? `style="background-color:#ecfeff; color:#0891b2; font-weight:bold; border:0.5pt solid #a5f3fc; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdHC50Style = (hC50 > 0)
-        ? `style="background-color:#ecfeff; color:#0e7490; font-weight:bold; border:0.5pt solid #a5f3fc; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdHC100Style = (hC100 > 0)
-        ? `style="background-color:#ecfeff; color:#155e75; font-weight:bold; border:0.5pt solid #a5f3fc; height:26px; font-size:9pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdTot50Style = ((h50 + hC50) > 0)
-        ? `style="background-color:#dbeafe; color:#1e3a8a; font-weight:bold; border-left:1pt solid #93c5fd; border-right:1pt solid #93c5fd; border-top:0.5pt solid #cbd5e1; border-bottom:0.5pt solid #cbd5e1; height:26px; font-size:9.5pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      let tdTot100Style = ((h100 + hC100) > 0)
-        ? `style="background-color:#e0e7ff; color:#312e81; font-weight:bold; border-left:1pt solid #a5b4fc; border-right:1pt solid #a5b4fc; border-top:0.5pt solid #cbd5e1; border-bottom:0.5pt solid #cbd5e1; height:26px; font-size:9.5pt; font-family:Consolas, monospace; text-align:center; padding:3px 6px; mso-number-format:\\@;"`
-        : tdTime;
-
-      bodyHtml += `<tr>
-          <td style="background-color:${rowBg}; font-weight:600; color:#0f172a; text-align:center; border:0.5pt solid #cbd5e1; height:26px;">${fechaEx}</td>
-          <td ${tdTime}>${horaE}</td>
-          <td ${tdTime}>${horaS}</td>
-          <td ${tdTime}>${tiempoPersonal > 0 ? minutosAHHMMSS(tiempoPersonal) : '—'}</td>
-          <td ${tdTime}>${tiempoMedico > 0 ? minutosAHHMMSS(tiempoMedico) : '—'}</td>
-          <td ${tdTime}>${tiempoPorJustificar > 0 ? minutosAHHMMSS(tiempoPorJustificar) : '—'}</td>
-          <td ${tdDescStyle}>${descuentoDia > 0 ? minutosAHHMMSS(descuentoDia) : '—'}</td>
-          <td style="background-color:${rowBg}; font-weight:600; color:#0f172a; font-family:Consolas, monospace; font-size:9pt; text-align:center; border:0.5pt solid #cbd5e1; height:26px; mso-number-format:\\@;">${netWorked > 0 ? minutosAHHMMSS(netWorked) : '—'}</td>
-          <td style="background-color:${rowBg}; text-align:center; border:0.5pt solid #cbd5e1; height:26px; font-weight:600; color:${aBadgeVal === 'SI' ? '#047857' : aBadgeVal === 'NO' ? '#b91c1c' : '#94a3b8'};">${aBadgeVal}</td>
-          <td style="background-color:${rowBg}; text-align:center; border:0.5pt solid #cbd5e1; height:26px; font-weight:bold; color:${autorizadoGlobal ? '#1d4ed8' : '#94a3b8'};">${autorizadoGlobal ? 'SI' : 'NO'}</td>
-          <td style="background-color:${rowBg}; border:0.5pt solid #cbd5e1; height:26px; font-size:9pt; color:#334155; padding:3px 6px;">${escapeHtml(razonText)}</td>
-          <td ${tdAtrasoStyle}>${atrasoMins > 0 ? minutosAHHMMSS(atrasoMins) : '—'}</td>
-          <td ${tdSalidaTempStyle}>${minsSalidaTemprana > 0 ? minutosAHHMMSS(minsSalidaTemprana) : '—'}</td>
-          <td ${tdH50Style}>${h50 > 0 ? minutosAHHMMSS(h50) : '—'}</td>
-          <td ${tdH100Style}>${h100 > 0 ? minutosAHHMMSS(h100) : '—'}</td>
-          <td ${tdHCNStyle}>${hCN > 0 ? minutosAHHMMSS(hCN) : '—'}</td>
-          <td ${tdHC50Style}>${hC50 > 0 ? minutosAHHMMSS(hC50) : '—'}</td>
-          <td ${tdHC100Style}>${hC100 > 0 ? minutosAHHMMSS(hC100) : '—'}</td>
-          <td ${tdTot50Style}>${(h50 + hC50) > 0 ? minutosAHHMMSS(h50 + hC50) : '—'}</td>
-          <td ${tdTot100Style}>${(h100 + hC100) > 0 ? minutosAHHMMSS(h100 + hC100) : '—'}</td>
-        </tr>`;
-    });
-
-  const totDescontarFinal = Math.max(0, totDescuentoBruto - 240);
-
-  // Fila de totales corporativa
-  let footerHtml = `
-    <tr>
-      <td colspan="3" style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:left; height:34px; border:1pt solid #0f172a; font-size:10pt; padding:6px 10px; letter-spacing:0.5px;">TOTALES DEL PERÍODO</td>
-      <td style="background-color:#0f172a; color:#c4b5fd; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totTP)}</td>
-      <td style="background-color:#0f172a; color:#5eead4; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totTM)}</td>
-      <td style="background-color:#0f172a; color:#f0abfc; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totTJ)}</td>
-      <td style="background-color:#0f172a; color:#fda4af; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totDescontarFinal)}</td>
-      <td style="background-color:#0f172a; color:#fde047; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHoras)}</td>
-      <td style="background-color:#0f172a; color:#ffffff; text-align:center; border:1pt solid #0f172a;">—</td>
-      <td style="background-color:#0f172a; color:#ffffff; text-align:center; border:1pt solid #0f172a;">—</td>
-      <td style="background-color:#0f172a; color:#ffffff; text-align:center; border:1pt solid #0f172a;">—</td>
-      <td style="background-color:#0f172a; color:#fcd34d; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totAtrasos)}</td>
-      <td style="background-color:#0f172a; color:#fdba74; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totSalidaTemprana)}</td>
-      <td style="background-color:#0f172a; color:#93c5fd; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totH50)}</td>
-      <td style="background-color:#0f172a; color:#a5b4fc; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totH100)}</td>
-      <td style="background-color:#0f172a; color:#67e8f9; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHCN)}</td>
-      <td style="background-color:#0f172a; color:#22d3ee; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHC50)}</td>
-      <td style="background-color:#0f172a; color:#06b6d4; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totHC100)}</td>
-      <td style="background-color:#0f172a; color:#38bdf8; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totExtra50)}</td>
-      <td style="background-color:#0f172a; color:#818cf8; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(totExtra100)}</td>
-    </tr>
-  `;
-
-  let excelHtml = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <meta charset="utf-8">
-          <!--[if gte mso 9]>
-          <xml>
-            <x:ExcelWorkbook>
-              <x:ExcelWorksheets>
-                <x:ExcelWorksheet>
-                  <x:Name>Reporte Individual</x:Name>
-                  <x:WorksheetOptions>
-                    <x:DisplayGridlines/>
-                    <x:Print>
-                      <x:Orientation>Landscape</x:Orientation>
-                    </x:Print>
-                  </x:WorksheetOptions>
-                </x:ExcelWorksheet>
-              </x:ExcelWorksheets>
-            </x:ExcelWorkbook>
-          </xml>
-          <![endif]-->
-          <style>
-            table { border-collapse:collapse; font-family:Arial, sans-serif; }
-            th { font-family:Arial, sans-serif; }
-            td { font-family:Arial, sans-serif; }
-          </style>
-        </head>
-        <body>
-          <table>
-            <!-- BANNER DE ENCABEZADO CORPORATIVO -->
-            <tr>
-              <td colspan="20" style="background-color:#0f172a; color:#ffffff; font-size:15pt; font-weight:bold; height:42px; text-align:center; vertical-align:middle; border:1pt solid #0f172a; letter-spacing:1px;">
-                TCONTROL S.A. &mdash; REPORTE INDIVIDUAL DE ASISTENCIA Y CONTROL LABORAL
-              </td>
-            </tr>
-            <tr>
-              <td colspan="20" style="background-color:#1e293b; color:#94a3b8; font-size:9pt; height:24px; text-align:center; vertical-align:middle; border:1pt solid #1e293b;">
-                Colaborador: <strong style="color:#ffffff;">${escapeHtml(e.nombre)}</strong> &nbsp;|&nbsp;
-                ID: <strong style="color:#38bdf8;">${escapeHtml(e.id)}</strong> &nbsp;|&nbsp;
-                Período: <strong style="color:#ffffff;">${periodo.label}</strong> (Rango: ${R_INI} al ${R_FIN}) &nbsp;|&nbsp;
-                Generado: <strong style="color:#ffffff;">${formatearTimestampCompleto(new Date())}</strong>
-              </td>
-            </tr>
-            <tr><td colspan="20" style="height:12px; border:none;"></td></tr>
-            <thead>
-              <tr>
-                <th colspan="3" style="background-color:#1e293b; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #334155; font-size:9.5pt; letter-spacing:0.5px;">MARCACIONES</th>
-                <th colspan="4" style="background-color:#6d28d9; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">PERMISOS Y DESCUENTOS</th>
-                <th colspan="4" style="background-color:#0369a1; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">JORNADA Y ESTADO</th>
-                <th colspan="2" style="background-color:#b45309; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">NOVEDADES</th>
-                <th colspan="5" style="background-color:#1e40af; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">HORAS EXTRAORDINARIAS & CAMPO</th>
-                <th colspan="2" style="background-color:#1e1b4b; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9.5pt; letter-spacing:0.5px;">TOTALES EXTRAS NÓMINA</th>
-              </tr>
-              <tr>
-                <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">FECHA</th>
-                <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">ENTRADA</th>
-                <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">SALIDA</th>
-                <th style="background-color:#7c3aed; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">T. PERSONAL</th>
-                <th style="background-color:#0d9488; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">T. MÉDICO</th>
-                <th style="background-color:#c026d3; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">POR JUSTIFICAR</th>
-                <th style="background-color:#be123c; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">A DESCONTAR</th>
-                <th style="background-color:#0369a1; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">TOTAL HORAS</th>
-                <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">ALMUERZO</th>
-                <th style="background-color:#475569; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">AUTORIZ. H.E.</th>
-                <th style="background-color:#475569; color:#ffffff; font-weight:bold; height:34px; text-align:left; border:0.5pt solid #475569; font-size:9pt; padding-left:6px; min-width:140px;">RAZÓN / ESTADO</th>
-                <th style="background-color:#b45309; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">ATRASOS</th>
-                <th style="background-color:#c2410c; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">SALIDA TEMP.</th>
-                <th style="background-color:#1d4ed8; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">H. EXTRA 50%</th>
-                <th style="background-color:#4338ca; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">H. EXTRA 100%</th>
-                <th style="background-color:#0891b2; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">CAMPO NORMAL</th>
-                <th style="background-color:#0e7490; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">CAMPO 50%</th>
-                <th style="background-color:#155e75; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">CAMPO 100%</th>
-                <th style="background-color:#1e3a8a; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">TOTAL 50%</th>
-                <th style="background-color:#312e81; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt;">TOTAL 100%</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${bodyHtml}
-              ${footerHtml}
-            </tbody>
-            <tfoot>
-              <tr><td colspan="20" style="height:14px; border:none;"></td></tr>
-              <tr>
-                <td colspan="20" style="background-color:#f8fafc; color:#64748b; font-size:8pt; font-style:italic; border:0.5pt solid #cbd5e1; height:24px; padding:4px 8px; text-align:center;">
-                  CONFIDENCIAL &mdash; TCONTROL S.A. | Información laboral individual protegida por la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador) y el Código del Trabajo.
-                </td>
-              </tr>
-              <tr><td colspan="20" style="height:35px; border:none;"></td></tr>
-              <tr>
-                <td colspan="6" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
-                  FIRMA DEL COLABORADOR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">${escapeHtml(e.nombre)}</span>
-                </td>
-                <td colspan="7" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
-                  SUPERVISOR DIRECTO<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Control de Asistencia y Turnos</span>
-                </td>
-                <td colspan="7" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
-                  TALENTO HUMANO / NÓMINA<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Auditoría y Liquidación</span>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </body>
-        </html>
-      `;
-
-  const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  link.setAttribute("href", url);
-  link.setAttribute("download", `Reporte_Individual_${e.nombre.replace(/ /g, '_')}_${R_INI}_a_${R_FIN}.xls`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  mostrarToast('Reporte individual exportado a Excel con éxito', 'success');
-};
-
-window.exportarExcelReporteCustom = function () {
-  let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-  let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
-    ? window.obtenerRangoFechasReportes()
-    : { R_INI: '', R_FIN: '', labelRango: 'Reporte', labelCorto: 'Reporte', esFiltroPersonalizado: false };
-  let periodoStr = rango.labelRango;
-  let safeFileName = (rango.labelCorto || 'Reporte').replace(/[^a-zA-Z0-9_\-]/g, '_');
-
-  let hasData = false;
-  let extras = [];
-  if (fCargo === 'almuerzos extra') {
-    extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
-    if (q) {
-      extras = extras.filter(ae =>
-        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
-        (ae.observaciones || '').toLowerCase().includes(q) ||
-        (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
-      );
-    }
-    hasData = extras.length > 0;
-  } else {
-    const baseData = (window._reportesCustomData && window._reportesCustomData.length)
-      ? window._reportesCustomData
-      : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
-    hasData = baseData.length > 0;
-  }
-
-  if (!hasData) {
-    mostrarToast('No hay datos para exportar', 'warning');
-    return;
-  }
-
-  let tableContentHtml = '';
-  let totalCols = 0;
-
-  if (fCargo === 'almuerzos extra') {
-    totalCols = 6;
-    let totalCant = extras.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
-    let rowsHtml = extras.map((ae, idx) => {
-      let dateStr = formatearFechaA_DMY(ae.fecha);
-      const rowBg = (idx % 2 === 0) ? '#ffffff' : '#f8fafc';
-      return `<tr>
-            <td style="background-color:${rowBg}; font-family:Consolas, monospace; font-size:10pt; text-align:center; border:0.5pt solid #cbd5e1; height:26px; mso-number-format:\\@;">${dateStr}</td>
-            <td style="background-color:${rowBg}; font-weight:600; color:#0f172a; border:0.5pt solid #cbd5e1; padding:4px 8px; height:26px;">${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
-            <td style="background-color:${rowBg}; text-align:center; font-weight:bold; color:#0284c7; border:0.5pt solid #cbd5e1; height:26px;">${ae.cantidad || 1}</td>
-            <td style="background-color:${rowBg}; color:#334155; border:0.5pt solid #cbd5e1; padding:4px 8px; height:26px;">${escapeHtml(ae.empresa || '—')}</td>
-            <td style="background-color:${rowBg}; color:#475569; border:0.5pt solid #cbd5e1; padding:4px 8px; height:26px;">${escapeHtml(ae.observaciones || '—')}</td>
-            <td style="background-color:${rowBg}; text-align:center; font-weight:600; color:#047857; border:0.5pt solid #cbd5e1; height:26px;">${escapeHtml(ae.tipo || 'Manual')}</td>
-          </tr>`;
-    }).join('');
-
-    tableContentHtml = `
-      <thead>
-        <tr>
-          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:center; border:0.5pt solid #0369a1; font-size:10pt;">FECHA</th>
-          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #0369a1; font-size:10pt; padding-left:8px;">DESCRIPCIÓN</th>
-          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:center; border:0.5pt solid #0369a1; font-size:10pt;">CANTIDAD</th>
-          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #0369a1; font-size:10pt; padding-left:8px;">EMPRESA / DESTINO</th>
-          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:left; border:0.5pt solid #0369a1; font-size:10pt; padding-left:8px;">OBSERVACIONES</th>
-          <th style="background-color:#0284c7; color:#ffffff; font-weight:bold; height:32px; text-align:center; border:0.5pt solid #0369a1; font-size:10pt;">TIPO</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsHtml}
-        <tr>
-          <td colspan="2" style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:left; height:32px; border:1pt solid #0f172a; font-size:10pt; padding-left:8px;">TOTAL ALMUERZOS EXTRAS CONSOLIDADOS</td>
-          <td style="background-color:#0f172a; color:#fde047; font-weight:bold; text-align:center; height:32px; border:1pt solid #0f172a; font-size:11pt;">${totalCant}</td>
-          <td colspan="3" style="background-color:#0f172a; color:#94a3b8; font-size:9pt; text-align:left; border:1pt solid #0f172a; padding-left:8px;">${extras.length} Registros de consumo</td>
-        </tr>
-      </tbody>
-    `;
-  } else {
-    // 1. Columnas activas ordenadas
-    const activeCols = COLUMNAS_DISPONIBLES.filter(col => columnasCustomActivas.includes(col.id));
-    totalCols = activeCols.length + 2; // Empleado + Área + Columnas
-
-    // 2. Super-Headers organizados por categorías
-    const CAT_STYLES = {
-      asistencia: { label: 'ASISTENCIA Y PUNTUALIDAD', bg: '#065f46', color: '#ffffff' },
-      almuerzos: { label: 'ALMUERZOS', bg: '#0369a1', color: '#ffffff' },
-      permisos: { label: 'PERMISOS Y DESCUENTOS', bg: '#6d28d9', color: '#ffffff' },
-      extras: { label: 'HORAS EXTRAORDINARIAS', bg: '#1e40af', color: '#ffffff' },
-      campo: { label: 'TRABAJO EN CAMPO', bg: '#0e7490', color: '#ffffff' },
-      totalesExtras: { label: 'TOTALES EXTRAS NÓMINA', bg: '#1e1b4b', color: '#ffffff' },
-      general: { label: 'INFORMACIÓN GENERAL', bg: '#334155', color: '#ffffff' }
-    };
-
-    let superHeadersHtml = `<th colspan="2" style="background-color:#1e293b; color:#ffffff; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #334155; font-size:9.5pt; letter-spacing:0.5px;">DATOS DEL COLABORADOR</th>`;
-
-    let currentCat = null;
-    let currentCatCount = 0;
-    activeCols.forEach((col, idx) => {
-      const cat = col.cat || 'general';
-      if (cat !== currentCat) {
-        if (currentCat !== null) {
-          const cfg = CAT_STYLES[currentCat] || { label: currentCat.toUpperCase(), bg: '#334155', color: '#ffffff' };
-          superHeadersHtml += `<th colspan="${currentCatCount}" style="background-color:${cfg.bg}; color:${cfg.color}; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9pt; letter-spacing:0.5px;">${cfg.label}</th>`;
-        }
-        currentCat = cat;
-        currentCatCount = 1;
-      } else {
-        currentCatCount++;
-      }
-      if (idx === activeCols.length - 1) {
-        const cfg = CAT_STYLES[currentCat] || { label: currentCat.toUpperCase(), bg: '#334155', color: '#ffffff' };
-        superHeadersHtml += `<th colspan="${currentCatCount}" style="background-color:${cfg.bg}; color:${cfg.color}; font-weight:bold; text-align:center; height:28px; border:0.5pt solid #475569; font-size:9pt; letter-spacing:0.5px;">${cfg.label}</th>`;
-      }
-    });
-
-    // 3. Column Headers individuales con sus colores específicos
-    let colHeadersHtml = `
-      <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:left; border:0.5pt solid #475569; font-size:9.5pt; padding:4px 8px; min-width:200px;">COLABORADOR</th>
-      <th style="background-color:#334155; color:#ffffff; font-weight:bold; height:34px; text-align:left; border:0.5pt solid #475569; font-size:9.5pt; padding:4px 8px; min-width:130px;">ÁREA / CARGO</th>
-    `;
-    activeCols.forEach(col => {
-      colHeadersHtml += `<th style="background-color:${col.colorHeader || '#1e40af'}; color:#ffffff; font-weight:bold; height:34px; text-align:center; border:0.5pt solid #475569; font-size:9pt; padding:4px 6px; text-transform:uppercase; min-width:85px;">${col.label}</th>`;
-    });
-
-    // 4. Filas de datos con Zebra Striping y destacados contextuales
-    let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
-
-    let rowsHtml = data.map((e, rowIndex) => {
-      const rowBg = (rowIndex % 2 === 0) ? '#ffffff' : '#f8fafc';
-      let rowCells = `
-        <td style="background-color:${rowBg}; color:#0f172a; font-weight:600; text-align:left; border:0.5pt solid #cbd5e1; padding:5px 8px; height:26px;">${escapeHtml(e.nombre)}</td>
-        <td style="background-color:${rowBg}; color:#475569; text-align:left; border:0.5pt solid #cbd5e1; padding:5px 8px; height:26px;">${escapeHtml(e.area || '—')}</td>
-      `;
-
-      activeCols.forEach(col => {
-        const valor = e[col.id];
-        let displayVal = '';
-        let cellBg = rowBg;
-        let cellColor = '#1e293b';
-        let cellWeight = 'normal';
-        let cellFont = 'Arial, sans-serif';
-        let borderCustom = '';
-
-        if (col.tipo === 'tiempo') {
-          const mins = Number(valor) || 0;
-          displayVal = (mins > 0) ? minutosAHHMMSS(mins) : '—';
-          cellFont = 'Consolas, monospace';
-          if (col.id === 'minutosAtrasos' && mins > 0) {
-            cellBg = '#fef3c7'; cellColor = '#92400e'; cellWeight = 'bold';
-          } else if (col.id === 'tiempoADescontar' && mins > 0) {
-            cellBg = '#ffe4e6'; cellColor = '#9f1239'; cellWeight = 'bold';
-          } else if (col.id === 'horasExtra50' && mins > 0) {
-            cellBg = '#eff6ff'; cellColor = '#1d4ed8'; cellWeight = 'bold';
-          } else if (col.id === 'horasExtra100' && mins > 0) {
-            cellBg = '#eef2ff'; cellColor = '#4338ca'; cellWeight = 'bold';
-          } else if (col.id === 'totalExtras50' && mins > 0) {
-            cellBg = '#dbeafe'; cellColor = '#1e3a8a'; cellWeight = 'bold';
-            borderCustom = 'border-left:1pt solid #93c5fd; border-right:1pt solid #93c5fd;';
-          } else if (col.id === 'totalExtras100' && mins > 0) {
-            cellBg = '#e0e7ff'; cellColor = '#312e81'; cellWeight = 'bold';
-            borderCustom = 'border-left:1pt solid #a5b4fc; border-right:1pt solid #a5b4fc;';
-          } else if (col.cat === 'campo' && mins > 0) {
-            cellBg = '#ecfeff'; cellColor = '#0891b2'; cellWeight = 'bold';
-          } else if (col.cat === 'permisos' && mins > 0) {
-            cellBg = '#f5f3ff'; cellColor = '#7c3aed'; cellWeight = 'bold';
-          } else if (mins === 0) {
-            cellColor = '#94a3b8';
-          }
-        } else if (col.tipo === 'pct') {
-          const num = Number(valor) || 0;
-          displayVal = `${num}%`;
-          cellWeight = 'bold';
-          if (num >= 90) {
-            cellBg = '#dcfce7'; cellColor = '#15803d';
-          } else if (num >= 75) {
-            cellBg = '#fef9c3'; cellColor = '#854d0e';
-          } else {
-            cellBg = '#fee2e2'; cellColor = '#991b1b';
-          }
-        } else {
-          const num = Number(valor) || 0;
-          displayVal = num;
-          if (col.id === 'faltas') {
-            if (num > 0) {
-              cellBg = '#fee2e2'; cellColor = '#991b1b'; cellWeight = 'bold';
-            } else {
-              cellColor = '#94a3b8';
-            }
-          } else if (col.id === 'atrasos') {
-            if (num > 0) {
-              cellBg = '#fef3c7'; cellColor = '#92400e'; cellWeight = 'bold';
-            } else {
-              cellColor = '#94a3b8';
-            }
-          } else if (col.id === 'asistencias') {
-            if (num > 0) {
-              cellBg = '#ecfdf5'; cellColor = '#047857'; cellWeight = 'bold';
-            } else {
-              cellColor = '#94a3b8';
-            }
-          } else if (col.id === 'almPlanta' || col.id === 'almFuera') {
-            if (num > 0) {
-              cellBg = '#f0f9ff'; cellColor = '#0369a1'; cellWeight = '600';
-            } else {
-              cellColor = '#94a3b8';
-            }
-          } else if (num === 0) {
-            cellColor = '#94a3b8';
-          }
-        }
-
-        rowCells += `<td style="background-color:${cellBg}; color:${cellColor}; font-weight:${cellWeight}; font-family:${cellFont}; font-size:9.5pt; text-align:center; border:0.5pt solid #cbd5e1; height:26px; padding:3px 6px; ${borderCustom} mso-number-format:\\@;">${displayVal}</td>`;
-      });
-
-      return `<tr>${rowCells}</tr>`;
-    }).join('');
-
-    // 5. Fila de Totales / Promedios consolidada
-    let totalsCellsHtml = `<td colspan="2" style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:left; height:34px; border:1pt solid #0f172a; font-size:10pt; padding:6px 10px; letter-spacing:0.5px;">TOTALES / PROMEDIOS (${data.length} COLABORADORES)</td>`;
-
-    activeCols.forEach(col => {
-      if (col.tipo === 'pct') {
-        const avg = data.length ? Math.round(data.reduce((acc, e) => acc + (Number(e[col.id]) || 0), 0) / data.length) : 0;
-        totalsCellsHtml += `<td style="background-color:#0f172a; color:#4ade80; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt; mso-number-format:\\@;">${avg}%</td>`;
-      } else if (col.tipo === 'tiempo') {
-        const sum = data.reduce((acc, e) => acc + (Number(e[col.id]) || 0), 0);
-        totalsCellsHtml += `<td style="background-color:#0f172a; color:#fde047; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:9.5pt; font-family:Consolas, monospace; mso-number-format:\\@;">${minutosAHHMMSS(sum)}</td>`;
-      } else {
-        const sum = data.reduce((acc, e) => acc + (Number(e[col.id]) || 0), 0);
-        totalsCellsHtml += `<td style="background-color:#0f172a; color:#ffffff; font-weight:bold; text-align:center; height:34px; border:1pt solid #0f172a; font-size:10pt;">${sum}</td>`;
-      }
-    });
-
-    tableContentHtml = `
-      <thead>
-        <tr>${superHeadersHtml}</tr>
-        <tr>${colHeadersHtml}</tr>
-      </thead>
-      <tbody>
-        ${rowsHtml}
-        <tr>${totalsCellsHtml}</tr>
-      </tbody>
-    `;
-  }
-
-  // Signature columns count
-  const sigCol1 = Math.max(1, Math.floor(totalCols / 3));
-  const sigCol2 = Math.max(1, Math.floor(totalCols / 3));
-  const sigCol3 = Math.max(1, totalCols - sigCol1 - sigCol2);
-
-  // Formato HTML corporativo premium para Microsoft Excel
-  let excelHtml = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-      <meta charset="utf-8">
-      <!--[if gte mso 9]>
-      <xml>
-        <x:ExcelWorkbook>
-          <x:ExcelWorksheets>
-            <x:ExcelWorksheet>
-              <x:Name>Reporte Asistencia</x:Name>
-              <x:WorksheetOptions>
-                <x:DisplayGridlines/>
-                <x:Print>
-                  <x:Orientation>Landscape</x:Orientation>
-                </x:Print>
-              </x:WorksheetOptions>
-            </x:ExcelWorksheet>
-          </x:ExcelWorksheets>
-        </x:ExcelWorkbook>
-      </xml>
-      <![endif]-->
-      <style>
-        table { border-collapse:collapse; font-family:Arial, sans-serif; }
-        th { font-family:Arial, sans-serif; }
-        td { font-family:Arial, sans-serif; }
-      </style>
-    </head>
-    <body>
-      <table>
-        <!-- BANNER DE ENCABEZADO CORPORATIVO -->
-        <tr>
-          <td colspan="${totalCols}" style="background-color:#0f172a; color:#ffffff; font-size:15pt; font-weight:bold; height:42px; text-align:center; vertical-align:middle; border:1pt solid #0f172a; letter-spacing:1px;">
-            TCONTROL S.A. &mdash; REPORTE CONSOLIDADO DE ASISTENCIA Y NÓMINA
-          </td>
-        </tr>
-        <tr>
-          <td colspan="${totalCols}" style="background-color:#1e293b; color:#94a3b8; font-size:9pt; height:24px; text-align:center; vertical-align:middle; border:1pt solid #1e293b;">
-            ${rango.esFiltroPersonalizado ? 'Rango de Fechas' : 'Período Nómina'}: <strong style="color:#38bdf8;">${periodoStr}</strong> &nbsp;|&nbsp; 
-            Filtro: <strong style="color:#ffffff;">${fCargo ? fCargo.toUpperCase() : 'TODOS LOS COLABORADORES'}</strong> &nbsp;|&nbsp; 
-            Generado: <strong style="color:#ffffff;">${formatearTimestampCompleto(new Date())}</strong>
-          </td>
-        </tr>
-        <tr><td colspan="${totalCols}" style="height:12px; border:none;"></td></tr>
-
-        ${tableContentHtml}
-
-        <!-- PIE DE PÁGINA Y AUDITORÍA PATRONAL -->
-        <tr><td colspan="${totalCols}" style="height:14px; border:none;"></td></tr>
-        <tr>
-          <td colspan="${totalCols}" style="background-color:#f8fafc; color:#64748b; font-size:8pt; font-style:italic; border:0.5pt solid #cbd5e1; height:24px; padding:4px 8px; text-align:center;">
-            CONFIDENCIAL &mdash; TCONTROL S.A. | Información laboral protegida por la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador) y el Código del Trabajo. Exclusivo para gestión interna y auditoría patronal autorizada.
-          </td>
-        </tr>
-        <tr><td colspan="${totalCols}" style="height:35px; border:none;"></td></tr>
-        <tr>
-          <td colspan="${sigCol1}" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
-            ELABORADO POR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Supervisor de Turno / RRHH</span>
-          </td>
-          <td colspan="${sigCol2}" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
-            REVISADO POR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Jefatura de Talento Humano</span>
-          </td>
-          <td colspan="${sigCol3}" style="border-top:1.5pt solid #475569; text-align:center; font-size:9pt; font-weight:bold; color:#1e293b; padding-top:6px;">
-            APROBADO POR<br><span style="font-size:8pt; font-weight:normal; color:#64748b;">Gerencia General / Auditoría</span>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
-
-  const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  link.setAttribute("href", url);
-  link.setAttribute("download", `Reporte_Asistencia_${safeFileName}.xls`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  mostrarToast('Reporte exportado a Excel con estilos premium', 'success');
-};
-
-window.exportarGoogleSheetsReporteCustom = async function () {
-  let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-  let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
-    ? window.obtenerRangoFechasReportes()
-    : { R_INI: '', R_FIN: '', labelRango: 'Reporte', labelCorto: 'Reporte', esFiltroPersonalizado: false };
-
-  // Nombre de hoja seguro (max 30 chars, sin caracteres ilegales para pestaña de Google Sheets)
-  let prefix = fCargo === 'almuerzos extra' ? 'AlmExt' : 'Rep';
-  let safeTabName = `${prefix}_${(rango.labelCorto || 'Rep').replace(/[^a-zA-Z0-9]/g, '_')}`.substring(0, 30);
-  let nombreHoja = safeTabName;
-
-  let hasData = false;
-  let extras = [];
-  if (fCargo === 'almuerzos extra') {
-    extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
-    if (q) {
-      extras = extras.filter(ae =>
-        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
-        (ae.observaciones || '').toLowerCase().includes(q) ||
-        (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
-      );
-    }
-    hasData = extras.length > 0;
-  } else {
-    const baseData = (window._reportesCustomData && window._reportesCustomData.length)
-      ? window._reportesCustomData
-      : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
-    hasData = baseData.length > 0;
-  }
-
-  if (!hasData) {
-    mostrarToast('No hay datos para exportar', 'warning');
-    return;
-  }
-
-  // Construir cabeceras y filas
-  let headers = [];
-  let filas = [];
-
-  if (fCargo === 'almuerzos extra') {
-    headers = ['Fecha', 'Descripción', 'Cantidad', 'Empresa/Destino', 'Observaciones', 'Tipo'];
-    filas = extras.map(ae => {
-      let dateStr = formatearFechaA_DMY(ae.fecha);
-      return [
-        dateStr,
-        ae.nombre || 'Almuerzo Extra',
-        ae.cantidad || 1,
-        ae.empresa || '',
-        ae.observaciones || '',
-        ae.tipo || 'Manual'
-      ];
-    });
-  } else {
-    headers = ['Empleado', 'Área'];
-    COLUMNAS_DISPONIBLES.forEach(col => {
-      if (columnasCustomActivas.includes(col.id)) {
-        headers.push(col.label);
-      }
-    });
-
-    let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
-
-    filas = data.map(e => {
-      let fila = [e.nombre, e.area || ''];
-      COLUMNAS_DISPONIBLES.forEach(col => {
-        if (columnasCustomActivas.includes(col.id)) {
-          const valor = e[col.id];
-          if (col.tipo === 'tiempo') {
-            fila.push(minutosAHHMMSS(valor));
-          } else if (col.tipo === 'pct') {
-            fila.push(`${valor}%`);
-          } else {
-            fila.push(valor);
-          }
-        }
-      });
-      return fila;
-    });
-  }
-
-  mostrarLoader(true);
-  try {
-    const res = await jsonpRequest({
-      accion: 'crearReporteGoogleSheets',
-      nombreReporte: nombreHoja,
-      headers: JSON.stringify(headers),
-      filas: JSON.stringify(filas)
-    });
-    mostrarLoader(false);
-    if (res && res.ok) {
-      if (res.url) {
-        mostrarToast('¡Reporte exportado con éxito! <a href="' + res.url + '" target="_blank" style="text-decoration:underline;color:white;font-weight:bold;margin-left:6px;">Abrir Google Sheets <i class="fas fa-external-link-alt"></i></a>', 'success');
-        try {
-          window.open(res.url, '_blank');
-        } catch (e) {
-          console.log("window.open blocked by popup blocker:", e);
-        }
-      } else {
-        mostrarToast('¡Reporte exportado a Google Sheets con éxito!', 'success');
-      }
-    } else {
-      mostrarToast(res?.error || 'Error al exportar a Google Sheets', 'error');
-    }
-  } catch (err) {
-    mostrarLoader(false);
-    mostrarToast('Error de red al conectar con Google Sheets: ' + err.message, 'error');
-  }
-};
-
-window.imprimirReporteCustom = function () {
-  let q = ($('searchReportesCustom')?.value || '').toLowerCase();
-  let fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
-  const rango = (typeof window.obtenerRangoFechasReportes === 'function')
-    ? window.obtenerRangoFechasReportes()
-    : { R_INI: '', R_FIN: '', labelRango: 'Reporte', labelCorto: 'Reporte', esFiltroPersonalizado: false };
-  let periodoStr = rango.labelRango;
-
-  let hasData = false;
-  let extras = [];
-  if (fCargo === 'almuerzos extra') {
-    extras = window.obtenerAlmuerzosExtraConsolidados(rango.R_INI, rango.R_FIN);
-    if (q) {
-      extras = extras.filter(ae =>
-        (ae.nombre || ae.invitado || '').toLowerCase().includes(q) ||
-        (ae.observaciones || '').toLowerCase().includes(q) ||
-        (ae.empresa || '').toLowerCase().includes(q) ||
-        (ae.tipo || ae.subtipo || '').toLowerCase().includes(q)
-      );
-    }
-    hasData = extras.length > 0;
-  } else {
-    const baseData = (window._reportesCustomData && window._reportesCustomData.length)
-      ? window._reportesCustomData
-      : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
-    hasData = baseData.length > 0;
-  }
-
-  if (!hasData) {
-    mostrarToast('No hay datos para imprimir', 'warning');
-    return;
-  }
-
-  let printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    mostrarToast('Error al abrir la ventana de impresión. Por favor habilite los pop-ups.', 'error');
-    return;
-  }
-
-  // Generar headers y filas de impresión
-  let headersHtml = '';
-  let bodyHtml = '';
-  let totalMetaLabel = '';
-  let tituloReporte = '';
-
-  if (fCargo === 'almuerzos extra') {
-    headersHtml = '<th>Fecha</th><th>Descripción</th><th style="text-align:center;">Cantidad</th><th>Empresa/Destino</th><th>Observaciones</th><th>Tipo</th>';
-    tituloReporte = 'TCONTROL S.A. - REPORTE DE ALMUERZOS EXTRAS';
-    let totalQty = extras.reduce((sum, ae) => sum + parseInt(ae.cantidad || 0), 0);
-    totalMetaLabel = `Total Almuerzos Extras: ${totalQty} | Registros: ${extras.length}`;
-
-    bodyHtml = extras.map(ae => {
-      let dateStr = formatearFechaA_DMY(ae.fecha);
-      return `<tr>
-            <td style="font-family:monospace;">${dateStr}</td>
-            <td style="font-weight:600;">${escapeHtml(ae.nombre || 'Almuerzo Extra')}</td>
-            <td style="text-align:center;">${ae.cantidad || 1}</td>
-            <td>${escapeHtml(ae.empresa || '—')}</td>
-            <td>${escapeHtml(ae.observaciones || '—')}</td>
-            <td>${escapeHtml(ae.tipo || 'Manual')}</td>
-          </tr>`;
-    }).join('');
-  } else {
-    headersHtml = '<th>Empleado</th><th>Área</th>';
-    COLUMNAS_DISPONIBLES.forEach(col => {
-      if (columnasCustomActivas.includes(col.id)) {
-        headersHtml += `<th>${col.label}</th>`;
-      }
-    });
-    tituloReporte = 'TCONTROL S.A. - REPORTE OFICIAL DE ASISTENCIA';
-
-    let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
-    totalMetaLabel = `Total Empleados Evaluados: ${data.length}`;
-
-    bodyHtml = data.map(e => {
-      let rowHtml = `<tr><td style="font-weight:600;">${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.area || '—')}</td>`;
-      COLUMNAS_DISPONIBLES.forEach(col => {
-        if (columnasCustomActivas.includes(col.id)) {
-          const valor = e[col.id];
-          let contenido = '';
-          if (col.tipo === 'tiempo') {
-            contenido = minutosAHHMMSS(valor);
-          } else if (col.tipo === 'pct') {
-            contenido = `${valor}%`;
-          } else {
-            contenido = valor;
-          }
-          rowHtml += `<td style="text-align:center;">${contenido}</td>`;
-        }
-      });
-      rowHtml += '</tr>';
-      return rowHtml;
-    }).join('');
-  }
-
-  printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>${tituloReporte} - ${periodoStr}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              color: #333;
-              padding: 20px;
-              margin: 0;
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 25px;
-              border-bottom: 3px solid #1e40af;
-              padding-bottom: 12px;
-            }
-            .header h1 {
-              margin: 0;
-              font-size: 22px;
-              color: #0f172a;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .header p {
-              margin: 6px 0 0 0;
-              font-size: 13px;
-              color: #4b5563;
-              font-weight: bold;
-            }
-            .info-meta {
-              display: flex;
-              justify-content: space-between;
-              font-size: 11px;
-              color: #64748b;
-              margin-bottom: 15px;
-              font-weight: 600;
-              background: #f8fafc;
-              padding: 8px 12px;
-              border-radius: 6px;
-              border: 1px solid #e2e8f0;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 10px;
-            }
-            th {
-              background-color: #1e40af;
-              color: #ffffff;
-              font-weight: bold;
-              text-align: left;
-              padding: 8px 6px;
-              font-size: 10px;
-              text-transform: uppercase;
-              border: 1px solid #cbd5e1;
-            }
-            td {
-              padding: 7px 6px;
-              font-size: 10px;
-              border: 1px solid #cbd5e1;
-            }
-            tr:nth-child(even) {
-              background-color: #f8fafc;
-            }
-            .footer {
-              margin-top: 40px;
-              text-align: center;
-              font-size: 10px;
-              color: #94a3b8;
-              border-top: 1px dashed #cbd5e1;
-              padding-top: 15px;
-            }
-            @page {
-              size: A4 landscape;
-              margin: 12mm;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${tituloReporte}</h1>
-            <p>${rango.esFiltroPersonalizado ? 'Filtro de Fechas: ' : 'Período: '}${periodoStr}</p>
-          </div>
-          <div class="info-meta">
-            <div>Generado el: ${formatearTimestampCompleto(new Date())}</div>
-            <div>${totalMetaLabel}</div>
-          </div>
-          <table>
-            <thead>
-              <tr>${headersHtml}</tr>
-            </thead>
-            <tbody>
-              ${bodyHtml}
-            </tbody>
-          </table>
-          <div class="footer">
-            <strong>TCONTROL S.A.</strong> — Sistema de Gestión de Asistencia y Jornada Laboral CONTROL 2026<br>
-            <span style="font-size: 8.5px; color: #64748b;">DOCUMENTO CONFIDENCIAL: Contiene datos personales y de asistencia amparados por la Ley Orgánica de Protección de Datos Personales (LOPDP Ecuador). Su uso se limita estrictamente a fines de control laboral y auditoría patronal autorizada. Prohibida su divulgación o copia sin autorización.</span>
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 600);
-            };
-          </script>
-        </body>
-        </html>
-      `);
-  printWindow.document.close();
-};
-
 // ============================================================
 // ACTUALIZACIÓN MASIVA DE EMPLEADOS (EXCEL, SHEETS, FORMULARIO)
 // ============================================================
@@ -12067,650 +9034,9 @@ window.triggerPhotoUpload = function (empleadoId) {
 };
 
 // ============================================================
-// ponytail: CONTROL DE EMERGENCIAS Y SIMULACROS EN SUPERVISOR
+// CONTROL DE EMERGENCIAS Y SIMULACROS EN SUPERVISOR
+// Extraido a: JS/supervisor/supervisor_emergencias.js
 // ============================================================
-window.cargarEmergenciasSupervisor = async function (silencioso = false) {
-  if (!silencioso) {
-    await cargarDatosCompletos(true, false);
-  }
-
-  const em = window.emergencia || { activa: false, nombre: '' };
-  const statusDiv = $('statusEmergenciaDetalle');
-  if (statusDiv) {
-    statusDiv.innerHTML = `
-          <div style="padding: 12px; border-radius: 8px; background: ${em.activa ? '#fef2f2' : '#f0fdf4'}; border: 1px solid ${em.activa ? '#fca5a5' : '#bbf7d0'}; color: ${em.activa ? '#991b1b' : '#166534'}; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <span style="font-size: 15px;">📢 Estado del Evento: <strong>${em.activa ? 'ACTIVO' : 'INACTIVO'}</strong></span>
-              ${em.activa ? `<br><span style="font-size: 12.5px; font-weight: normal; color: #7f1d1d; margin-top: 4px; display: inline-block;">Nombre del Evento: <strong>${em.nombre}</strong> (Iniciado el ${em.fecha || 'hoy'})</span>` : ''}
-            </div>
-            <div>
-              <i class="fas ${em.activa ? 'fa-bell fa-beat' : 'fa-shield-alt'}" style="font-size: 20px;"></i>
-            </div>
-          </div>
-        `;
-  }
-
-  // Update control panel inputs and buttons
-  const supInput = $('supEmEventName');
-  if (supInput) {
-    supInput.value = em.nombre || '';
-  }
-  const btnStart = $('btnSupEmStart');
-  const btnStop = $('btnSupEmStop');
-  if (btnStart) btnStart.style.display = em.activa ? 'none' : 'flex';
-  if (btnStop) btnStop.style.display = em.activa ? 'flex' : 'none';
-
-  // Group employees by emergency status
-  let aSalvoCount = 0;
-  let requiereAyudaCount = 0;
-  let pendientesCount = 0;
-
-  const hoyStr = getLocalHoyStr(new Date());
-  const reportesHTML = [];
-
-  empCache.forEach(emp => {
-    // Find if this employee registered their status today within their ENTRADA record
-    const regEntrada = (emp.registros || []).find(r => r.tipo === 'ENTRADA' && r.fecha === hoyStr);
-    const hasEstado = regEntrada && regEntrada.estado;
-
-    let statusText = "⚪ PENDIENTE";
-    let statusBadgeColor = "#64748b";
-    let statusBgColor = "#f1f5f9";
-    let detalle = "-";
-    let horaReporte = "-";
-
-    if (hasEstado) {
-      const val = regEntrada.estado || "";
-      if (val.startsWith("A salvo")) {
-        aSalvoCount++;
-        statusText = "🟢 A SALVO / OK";
-        statusBadgeColor = "#0f766e";
-        statusBgColor = "#ccfbf1";
-      } else if (val.startsWith("Requiere ayuda")) {
-        requiereAyudaCount++;
-        statusText = "🔴 REQUIERE AYUDA";
-        statusBadgeColor = "#b91c1c";
-        statusBgColor = "#fee2e2";
-      } else {
-        // General or other status
-        aSalvoCount++;
-        statusText = "🟢 REGISTRADO";
-        statusBadgeColor = "#0f766e";
-        statusBgColor = "#ccfbf1";
-      }
-
-      // Split comments if any
-      const dashIdx = val.indexOf(" - ");
-      detalle = dashIdx !== -1 ? val.substring(dashIdx + 3) : "Sin comentarios";
-      // Hora de reporte independiente de la hora de entrada
-      // Prioridad: estado_timestamp (Firebase ms) > estado_hora (Sheets "HH:MM") > "-"
-      if (regEntrada.estado_timestamp) {
-        // Soporta: número ms (Date.now() int64), o Firestore Timestamp {seconds, toMillis}
-        let ms = regEntrada.estado_timestamp;
-        if (typeof ms === 'object') {
-          ms = typeof ms.toMillis === 'function' ? ms.toMillis() : (ms.seconds || 0) * 1000;
-        }
-        const d = new Date(ms);
-        if (!isNaN(d)) {
-          const hh = String(d.getHours()).padStart(2, '0');
-          const mm = String(d.getMinutes()).padStart(2, '0');
-          horaReporte = `${hh}:${mm}`;
-        }
-      } else if (regEntrada.estado_hora) {
-        horaReporte = regEntrada.estado_hora; // viene del GAS como "HH:MM"
-      } else {
-        horaReporte = "-";
-      }
-    } else {
-      pendientesCount++;
-    }
-
-    reportesHTML.push(`
-          <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 12px; font-size: 13px; font-weight: 600; color: #1e293b;">${emp.nombre || 'Sin nombre'}</td>
-            <td style="padding: 12px; font-size: 13px; color: #475569;">${emp.departamento || emp.cargo || 'Área general'}</td>
-            <td style="padding: 12px;">
-              <span style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 800; color: ${statusBadgeColor}; background: ${statusBgColor}; text-align: center;">
-                ${statusText}
-              </span>
-            </td>
-            <td style="padding: 12px; font-size: 13px; color: #334155; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${detalle}">
-              ${detalle}
-            </td>
-            <td style="padding: 12px; font-size: 13px; color: #64748b;">${horaReporte}</td>
-          </tr>
-        `);
-  });
-
-  // Update counters
-  const elSalvo = $('numASalvo');
-  const elAyuda = $('numRequiereAyuda');
-  const elPend = $('numPendientes');
-  if (elSalvo) elSalvo.textContent = aSalvoCount;
-  if (elAyuda) elAyuda.textContent = requiereAyudaCount;
-  if (elPend) elPend.textContent = pendientesCount;
-
-  // Update table body
-  const tbody = $('listaReportesEmergenciaBody');
-  if (tbody) {
-    tbody.innerHTML = reportesHTML.length > 0 ? reportesHTML.join('') : `
-          <tr>
-            <td colspan="5" style="text-align: center; padding: 20px; color: #64748b;">No hay personal activo registrado para mostrar.</td>
-          </tr>
-        `;
-  }
-};
-
-window.toggleEmergenciaSupervisor = async function (activa) {
-  const inputEl = $('supEmEventName');
-  const nombre = inputEl ? inputEl.value.trim() : '';
-  if (activa && !nombre) {
-    mostrarToast('Por favor ingrese el nombre del evento/simulacro.', 'warning');
-    return;
-  }
-
-  // Pre-verificación: ¿está el backend disponible?
-  if (window.USE_FIREBASE && !window.FirebaseBackend) {
-    mostrarToast('Error: El motor Firebase no está cargado. Recarga la página.', 'error');
-    return;
-  }
-
-  mostrarLoader(true);
-  try {
-    const res = await jsonpRequest({
-      accion: 'toggleEmergencia',
-      activa: activa,
-      nombre: nombre,
-      empleadoId: (() => {
-        try { return JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').id || ''; }
-        catch (e) { return ''; }
-      })()
-    });
-
-    mostrarLoader(false);
-    if (res.ok) {
-      mostrarToast(activa ? '🚨 Alerta de emergencia iniciada' : '🟢 Alerta de emergencia finalizada', 'success');
-
-      if (!window.emergencia) window.emergencia = {};
-      window.emergencia.activa = activa;
-      window.emergencia.nombre = activa ? nombre : '';
-
-      await cargarEmergenciasSupervisor();
-    } else {
-      mostrarToast(res.error || 'Error al actualizar la alerta', 'error');
-    }
-  } catch (e) {
-    mostrarLoader(false);
-    console.error('toggleEmergenciaSupervisor error:', e);
-    mostrarToast('Error: ' + (e.message || 'No se pudo conectar con el servidor'), 'error');
-  }
-};
-
-// ponytail: Supervisor Multi-date Trabajo en Campo modal, auto-load & overwrite confirmation
-let _supDiasCampoState = [];
-
-window.mostrarModalCampoSupervisor = async function (empId = null) {
-  const modal = document.getElementById('trabajoCampoSupModal');
-  if (!modal) return;
-
-  const selEmp = document.getElementById('supCampoEmpSelect');
-  if (selEmp && empCache.length > 0) {
-    selEmp.innerHTML = empCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (${e.id})</option>`).join('');
-  }
-
-  let targetId = empId;
-  if (!targetId && empCache.length > 0) {
-    targetId = empCache[0].id;
-  }
-  if (selEmp && targetId) {
-    selEmp.value = targetId;
-  }
-
-  const emp = empCache.find(e => e.id === targetId);
-  const empNombre = emp ? emp.nombre : (targetId || '');
-
-  document.getElementById('supCampoEmpId').value = targetId || '';
-  document.getElementById('supCampoEmpNombreDisplay').value = `${targetId || ''} - ${empNombre}`;
-  document.getElementById('supCampoProyectoInput').value = '';
-
-  const hoy = new Date();
-  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-  document.getElementById('supCampoFechaInicioInput').value = hoyStr;
-  document.getElementById('supCampoFechaFinInput').value = hoyStr;
-  document.getElementById('supCampoObservacionesInput').value = '';
-
-  await cargarIngenierosAutorizadoresSupervisor();
-  await generarListaDiasCampoSupervisor();
-  modal.classList.remove('hidden');
-};
-
-window.alCambiarEmpCampoModal = function (newEmpId) {
-  const emp = empCache.find(e => e.id === newEmpId);
-  document.getElementById('supCampoEmpId').value = newEmpId;
-  document.getElementById('supCampoEmpNombreDisplay').value = `${newEmpId} - ${emp ? emp.nombre : newEmpId}`;
-  generarListaDiasCampoSupervisor();
-};
-
-window.abrirModalCampoSupervisor = function (empId) {
-  window.mostrarModalCampoSupervisor(empId);
-};
-
-window.cerrarModalCampoSupervisor = function () {
-  const modal = document.getElementById('trabajoCampoSupModal');
-  if (modal) modal.classList.add('hidden');
-};
-
-window.generarListaDiasCampoSupervisor = async function () {
-  const empId = document.getElementById('supCampoEmpId')?.value;
-  const fIniStr = document.getElementById('supCampoFechaInicioInput')?.value;
-  const fFinStr = document.getElementById('supCampoFechaFinInput')?.value;
-  const container = document.getElementById('supListaDiasCampoContainer');
-  const cntSpan = document.getElementById('supCntDiasCampo');
-
-  if (!container || !fIniStr || !fFinStr) return;
-
-  function parseFechaLocalStr(fStr) {
-    if (!fStr) return null;
-    const parts = fStr.split('-');
-    if (parts.length < 3) return null;
-    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  const dIni = parseFechaLocalStr(fIniStr);
-  const dFin = parseFechaLocalStr(fFinStr);
-
-  if (!dIni || !dFin || dFin < dIni) {
-    container.innerHTML = `<div style="background:#fef3c7; border:1px solid #fde68a; padding:8px 12px; border-radius:6px; font-size:12px; color:#b45309;">Selecciona un rango de fechas válido.</div>`;
-    return;
-  }
-
-  // Buscar únicamente registros existentes de TRABAJO EN CAMPO (por modo, tipo o razón)
-  function esRegistroCampoSup(r) {
-    if (!r) return false;
-    const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
-    const m = String(r.modo || '').toUpperCase();
-    const raz = String(r.razon_ausencia || r.razon || r.observaciones || '').toUpperCase();
-    return (
-      m === 'CAMPO' ||
-      t.includes('CAMPO') ||
-      t === 'TRABAJO_DE_CAMPO' ||
-      t === 'SALIDA_A_CAMPO' ||
-      raz.includes('CAMPO') ||
-      raz.includes('TRABAJO_DE_CAMPO') ||
-      raz.includes('TRABAJO EN CAMPO')
-    );
-  }
-
-  let regsExistentes = [];
-  const empObj = (empCache || []).find(e => e.id === empId);
-  if (empObj && Array.isArray(empObj.registros)) {
-    empObj.registros.forEach(r => {
-      if (esRegistroCampoSup(r)) regsExistentes.push(r);
-    });
-  }
-
-  const firestoreDb = (typeof db !== 'undefined' ? db : (window.db || null));
-  if (empId && firestoreDb && typeof firestoreDb.collection === 'function') {
-    try {
-      const snap = await firestoreDb.collection('registros').where('empleadoId', '==', empId).get();
-      snap.forEach(doc => {
-        const d = doc.data();
-        if (esRegistroCampoSup(d)) {
-          if (!regsExistentes.some(x => x.id === doc.id || (x.fecha === d.fecha && x.tipo === d.tipo))) {
-            regsExistentes.push({ id: doc.id, ...d });
-          }
-        }
-      });
-    } catch (e) { }
-  }
-
-  const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-  const fechas = [];
-  let curr = new Date(dIni);
-
-  while (curr <= dFin) {
-    const y = curr.getFullYear();
-    const m = String(curr.getMonth() + 1).padStart(2, '0');
-    const d = String(curr.getDate()).padStart(2, '0');
-    const fStr = `${y}-${m}-${d}`;
-    const diaNombre = diasSemana[curr.getDay()];
-
-    const regsFecha = regsExistentes.filter(r => r.fecha === fStr && esRegistroCampoSup(r));
-    const regEntrada = regsFecha.find(r => {
-      const t = String(r.tipo || '').toUpperCase();
-      return t === 'ENTRADA_CAMPO' || t === 'RETORNO_CAMPO' || (t.includes('ENTRADA') && t.includes('CAMPO')) || t === 'ENTRADA';
-    });
-    const regSalida = regsFecha.find(r => {
-      const t = String(r.tipo || '').toUpperCase();
-      return t === 'SALIDA_CAMPO' || (t.includes('SALIDA') && t.includes('CAMPO')) || t === 'SALIDA';
-    });
-
-    const hoyObj = new Date();
-    const hoyStr = `${hoyObj.getFullYear()}-${String(hoyObj.getMonth() + 1).padStart(2, '0')}-${String(hoyObj.getDate()).padStart(2, '0')}`;
-
-    const yaExiste = regsFecha.length > 0;
-    const hEntrada = regEntrada && regEntrada.hora ? regEntrada.hora.substring(0, 5) : '';
-    const hSalida = regSalida && regSalida.hora ? regSalida.hora.substring(0, 5) : '';
-
-    fechas.push({
-      fecha: fStr,
-      diaNombre: diaNombre,
-      isFestivo: (typeof esFeriado === 'function' && esFeriado(fStr)) || curr.getDay() === 0 || curr.getDay() === 6,
-      hE: hEntrada,
-      hS: hSalida,
-      yaExiste: yaExiste,
-      docEntradaId: regEntrada ? regEntrada.id : null,
-      docSalidaId: regSalida ? regSalida.id : null
-    });
-
-    curr.setDate(curr.getDate() + 1);
-  }
-
-  // Auto-cargar Proyecto, Observaciones y Autorizado Por si existe algún registro de CAMPO previo en el rango
-  const regConInfo = regsExistentes.find(r => {
-    if (!r.fecha) return false;
-    return r.fecha >= fIniStr && r.fecha <= fFinStr && (r.observaciones || r.razon_ausencia || r.autoriza);
-  });
-
-  if (regConInfo) {
-    const proyInput = document.getElementById('supCampoProyectoInput');
-    const obsInput = document.getElementById('supCampoObservacionesInput');
-    const autSelect = document.getElementById('supCampoAutorizadoPorSelect');
-
-    const rawObs = String(regConInfo.observaciones || regConInfo.razon_ausencia || '').trim();
-    let projFound = '';
-    let obsFound = '';
-
-    const match = rawObs.match(/\[Proyecto:\s*([^\]]+)\]/i);
-    if (match) {
-      projFound = match[1].trim();
-      obsFound = rawObs.replace(match[0], '').trim();
-    } else {
-      obsFound = rawObs;
-    }
-
-    if (proyInput && projFound) proyInput.value = projFound;
-    if (obsInput && obsFound && obsFound.toUpperCase() !== 'TRABAJO EN CAMPO') obsInput.value = obsFound;
-    if (autSelect && regConInfo.autoriza) {
-      autSelect.value = regConInfo.autoriza;
-    }
-  }
-
-  _supDiasCampoState = fechas;
-  if (cntSpan) cntSpan.textContent = `${fechas.length} día(s)`;
-  renderListaDiasCampoSupervisorHTML();
-};
-
-function calcularTotalesDiaCampo(fechaVal, hEStr, hSStr) {
-  if (!hEStr || !hSStr) return { t50: '0h 0m', t100: '0h 0m' };
-  function toMins(hStr) {
-    const parts = hStr.split(':');
-    if (parts.length < 2) return null;
-    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-  }
-  const mE = toMins(hEStr);
-  let mS = toMins(hSStr);
-  if (mE === null || mS === null) return { t50: '0h 0m', t100: '0h 0m' };
-  if (mS < mE) {
-    mS += 24 * 60;
-  }
-  if (mS <= mE) return { t50: '0h 0m', t100: '0h 0m' };
-
-  const minutosBrutos = mS - mE;
-  const minutosNetos = Math.max(0, minutosBrutos - 30);
-
-  const parts = fechaVal.split('-');
-  const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
-  const esFestivo = (typeof esFeriado === 'function' && esFeriado(fechaVal)) || dObj.getDay() === 0 || dObj.getDay() === 6;
-
-  let t50 = 0, t100 = 0;
-  if (esFestivo) {
-    t100 = minutosNetos;
-  } else {
-    const antes = Math.max(0, 450 - mE);
-    const despues = Math.max(0, mS - 975);
-    t50 = antes + despues;
-  }
-
-  function fmt(m) {
-    return `${Math.floor(m / 60)}h ${Math.round(m % 60)}m`;
-  }
-  return { t50: fmt(t50), t100: fmt(t100) };
-}
-window.calcularTotalesDiaCampo = calcularTotalesDiaCampo;
-
-window.renderListaDiasCampoSupervisorHTML = function () {
-  const container = document.getElementById('supListaDiasCampoContainer');
-  if (!container) return;
-
-  if (_supDiasCampoState.length === 0) {
-    container.innerHTML = `<div style="background:#f1f5f9; padding:8px; border-radius:6px; font-size:12px; text-align:center; color:#64748b;">No hay fechas seleccionadas en el rango.</div>`;
-    return;
-  }
-
-  container.innerHTML = _supDiasCampoState.map((item, idx) => {
-    const totales = calcularTotalesDiaCampo(item.fecha, item.hE, item.hS);
-    const bgStyle = item.yaExiste ? '#fff7ed' : '#ffffff';
-    const borderStyle = item.yaExiste ? '#fdba74' : '#e2e8f0';
-
-    return `
-        <div style="background: ${bgStyle}; border: 1px solid ${borderStyle}; padding: 10px; border-radius: 8px; margin-bottom: 8px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <div>
-              <span style="font-weight:700; font-size:12.5px; color:#1e293b;">${item.fecha} (${item.diaNombre})</span>
-              ${item.isFestivo ? '<span style="background:#fef3c7; color:#b45309; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:4px;">Festivo / Finde</span>' : ''}
-              ${item.yaExiste ? '<span style="background:#ffedd5; color:#c2410c; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:4px;">⚠️ Registro existente (Se actualizará)</span>' : ''}
-            </div>
-            ${_supDiasCampoState.length > 1 ? `<button type="button" onclick="eliminarDiaCampoSupervisor(${idx})" style="background:none; border:none; color:#ef4444; font-weight:700; cursor:pointer; font-size:16px; padding:0 4px;" title="Quitar fecha">&times;</button>` : ''}
-          </div>
-          <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-            <div style="flex:1; min-width:115px;">
-              <label style="font-size:10px; font-weight:700; color:#64748b; display:block;">ENTRADA</label>
-              <input type="time" class="form-input" value="${item.hE}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hE', this.value)" oninput="actualizarHorarioDiaCampoSupervisor(${idx}, 'hE', this.value)" style="padding:6px 8px; font-size:13px; height:auto; border-radius:6px; width:100%;">
-            </div>
-            <div style="flex:1; min-width:115px;">
-              <label style="font-size:10px; font-weight:700; color:#64748b; display:block;">SALIDA</label>
-              <input type="time" class="form-input" value="${item.hS}" onchange="actualizarHorarioDiaCampoSupervisor(${idx}, 'hS', this.value)" oninput="actualizarHorarioDiaCampoSupervisor(${idx}, 'hS', this.value)" style="padding:6px 8px; font-size:13px; height:auto; border-radius:6px; width:100%;">
-            </div>
-            <div style="text-align:center; min-width:50px;">
-              <small style="font-size:9.5px; font-weight:700; color:#b45309; display:block;">50%</small>
-              <span style="font-weight:800; font-size:12px; color:#d97706;">${totales.t50}</span>
-            </div>
-            <div style="text-align:center; min-width:50px;">
-              <small style="font-size:9.5px; font-weight:700; color:#b91c1c; display:block;">100%</small>
-              <span style="font-weight:800; font-size:12px; color:#dc2626;">${totales.t100}</span>
-            </div>
-          </div>
-        </div>
-        `;
-  }).join('');
-};
-
-window.actualizarHorarioDiaCampoSupervisor = function (idx, prop, val) {
-  if (_supDiasCampoState[idx]) {
-    _supDiasCampoState[idx][prop] = val;
-    renderListaDiasCampoSupervisorHTML();
-  }
-};
-
-window.eliminarDiaCampoSupervisor = function (idx) {
-  _supDiasCampoState.splice(idx, 1);
-  const cntSpan = document.getElementById('supCntDiasCampo');
-  if (cntSpan) cntSpan.textContent = `${_supDiasCampoState.length} día(s)`;
-  renderListaDiasCampoSupervisorHTML();
-};
-
-window.cargarIngenierosAutorizadoresSupervisor = async function () {
-  const select = document.getElementById('supCampoAutorizadoPorSelect');
-  if (!select) return;
-
-  select.innerHTML = '<option value="">-- Cargando Autorizadores (Ingeniería)... --</option>';
-  let ingenieros = [];
-
-  const firestoreDb = (typeof db !== 'undefined' ? db : (window.db || null));
-  if (firestoreDb && typeof firestoreDb.collection === 'function') {
-    try {
-      const snap = await firestoreDb.collection('empleados').get();
-      snap.forEach(doc => {
-        const d = doc.data();
-        const areaStr = String(d.area || d.cargo || '').toUpperCase().trim();
-        const normStr = areaStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-        const esActivo = d.activo === 'SI' || d.activo === true || d.activo !== 'NO';
-        const esIngenieria = normStr.includes('INGENIERIA') || normStr.includes('INGENIERO') || normStr.includes('ING');
-
-        if (esActivo && esIngenieria) {
-          ingenieros.push({ id: doc.id, nombre: d.nombre, area: d.area || d.cargo || 'INGENIERIA' });
-        }
-      });
-    } catch (e) { }
-  }
-
-  const unicosMap = new Map();
-  ingenieros.forEach(item => {
-    if (item.nombre && !unicosMap.has(item.nombre)) {
-      unicosMap.set(item.nombre, item);
-    }
-  });
-  const listaFinal = Array.from(unicosMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
-
-  if (listaFinal.length > 0) {
-    select.innerHTML = '<option value="">-- Seleccionar Autorizador (Ingeniería) [Opcional] --</option>' +
-      listaFinal.map(i => `<option value="${i.nombre}">${i.nombre} (${i.area || 'INGENIERIA'})</option>`).join('');
-  } else {
-    select.innerHTML = '<option value="">-- Sin personal del área de Ingeniería encontrado --</option>';
-  }
-};
-
-window.guardarTrabajoEnCampoSupervisor = async function () {
-  const empId = document.getElementById('supCampoEmpId')?.value;
-  const proyecto = document.getElementById('supCampoProyectoInput')?.value.trim();
-  const obs = document.getElementById('supCampoObservacionesInput')?.value.trim();
-  const autoriza = document.getElementById('supCampoAutorizadoPorSelect')?.value || '';
-
-  if (!empId) { mostrarToast('ID de empleado no especificado', 'error'); return; }
-  if (!_supDiasCampoState || _supDiasCampoState.length === 0) { mostrarToast('No hay fechas seleccionadas en el rango.', 'error'); return; }
-
-  const diasExistentes = _supDiasCampoState.filter(d => d.yaExiste);
-  if (diasExistentes.length > 0) {
-    const listaFechas = diasExistentes.map(d => `${d.fecha} (${d.diaNombre})`).join('\n• ');
-    const confirmar = confirm(`⚠️ ATENCIÓN:\nYa existe(n) registro(s) previo(s) para la(s) fecha(s):\n• ${listaFechas}\n\n¿Deseas SOBREESCRIBIR / ACTUALIZAR estos registros?`);
-    if (!confirmar) return;
-  }
-
-  const emp = empCache.find(e => e.id === empId);
-  const empNombre = emp ? emp.nombre : empId;
-
-  let obsFinal = 'Trabajo en Campo';
-  if (proyecto && obs) {
-    obsFinal = `[Proyecto: ${proyecto}] ${obs}`;
-  } else if (proyecto) {
-    obsFinal = `[Proyecto: ${proyecto}] Trabajo en Campo`;
-  } else if (obs) {
-    obsFinal = obs;
-  }
-
-  const btn = document.getElementById('btnGuardarCampoSup');
-  if (btn) btn.disabled = true;
-
-  try {
-    const firestoreDb = (typeof db !== 'undefined' ? db : (window.db || null));
-    if (!firestoreDb || typeof firestoreDb.collection !== 'function') {
-      mostrarToast('Base de datos Firebase no disponible', 'error');
-      if (btn) btn.disabled = false;
-      return;
-    }
-
-    let guardadosCount = 0;
-    for (const item of _supDiasCampoState) {
-      const hE = item.hE ? (item.hE.length === 5 ? item.hE + ':00' : item.hE) : '';
-      const hS = item.hS ? (item.hS.length === 5 ? item.hS + ':00' : item.hS) : '';
-
-      if (hE) {
-        const hEClean = hE.replace(/:/g, '');
-        const targetEntradaId = item.docEntradaId || `${empId}_Entrada_campo_${item.fecha}_${hEClean}`;
-        const tsEntrada = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hE}`));
-
-        const dataEntrada = {
-          empleadoId: empId,
-          nombre: empNombre,
-          fecha: item.fecha,
-          hora: hE,
-          tipo: 'Entrada_campo',
-          almuerzo: '',
-          dispositivo: 'FORM_CAMPO_SUPERVISOR',
-          timestamp: tsEntrada,
-          modo: 'CAMPO',
-          horasExtra: 'SI',
-          autoriza: autoriza,
-          observaciones: obsFinal,
-          razon_ausencia: obsFinal
-        };
-        await firestoreDb.collection('registros').doc(targetEntradaId).set(dataEntrada, { merge: true });
-      }
-
-      if (hS) {
-        const hSClean = hS.replace(/:/g, '');
-        const targetSalidaId = item.docSalidaId || `${empId}_SALIDA_CAMPO_${item.fecha}_${hSClean}`;
-        const tsSalida = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T${hS}`));
-
-        const dataSalida = {
-          empleadoId: empId,
-          nombre: empNombre,
-          fecha: item.fecha,
-          hora: hS,
-          tipo: 'SALIDA_CAMPO',
-          almuerzo: '',
-          dispositivo: 'FORM_CAMPO_SUPERVISOR',
-          timestamp: tsSalida,
-          modo: 'CAMPO',
-          horasExtra: 'SI',
-          autoriza: autoriza,
-          observaciones: obsFinal,
-          razon_ausencia: obsFinal
-        };
-        await firestoreDb.collection('registros').doc(targetSalidaId).set(dataSalida, { merge: true });
-      }
-
-      if (!hE && !hS) {
-        const targetEntradaId = item.docEntradaId || `${empId}_Entrada_campo_${item.fecha}_080000`;
-        const tsEntrada = firebase.firestore.Timestamp.fromDate(new Date(`${item.fecha}T08:00:00`));
-
-        const dataEntrada = {
-          empleadoId: empId,
-          nombre: empNombre,
-          fecha: item.fecha,
-          hora: '',
-          tipo: 'Entrada_campo',
-          almuerzo: '',
-          dispositivo: 'FORM_CAMPO_SUPERVISOR',
-          timestamp: tsEntrada,
-          modo: 'CAMPO',
-          horasExtra: 'SI',
-          autoriza: autoriza,
-          observaciones: obsFinal,
-          razon_ausencia: obsFinal
-        };
-        await firestoreDb.collection('registros').doc(targetEntradaId).set(dataEntrada, { merge: true });
-      }
-
-      guardadosCount++;
-    }
-
-    mostrarToast(`✅ Trabajo en Campo guardado/actualizado para ${guardadosCount} día(s)`, 'success');
-    cerrarModalCampoSupervisor();
-
-    if (typeof window.cargarResumenGeneral === 'function') {
-      window.cargarResumenGeneral();
-    }
-  } catch (e) {
-    mostrarToast('Error al guardar Trabajo en Campo: ' + e.message, 'error');
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-};
-
 // ============================================================
 // GESTIÓN Y ELIMINACIÓN DE EMPLEADOS (INDIVIDUAL Y MASIVA)
 // ============================================================
@@ -15046,28 +11372,26 @@ window.esCumpleanosEmpleadoEnFecha = function (emp, fechaStr) {
 window.actualizarEstadoSeccionRazon = function () {
   const hE = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
   const hS = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
-  const ctx = window._modalJornadaContexto;
-  const tieneAsistencia = Boolean(hE || hS || (ctx && ctx.tieneAsistencia));
+  const tieneHoras = Boolean(hE || hS);
 
   const seccion2 = document.getElementById('seccionModalJornadaRazon');
   const razonSel = document.getElementById('modalJornadaRazonSelect');
   const inputOtro = document.getElementById('modalJornadaRazonOtroInput');
   const avisoInactivo = document.getElementById('modalJornadaAvisoSeccion2Inactiva');
 
-  if (tieneAsistencia) {
+  if (tieneHoras) {
     if (seccion2) {
-      seccion2.style.opacity = '0.6';
+      seccion2.style.opacity = '0.8';
       seccion2.style.background = '#f8fafc';
     }
     if (razonSel) {
-      razonSel.disabled = true;
-      razonSel.style.cursor = 'not-allowed';
-      razonSel.style.background = '#e2e8f0';
+      razonSel.disabled = false;
+      razonSel.style.cursor = 'pointer';
+      razonSel.style.background = '#f1f5f9';
       razonSel.style.borderColor = '#cbd5e1';
       razonSel.style.color = '#64748b';
-      razonSel.value = '';
     }
-    if (inputOtro) inputOtro.disabled = true;
+    if (inputOtro) inputOtro.disabled = false;
     if (avisoInactivo) avisoInactivo.style.display = 'flex';
   } else {
     if (seccion2) {
@@ -15197,8 +11521,11 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
       else if (t.includes('MEDIC')) razonActual = 'Permiso Médico';
       else if (t.includes('PERS')) razonActual = 'Permiso Personal';
       else if (t.includes('CUMPLE')) razonActual = 'Cumpleaños';
-      else if (t.includes('JUSTIF')) razonActual = 'Salida Justificada';
+      else if (t.includes('JUSTIF')) razonActual = 'Falta Justificada';
       else if (t.includes('CALAM')) razonActual = 'Calamidad Doméstica';
+      else if (t.includes('CAMPO')) razonActual = 'Campo';
+      else if (t.includes('FERIADO')) razonActual = 'Feriado';
+      else if (t.includes('INASISTENCIA') || t === 'FALTA') razonActual = 'Inasistencia';
     }
   });
 
@@ -15227,11 +11554,11 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
     || (netWorked > 0);
 
   // Detección automática de cumpleaños según fecha
-  const esCumpleHoy = window.esCumpleanosEmpleadoEnFecha(emp, fecha);
+  const esCumpleHoy = window.esCumpleanosEmpleadoEnFecha(emp, fechaEfectiva);
 
   window._modalJornadaContexto = {
     empleadoId,
-    fecha,
+    fecha: fechaEfectiva,
     emp,
     regsDia,
     periodosDia,
@@ -15242,13 +11569,20 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
     modActual,
     esFestivo,
     tieneAsistencia,
-    esCumpleHoy
+    esCumpleHoy,
+    minsJustificado: justMins,
+    minsPersonal: persMins,
+    minsMedico: medMins,
+    almuerzoActual: almuerzoVal,
+    horasExtrasActual: heVal,
+    observacionActual: comentario,
+    razonActual: razonActual
   };
 
   // Asignar al DOM
   document.getElementById('modalJornadaColaboradorNombre').textContent = emp.nombre || `ID: ${empleadoId}`;
-  const fParts = fecha.split('-');
-  const diaNom = (typeof obtenerDiaSemanaStr === 'function') ? obtenerDiaSemanaStr(fecha) : '';
+  const fParts = fechaEfectiva.split('-');
+  const diaNom = (typeof obtenerDiaSemanaStr === 'function') ? obtenerDiaSemanaStr(fechaEfectiva) : '';
   document.getElementById('modalJornadaFechaTexto').textContent = `${diaNom} ${fParts[2]}/${fParts[1]}/${fParts[0]}`;
 
   const badgeDia = document.getElementById('modalJornadaBadgeDia');
@@ -15278,23 +11612,26 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   const modoSel = document.getElementById('modalJornadaModoSelect');
   if (modoSel) modoSel.value = (modActual === 'CAMPO' || modActual === 'MIXTO') ? modActual : 'EMPRESA';
 
-  // Habilitar / Deshabilitar opciones de día completo
+  // Habilitar opciones de día completo
   const optVac = document.getElementById('modalOptVacacion');
   const optFer = document.getElementById('modalOptFeriado');
   const optInas = document.getElementById('modalOptInasistencia');
-  if (optVac) optVac.disabled = tieneAsistencia;
-  if (optFer) optFer.disabled = tieneAsistencia;
-  if (optInas) optInas.disabled = tieneAsistencia;
+  if (optVac) optVac.disabled = false;
+  if (optFer) optFer.disabled = false;
+  if (optInas) optInas.disabled = false;
 
-  // Razón de ausencia (solo activa si no hay marcaciones)
+  // Razón de ausencia
   const razonSel = document.getElementById('modalJornadaRazonSelect');
   const divOtro = document.getElementById('modalJornadaDivRazonPersonalizada');
   const inputOtro = document.getElementById('modalJornadaRazonOtroInput');
+  const opcionesValidas = ['Vacación', 'Feriado', 'Permiso Médico', 'Permiso Personal', 'Falta Justificada', 'Campo', 'Inasistencia'];
+
   if (razonSel) {
-    if (tieneAsistencia) {
+    if (primerEntrada || ultimoSalida) {
       razonSel.value = '';
       if (divOtro) divOtro.style.display = 'none';
-    } else if (['Vacación', 'Feriado', 'Permiso Médico', 'Permiso Personal', 'Calamidad Doméstica', 'Salida a Campo', 'Inasistencia'].includes(razonActual)) {
+      if (inputOtro) inputOtro.value = '';
+    } else if (opcionesValidas.includes(razonActual)) {
       razonSel.value = razonActual;
       if (divOtro) divOtro.style.display = 'none';
     } else if (razonActual && razonActual !== 'Cumpleaños') {
@@ -15344,11 +11681,14 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   // Actualizar estado activo/inactivo de la Sección 2
   window.actualizarEstadoSeccionRazon();
 
+  // Banner de ayuda dinámica según razón inicial
+  window.alCambiarRazonModalJornada(razonSel?.value || '', true);
+
   // Banner informativo para fechas previas al registro/ingreso del colaborador
   const fInicioModalEmp = (typeof window.obtenerFechaInicioEfectivaEmpleado === 'function')
-    ? window.obtenerFechaInicioEfectivaEmpleado(emp, fecha)
-    : (emp.fecha_ingreso || fecha);
-  if (fecha < fInicioModalEmp && (!razonActual || razonActual === '')) {
+    ? window.obtenerFechaInicioEfectivaEmpleado(emp, fechaEfectiva)
+    : (emp.fecha_ingreso || fechaEfectiva);
+  if (fechaEfectiva < fInicioModalEmp && (!razonActual || razonActual === '')) {
     const bannerAyuda = document.getElementById('modalJornadaBannerAyuda');
     if (bannerAyuda) {
       bannerAyuda.style.display = 'flex';
@@ -15410,8 +11750,20 @@ window.actualizarEtiquetasMinutosModal = function (origen) {
 };
 
 window.recalcularTiemposModalJornada = function () {
-  const hE = document.getElementById('modalJornadaHoraEntrada')?.value.trim();
-  const hS = document.getElementById('modalJornadaHoraSalida')?.value.trim();
+  const hE = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
+  const hS = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
+
+  if (hE || hS) {
+    const razonSel = document.getElementById('modalJornadaRazonSelect');
+    if (razonSel && razonSel.value) {
+      razonSel.value = '';
+      const divOtro = document.getElementById('modalJornadaDivRazonPersonalizada');
+      if (divOtro) divOtro.style.display = 'none';
+      const banner = document.getElementById('modalJornadaBannerAyuda');
+      if (banner) banner.style.display = 'none';
+    }
+  }
+
   if (hE && hS && typeof obtenerMinutos === 'function') {
     const mE = obtenerMinutos(hE);
     const mS = obtenerMinutos(hS);
@@ -15432,7 +11784,6 @@ window.recalcularTiemposModalJornada = function () {
       const falt = esFestivo ? 0 : Math.max(0, 480 - ordDur);
 
       let atraso = (mE > refEntrada + 5) ? (mE - refEntrada) : 0;
-      // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
       if (!esFestivo && atraso > falt) {
         atraso = falt;
       }
@@ -15448,43 +11799,61 @@ window.recalcularTiemposModalJornada = function () {
       document.getElementById('modalJornadaInfoAtraso').textContent = (typeof minutosAHHMMSS === 'function') ? (atraso > 0 ? minutosAHHMMSS(atraso) : '00:00:00') : `${atraso} min`;
       document.getElementById('modalJornadaInfoFaltante').textContent = (typeof minutosAHHMMSS === 'function') ? (falt > 0 ? minutosAHHMMSS(falt) : '00:00:00') : `${falt} min`;
 
-      // Permitir permisos intermedios con tope técnico de hasta 720 min (12 horas)
-      const elJust = document.getElementById('modalJornadaMinsJustificado');
-      const elPers = document.getElementById('modalJornadaMinsPersonal');
-      const elMed = document.getElementById('modalJornadaMinsMedico');
-      if (elJust) elJust.max = 720;
-      if (elPers) elPers.max = 720;
-      if (elMed) elMed.max = 720;
-
-      // Actualizar estado de la Sección 2 (se desactiva si hay horas)
       window.actualizarEstadoSeccionRazon();
       window.actualizarEtiquetasMinutosModal();
+      return;
     }
-  } else {
-    window.actualizarEstadoSeccionRazon();
   }
+
+  const ctx = window._modalJornadaContexto;
+  if (!hE && !hS && ctx) {
+    ctx.netWorked = 0;
+    ctx.netWorkedOrdinario = 0;
+    ctx.atrasoMins = 0;
+    ctx.faltanteJornada = 0;
+    ctx.tieneAsistencia = false;
+    document.getElementById('modalJornadaInfoNeto').textContent = '00:00:00';
+    document.getElementById('modalJornadaInfoAtraso').textContent = '00:00:00';
+    document.getElementById('modalJornadaInfoFaltante').textContent = '00:00:00';
+  }
+  window.actualizarEstadoSeccionRazon();
 };
 
-window.alCambiarRazonModalJornada = function (valor) {
+window.alCambiarRazonModalJornada = function (valor, esCargaInicial = false) {
   const banner = document.getElementById('modalJornadaBannerAyuda');
   const divOtro = document.getElementById('modalJornadaDivRazonPersonalizada');
   if (divOtro) divOtro.style.display = (valor === 'Otro') ? 'block' : 'none';
 
-  const ctx = window._modalJornadaContexto;
-  const tieneAsistencia = ctx?.tieneAsistencia || false;
+  if (valor && !esCargaInicial) {
+    // Si el usuario selecciona un motivo de ausencia de día completo, limpiar horas
+    const inputE = document.getElementById('modalJornadaHoraEntrada');
+    const inputS = document.getElementById('modalJornadaHoraSalida');
+    if (inputE && inputE.value) inputE.value = '';
+    if (inputS && inputS.value) inputS.value = '';
 
-  // RESTRICCIÓN ESTRICTA: Sección 2 solo activa si NO registró asistencia
-  if (tieneAsistencia) {
-    if (typeof mostrarToast === 'function') {
-      mostrarToast(`⚠️ El colaborador registra asistencia. La Sección 2 solo aplica para días sin marcaciones.`, 'warn');
+    const ctx = window._modalJornadaContexto;
+    if (ctx) {
+      ctx.netWorked = 0;
+      ctx.netWorkedOrdinario = 0;
+      ctx.atrasoMins = 0;
+      ctx.faltanteJornada = 0;
+      ctx.tieneAsistencia = false;
     }
-    const razonSel = document.getElementById('modalJornadaRazonSelect');
-    if (razonSel) razonSel.value = '';
-    if (banner) banner.style.display = 'none';
-    return;
+    const infoNeto = document.getElementById('modalJornadaInfoNeto');
+    if (infoNeto) infoNeto.textContent = '00:00:00';
+    const infoAtraso = document.getElementById('modalJornadaInfoAtraso');
+    if (infoAtraso) infoAtraso.textContent = '00:00:00';
+    const infoFaltante = document.getElementById('modalJornadaInfoFaltante');
+    if (infoFaltante) infoFaltante.textContent = '00:00:00';
   }
 
+  window.actualizarEstadoSeccionRazon();
+
   if (!banner) return;
+  if (!valor) {
+    banner.style.display = 'none';
+    return;
+  }
   banner.style.display = 'flex';
 
   if (valor === 'Vacación') {
@@ -15507,6 +11876,16 @@ window.alCambiarRazonModalJornada = function (valor) {
     banner.style.border = '1.5px solid #e9d5ff';
     banner.style.color = '#6b21a8';
     banner.innerHTML = `<i class="fas fa-user-times" style="font-size:20px; color:#7c3aed;"></i> <div><strong>Permiso Personal Completo:</strong> Jornada completa no laborada autorizada por asuntos personales.</div>`;
+  } else if (valor === 'Falta Justificada') {
+    banner.style.background = '#ecfdf5';
+    banner.style.border = '1.5px solid #a7f3d0';
+    banner.style.color = '#065f46';
+    banner.innerHTML = `<i class="fas fa-check-circle" style="font-size:20px; color:#059669;"></i> <div><strong>Falta Justificada:</strong> Ausencia de jornada completa aprobada por el supervisor.</div>`;
+  } else if (valor === 'Campo') {
+    banner.style.background = '#fffbeb';
+    banner.style.border = '1.5px solid #fde68a';
+    banner.style.color = '#92400e';
+    banner.innerHTML = `<i class="fas fa-truck" style="font-size:20px; color:#d97706;"></i> <div><strong>Trabajo de Campo:</strong> Jornada completa en labores externas o de campo.</div>`;
   } else if (valor === 'Inasistencia') {
     banner.style.background = '#fff1f2';
     banner.style.border = '1.5px solid #fecdd3';
@@ -15566,22 +11945,18 @@ window.guardarModalGestionJornada = async function () {
   const horasExtrasVal = document.getElementById('modalJornadaHorasExtrasSelect')?.value || 'NO';
   const observacion = document.getElementById('modalJornadaObservacionInput')?.value.trim() || '';
 
-  const tieneHoras = Boolean(hEntrada || hSalida);
-  const tieneAsistencia = Boolean(ctx.tieneAsistencia || tieneHoras || (ctx.netWorked > 0));
-  const faltanteJornada = ctx ? (ctx.faltanteJornada || 0) : 0;
-
-  let razonFinal = '';
-  if (!tieneAsistencia) {
-    const razonSel = document.getElementById('modalJornadaRazonSelect')?.value || '';
-    const inputOtro = document.getElementById('modalJornadaRazonOtroInput')?.value.trim() || '';
-    razonFinal = (razonSel === 'Otro') ? (inputOtro || 'Otro') : razonSel;
-    if (!razonFinal && esCumpleHoy) {
-      razonFinal = 'Cumpleaños';
-    }
+  const razonSel = document.getElementById('modalJornadaRazonSelect')?.value || '';
+  const inputOtro = document.getElementById('modalJornadaRazonOtroInput')?.value.trim() || '';
+  let razonFinal = (razonSel === 'Otro') ? (inputOtro || 'Otro') : razonSel;
+  if (!razonFinal && esCumpleHoy && !hEntrada && !hSalida) {
+    razonFinal = 'Cumpleaños';
   }
 
-  // 1. VALIDACIÓN: Límite técnico de 720 min por categoría
+  const tieneHoras = Boolean(hEntrada || hSalida);
+  const esAusenciaCompleta = !tieneHoras && Boolean(razonFinal);
   const totalPermisos = minsJust + minsPers + minsMed;
+
+  // 1. VALIDACIÓN: Límite técnico de 720 min por categoría
   if (minsJust > 720 || minsPers > 720 || minsMed > 720) {
     if (typeof mostrarToast === 'function') {
       mostrarToast('❌ El tiempo asignado a un permiso no puede superar las 12 horas (720 min).', 'error');
@@ -15589,15 +11964,13 @@ window.guardarModalGestionJornada = async function () {
     return;
   }
 
-  // 2. VALIDACIÓN: Si no tiene asistencia ni horas ni permisos, debe tener una razón de ausencia
-  if (!tieneAsistencia && !razonFinal && totalPermisos === 0) {
+  // 2. VALIDACIÓN: Si no tiene horas ni permisos, debe tener una razón de ausencia
+  if (!tieneHoras && !razonFinal && totalPermisos === 0) {
     if (typeof mostrarToast === 'function') {
-      mostrarToast('⚠️ Seleccione una razón de ausencia en la Sección 2 para el día no laborado.', 'warn');
+      mostrarToast('⚠️ Ingrese horas de asistencia o seleccione una razón de ausencia en la Sección 2.', 'warn');
     }
     return;
   }
-
-  const esAusenciaCompleta = !tieneHoras && Boolean(razonFinal);
 
   let sessionData = {};
   try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
@@ -15607,17 +11980,6 @@ window.guardarModalGestionJornada = async function () {
   if (bgSync) bgSync.classList.remove('hidden');
 
   try {
-    // 1. Si el usuario tiene o registró horas/marcaciones, limpiar cualquier registro virtual de ausencia previa de jornada completa
-    if (tieneHoras || (minsJust > 0 || minsPers > 0 || minsMed > 0)) {
-      if (emp && emp.registros) {
-        emp.registros = emp.registros.filter(r => {
-          if (r.fecha !== fecha) return true;
-          const t = String(r.tipo || '').toUpperCase();
-          return t === 'ENTRADA' || t === 'SALIDA' || t === 'RETORNO_CAMPO' || t === 'SALIDA_CAMPO' || t === 'ENTRADA_CAMPO';
-        });
-      }
-    }
-
     const [yG, moG, dG] = fecha.includes('-') ? fecha.split('-') : fecha.split('/').reverse();
     let fullTsEntrada = null;
     let fullTsSalida = null;
@@ -15629,25 +11991,32 @@ window.guardarModalGestionJornada = async function () {
       mappedTipo = mapRazonAusenciaATipo(razonFinal);
       if (emp) {
         if (!emp.registros) emp.registros = [];
-        let fReg = emp.registros.find(r => {
-          const t = String(r.tipo).toUpperCase();
-          return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === fecha;
-        });
-        if (!fReg) {
-          fReg = {
-            id: `${empleadoId}_${mappedTipo}_${fecha}_000000`,
-            empleadoId: empleadoId,
-            tipo: mappedTipo,
-            fecha: fecha,
-            razon_ausencia: razonFinal
-          };
-          emp.registros.push(fReg);
-        } else {
-          fReg.tipo = mappedTipo;
-          fReg.razon_ausencia = razonFinal;
-        }
+        // Limpiar marcaciones previas del día al convertir a ausencia de día completo
+        emp.registros = emp.registros.filter(r => r.fecha !== fecha);
+
+        const fReg = {
+          id: `${empleadoId}_${mappedTipo}_${fecha}_000000`,
+          empleadoId: empleadoId,
+          tipo: mappedTipo,
+          fecha: fecha,
+          hora: '00:00:00',
+          razon_ausencia: razonFinal,
+          razon_justificac: razonFinal,
+          justificado: 'SI',
+          modo: modalidad
+        };
+        emp.registros.push(fReg);
       }
     } else {
+      // Limpiar registros virtuales de ausencia previa del día
+      if (emp && emp.registros) {
+        emp.registros = emp.registros.filter(r => {
+          if (r.fecha !== fecha) return true;
+          const t = String(r.tipo || '').toUpperCase();
+          return t === 'ENTRADA' || t === 'SALIDA' || t === 'RETORNO_CAMPO' || t === 'SALIDA_CAMPO' || t === 'ENTRADA_CAMPO';
+        });
+      }
+
       // Marcación Entrada
       if (hEntrada) {
         let hValE = hEntrada.length === 5 ? hEntrada + ':00' : hEntrada;
@@ -15673,7 +12042,6 @@ window.guardarModalGestionJornada = async function () {
           regE.modo = modalidad;
           regE.horasExtra = horasExtrasVal;
           regE.almuerzo = almuerzoVal;
-          if (razonFinal) regE.razon_ausencia = razonFinal;
         }
         if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(regE);
       }
@@ -15725,15 +12093,20 @@ window.guardarModalGestionJornada = async function () {
     if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
     if (typeof mostrarToast === 'function') mostrarToast('✅ Jornada y permisos guardados exitosamente', 'success');
 
-    // TAREAS DE SINCRONIZACIÓN EN SEGUNDO PLANO (PARALELAS, NO BLOQUEANTES)
+    // TAREAS DE SINCRONIZACIÓN EN SEGUNDO PLANO
     const backgroundTasks = [];
+    const localHoy = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
+    const esFechaPasada = (fecha < localHoy);
+    const yaArchivado = Boolean((ctx.regsDia || []).some(r => String(r.id || '').startsWith('arch_') || r.archivado));
 
     if (esAusenciaCompleta) {
-      const esFechaPasada = (fecha < hoy);
-      const yaArchivado = Boolean((emp?.registros || []).some(r => r.fecha === fecha && (String(r.id || '').startsWith('arch_') || r.archivado)));
+      // Purgar marcaciones huérfanas en Firestore para esa fecha siempre
+      if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
+        backgroundTasks.push(window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha).catch(() => {}));
+      }
 
       if (esFechaPasada || yaArchivado) {
-        // ACTUALIZAR DIRECTAMENTE EN REGISTROS (SHEETS) SIN CREAR DUPLICADOS EN FIRESTORE
+        // ACTUALIZAR DIRECTAMENTE EN REGISTROS (SHEETS)
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
           backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
             empleadoId: empleadoId,
@@ -15760,13 +12133,8 @@ window.guardarModalGestionJornada = async function () {
             modo: modalidad
           }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
         }
-
-        // Si existía un documento previo en Firestore para esta fecha y empleado, limpiarlo para evitar duplicidad al archivar
-        if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
-          backgroundTasks.push(window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha).catch(() => {}));
-        }
       } else {
-        // Fecha actual / futura no archivada: guardar en Firestore
+        // Fecha actual / futura: guardar en Firestore
         if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
           backgroundTasks.push(window.FirebaseBackend.guardarRegistro({
             id: empleadoId,
@@ -15787,6 +12155,7 @@ window.guardarModalGestionJornada = async function () {
         }
       }
     } else {
+      // Guardar Entrada
       if (hEntrada && fullTsEntrada) {
         const firestoreDocIdE = (regE && regE.id && !String(regE.id).startsWith('arch_') && !String(regE.id).startsWith('temp_')) ? regE.id : null;
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
@@ -15816,6 +12185,7 @@ window.guardarModalGestionJornada = async function () {
         }
       }
 
+      // Guardar Salida
       if (hSalida && fullTsSalida) {
         const firestoreDocIdS = (regS && regS.id && !String(regS.id).startsWith('arch_') && !String(regS.id).startsWith('temp_')) ? regS.id : null;
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
@@ -15841,19 +12211,28 @@ window.guardarModalGestionJornada = async function () {
         }
       }
 
-      // Permisos / Justificaciones
-      const prevJust = ctx.minsJustificado || 0;
-      const prevPers = ctx.minsPersonal || 0;
-      const prevMed = ctx.minsMedico || 0;
-      const permTipo = (minsJust > 0 || prevJust > 0) ? 'justificado' : ((minsPers > 0 || prevPers > 0) ? 'personal' : ((minsMed > 0 || prevMed > 0) ? 'medico' : null));
-      const permMins = (minsJust > 0) ? minsJust : ((minsPers > 0) ? minsPers : ((minsMed > 0) ? minsMed : 0));
+      // Sincronizar Permisos Parciales de manera independiente (Sección 3)
+      const tiposPermisos = [
+        { tipo: 'justificado', valor: minsJust, previo: ctx.minsJustificado || 0 },
+        { tipo: 'personal', valor: minsPers, previo: ctx.minsPersonal || 0 },
+        { tipo: 'medico', valor: minsMed, previo: ctx.minsMedico || 0 }
+      ];
 
-      if (permTipo) {
-        const permParams = { empleadoId, fecha, tipo: permTipo, mins: permMins, comentario: observacion, supervisorId };
-        if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
-          backgroundTasks.push(window.FirebaseBackend.guardarPermisoSupervisor(permParams).catch(err => console.warn("Aviso Firestore permiso:", err)));
-        } else if (typeof jsonpRequest === 'function') {
-          backgroundTasks.push(jsonpRequest({ accion: 'guardarPermisoSupervisor', ...permParams }).catch(err => console.warn("Aviso Sheets permiso:", err)));
+      for (const p of tiposPermisos) {
+        if (p.valor > 0 || p.previo > 0) {
+          const permParams = {
+            empleadoId,
+            fecha,
+            tipo: p.tipo,
+            mins: p.valor,
+            comentario: observacion,
+            supervisorId
+          };
+          if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
+            backgroundTasks.push(window.FirebaseBackend.guardarPermisoSupervisor(permParams).catch(err => console.warn(`Aviso permiso ${p.tipo}:`, err)));
+          } else if (typeof jsonpRequest === 'function') {
+            backgroundTasks.push(jsonpRequest({ accion: 'guardarPermisoSupervisor', ...permParams }).catch(err => console.warn(`Aviso Sheets permiso ${p.tipo}:`, err)));
+          }
         }
       }
 
@@ -15915,6 +12294,19 @@ window.eliminarMarcacionesDiaModal = async function () {
     emp.registros = emp.registros.filter(r => r.fecha !== fecha);
   }
 
+  // Limpiar caché local
+  try {
+    const CACHE_ARCHIVADOS_KEY = `tcontrol_archivados_cache_${empleadoId}_v2`;
+    const storedArch = localStorage.getItem(CACHE_ARCHIVADOS_KEY);
+    if (storedArch) {
+      const archData = JSON.parse(storedArch);
+      if (archData && Array.isArray(archData.registros)) {
+        archData.registros = archData.registros.filter(r => r.fecha !== fecha);
+        localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archData));
+      }
+    }
+  } catch (e) {}
+
   // 2. Cerrar modal y refrescar pantalla de inmediato
   window.cerrarModalGestionJornada();
   const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
@@ -15925,18 +12317,22 @@ window.eliminarMarcacionesDiaModal = async function () {
   const bgSync = $('bgSyncIndicator');
   if (bgSync) bgSync.classList.remove('hidden');
 
-  // 3. Tareas en segundo plano paralelas
+  // 3. Tareas en segundo plano paralelas (Firestore + Sheets)
   const delTasks = [];
-  for (const r of (ctx.regsDia || [])) {
-    if (r.id && typeof jsonpRequest === 'function') {
-      delTasks.push(jsonpRequest({
-        accion: 'eliminarRegistro',
-        docId: r.id,
-        empleadoId: empleadoId,
-        fecha: fecha,
-        tipo: r.tipo
-      }).catch(e => console.warn("Aviso Sheets eliminar:", e)));
-    }
+
+  // Purgar en Firestore
+  if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
+    delTasks.push(window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha).catch(e => console.warn("Aviso Firestore eliminar:", e)));
+  }
+
+  // Eliminar en Google Sheets
+  if (typeof jsonpRequest === 'function') {
+    delTasks.push(jsonpRequest({
+      accion: 'eliminarRegistroArchivado',
+      empleadoId: empleadoId,
+      fecha: fecha,
+      tipo: 'TODOS'
+    }).catch(e => console.warn("Aviso Sheets eliminar:", e)));
   }
 
   Promise.allSettled(delTasks).then(() => {

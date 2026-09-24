@@ -2,57 +2,76 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ============================================================
+    // REGLAS DE SEGURIDAD TCONTROL ASISTENCIA (2026)
+    // Protege la integridad de datos, previene borrados destructivos
+    // y asegura la inmutabilidad de logs de auditoría.
+    // ============================================================
+
     // Colección 'empleados'
+    // Lectura pública para login y verificación de credencial.
+    // Creación y actualización permitidas con campos mínimos requeridos.
+    // ELIMINACIÓN PROHIBIDA desde clientes web para proteger la base de personal.
     match /empleados/{empleadoId} {
       allow read: if true;
-      // Se requiere escritura/actualización para vincular tokens de dispositivos y flags de supervisor
-      allow write, update: if true; 
+      allow create, update: if request.resource.data.keys().hasAll(['id']);
+      allow delete: if false;
     }
 
-    // Colección 'registros' (Marcaciones)
+    // Colección 'registros' (Marcaciones de asistencia)
+    // Permite registrar eventos de asistencia válidos.
     match /registros/{registroId} {
       allow read: if true;
       allow create, update: if true;
-      // Se requiere borrar registros durante el archivado histórico por lotes
-      allow delete: if true; 
+      allow delete: if true; // Requerido por el archivador histórico
     }
 
-    // Colección 'dispositivos' (Vincular tokens de timbrado)
+    // Colección 'dispositivos' (Vínculos de tokens de timbrado)
     match /dispositivos/{deviceId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
-    // Colección 'configuracion' (Configuración general del sistema)
+    // Colección 'configuracion' (Parámetros globales del sistema)
+    // Lectura para geocercas y horarios; borrado prohibido.
     match /configuracion/{configId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
-    // Colección de consumos y auditorías de almuerzos
+    // Colecciones de consumo y pedidos de almuerzos
     match /consumo_almuerzos/{almuerzoId} {
       allow read, write: if true;
     }
-    match /auditoria_almuerzos/{auditoriaId} {
-      allow read, write: if true;
-    }
-
-    // Colección 'logs_whatsapp' (Auditoría de envíos de WhatsApp)
-    match /logs_whatsapp/{logId} {
-      allow read, write: if true;
-    }
-
-    // Colección 'empleados_desvinculados' (Historial de personal desvinculado)
-    match /empleados_desvinculados/{desvinculadoId} {
-      allow read, write: if true;
-    }
-
-    // Colección 'logs' (Auditoría general de eventos del sistema)
-    match /logs/{logId} {
-      allow read, write: if true;
-    }
-
-    // Colección 'solicitudes_invitados' (Almuerzos extra y refrigerios para invitados)
     match /solicitudes_invitados/{solicitudId} {
       allow read, write: if true;
+    }
+
+    // Colecciones de Auditoría y Logs (Inmutables: Solo creación, no alteración ni borrado)
+    match /auditoria_almuerzos/{auditoriaId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+    match /logs_whatsapp/{logId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+    match /logs/{logId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
+    // Colección 'empleados_desvinculados' (Historial laboral pasivo LOPDP)
+    // Custodia de registros pasivos: no pueden eliminarse desde clientes.
+    match /empleados_desvinculados/{desvinculadoId} {
+      allow read, create: if true;
+      allow update: if true;
+      allow delete: if false;
     }
   }
 }

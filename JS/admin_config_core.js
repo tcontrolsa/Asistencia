@@ -447,8 +447,47 @@
             }
         };
 
+        // ========== CONTROL DE ACCESO ==========
+        function verificarAccesoAdmin() {
+            const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+            let autorizado = false;
+            if (sessionStr) {
+                try {
+                    const session = JSON.parse(sessionStr);
+                    const rol = (session.rol || '').toUpperCase();
+                    const id = String(session.id || '').trim();
+                    if (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN' || id === '1058') {
+                        autorizado = true;
+                    }
+                } catch (e) {}
+            }
+
+            if (!autorizado) {
+                const container = document.querySelector('.config-container');
+                if (container) {
+                    container.innerHTML = `
+                        <div style="max-width: 480px; margin: 80px auto; padding: 40px 30px; background: white; border-radius: 24px; text-align: center; box-shadow: 0 20px 45px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; font-family: 'Plus Jakarta Sans', sans-serif;">
+                            <div style="width: 80px; height: 80px; margin: 0 auto 20px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; font-size: 36px;">
+                                <i class="fas fa-lock"></i>
+                            </div>
+                            <h2 style="font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 12px;">Acceso Restringido</h2>
+                            <p style="font-size: 14px; color: #64748b; line-height: 1.6; margin-bottom: 26px;">
+                                Este panel contiene configuraciones críticas de geocerca y horarios de la empresa. Se requiere iniciar sesión como Administrador en el panel de Supervisión.
+                            </p>
+                            <a href="supervisor.html" class="btn btn-danger w-100" style="padding: 13px; font-weight: 700; border-radius: 12px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                                <i class="fas fa-arrow-left"></i> Ir a Panel de Supervisión
+                            </a>
+                        </div>
+                    `;
+                }
+                return false;
+            }
+            return true;
+        }
+
         // ========== INICIALIZACIÓN ==========
         document.addEventListener('DOMContentLoaded', () => {
+            if (typeof verificarAccesoAdmin === 'function' && !verificarAccesoAdmin()) return;
             cargarConfiguraciones();
             actualizarEstadoBotonFirebaseAdmin();
         });
