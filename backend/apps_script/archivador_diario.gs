@@ -126,14 +126,15 @@ function ejecutarArchivadoDiario() {
       const r_razonJustificac = fields.razon_justificac || fields.razon_ausencia || '';
       const r_permisoPersonalMins = fields.permiso_personal_mins || 0;
       const r_permisoMedicoMins = fields.permiso_medico_mins || 0;
+      const r_tiempoJustificadoMins = fields.tiempo_justificado_mins || 0;
 
       const esVacaciones = (String(r_tipo).toUpperCase() === 'VACACIONES' || String(r_tipo).toUpperCase() === 'VACACION');
 
       if (esVacaciones) {
-        // Rellenar únicamente FECHA, ID, TIPO, TIMESTAMP
+        // Rellenar únicamente FECHA, ID, TIPO, TIMESTAMP (25 columnas)
         const rowVac = [
           r_fecha, r_id, '', r_tipo, '', '', '', '', '', r_timestamp,
-          '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+          '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
         ];
         filasVacs.push(rowVac);
       } else {
@@ -141,7 +142,7 @@ function ejecutarArchivadoDiario() {
           r_fecha, r_id, r_nombre, r_tipo, r_almuerzo, r_hora, r_lat, r_lng, r_dispositivo, r_timestamp,
           r_dia, r_modo, r_horasExtra, r_autoriza, r_razonSalidaTemprana, r_quienJustifica,
           r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso,
-          r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins
+          r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins, r_tiempoJustificadoMins
         ];
         filasRegs.push(rowReg);
       }

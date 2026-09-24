@@ -1313,6 +1313,58 @@
             }
         },
 
+        // Notificar a Supervisores / Admins cuando un colaborador reporta un estado fuera de área que requiere regularización
+        async notificarSupervisorEstadoFueraArea(detalles = {}) {
+            try {
+                let destinatarios = [];
+                if (typeof db !== 'undefined' && db) {
+                    try {
+                        const snap = await db.collection('empleados').get();
+                        snap.forEach(doc => {
+                            const d = doc.data() || {};
+                            const id = String(d.id || doc.id).trim();
+                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
+                            if ((id === '1058' || supVal.includes('ADMIN')) && d.telefono) {
+                                destinatarios.push({
+                                    id: id,
+                                    nombre: d.nombre || 'Sup. Admin',
+                                    telefono: d.telefono
+                                });
+                            }
+                        });
+                    } catch (e) {
+                        console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e);
+                    }
+                }
+
+                if (destinatarios.length === 0) {
+                    destinatarios = [
+                        { id: '1058', nombre: 'Fernando Sanmartin', telefono: '0984660105' },
+                        { id: '8', nombre: 'Martina Rodriguez', telefono: '0962707809' }
+                    ];
+                }
+
+                const fechaReq = detalles.fecha || new Date().toISOString().slice(0, 10);
+                const tipoLabel = detalles.textoEstado || detalles.tipo || 'Ausencia Fuera de Área';
+                const obs = detalles.observacion ? `\n• *Detalle / Motivo:* ${detalles.observacion}` : '';
+
+                const mensaje =
+                    `🔔 *TCONTROL - Novedad de Asistencia Reportada*\n\n` +
+                    `El colaborador *${detalles.empleadoNombre || 'Colaborador'}* (ID: ${detalles.empleadoId || '--'}, Área: ${detalles.empleadoArea || 'General'}) ha reportado el siguiente estado:\n\n` +
+                    `• *Fecha:* ${fechaReq}\n` +
+                    `• *Estado:* ${tipoLabel}${obs}\n` +
+                    `• *Condición:* Preliminar (Fuera de geocerca)\n\n` +
+                    `👉 *Acción requerida:* Esta novedad requiere regularización por parte de Supervisión en el módulo de Asistencia dentro del período actual.`;
+
+                const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
+                await Promise.allSettled(envios);
+                return { ok: true, total: destinatarios.length };
+            } catch (err) {
+                console.warn("[OpenWA] Error en notificarSupervisorEstadoFueraArea:", err);
+                return { ok: false, error: err.message };
+            }
+        },
+
         // Enviar recordatorio manual/periódico a Sup. Admins con el resumen de solicitudes pendientes
         async notificarSupAdminsRecordatorioPendientes(solicitudesPendientes = []) {
             try {

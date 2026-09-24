@@ -91,6 +91,65 @@ function getLocalHoyStr(date = new Date()) {
     return `${y}-${m}-${d}`;
 }
 
+function esEmpleadoPasante(e) {
+    if (!e) return false;
+    const cargo = (e.cargo || '').toUpperCase();
+    const area = (e.area || '').toUpperCase();
+    const tipo = (e.tipo || e.rol || '').toUpperCase();
+    if (cargo.includes('PASANTE') || cargo.includes('PASANTIA') || cargo.includes('PASANTÍA')) return true;
+    if (area.includes('PASANTE') || area.includes('PASANTIA') || area.includes('PASANTÍA')) return true;
+    if (tipo.includes('PASANTE') || tipo.includes('PASANTIA') || tipo.includes('PASANTÍA')) return true;
+    return false;
+}
+window.esEmpleadoPasante = esEmpleadoPasante;
+window.esColaboradorPasante = esEmpleadoPasante;
+
+function buscarVacacionesEnKpiIndiv(emp, kpiIndiv) {
+    if (!emp || !kpiIndiv || typeof kpiIndiv !== 'object') return null;
+
+    const empId = String(emp.id || '').trim();
+    const empCed = String(emp.cedula || '').trim();
+    const empNom = String(emp.nombre || '').trim().toUpperCase();
+
+    if (empId && kpiIndiv[empId]) return kpiIndiv[empId];
+    if (empCed && kpiIndiv[empCed]) return kpiIndiv[empCed];
+
+    if (empCed) {
+        const cedPadded = empCed.padStart(10, '0');
+        const cedUnpadded = empCed.replace(/^0+/, '');
+        if (kpiIndiv[cedPadded]) return kpiIndiv[cedPadded];
+        if (kpiIndiv[cedUnpadded]) return kpiIndiv[cedUnpadded];
+    }
+
+    if (empNom && kpiIndiv[empNom]) return kpiIndiv[empNom];
+
+    const keys = Object.keys(kpiIndiv);
+    for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const kTrim = String(k).trim();
+        const kUpper = kTrim.toUpperCase();
+
+        if (empId && kTrim === empId) return kpiIndiv[k];
+        if (empCed && (kTrim === empCed || kTrim.padStart(10, '0') === empCed.padStart(10, '0') || kTrim.replace(/^0+/, '') === empCed.replace(/^0+/, ''))) {
+            return kpiIndiv[k];
+        }
+        if (empNom && kUpper.length > 5) {
+            if (kUpper === empNom || empNom.includes(kUpper) || kUpper.includes(empNom)) {
+                return kpiIndiv[k];
+            }
+            const palabrasEmp = empNom.split(/\s+/).filter(p => p.length > 2);
+            const palabrasKey = kUpper.split(/\s+/).filter(p => p.length > 2);
+            const coincidencias = palabrasEmp.filter(p => palabrasKey.includes(p));
+            if (coincidencias.length >= 2 && coincidencias.length >= Math.min(palabrasEmp.length, palabrasKey.length) - 1) {
+                return kpiIndiv[k];
+            }
+        }
+    }
+
+    return null;
+}
+window.buscarVacacionesEnKpiIndiv = buscarVacacionesEnKpiIndiv;
+
 async function hashPassword(str) {
     if (!str) return '';
     try {
@@ -1030,6 +1089,19 @@ window.guardarReporteFueraArea = async function () {
         if (typeof renderHomePage === 'function') {
             renderHomePage();
         }
+
+        // Notificar proactivamente a Supervisión / Admins vía WhatsApp
+        if (window.OpenWAService && typeof window.OpenWAService.notificarSupervisorEstadoFueraArea === 'function') {
+            window.OpenWAService.notificarSupervisorEstadoFueraArea({
+                empleadoId: empleado.id,
+                empleadoNombre: empleado.nombre,
+                empleadoArea: empleado.area,
+                tipo: tipo,
+                textoEstado: textoEstado,
+                observacion: obs,
+                fecha: hoyStrLocal
+            }).catch(e => console.warn("[ReporteFuera] No se pudo enviar WhatsApp a supervisión:", e));
+        }
     } catch (err) {
         console.error("Error al reportar fuera de área:", err);
         mostrarToast('Error al enviar reporte: ' + err.message, 'error');
@@ -1255,7 +1327,14 @@ async function obtenerRegistrosEmpleado(force = false) {
         try {
             const vacRes = await jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id });
             if (vacRes && vacRes.ok) {
-                vacacionesCompletas = vacRes.vacaciones || [];
+                const empId = String(empleado.id || '').trim();
+                const empCed = String(empleado.cedula || '').trim();
+                const rawVacs = vacRes.vacaciones || [];
+                vacacionesCompletas = rawVacs.filter(v => {
+                    const vId = String(v.empleadoId || v.id || (Array.isArray(v) ? v[1] : '')).trim();
+                    const vCed = String(v.cedula || (Array.isArray(v) ? v[0] : '')).trim();
+                    return (empId && vId === empId) || (empCed && (vCed === empCed || vId === empCed));
+                });
             } else {
                 vacacionesCompletas = [];
             }
@@ -1396,7 +1475,7 @@ function mostrarModalRazonSalida() {
                             <div class="razon-label">Salida Justificada</div>
                         </div>
                         
-                        ${(empleado.cargo || '').toLowerCase() === 'pasante' ? `
+                        ${((typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(empleado)) || (empleado.cargo || '').toLowerCase() === 'pasante') ? `
                         <div class="razon-item" onclick="procesarRazonSalida('salida_pasante', 'Salida Pasante')" style="border: 2px solid #7c3aed; background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); box-shadow: 0 4px 16px rgba(124,58,237,0.10);">
                             <div class="razon-icon">🎓</div>
                             <div class="razon-label" style="color:#6d28d9; font-weight:700;">Salida Pasante</div>
@@ -3574,6 +3653,9 @@ function renderHomePage() {
     // Detectar puntualidad del empleado según registros del mes
     function calcularInsigniaPersonal() {
         if (!registrosCompletos || registrosCompletos.length === 0) return null;
+        if (typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(empleado)) {
+            return { tipo: 'puntual', icono: '🎓', texto: 'HORARIO FLEXIBLE' };
+        }
         let atrasos = 0, diasConEntrada = 0;
         const grupos = {};
         registrosCompletos.forEach(reg => {
@@ -4129,13 +4211,19 @@ function renderHistoryPage() {
             `;
 
     // Logro 2: Puntualidad (basado en porcentaje)
-    const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
+    const esPasanteEmpLogro = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(empleado);
+    const puntualidadPct = esPasanteEmpLogro ? 100 : (stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100);
     let puntualidadTitulo = '';
     let puntualidadDesc = '';
     let puntualidadIcono = '';
     let puntualidadColor = '';
 
-    if (stats.diasTrabajados === 0) {
+    if (esPasanteEmpLogro) {
+        puntualidadTitulo = 'Horario Flexible (Pasante)';
+        puntualidadDesc = 'Modalidad de horario flexible. Recuerda registrar siempre tanto tu entrada como tu salida.';
+        puntualidadIcono = '🎓';
+        puntualidadColor = 'linear-gradient(135deg, #f5f3ff, #ede9fe)';
+    } else if (stats.diasTrabajados === 0) {
         puntualidadTitulo = 'Sin Registro';
         puntualidadDesc = 'Se evaluará tu puntualidad una vez que registres asistencias.';
         puntualidadIcono = '⏱️';
@@ -4536,6 +4624,7 @@ function parseDateSafe(ts) {
 function calcularMinutosAtraso(horaEntrada, fechaEntrada) {
     try {
         if (!horaEntrada) return 0;
+        if (typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(empleado)) return 0;
         const mEntrada = obtenerMinutos(horaEntrada);
         if (mEntrada === null) return 0;
 
@@ -4683,7 +4772,8 @@ function calcularEstadisticas() {
             const mEntrada = obtenerMinutos(horaEntrada);
             if (mEntrada !== null) {
                 const refEntrada = esFestivo ? 420 : H_INI_REF;
-                if (mEntrada > refEntrada + 5) {
+                const esPasanteLocal = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(empleado);
+                if (mEntrada > refEntrada + 5 && !esPasanteLocal) {
                     atrasos++;
                     minutosAtrasoTotal += (mEntrada - refEntrada);
                 }
@@ -4890,13 +4980,20 @@ function generarInsigniasHTMLCompacto(stats) {
             `;
 
     // 2. Puntualidad
-    const puntualidadPct = stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100;
+    const esPasanteEmpDet = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(empleado);
+    const puntualidadPct = esPasanteEmpDet ? 100 : (stats.diasTrabajados > 0 ? Math.max(0, Math.round(((stats.diasTrabajados - stats.atrasos) / stats.diasTrabajados) * 100)) : 100);
     let puntIcon = '⏱️';
     let puntTitle = 'Puntualidad por Evaluar';
     let puntBg = 'linear-gradient(135deg, #f1f5f9, #e2e8f0)';
     let puntBorder = 'rgba(203, 213, 225, 0.4)';
     let puntDesc = 'Aún no hay suficientes días laborados en este período fiscal para evaluar tu puntualidad de entrada.';
-    if (stats.diasTrabajados > 0) {
+    if (esPasanteEmpDet) {
+        puntIcon = '🎓';
+        puntTitle = 'Horario Flexible (Pasante)';
+        puntBg = 'linear-gradient(135deg, #f5f3ff, #ede9fe)';
+        puntBorder = '#a78bfa';
+        puntDesc = 'Modalidad de pasantía con horario flexible. Recuerda registrar siempre tu entrada y tu salida.';
+    } else if (stats.diasTrabajados > 0) {
         if (puntualidadPct === 100) {
             puntIcon = '🌟';
             puntTitle = 'Puntualidad Impecable (100%)';
@@ -5076,7 +5173,7 @@ function actualizarHistorialAgrupado() {
             const salida = diaRegs.find(r => (getVal(r, 'tipo', 3) || r[3]) === 'SALIDA');
 
             if (entrada || salida) data.stats.dias++;
-            if (diaRegs.some(r => getVal(r, 'razon_entrada_tardia', 16) || r[16])) data.stats.atrasos++;
+            if (diaRegs.some(r => getVal(r, 'razon_entrada_tardia', 16) || r[16]) && !(typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(empleado))) data.stats.atrasos++;
 
             // Separar Permisos de Justificaciones Pasadas
             const hasPermiso = diaRegs.some(r => !!obtenerDetallesPermiso(r));
@@ -5423,7 +5520,18 @@ async function renderProfilePage() {
                     </div>
                 </div>
 
-                <!-- Tarjeta de Vacaciones Disponibles -->
+                <!-- Tarjeta de Vacaciones / Régimen de Modalidad -->
+                ${(typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(empleado)) ? `
+                <div class="glass-card mt-3" style="padding: 20px 18px; border-radius: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(245,243,255,0.9) 100%); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(221,214,254,0.8); display: flex; align-items: center; justify-content: space-between; position: relative; overflow: hidden;">
+                    <div style="text-align: left;">
+                        <h5 class="fw-bold mb-1" style="font-size: 14.5px; color: #6d28d9; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-user-graduate" style="color: #7c3aed;"></i> Régimen de Pasantía</h5>
+                        <p style="font-size: 11.5px; color: #7c3aed; margin: 0;">Horario flexible • Registro obligatorio de Entrada y Salida</p>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white; min-width: 54px; height: 45px; padding: 0 10px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; box-shadow: 0 4px 10px rgba(124,58,237,0.3); text-transform: uppercase;">
+                        FLEX
+                    </div>
+                </div>
+                ` : `
                 <div class="glass-card mt-3" style="padding: 20px 18px; border-radius: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.85) 100%); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(186,230,253,0.7); display: flex; align-items: center; justify-content: space-between; position: relative; overflow: hidden;">
                     <div style="text-align: left;">
                         <h5 class="fw-bold mb-1" style="font-size: 14.5px; color: #0369a1; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px;"><i class="fas fa-umbrella-beach"></i> Vacaciones Disponibles</h5>
@@ -5433,6 +5541,7 @@ async function renderProfilePage() {
                         <div class="spinner-border text-light" role="status" style="width:16px; height:16px; border-width:2px;"></div>
                     </div>
                 </div>
+                `}
 
                 <!-- Tarjeta de Edición de Perfil y Contraseña -->
                 <div class="glass-card mt-3" style="padding: 22px 18px; border-radius: 20px; background: rgba(255,255,255,0.9); box-shadow: 0 8px 30px rgba(0,0,0,0.04); border: 1px solid rgba(255,255,255,0.8); text-align: left;">
@@ -5554,19 +5663,49 @@ async function renderProfilePage() {
 
     // Ponytail: Cargar saldo de vacaciones en segundo plano para no demorar la visualización del perfil
     jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: empleado.id }).then(function (vacRes) {
+        if (typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(empleado)) {
+            const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
+            const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
+            if (lblTomadas) lblTomadas.innerHTML = `Régimen: <strong>Pasantía (Horario Flexible)</strong>`;
+            if (badgeDisponibles) {
+                badgeDisponibles.innerHTML = 'FLEX';
+                badgeDisponibles.style.fontSize = '12px';
+            }
+            return;
+        }
+
         let vacacionesTomadas = 0;
         let totalVacacionesDisponibles = '--';
         if (vacRes && !vacRes.error) {
-            if (vacRes.vacacionesTomadasHoy !== null && vacRes.vacacionesTomadasHoy !== undefined) {
+            const empId = String(empleado.id || '').trim();
+            const empCed = String(empleado.cedula || '').trim();
+            const kpiIndiv = vacRes.kpiVacacionesIndividual || (window.kpiVacacionesIndividual || (JSON.parse(localStorage.getItem('tcontrol_vacaciones_cache_v3') || '{}').kpiVacacionesIndividual || {}));
+            const infoVac = (typeof window.buscarVacacionesEnKpiIndiv === 'function')
+                ? window.buscarVacacionesEnKpiIndiv(empleado, kpiIndiv)
+                : (kpiIndiv[empId] || (empCed ? kpiIndiv[empCed] : null));
+
+            // Filtrar SOLO las vacaciones individuales de este empleado
+            const vacsEmp = (vacRes.vacaciones || []).filter(v => {
+                const vId = String(v.empleadoId || v.id || (Array.isArray(v) ? v[1] : '')).trim();
+                const vCed = String(v.cedula || (Array.isArray(v) ? v[0] : '')).trim();
+                return (empId && vId === empId) || (empCed && (vCed === empCed || vId === empCed));
+            });
+
+            if (vacRes.vacacionesTomadasHoy !== null && vacRes.vacacionesTomadasHoy !== undefined && vacRes.vacacionesTomadasHoy !== '') {
                 vacacionesTomadas = vacRes.vacacionesTomadasHoy;
+            } else if (infoVac && infoVac.tomadas !== undefined && infoVac.tomadas !== null) {
+                vacacionesTomadas = infoVac.tomadas;
             } else {
-                vacacionesTomadas = (vacRes.vacaciones || []).length;
+                vacacionesTomadas = vacsEmp.length;
             }
-            if (vacRes.vacacionesRestantesHoy !== null && vacRes.vacacionesRestantesHoy !== undefined) {
+
+            if (vacRes.vacacionesRestantesHoy !== null && vacRes.vacacionesRestantesHoy !== undefined && vacRes.vacacionesRestantesHoy !== '' && vacRes.vacacionesRestantesHoy !== '--') {
                 totalVacacionesDisponibles = vacRes.vacacionesRestantesHoy;
+            } else if (infoVac && infoVac.restantes !== undefined && infoVac.restantes !== null) {
+                totalVacacionesDisponibles = infoVac.restantes;
             } else {
-                const limiteVacaciones = parseInt(empleado.vacaciones_totales || empleado.vacaciones_disponibles) || 15;
-                const vTomadasNum = typeof vacacionesTomadas === 'number' ? vacacionesTomadas : parseFloat(vacacionesTomadas) || 0;
+                const limiteVacaciones = parseFloat(empleado.vacaciones_totales || empleado.vacaciones_disponibles || (infoVac && infoVac.adjudicadas)) || 15;
+                const vTomadasNum = parseFloat(vacacionesTomadas) || 0;
                 totalVacacionesDisponibles = Math.max(0, limiteVacaciones - vTomadasNum);
             }
         }

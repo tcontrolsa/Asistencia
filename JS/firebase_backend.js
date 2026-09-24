@@ -186,9 +186,32 @@ window.FirebaseBackend = {
                                     window.kpiVacaciones = parsedVac.kpiVacaciones;
                                     window._kpiVacacionesCache = parsedVac.kpiVacaciones;
                                     window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
+                                    const rawVacList = parsedVac.vacaciones || [];
+                                    const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
+                                    const empCedReq = params.cedula ? String(params.cedula).trim() : null;
+                                    let filteredVacs = rawVacList;
+                                    let tHoy = null;
+                                    let rHoy = null;
+
+                                    if (empIdReq || empCedReq) {
+                                        filteredVacs = rawVacList.filter(v => {
+                                            const vId = String(v.empleadoId || v.id || (Array.isArray(v) ? v[1] : '')).trim();
+                                            const vCed = String(v.cedula || (Array.isArray(v) ? v[0] : '')).trim();
+                                            return (empIdReq && vId === empIdReq) || (empCedReq && (vCed === empCedReq || vId === empCedReq));
+                                        });
+                                        const kpiInd = parsedVac.kpiVacacionesIndividual || {};
+                                        const info = kpiInd[empIdReq] || (empCedReq ? kpiInd[empCedReq] : null);
+                                        if (info) {
+                                            tHoy = info.tomadas;
+                                            rHoy = info.restantes;
+                                        }
+                                    }
+
                                     return {
                                         ok: true,
-                                        vacaciones: parsedVac.vacaciones || [],
+                                        vacaciones: filteredVacs,
+                                        vacacionesTomadasHoy: tHoy,
+                                        vacacionesRestantesHoy: rHoy,
                                         kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
                                         kpiVacacionesIndividual: parsedVac.kpiVacacionesIndividual,
                                         desdeCache: true
@@ -250,9 +273,32 @@ window.FirebaseBackend = {
                                 if (storedVac) {
                                     const parsedVac = JSON.parse(storedVac);
                                     if (parsedVac && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
+                                        const rawVacList = parsedVac.vacaciones || [];
+                                        const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
+                                        const empCedReq = params.cedula ? String(params.cedula).trim() : null;
+                                        let filteredVacs = rawVacList;
+                                        let tHoy = null;
+                                        let rHoy = null;
+
+                                        if (empIdReq || empCedReq) {
+                                            filteredVacs = rawVacList.filter(v => {
+                                                const vId = String(v.empleadoId || v.id || (Array.isArray(v) ? v[1] : '')).trim();
+                                                const vCed = String(v.cedula || (Array.isArray(v) ? v[0] : '')).trim();
+                                                return (empIdReq && vId === empIdReq) || (empCedReq && (vCed === empCedReq || vId === empCedReq));
+                                            });
+                                            const kpiInd = parsedVac.kpiVacacionesIndividual || {};
+                                            const info = kpiInd[empIdReq] || (empCedReq ? kpiInd[empCedReq] : null);
+                                            if (info) {
+                                                tHoy = info.tomadas;
+                                                rHoy = info.restantes;
+                                            }
+                                        }
+
                                         return {
                                             ok: true,
-                                            vacaciones: parsedVac.vacaciones || [],
+                                            vacaciones: filteredVacs,
+                                            vacacionesTomadasHoy: tHoy,
+                                            vacacionesRestantesHoy: rHoy,
                                             kpiVacaciones: parsedVac.kpiVacaciones || { adjudicadas: 0, tomadas: 0, restantes: 0 },
                                             kpiVacacionesIndividual: parsedVac.kpiVacacionesIndividual || {},
                                             desdeCache: true
@@ -3203,12 +3249,42 @@ window.FirebaseBackend = {
                     ...r,
                     empleadoId: String(r.empleadoId || r.id_empleado || '').trim(),
                     fecha: this._normFecha(r.fecha),
-                    hora: this._limpiarHora(r.hora)
+                    hora: this._limpiarHora(r.hora),
+                    tiempo_justificado_mins: Number(r.tiempo_justificado_mins || 0),
+                    permiso_personal_mins: Number(r.permiso_personal_mins || 0),
+                    permiso_medico_mins: Number(r.permiso_medico_mins || 0)
                 };
                 if (rf.timestamp) {
                     this._extraerFechaHoraDesdeTimestamp(rf);
                 }
                 return rf;
+            });
+
+            // Indexar archivados por empleado|fecha|tipo y empleado|fecha para enriquecer registros de Firebase
+            const archMapTipo = new Map();
+            const archMapFecha = new Map();
+            archivadosNorm.forEach(arch => {
+                const kTipo = `${arch.empleadoId}|${arch.fecha}|${arch.tipo}`;
+                const kFecha = `${arch.empleadoId}|${arch.fecha}`;
+                if (!archMapTipo.has(kTipo)) archMapTipo.set(kTipo, arch);
+                if (!archMapFecha.has(kFecha)) archMapFecha.set(kFecha, arch);
+            });
+
+            // Enriquecer registros de Firebase con datos de Sheets (permisos, tiempo_justificado_mins, etc.)
+            registrosFirebase.forEach(rf => {
+                const kTipo = `${rf.empleadoId}|${rf.fecha}|${(rf.tipo || '').toUpperCase()}`;
+                const kFecha = `${rf.empleadoId}|${rf.fecha}`;
+                const arch = archMapTipo.get(kTipo) || (rf.tipo === 'ENTRADA' ? archMapFecha.get(kFecha) : null);
+                if (arch) {
+                    if (arch.tiempo_justificado_mins) rf.tiempo_justificado_mins = Number(arch.tiempo_justificado_mins);
+                    if (arch.permiso_personal_mins) rf.permiso_personal_mins = Number(arch.permiso_personal_mins);
+                    if (arch.permiso_medico_mins) rf.permiso_medico_mins = Number(arch.permiso_medico_mins);
+                    if (arch.razon_permiso && !rf.razon_permiso) rf.razon_permiso = arch.razon_permiso;
+                    if (arch.razon_salida && !rf.razon_salida) rf.razon_salida = arch.razon_salida;
+                    if (arch.razon_entrada_tardia && !rf.razon_entrada_tardia) rf.razon_entrada_tardia = arch.razon_entrada_tardia;
+                    if (arch.justificado && !rf.justificado) rf.justificado = arch.justificado;
+                    if (arch.razon_justificac && !rf.razon_justificac) rf.razon_justificac = arch.razon_justificac;
+                }
             });
 
             // Fechas cubiertas por Firebase por empleado (para evitar duplicados con archivados de forma individual)

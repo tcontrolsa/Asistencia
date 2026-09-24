@@ -7,7 +7,7 @@
 // ============================================================
 // CREADOR INTERACTIVO DE REPORTES CUSTOM
 // ============================================================
-const DEFAULT_COLUMNAS_CUSTOM = ['area', 'asistencias', 'faltas', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+const DEFAULT_COLUMNAS_CUSTOM = ['area', 'asistencias', 'diasCampo', 'faltas', 'diasVacaciones', 'diasJustificados', 'diasExtras', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
 
 function obtenerColumnasCustomActivas() {
   const saved = localStorage.getItem('columnasCustomActivasReporte');
@@ -15,6 +15,16 @@ function obtenerColumnasCustomActivas() {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        ['diasCampo', 'diasVacaciones', 'diasJustificados', 'diasExtras'].forEach(colId => {
+          if (!parsed.includes(colId)) {
+            const idxFaltas = parsed.indexOf('faltas');
+            if (idxFaltas > -1) {
+              parsed.splice(idxFaltas + 1, 0, colId);
+            } else {
+              parsed.push(colId);
+            }
+          }
+        });
         return parsed;
       }
     } catch (e) { }
@@ -400,10 +410,26 @@ window.filtrarReporteInteractivo = function () {
         } else {
           if (col.id === 'asistencias') {
             contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'diasCampo') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#ecfeff; color:#0891b2; border:1px solid #a5f3fc; font-weight:700;"><i class="fas fa-hard-hat" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
           } else if (col.id === 'faltas') {
             contenido = (valor > 0)
               ? `<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle" style="font-size:8.5px;"></i> ${valor}</span>`
               : `<span class="rep-badge-falta-zero">0</span>`;
+          } else if (col.id === 'diasVacaciones') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;"><i class="fas fa-umbrella-beach" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
+          } else if (col.id === 'diasJustificados') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe; font-weight:700;"><i class="fas fa-shield-alt" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
+          } else if (col.id === 'diasExtras') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; font-weight:700;"><i class="fas fa-calendar-plus" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
           } else if (col.id === 'atrasos') {
             contenido = (valor > 0)
               ? `<span class="rep-badge-pill rep-badge-atraso-alert"><i class="fas fa-clock" style="font-size:8.5px;"></i> ${valor}</span>`
@@ -811,6 +837,10 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
     });
 
     let tiempoJustificado = 0;
+    const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
+    const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
+    tiempoJustificado += justMins;
+
     const hasCumpleanos = regsDia.some(r => {
       const raz = String(r.razon_ausencia || '').toLowerCase();
       const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
@@ -822,14 +852,13 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
     if (isJustificado || esHoyOFuturo) {
       tiempoPorJustificar = 0;
     } else {
-      const entradaDia = regsDia.find(r => r.tipo === 'ENTRADA');
-      const persMins = (entradaDia && entradaDia.permiso_personal_mins) ? Number(entradaDia.permiso_personal_mins) : 0;
-      const medMins = (entradaDia && entradaDia.permiso_medico_mins) ? Number(entradaDia.permiso_medico_mins) : 0;
+      const persMins = (regPermiso && regPermiso.permiso_personal_mins) ? Number(regPermiso.permiso_personal_mins) : 0;
+      const medMins = (regPermiso && regPermiso.permiso_medico_mins) ? Number(regPermiso.permiso_medico_mins) : 0;
       tiempoPersonal += persMins;
       tiempoMedico += medMins;
       let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
       let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
-      let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
+      let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoJustificado + tiempoPorJustificar;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
       tiempoPorJustificar += unaccountedMissing;
     }
@@ -1269,6 +1298,30 @@ window.exportarExcelReporteCustom = function () {
           if (col.id === 'faltas') {
             if (num > 0) {
               cellBg = '#fee2e2'; cellColor = '#991b1b'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'diasCampo') {
+            if (num > 0) {
+              cellBg = '#ecfeff'; cellColor = '#0891b2'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'diasVacaciones') {
+            if (num > 0) {
+              cellBg = '#ecfdf5'; cellColor = '#059669'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'diasJustificados') {
+            if (num > 0) {
+              cellBg = '#f5f3ff'; cellColor = '#7c3aed'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'diasExtras') {
+            if (num > 0) {
+              cellBg = '#eef2ff'; cellColor = '#4338ca'; cellWeight = 'bold';
             } else {
               cellColor = '#94a3b8';
             }

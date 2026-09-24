@@ -455,9 +455,9 @@ function autoCompletarSalidasFaltantesSheets() {
 
         console.log(`⚠️ [FALTA DE SALIDA DETECTADA] ${emp.nombre} (${emp.id}) el ${fecha} (${diaSemana}). Salida configurada: ${horaSalida}`);
         
-        const nuevaFila = new Array(24).fill('');
+        const nuevaFila = new Array(25).fill('');
         
-        // Rellenar arreglo de fila según la estructura oficial (A-X)
+        // Rellenar arreglo de fila según la estructura oficial (A-Y)
         nuevaFila[0] = fecha;                    // A: FECHA
         nuevaFila[1] = emp.id;                   // B: ID
         nuevaFila[2] = emp.nombre;               // C: NOMBRE
@@ -482,6 +482,7 @@ function autoCompletarSalidasFaltantesSheets() {
         nuevaFila[21] = 'No registró salida';    // V: RAZON_JUSTIFICAC
         nuevaFila[22] = '';                      // W: PERMISO_PERSONAL_MINS
         nuevaFila[23] = '';                      // X: PERMISO_MEDICO_MINS
+        nuevaFila[24] = '';                      // Y: TIEMPO_JUSTIFICADO_MINS
         
         filasAInsertar.push(nuevaFila);
       }
@@ -491,7 +492,7 @@ function autoCompletarSalidasFaltantesSheets() {
   // PASO 6: Inserción de registros en lote (Batch Write)
   if (filasAInsertar.length > 0) {
     const startRow = sheetRegs.getLastRow() + 1;
-    sheetRegs.getRange(startRow, 1, filasAInsertar.length, 24).setValues(filasAInsertar);
+    sheetRegs.getRange(startRow, 1, filasAInsertar.length, 25).setValues(filasAInsertar);
     console.log(`✅ [Auto-completar] Proceso finalizado con éxito. Se insertaron ${filasAInsertar.length} registros de salida automáticamente en bloque.`);
   } else {
     console.log("✅ [Auto-completar] No se detectaron salidas pendientes por insertar en los últimos 7 días.");

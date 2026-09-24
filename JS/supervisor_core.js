@@ -712,6 +712,19 @@ function esEmpleadoExcluidoAsistencia(e) {
 }
 window.esEmpleadoExcluidoAsistencia = esEmpleadoExcluidoAsistencia;
 
+function esEmpleadoPasante(e) {
+  if (!e) return false;
+  const cargo = String(e.cargo || e.tipo_cargo || e.rol || '').toUpperCase().trim();
+  const area = String(e.area || e.departamento || '').toUpperCase().trim();
+  const tipo = String(e.tipo || e.tipoRegistro || e.tipo_empleado || '').toUpperCase().trim();
+  if (cargo.includes('PASANTE') || cargo.includes('PASANTIA') || cargo.includes('PASANTÍA')) return true;
+  if (area.includes('PASANTE') || area.includes('PASANTIA') || area.includes('PASANTÍA')) return true;
+  if (tipo.includes('PASANTE') || tipo.includes('PASANTIA') || tipo.includes('PASANTÍA')) return true;
+  return false;
+}
+window.esEmpleadoPasante = esEmpleadoPasante;
+window.esColaboradorPasante = esEmpleadoPasante;
+
 function esEnCampo(lat, lng) {
   if (!lat || !lng) return false;
   let distancia = calcularDistancia(LAT_EMPRESA, LNG_EMPRESA, parseFloat(lat), parseFloat(lng));
@@ -1297,11 +1310,12 @@ function cargarDashboard() {
   let hoyP = 0, hoyA = 0, hoyT = 0, hoySalieron = 0;
   empCache.forEach(e => {
     let entr = (e.registros || []).find(r => r.fecha === hoy && r.tipo === 'ENTRADA');
-    let sal = (e.registros || []).find(r => r.fecha === hoy && r.tipo === 'SALIDA');
+    let sal = (e.registros || []).find(r => r.fecha === hoy && (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante'));
+    const esPas = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
     if (entr) {
       hoyP++;
       let m = obtenerMinutos(entr.hora);
-      if (m !== null && m > refEntradaHoy + 5) hoyT++;
+      if (m !== null && m > refEntradaHoy + 5 && !esPas) hoyT++;
       if (sal) hoySalieron++;
     } else {
       hoyA++;
@@ -1604,8 +1618,9 @@ function cargarDashboard() {
 
     let puntMap = {}, tardMap = {}, sinSalidaMap = {}, puntMapBackup = {};
     empCache.forEach(e => {
+      const esPasanteEmp = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
       let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= hoy_);
-      let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= hoy_);
+      let salidas = (e.registros || []).filter(r => (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante') && r.fecha >= periodo.inicio && r.fecha <= hoy_);
 
       let entradasPorDia = {};
       entradas.forEach(r => {
@@ -1625,7 +1640,7 @@ function cargarDashboard() {
         let m = obtenerMinutos(firstE.hora);
         if (m !== null) {
           nE++;
-          if (m > HORA_ENTRADA_REF + 5) {
+          if (m > HORA_ENTRADA_REF + 5 && !esPasanteEmp) {
             tardE++;
             let diffMin = m - HORA_ENTRADA_REF;
             minutosTardE += diffMin;
@@ -1636,7 +1651,15 @@ function cargarDashboard() {
 
         if (fecha !== hoy_) {
           let tieneSalida = salidas.some(s => s.fecha === fecha);
-          if (!tieneSalida) {
+          let regsFecha = (e.registros || []).filter(r => (typeof normalizarFechaStr === 'function' ? normalizarFechaStr(r.fecha) : r.fecha) === fecha);
+          let esCampoOJornadaJustificada = regsFecha.some(r => {
+            const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+            const m = String(r.modo || r.modo_trabajo || '').toUpperCase();
+            const raz = String(r.razon_ausencia || r.razon_permiso || r.razon_justificac || r.razon_salida || r.observacion || '').toUpperCase();
+            const est = String(r.estado || '').toUpperCase();
+            return t.includes('CAMPO') || m.includes('CAMPO') || raz.includes('CAMPO') || est.includes('CAMPO') || r.justificado === 'SI' || r.justificada === 'SI' || t.includes('JUSTIFIC');
+          });
+          if (!tieneSalida && !esCampoOJornadaJustificada) {
             faltasS++;
             let fechaLegible = `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
             detallesFaltasSalida.push(fechaLegible);
@@ -1644,12 +1667,14 @@ function cargarDashboard() {
         }
       });
 
-      if (nE >= 3) {
-        puntMap[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE, tardanzas: tardE, minutosTard: minutosTardE, fechas: detallesTardanzas };
-      } else if (nE > 0) {
-        puntMapBackup[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE, tardanzas: tardE, minutosTard: minutosTardE, fechas: detallesTardanzas };
+      if (!esPasanteEmp) {
+        if (nE >= 3) {
+          puntMap[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE, tardanzas: tardE, minutosTard: minutosTardE, fechas: detallesTardanzas };
+        } else if (nE > 0) {
+          puntMapBackup[e.id] = { nombre: e.nombre, area: e.area, p: Math.round((1 - tardE / nE) * 100), id: e.id, asist: nE, tardanzas: tardE, minutosTard: minutosTardE, fechas: detallesTardanzas };
+        }
+        if (tardE > 0) tardMap[e.id] = { nombre: e.nombre, area: e.area, tardanzas: tardE, id: e.id, asist: nE, minutosTard: minutosTardE, fechas: detallesTardanzas };
       }
-      if (tardE > 0) tardMap[e.id] = { nombre: e.nombre, area: e.area, tardanzas: tardE, id: e.id, asist: nE, minutosTard: minutosTardE, fechas: detallesTardanzas };
       if (faltasS > 0) sinSalidaMap[e.id] = { nombre: e.nombre, area: e.area, faltasSalida: faltasS, id: e.id, totalEntradas: nE, fechas: detallesFaltasSalida };
     });
 
@@ -2057,16 +2082,18 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
   let inicio = customInicio;
   let fin = customFin;
   if (!inicio || !fin) {
-    const pActual = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
-    const pAnterior = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[1]) ? periodos[1] : null;
+    if (!periodos || !periodos.length) {
+      periodos = (typeof generarPeriodos === 'function') ? generarPeriodos() : [];
+    }
+    const pActual = (periodos && periodos[0]) ? periodos[0] : (typeof generarPeriodos === 'function' ? generarPeriodos()[0] : null);
     if (pActual) {
-      // Evaluar período actual y el anterior para cubrir regularizaciones pendientes pasadas
-      inicio = pAnterior ? pAnterior.inicio : pActual.inicio;
+      // Evaluar estrictamente el período actual
+      inicio = pActual.inicio;
       fin = pActual.fin;
     } else {
       let d = new Date();
       fin = fin || d.toISOString().split('T')[0];
-      d.setDate(d.getDate() - 60);
+      d.setDate(d.getDate() - 30);
       inicio = inicio || d.toISOString().split('T')[0];
     }
   }
@@ -2101,6 +2128,7 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
   }
 
   const fechasPendientes = [];
+  let saldoBeneficio4h = ((typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(emp)) ? 0 : 240;
 
   fechasRango.forEach(f => {
     const dObj = new Date(f + 'T12:00:00');
@@ -2110,38 +2138,57 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
     if (!esDiaLaboralOrdinario) return;
 
     const regsDia = porDia[f] || [];
+
+    // 1. Detección completa de Trabajo/Salida a Campo
+    const esCampoHoy = regsDia.some(r => {
+      const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+      const modo = String(r.modo || r.modo_trabajo || '').toUpperCase();
+      const razAus = String(r.razon_ausencia || '').toUpperCase();
+      const razPerm = String(r.razon_permiso || '').toUpperCase();
+      const razJust = String(r.razon_justificac || '').toUpperCase();
+      const razSal = String(r.razon_salida || r.razon_salida_temprana || '').toUpperCase();
+      const obs = String(r.observacion || r.comentario || '').toUpperCase();
+      const est = String(r.estado || '').toUpperCase();
+      const allText = `${t} ${modo} ${razAus} ${razPerm} ${razJust} ${razSal} ${obs} ${est}`;
+      return allText.includes('CAMPO');
+    });
+
+    // 2. Detección completa de Faltas/Permisos Justificados y Vacaciones
+    const vacsRRHH = (window.vacacionesData && Array.isArray(window.vacacionesData.vacaciones)) ? window.vacacionesData.vacaciones : [];
+    const esVacacionesRRHH = vacsRRHH.some(v => v && (String(v.empleadoId) === String(emp.id) || String(v.id_empleado) === String(emp.id)) && ((typeof normalizarFechaStr === 'function' ? normalizarFechaStr(v.fecha) : v.fecha) === f));
+    const esEmpEnVacaciones = (emp.estado || '').toUpperCase() === 'VACACIONES';
+
+    const esJustificadoHoy = esVacacionesRRHH || esEmpEnVacaciones || regsDia.some(r => {
+      const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+      const just = String(r.justificado || r.justificada || '').toUpperCase();
+      const razAus = String(r.razon_ausencia || '').toUpperCase();
+      const razPerm = String(r.razon_permiso || '').toUpperCase();
+      const razJust = String(r.razon_justificac || '').toUpperCase();
+      const razSal = String(r.razon_salida || r.razon_salida_temprana || '').toUpperCase();
+      const obs = String(r.observacion || r.comentario || '').toUpperCase();
+      const allText = `${t} ${just} ${razAus} ${razPerm} ${razJust} ${razSal} ${obs}`;
+
+      if (just === 'SI' || r.justificado === true || r.justificada === true) return true;
+      if (t === 'FALTA_JUSTIFICADA' || t === 'SALIDA_JUSTIFICADA' || t.includes('JUSTIFIC')) return true;
+      if (t.includes('VACAC') || t.includes('MEDIC') || t.includes('CALAMIDAD') || t.includes('CUMPLE') || t.includes('PERSONAL')) return true;
+      if (allText.includes('JUSTIFIC') || allText.includes('VACAC') || allText.includes('MEDIC') || allText.includes('CALAMIDAD') || allText.includes('CUMPLE') || allText.includes('PERSONAL')) return true;
+
+      // Si tiene alguna razón de ausencia válida asignada (distinta de injustificada/vacía/guión)
+      if (razAus && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razAus)) return true;
+      if (razPerm && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razPerm)) return true;
+
+      return false;
+    });
+
+    // CRÍTICO: Si el día tiene estado "Salida a Campo" (solo 1 registro) o es Falta Justificada / Permiso, NO requiere regularización
+    if (esCampoHoy || esJustificadoHoy) {
+      return;
+    }
+
     let periodosDia = [];
     let curEntrada = null;
     let tieneMarcacionReal = false;
     let isJustificado = false;
-    let tienePermisoEspecial = false;
-
-    // Verificar si está justificado o de vacaciones
-    regsDia.forEach(r => {
-      const t = String(r.tipo || '').toUpperCase();
-      const just = String(r.justificado || '').toUpperCase();
-      const raz = String(r.razon_ausencia || r.razon_permiso || r.razon_justificac || '').toUpperCase();
-
-      if (just === 'SI' || t === 'FALTA_JUSTIFICADA' || t === 'SALIDA_JUSTIFICADA' || t === 'CUMPLEANOS' || t === 'CUMPLEAÑOS' || raz.includes('JUSTIFIC') || raz.includes('CUMPLEA')) {
-        isJustificado = true;
-      }
-      if (t.includes('VACAC') || raz.includes('VACAC') || (emp.estado || '').toUpperCase() === 'VACACIONES') {
-        tienePermisoEspecial = true;
-        isJustificado = true;
-      }
-      if (t.includes('MEDIC') || raz.includes('MEDIC') || t.includes('CALAMIDAD') || raz.includes('CALAMIDAD') || t.includes('PERSONAL') || raz.includes('PERSONAL')) {
-        tienePermisoEspecial = true;
-      }
-    });
-
-    // Vacaciones en módulo RRHH
-    const vacsRRHH = (window.vacacionesData && Array.isArray(window.vacacionesData.vacaciones)) ? window.vacacionesData.vacaciones : [];
-    if (vacsRRHH.some(v => v && (String(v.empleadoId) === String(emp.id) || String(v.id_empleado) === String(emp.id)) && ((typeof normalizarFechaStr === 'function' ? normalizarFechaStr(v.fecha) : v.fecha) === f))) {
-      tienePermisoEspecial = true;
-      isJustificado = true;
-    }
-
-    if (tienePermisoEspecial && isJustificado) return;
 
     // Ordenar registros del día
     regsDia.sort((a, b) => {
@@ -2152,13 +2199,15 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
 
     regsDia.forEach(r => {
       const t = String(r.tipo || '').toUpperCase();
+      const tSal = String(r.tipo_salida || '').toUpperCase();
+      const rSal = String(r.razon_salida || '').toLowerCase();
       if (t === 'ENTRADA' || t === 'CAMPO' || t === 'ENTRADA_CAMPO' || t === 'TRABAJO_DE_CAMPO') {
         tieneMarcacionReal = true;
         if (curEntrada) {
           periodosDia.push({ entrada: curEntrada, salida: null });
         }
         curEntrada = r;
-      } else if (t === 'SALIDA' || t === 'RETORNO_CAMPO') {
+      } else if (t === 'SALIDA' || t === 'RETORNO_CAMPO' || t === 'SALIDA_PASANTE' || tSal === 'SALIDA_PASANTE' || rSal === 'salida_pasante') {
         tieneMarcacionReal = true;
         if (curEntrada) {
           periodosDia.push({ entrada: curEntrada, salida: r });
@@ -2172,6 +2221,7 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
       periodosDia.push({ entrada: curEntrada, salida: null });
     }
 
+    const esPasante = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(emp);
     const esFalta = !tieneMarcacionReal && !isJustificado;
     const faltaMarcacionEntrada = periodosDia.some(p => !p.entrada && p.salida);
     const faltaMarcacionSalida = periodosDia.some(p => p.entrada && !p.salida);
@@ -2183,12 +2233,15 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
       fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Inasistencia', tipo: 'ausencia' });
       return;
     }
-    if (faltaMarcacionSalida) {
-      fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Sin Salida', tipo: 'incompleto' });
-      return;
-    }
-    if (faltaMarcacionEntrada) {
-      fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Sin Entrada', tipo: 'incompleto' });
+
+    if (esPasante) {
+      // Los pasantes tienen horario flexible: no se les exige 8 horas estándar ni hora fija de entrada/salida.
+      // Únicamente se regularizan si les falta marcar la salida o la entrada en un día laboral.
+      if (faltaMarcacionSalida) {
+        fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Sin Salida', tipo: 'incompleto', minutos: 0 });
+      } else if (faltaMarcacionEntrada) {
+        fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Sin Entrada', tipo: 'incompleto', minutos: 0 });
+      }
       return;
     }
 
@@ -2239,15 +2292,31 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
       let totalPermisosHoy = tiempoPersonal + tiempoMedico;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
       let tj = Math.max(0, unaccountedMissing - tiempoJustificado);
+      if (saldoBeneficio4h > 0 && tj > 0) {
+        let consumo4h = Math.min(saldoBeneficio4h, tj);
+        saldoBeneficio4h -= consumo4h;
+        tj = Math.max(0, tj - consumo4h);
+      }
+      // Condición estricta: únicamente tiempo faltante fuera de las 4h superior a 1 hora (> 60 minutos)
       if (tj > 60) {
-        fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo', minutos: tj });
+        let motivoTexto = 'Tiempo por justificar';
+        let tipoTexto = 'tiempo';
+        if (faltaMarcacionSalida && netWorkedOrdinario < 240) {
+          motivoTexto = 'Sin Salida';
+          tipoTexto = 'incompleto';
+        } else if (faltaMarcacionEntrada && netWorkedOrdinario < 240) {
+          motivoTexto = 'Sin Entrada';
+          tipoTexto = 'incompleto';
+        }
+        fechasPendientes.push({ fecha: f, label: fFmt, motivo: motivoTexto, tipo: tipoTexto, minutos: tj });
       }
     }
   });
 
-  // Ordenar fechas pendientes descendente (más recientes primero)
-  fechasPendientes.sort((a, b) => b.fecha.localeCompare(a.fecha));
-  return fechasPendientes;
+  // Asegurar estrictamente que todas las fechas pendientes estén dentro del rango inicio - fin
+  const fechasFiltradas = fechasPendientes.filter(f => f && f.fecha >= inicio && f.fecha <= fin);
+  fechasFiltradas.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return fechasFiltradas;
 };
 
 // ============================================================
@@ -2265,8 +2334,17 @@ function cargarAsistencia() {
   const refEntradaHoy = esFestivoHoy ? 420 : HORA_ENTRADA_REF;
   const refSalidaHoy = esFestivoHoy ? 900 : HORA_SALIDA_REF;
 
-  let tards = empCache.filter(e => { if (!e.entradaHoy) return false; let m = obtenerMinutos(e.horaEntradaMs); return m !== null && m > refEntradaHoy + 5; }).length;
-  let salieron = empCache.filter(e => e.salidaHoy).length;
+  let tards = empCache.filter(e => {
+    if (!e.entradaHoy) return false;
+    if (typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(e)) return false;
+    let m = obtenerMinutos(e.horaEntradaMs);
+    return m !== null && m > refEntradaHoy + 5;
+  }).length;
+  let salieron = empCache.filter(e => {
+    if (e.salidaHoy) return true;
+    let sReg = (e.registros || []).find(r => (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante') && r.fecha === hoy);
+    return !!sReg;
+  }).length;
   let sinSalida = pres - salieron;
 
   let extrasHoy = window.obtenerAlmuerzosExtraConsolidados(hoy, hoy);
@@ -2289,8 +2367,7 @@ function cargarAsistencia() {
   let countPorRegularizar = 0;
 
   const pActual = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
-  const pAnterior = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[1]) ? periodos[1] : null;
-  const evalInicio = pAnterior ? pAnterior.inicio : (pActual ? pActual.inicio : null);
+  const evalInicio = pActual ? pActual.inicio : null;
   const evalFin = pActual ? pActual.fin : null;
 
   empCache.forEach(e => {
@@ -2306,8 +2383,12 @@ function cargarAsistencia() {
 
     if (!isSinAsis) {
       let fechasReg = window.obtenerFechasPendientesRegularizarEmpleado(e, evalInicio, evalFin);
-      e._fechasRegularizar = fechasReg || [];
-      if (fechasReg && fechasReg.length > 0) {
+      // Garantizar que solo contenga fechas estrictamente dentro del período actual
+      e._fechasRegularizar = (fechasReg || []).filter(f => {
+        if (!evalInicio || !evalFin) return true;
+        return f.fecha >= evalInicio && f.fecha <= evalFin;
+      });
+      if (e._fechasRegularizar.length > 0) {
         countPorRegularizar++;
       }
 
@@ -2378,8 +2459,9 @@ function cargarAsistencia() {
   if ($('lblCountSalidaWhatsApp')) $('lblCountSalidaWhatsApp').textContent = sinSalida;
 
   window._asisData = empCache.map(e => {
+    const esPasante = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
     let eReg = (e.registros || []).find(r => r.tipo === 'ENTRADA' && r.fecha === hoy);
-    let sReg = (e.registros || []).find(r => r.tipo === 'SALIDA' && r.fecha === hoy);
+    let sReg = (e.registros || []).find(r => (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante') && r.fecha === hoy);
 
     // Preparar edición para Admin y Sup Admin
     let horaEntradaRaw = e.horaEntrada || eReg?.hora || '-';
@@ -2390,27 +2472,33 @@ function cargarAsistencia() {
 
     let horaV = e.horaEntradaMs || eReg?.hora || eReg?.timestamp;
     let mEnt = e.entradaHoy ? obtenerMinutos(horaV) : null;
-    let tard = mEnt !== null && mEnt > refEntradaHoy + 5;
+    let tard = !esPasante && (mEnt !== null && mEnt > refEntradaHoy + 5);
 
     let eHtml = '';
     if (e.entradaHoy) {
       if (tard) {
         eHtml = `<span class="editable-cell rep-badge-pill rep-badge-atraso-alert" ${clickEntrada} title="${canEditAttendance ? 'Clic para editar entrada' : 'Entrada con atraso'}"><i class="fas fa-clock" style="font-size:9.5px;"></i> ${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'} <span class="delta-badge">+${formatearMinutos(mEnt - refEntradaHoy)}</span></span>`;
       } else {
-        eHtml = `<span class="editable-cell rep-badge-pill rep-badge-asis" ${clickEntrada} title="${canEditAttendance ? 'Clic para editar entrada' : 'Entrada puntual'}"><i class="fas fa-check" style="font-size:9.5px;"></i> ${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'}</span>`;
+        let badgeTitle = esPasante ? 'Entrada (Horario Flexible - Pasante)' : (canEditAttendance ? 'Clic para editar entrada' : 'Entrada puntual');
+        let badgeIco = esPasante ? '<i class="fas fa-user-graduate" style="font-size:9.5px; color:#7c3aed;"></i>' : '<i class="fas fa-check" style="font-size:9.5px;"></i>';
+        eHtml = `<span class="editable-cell rep-badge-pill rep-badge-asis" ${clickEntrada} title="${badgeTitle}">${badgeIco} ${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'}</span>`;
       }
     } else {
       eHtml = `<span class="editable-cell rep-asis-empty" ${clickEntrada} title="${canEditAttendance ? 'Clic para ingresar entrada manual' : ''}">—</span>`;
     }
 
     let sHoraV = e.horaSalidaMs || sReg?.hora || sReg?.timestamp;
-    let mSal = e.salidaHoy ? obtenerMinutos(sHoraV) : null;
+    let tieneSalida = !!(e.salidaHoy || sReg);
+    let mSal = tieneSalida ? obtenerMinutos(sHoraV) : null;
     let sHtml = '';
-    if (e.salidaHoy) {
-      if (mSal - refSalidaHoy > 1) {
+    if (tieneSalida) {
+      if (!esPasante && mSal !== null && (mSal - refSalidaHoy > 1)) {
         sHtml = `<span class="editable-cell rep-badge-pill rep-badge-ex50" ${clickSalida} title="${canEditAttendance ? 'Clic para editar salida' : 'Salida con tiempo adicional'}"><i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i> ${mSal !== null ? minsToHHMM(mSal) : 'Registrada'} <span class="delta-badge" style="background:#dbeafe; color:#1d4ed8;">+${formatearMinutos(mSal - refSalidaHoy)}</span></span>`;
       } else {
-        sHtml = `<span class="editable-cell rep-badge-pill rep-badge-alm" ${clickSalida} title="${canEditAttendance ? 'Clic para editar salida' : 'Salida registrada'}"><i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i> ${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}</span>`;
+        let badgeStyle = esPasante ? 'background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe;' : '';
+        let badgeIco = esPasante ? '<i class="fas fa-user-graduate" style="font-size:9.5px;"></i>' : '<i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i>';
+        let badgeTitle = canEditAttendance ? 'Clic para editar salida' : (esPasante ? 'Salida Pasante (Horario Flexible)' : 'Salida registrada');
+        sHtml = `<span class="editable-cell rep-badge-pill rep-badge-alm" style="${badgeStyle}" ${clickSalida} title="${badgeTitle}">${badgeIco} ${mSal !== null ? minsToHHMM(mSal) : 'Registrada'}</span>`;
       }
     } else if (e.entradaHoy) {
       sHtml = `<span class="editable-cell rep-badge-pill rep-badge-atraso-alert" ${clickSalida} style="background:#fffbeb; color:#b45309; border:1px dashed #fde68a;" title="${canEditAttendance ? 'Clic para registrar salida' : 'Pendiente de salida'}"><i class="fas fa-hourglass-half" style="font-size:9px;"></i> Pendiente</span>`;
@@ -2425,51 +2513,72 @@ function cargarAsistencia() {
     let razonAusenciaHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : '';
     let isSinAsistencia = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
 
+    // Modo y Campo
+    let modo = eReg?.modo || sReg?.modo || (e.entradaHoy ? 'EMPRESA' : '-');
+    let modoStr = (eReg?.modo || sReg?.modo || e.modo || '').toUpperCase();
+    let regCampo = (e.registros || []).some(reg => reg.fecha === hoy && (
+      String(reg.modo || '').toUpperCase().includes('CAMPO') ||
+      String(reg.tipo || '').toUpperCase().includes('CAMPO') ||
+      String(reg.tipo_salida || '').toUpperCase().includes('CAMPO')
+    ));
+    let rUpper = (razonAusenciaHoy || '').toUpperCase();
+    let esCampo = modoStr.includes('CAMPO') || rUpper.includes('CAMPO') || regCampo;
+    let esVacaciones = rUpper.includes('VACAC') || (e.estado || '').toUpperCase() === 'VACACIONES';
+
     let estHtml = '';
     let ausenciaHtml = '<span class="rep-asis-empty">—</span>';
 
     if (isSinAsistencia) {
       estHtml = '<span class="rep-badge-pill" style="background:#f1f5f9; color:#64748b; border:1px dashed #cbd5e1;"><i class="fas fa-utensils"></i> Solo Alm.</span>';
-      ausenciaHtml = '<span class="rep-asis-empty" style="font-size:11px;">N/A</span>';
-    } else {
-      if (!e.entradaHoy) {
-        estHtml = '<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle"></i> Ausente</span>';
+    } else if (esCampo) {
+      let clickModo = canEditAttendance ? `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'modo', '${modo || 'CAMPO'}', '${hoy}')"` : '';
+      estHtml = `<span class="rep-badge-pill rep-badge-campo" ${clickModo} title="${canEditAttendance ? 'Clic para editar modo' : 'En Campo'}"><i class="fas fa-truck-pickup" style="font-size:9.5px;"></i> Campo</span>`;
+    } else if (esVacaciones) {
+      estHtml = '<span class="rep-badge-pill" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a; font-weight:700;"><i class="fas fa-umbrella-beach"></i> Vacación</span>';
+    } else if (razonAusenciaHoy) {
+      let rIco = '📋';
+      if (rUpper.includes('MEDIC')) rIco = '🩺';
+      else if (rUpper.includes('PERSONAL')) rIco = '👤';
+      else if (rUpper.includes('JUSTIFIC')) rIco = '✅';
+      else if (rUpper.includes('CALAMIDAD')) rIco = '🏠';
+      else if (rUpper.includes('CUMPLEA')) rIco = '🎂';
+      estHtml = `<span class="rep-badge-pill" style="background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; font-weight:700;"><i class="fas fa-file-signature"></i> ${rIco} ${escapeHtml(razonAusenciaHoy)}</span>`;
+    } else if (!e.entradaHoy) {
+      let badgeAusente = '<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle"></i> Ausente</span>';
 
-        // WhatsApp Button
-        let tel = (e.telefono || '').replace(/\D/g, '');
-        if (tel && tel.length >= 9) {
-          if (tel.startsWith('0')) tel = '593' + tel.substring(1);
-          let msg = encodeURIComponent("Hola, te recordamos que no has registrado tu asistencia el día de hoy.");
-          estHtml += ` <a href="https://wa.me/${tel}?text=${msg}" target="_blank" onclick="event.stopPropagation();" style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#25d366; color:#ffffff; font-size:12px; margin-left:6px; vertical-align:middle; text-decoration:none; box-shadow:0 1px 3px rgba(37,211,102,0.3); transition:transform 0.2s;" title="Notificar por WhatsApp"><i class="fab fa-whatsapp"></i></a>`;
-        }
-
-        // Dropdown Razón
-        let selectHtml = `
-                    <div style="position:relative; width:100%; min-width:130px;">
-                        <select onchange="window.guardarRazonAusenciaGlobal('${e.id}', this.value)" onclick="event.stopPropagation();" class="select-ausencia-modern" style="border:1px solid ${razonAusenciaHoy ? '#fdba74' : '#cbd5e1'}; background:${razonAusenciaHoy ? '#fff7ed' : '#ffffff'}; color:${razonAusenciaHoy ? '#c2410c' : '#475569'};">
-                            <option value="">${razonAusenciaHoy ? 'Cambiar Razón...' : '+ Agregar Razón'}</option>
-                            <option value="Vacación" ${razonAusenciaHoy === 'Vacación' ? 'selected' : ''}>🏖️ Vacación</option>
-                            <optgroup label="📋 Permiso Justificado">
-                                <option value="Permiso Personal" ${razonAusenciaHoy === 'Permiso Personal' ? 'selected' : ''}>👤 Permiso Personal</option>
-                                <option value="Permiso Médico" ${razonAusenciaHoy === 'Permiso Médico' ? 'selected' : ''}>🩺 Permiso Médico</option>
-                                <option value="Falta Justificada" ${razonAusenciaHoy === 'Falta Justificada' ? 'selected' : ''}>✅ Falta Justificada</option>
-                            </optgroup>
-                            <option value="Campo" ${razonAusenciaHoy === 'Campo' || razonAusenciaHoy === 'Salida a Campo' || razonAusenciaHoy === 'Trabajo de Campo' ? 'selected' : ''}>🚗 Campo</option>
-                            <option value="Otro" ${razonAusenciaHoy && !['Vacación', 'Permiso Médico', 'Permiso Personal', 'Falta Justificada', 'Campo', 'Salida a Campo', 'Trabajo de Campo'].includes(razonAusenciaHoy) ? 'selected' : ''}>✏️ Otro...</option>
-                        </select>
-                    </div>
-                  `;
-        if (razonAusenciaHoy && !['Vacación', 'Permiso Médico', 'Permiso Personal', 'Falta Justificada', 'Campo', 'Salida a Campo', 'Trabajo de Campo'].includes(razonAusenciaHoy)) {
-          selectHtml += `<div style="font-size:10px; color:#4338ca; margin-top:3px; line-height:1; font-weight:700; text-align:center;">${escapeHtml(razonAusenciaHoy)}</div>`;
-        }
-        ausenciaHtml = selectHtml;
-      } else {
-        estHtml = tard ? '<span class="rep-badge-pill rep-badge-atraso-alert"><i class="fas fa-exclamation-triangle"></i> Tarde</span>' : '<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check-circle"></i> Puntual</span>';
+      // WhatsApp Button
+      let waBtn = '';
+      let tel = (e.telefono || '').replace(/\D/g, '');
+      if (tel && tel.length >= 9) {
+        if (tel.startsWith('0')) tel = '593' + tel.substring(1);
+        let msg = encodeURIComponent("Hola, te recordamos que no has registrado tu asistencia el día de hoy.");
+        waBtn = ` <a href="https://wa.me/${tel}?text=${msg}" target="_blank" onclick="event.stopPropagation();" style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#25d366; color:#ffffff; font-size:12px; margin-left:6px; vertical-align:middle; text-decoration:none; box-shadow:0 1px 3px rgba(37,211,102,0.3); transition:transform 0.2s;" title="Notificar por WhatsApp"><i class="fab fa-whatsapp"></i></a>`;
       }
+
+      // Dropdown de asignación de razón
+      let selectHtml = `
+        <div style="position:relative; width:100%; min-width:125px; margin-top:4px;">
+            <select onchange="window.guardarRazonAusenciaGlobal('${e.id}', this.value)" onclick="event.stopPropagation();" class="select-ausencia-modern" style="border:1px solid #cbd5e1; background:#ffffff; color:#475569; font-size:10px; padding:3px 6px;">
+                <option value="">+ Razón...</option>
+                <option value="Vacación">🏖️ Vacación</option>
+                <optgroup label="📋 Permiso Justificado">
+                    <option value="Permiso Personal">👤 Permiso Personal</option>
+                    <option value="Permiso Médico">🩺 Permiso Médico</option>
+                    <option value="Falta Justificada">✅ Falta Justificada</option>
+                </optgroup>
+                <option value="Campo">🚗 Campo</option>
+                <option value="Otro">✏️ Otro...</option>
+            </select>
+        </div>
+      `;
+
+      estHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><div style="display:flex; align-items:center;">${badgeAusente}${waBtn}</div>${selectHtml}</div>`;
+      ausenciaHtml = selectHtml;
+    } else {
+      // Sin novedad: en blanco según indicación del usuario
+      estHtml = '<span class="rep-asis-empty">—</span>';
     }
 
-    // Modo y Extras
-    let modo = eReg?.modo || sReg?.modo || (e.entradaHoy ? 'EMPRESA' : '-');
     let extrasVal = (eReg?.horasExtra === 'SI' || sReg?.horasExtra === 'SI') ? 'SI' : 'NO';
 
     let modoBadge = '';
@@ -2619,7 +2728,12 @@ function filtrarAsistenciaTabla() {
     }
     if (filtroAsistenciaActual === 'por_regularizar') {
       if (e.isVisitante || e.isSinAsistencia) return false;
-      return (e._fechasRegularizar && e._fechasRegularizar.length > 0);
+      const pActual = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+      const fechasPeriodo = (e._fechasRegularizar || []).filter(f => {
+        if (!pActual) return true;
+        return f.fecha >= pActual.inicio && f.fecha <= pActual.fin;
+      });
+      return fechasPeriodo.length > 0;
     }
     if (filtroAsistenciaActual === 'ausente' && (e._entradaHoy || e.isVisitante)) return false;
     if (filtroAsistenciaActual === 'tardanza' && !e._tard) return false;
@@ -2680,10 +2794,12 @@ function filtrarAsistenciaTabla() {
     'Empleado': {
       header: `<th onclick="sortAsistencia('nombre')" style="cursor:pointer; background:#f8fafc; color:#1e293b; border-bottom:2px solid #2563eb; position:sticky; left:0; z-index:30;" title="Clic para alternar orden alfabético"><i class="fas fa-user-tie" style="color:#2563eb; margin-right:6px;"></i> Colaborador <i class="fas ${sortIcon}" style="color:#2563eb; font-size:10px; margin-left:4px;"></i></th>`,
       body: e => {
-        const cantReg = (e._fechasRegularizar || []).length;
-        const targetF = cantReg > 0 ? e._fechasRegularizar[0].fecha : '';
+        const pAct = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+        const listAct = (e._fechasRegularizar || []).filter(f => !pAct || (f.fecha >= pAct.inicio && f.fecha <= pAct.fin));
+        const cantReg = listAct.length;
+        const targetF = cantReg > 0 ? listAct[0].fecha : '';
         const badgeReg = cantReg > 0
-          ? `<button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${targetF}')" title="${cantReg} fecha(s) por regularizar. Clic para ir directamente al registro del ${targetF}" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; border-radius:5px; padding:1.5px 6px; font-size:9.5px; font-weight:800; margin-left:6px; display:inline-flex; align-items:center; gap:3px; cursor:pointer;"><i class="fas fa-calendar-times" style="font-size:9px;"></i> ${cantReg} pend.</button>`
+          ? `<button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${targetF}')" title="${cantReg} fecha(s) por regularizar en período actual. Clic para ir directamente al registro del ${targetF}" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; border-radius:5px; padding:1.5px 6px; font-size:9.5px; font-weight:800; margin-left:6px; display:inline-flex; align-items:center; gap:3px; cursor:pointer;"><i class="fas fa-calendar-times" style="font-size:9px;"></i> ${cantReg} pend.</button>`
           : '';
         return `<td><div class="employee-cell">${photoCell(e)}<div><strong style="color:#0f172a; font-size:12.5px;">${escapeHtml(e.nombre)}</strong>${badgeReg}${e.id && !e.isVisitante ? `<div style="font-size:10px; color:#64748b; font-weight:600; margin-top:1px;"><i class="fas fa-id-badge" style="font-size:9.5px; color:#6366f1;"></i> ID: ${escapeHtml(e.id)}</div>` : ''}</div></div></td>`;
       },
@@ -2697,13 +2813,14 @@ function filtrarAsistenciaTabla() {
     'Regularización': {
       header: `<th style="background:#fff7ed; color:#c2410c; border-bottom:2px solid #ea580c;"><i class="fas fa-calendar-times" style="color:#ea580c; margin-right:5px;"></i> Fechas por Regularizar</th>`,
       body: e => {
-        const list = e._fechasRegularizar || [];
+        const pAct = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+        const list = (e._fechasRegularizar || []).filter(f => !pAct || (f.fecha >= pAct.inicio && f.fecha <= pAct.fin));
         if (!list.length) return `<td style="text-align:center;"><span style="color:#10b981; font-weight:600; font-size:11px; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check-circle" style="font-size:10px;"></i> Al día</span></td>`;
         const chips = list.slice(0, 3).map(f => `
           <button type="button" 
                   onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${f.fecha}')" 
                   class="btn-chip-regularizar-tabla" 
-                  title="Clic para ir directamente a la fecha ${f.fecha} (${f.motivo}) en el detalle">
+                  title="Clic para ir directamente a la fecha ${f.fecha} (${f.motivo}) en el período actual">
             <i class="fas fa-calendar-day" style="color: #ea580c; font-size: 9.5px;"></i>
             <span>${f.label}</span>
             <span style="background: #ffedd5; color: #c2410c; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: 700;">${f.motivo}</span>
@@ -2714,7 +2831,10 @@ function filtrarAsistenciaTabla() {
           : '';
         return `<td><div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;"><button type="button" onclick="event.stopPropagation(); window.irADetalleFecha('${e.id}', '${list[0].fecha}')" class="pill warn" style="background:#ffedd5; color:#c2410c; font-weight:800; font-size:10px; border:1px solid #fed7aa; cursor:pointer;" title="Clic para ir a la primera fecha pendiente (${list[0].fecha})"><i class="fas fa-calendar-times"></i> ${list.length}</button> ${chips} ${mas}</div></td>`;
       },
-      footer: `<td><span class="rep-badge-pill" style="background:#334155; color:#fdba74; border:1px solid #475569;"><i class="fas fa-calendar-times" style="font-size:9px;"></i> ${data.filter(e => (e._fechasRegularizar || []).length > 0).length} Pend.</span></td>`
+      footer: `<td><span class="rep-badge-pill" style="background:#334155; color:#fdba74; border:1px solid #475569;"><i class="fas fa-calendar-times" style="font-size:9px;"></i> ${data.filter(e => {
+        const pAct = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+        return (e._fechasRegularizar || []).filter(f => !pAct || (f.fecha >= pAct.inicio && f.fecha <= pAct.fin)).length > 0;
+      }).length} Pend.</span></td>`
     },
     'Entrada': {
       header: `<th style="background:#ecfdf5; color:#047857; border-bottom:2px solid #047857; text-align:center;"><i class="fas fa-sign-in-alt" style="color:#047857; margin-right:5px;"></i> Entrada</th>`,
@@ -2754,19 +2874,19 @@ function filtrarAsistenciaTabla() {
   };
 
   const activeColsMap = {
-    'todos': ['Empleado', 'Área', 'Entrada', 'Salida', 'Modo', 'Extras', 'Estado', 'Razón Ausencia', 'Almuerzo'],
-    'presente': ['Empleado', 'Área', 'Entrada', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
-    'sin_marcar': ['Empleado', 'Área', 'Estado', 'Razón Ausencia', 'Almuerzo'],
-    'en_campo': ['Empleado', 'Área', 'Entrada', 'Salida', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
-    'vacaciones': ['Empleado', 'Área', 'Estado', 'Razón Ausencia'],
-    'permisos': ['Empleado', 'Área', 'Estado', 'Razón Ausencia', 'Almuerzo'],
+    'todos': ['Empleado', 'Área', 'Entrada', 'Salida', 'Extras', 'Estado', 'Almuerzo'],
+    'presente': ['Empleado', 'Área', 'Entrada', 'Extras', 'Estado', 'Almuerzo'],
+    'sin_marcar': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
+    'en_campo': ['Empleado', 'Área', 'Entrada', 'Salida', 'Extras', 'Estado', 'Almuerzo'],
+    'vacaciones': ['Empleado', 'Área', 'Estado'],
+    'permisos': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
     'por_regularizar': ['Empleado', 'Área', 'Regularización', 'Entrada', 'Salida', 'Estado', 'Almuerzo'],
-    'ausente': ['Empleado', 'Área', 'Estado', 'Razón Ausencia', 'Almuerzo'],
-    'tardanza': ['Empleado', 'Área', 'Entrada', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
+    'ausente': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
+    'tardanza': ['Empleado', 'Área', 'Entrada', 'Extras', 'Estado', 'Almuerzo'],
     'almuerzo_si': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
     'almuerzo_no': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
-    'salieron': ['Empleado', 'Área', 'Salida', 'Modo', 'Extras', 'Estado', 'Almuerzo'],
-    'sin_salida': ['Empleado', 'Área', 'Entrada', 'Salida', 'Modo', 'Extras', 'Estado', 'Almuerzo']
+    'salieron': ['Empleado', 'Área', 'Salida', 'Extras', 'Estado', 'Almuerzo'],
+    'sin_salida': ['Empleado', 'Área', 'Entrada', 'Salida', 'Extras', 'Estado', 'Almuerzo']
   };
 
   const activeCols = activeColsMap[filtroAsistenciaActual] || activeColsMap['todos'];
@@ -2776,7 +2896,9 @@ function filtrarAsistenciaTabla() {
 
   html += data.map(e => {
     let cellsHtml = activeCols.map(c => colDefs[c].body(e)).join('');
-    const targetFecha = (e._fechasRegularizar && e._fechasRegularizar.length > 0) ? e._fechasRegularizar[0].fecha : '';
+    const pAct = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+    const fechasPeriodoAct = (e._fechasRegularizar || []).filter(f => !pAct || (f.fecha >= pAct.inicio && f.fecha <= pAct.fin));
+    const targetFecha = fechasPeriodoAct.length > 0 ? fechasPeriodoAct[0].fecha : '';
     const clickHandler = (filtroAsistenciaActual === 'por_regularizar' && targetFecha)
       ? `window.irADetalleFecha('${e.id}', '${targetFecha}')`
       : `mostrarDetalle('${e.id}')`;
@@ -3012,7 +3134,11 @@ window.sortAsistencia = sortAsistencia;
 const COLUMNAS_DISPONIBLES = [
   { id: 'area', label: 'Área', tipo: 'texto', cat: 'general', catLabel: 'Datos Generales', icono: 'fa-building', color: '#475569', colorBg: '#f8fafc', colorHeader: '#334155' },
   { id: 'asistencias', label: 'Asistencias', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-user-check', color: '#047857', colorBg: '#ecfdf5', colorHeader: '#047857' },
+  { id: 'diasCampo', label: 'Días Campo', tipo: 'numero', cat: 'campo', catLabel: 'Trabajo en Campo', icono: 'fa-hard-hat', color: '#0891b2', colorBg: '#ecfeff', colorHeader: '#0891b2' },
   { id: 'faltas', label: 'Faltas', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-calendar-times', color: '#b91c1c', colorBg: '#fef2f2', colorHeader: '#b91c1c' },
+  { id: 'diasVacaciones', label: 'Vacaciones', tipo: 'numero', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-umbrella-beach', color: '#059669', colorBg: '#ecfdf5', colorHeader: '#059669' },
+  { id: 'diasJustificados', label: 'Días Justificados', tipo: 'numero', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-shield-alt', color: '#7c3aed', colorBg: '#f5f3ff', colorHeader: '#7c3aed' },
+  { id: 'diasExtras', label: 'Días Extras', tipo: 'numero', cat: 'extras', catLabel: 'Horas Extraordinarias', icono: 'fa-calendar-plus', color: '#4338ca', colorBg: '#eef2ff', colorHeader: '#4338ca' },
   { id: 'atrasos', label: 'Nº Atrasos', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-clock', color: '#d97706', colorBg: '#fffbeb', colorHeader: '#d97706' },
   { id: 'minutosAtrasos', label: 'Tiempo Atrasos', tipo: 'tiempo', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-hourglass-half', color: '#b45309', colorBg: '#fffbeb', colorHeader: '#b45309' },
   { id: 'almPlanta', label: 'Alm. Planta', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-utensils', color: '#0284c7', colorBg: '#f0f9ff', colorHeader: '#0284c7' },
@@ -3034,7 +3160,22 @@ const COLUMNAS_DISPONIBLES = [
 function obtenerColumnasVisibles() {
   const saved = localStorage.getItem('columnasVisiblesReporte_v2');
   if (saved) {
-    return JSON.parse(saved);
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        ['diasCampo', 'diasVacaciones', 'diasJustificados', 'diasExtras'].forEach(colId => {
+          if (!parsed.includes(colId)) {
+            const idxFaltas = parsed.indexOf('faltas');
+            if (idxFaltas > -1) {
+              parsed.splice(idxFaltas + 1, 0, colId);
+            } else {
+              parsed.push(colId);
+            }
+          }
+        });
+        return parsed;
+      }
+    } catch (e) { }
   }
   return COLUMNAS_DISPONIBLES.map(c => c.id);
 }
@@ -3270,10 +3411,14 @@ function cargarReportes() {
     }
     let diasLaborables = (iniEvalEmp <= finEvalEmp) ? obtenerDiasHabiles(iniEvalEmp, finEvalEmp) : [];
     let diasLaborablesTotal = diasLaborables;
-    let diasAsistidos = new Set(entradas.map(r => normalizarFechaStr(r.fecha)).filter(f => f && f >= iniEvalEmp && f <= finEvalEmp)).size;
 
-    // FALTAS: días hábiles transcurridos menos días asistidos (0 si ya estaba desvinculado)
-    let faltas = Math.max(0, diasLaborables.length - diasAsistidos);
+    // Sets para contabilizar con precisión cada jornada sin falsos positivos de falta
+    let diasAsistidosPlantaSet = new Set();
+    let diasCampoSet = new Set();
+    let diasVacacionesSet = new Set();
+    let diasJustificadosSet = new Set();
+    let diasExtrasSet = new Set();
+    let diasFaltasSet = new Set();
 
     // ATRASOS + ALMUERZO + PUNTUALIDAD (atrasos se calculan y descuentan dentro del loop diario abajo)
     let atrasos = 0;
@@ -3296,6 +3441,7 @@ function cargarReportes() {
     let totalTiempoMedico = 0;
     let totalTiempoPorJustificar = 0;
     let totalDescuentoBruto = 0;
+    const esPasanteEmp = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
 
     // Generar lista de todas las fechas en el rango R_INI a R_FIN
     let todasLasFechas = [];
@@ -3310,15 +3456,76 @@ function cargarReportes() {
       if (fSalida && fecha > fSalida) return;
       if (iniEvalEmp && fecha < iniEvalEmp) return;
       const regsDia = (e.registros || []).filter(r => r.fecha === fecha);
-      const esFestivo = esFeriadoODomingo(fecha) || (new Date(fecha + 'T12:00:00').getDay() === 6);
-      const isJustificado = regsDia.some(r => {
-        if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
-        if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
+      const dayOfWeek = new Date(fecha + 'T12:00:00').getDay();
+      const esFestivo = (typeof esFeriadoODomingo === 'function' ? esFeriadoODomingo(fecha) : false) || (dayOfWeek === 6 || dayOfWeek === 0);
+      const esLaborable = !esFestivo;
+      const esHoyOFuturo = fecha >= hoyRep;
+
+      // 1. Detectar trabajo en Campo
+      const esCampoHoy = regsDia.some(r => {
         const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const modo = String(r.modo || '').toUpperCase();
+        const razAus = String(r.razon_ausencia || '').toLowerCase();
+        const razJust = String(r.razon_justificac || '').toLowerCase();
+        const razSal = String(r.razon_salida || r.razon_salida_temprana || '').toLowerCase();
+        const aut = String(r.autoriza || '').toUpperCase();
+        const estado = String(r.estado || '').toUpperCase();
+        return tipo.includes('CAMPO') || modo === 'CAMPO' || estado.includes('CAMPO') ||
+               razAus.includes('campo') || razJust.includes('campo') || razSal.includes('campo') ||
+               aut.includes('CAMPO');
+      });
+
+      // 2. Detectar Vacaciones
+      const esVacacionHoy = regsDia.some(r => {
+        const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const razAus = String(r.razon_ausencia || '').toLowerCase();
+        const razJust = String(r.razon_justificac || '').toLowerCase();
+        return tipo.includes('VACAC') || razAus.includes('vacac') || razJust.includes('vacac');
+      });
+
+      // 3. Detectar Asistencia presencial en Planta y general
+      const tieneEntradaPlanta = regsDia.some(r => {
+        const tipo = String(r.tipo || '').toUpperCase();
+        return ['ENTRADA', 'RETORNO_CAMPO'].includes(tipo) && String(r.modo || '').toUpperCase() !== 'CAMPO';
+      });
+      const tieneAsistenciaHoy = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
+
+      // 4. Detectar Justificación
+      const isJustificado = regsDia.some(r => {
+        const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const razAus = String(r.razon_ausencia || '').trim();
+        const razJust = String(r.razon_justificac || '').trim();
+        if (tieneAsistenciaHoy && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) return false;
+        if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
+        if (razAus !== '' && razAus !== '—' && razAus !== '-') return true;
+        if (razJust !== '' && razJust !== '—' && razJust !== '-') return true;
+        if (['PERMISO_MEDICO', 'PERMISO_PERSONAL', 'CALAMIDAD_DOMESTICA', 'SALIDA_JUSTIFICADA', 'CUMPLEAÑOS', 'CUMPLEANOS'].includes(tipo)) return true;
+        if (r.razon_salida_temprana && ['permiso_medico', 'cumpleanos', 'permiso_personal', 'salida_justificada'].includes(r.razon_salida_temprana)) return true;
         if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO'].includes(tipo)) return true;
         return false;
       });
-      const esHoyOFuturo = fecha >= getLocalHoyStr();
+
+      // Clasificación de la jornada en Sets
+      if (esCampoHoy) {
+        diasCampoSet.add(fecha);
+      }
+      if (tieneAsistenciaHoy || esCampoHoy) {
+        if (esFestivo) {
+          diasExtrasSet.add(fecha);
+        } else {
+          if (tieneEntradaPlanta || (!esCampoHoy && tieneAsistenciaHoy)) {
+            diasAsistidosPlantaSet.add(fecha);
+          }
+        }
+      } else if (esVacacionHoy) {
+        if (esLaborable) diasVacacionesSet.add(fecha);
+      } else if (isJustificado) {
+        if (esLaborable) diasJustificadosSet.add(fecha);
+      } else {
+        if (esLaborable && !esHoyOFuturo) {
+          diasFaltasSet.add(fecha);
+        }
+      }
 
       if (regsDia.length === 0) {
         return;
@@ -3326,7 +3533,7 @@ function cargarReportes() {
 
       let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO' || String(r.tipo || '').toUpperCase() === 'ENTRADA_CAMPO');
       let atrasoMinsHoy = 0;
-      if (primerReg) {
+      if (primerReg && !esPasanteEmp) {
         let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
         let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
         if (mE !== null && mE > refEntrada + 5) {
@@ -3346,7 +3553,7 @@ function cargarReportes() {
         const tipo = String(r.tipo || '').toUpperCase();
         if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO' || tipo === 'ENTRADA_CAMPO') {
           entradaPendiente = r;
-        } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+        } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO' || tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante') {
           if (entradaPendiente) {
             periodosDia.push({ entrada: entradaPendiente, salida: r });
             entradaPendiente = null;
@@ -3464,26 +3671,30 @@ function cargarReportes() {
       tiempoMedicoHoy += medMins;
       let tiempoJustificadoHoy = justMins + (hasCumpleanos ? 240 : 0);
 
-      if (isJustificado || esHoyOFuturo) {
+      if ((isJustificado && !tieneAsistenciaHoy) || esCampoHoy || esHoyOFuturo || esPasanteEmp) {
         tiempoJustificarHoy = 0;
       } else {
         let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
         let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
-        let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificarHoy;
+        let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificadoHoy;
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         tiempoJustificarHoy += unaccountedMissing;
         tiempoJustificarHoy = Math.max(0, tiempoJustificarHoy - tiempoJustificadoHoy);
       }
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
-      let minsSalidaTempranaHoy = (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < HORA_SALIDA_REF) ? (HORA_SALIDA_REF - ultimoSalidaMins) : 0;
+      let minsSalidaTempranaHoy = (!esFestivo && !esPasanteEmp && ultimoSalidaMins !== null && ultimoSalidaMins < HORA_SALIDA_REF) ? (HORA_SALIDA_REF - ultimoSalidaMins) : 0;
       let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
       if (!esFestivo && (atrasoMinsHoy + minsSalidaTempranaHoy) > missingMinutesDia) {
         atrasoMinsHoy = Math.max(0, missingMinutesDia - minsSalidaTempranaHoy);
       }
 
       // Ajustar atrasos del día descontando permisos del día
-      atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy - tiempoJustificadoHoy);
+      if (esPasanteEmp) {
+        atrasoMinsHoy = 0;
+      } else {
+        atrasoMinsHoy = Math.max(0, atrasoMinsHoy - tiempoPersonalHoy - tiempoMedicoHoy - tiempoJustificadoHoy);
+      }
       if (atrasoMinsHoy > 0) {
         atrasos++;
         minutosAtrasos += atrasoMinsHoy;
@@ -3497,7 +3708,8 @@ function cargarReportes() {
       totalTiempoPorJustificar += tiempoJustificarHoy;
     });
 
-    puntualidad = diasAsistidos ? Math.round((1 - atrasos / diasAsistidos) * 100) : 0;
+    let diasTotalesTrabajados = diasAsistidosPlantaSet.size + diasCampoSet.size;
+    puntualidad = diasTotalesTrabajados ? (esPasanteEmp ? 100 : Math.round((1 - atrasos / diasTotalesTrabajados) * 100)) : 0;
 
     return {
       id: e.id,
@@ -3506,12 +3718,16 @@ function cargarReportes() {
       cargo: e.cargo || '',
       esEliminado: !!e.esEliminado,
       foto_url: e.foto_url,
-      asistencias: diasAsistidos,
-      faltas: faltas,
+      asistencias: diasAsistidosPlantaSet.size,
+      diasCampo: diasCampoSet.size,
+      faltas: diasFaltasSet.size,
+      diasVacaciones: diasVacacionesSet.size,
+      diasJustificados: diasJustificadosSet.size,
+      diasExtras: diasExtrasSet.size,
       permisoMedico: totalTiempoMedico,
       permisoPersonal: totalTiempoPersonal,
-      tiempoPorJustificar: totalTiempoPorJustificar,
-      tiempoADescontar: Math.max(0, totalDescuentoBruto - 240),
+      tiempoPorJustificar: esPasanteEmp ? totalTiempoPorJustificar : Math.max(0, totalTiempoPorJustificar - 240),
+      tiempoADescontar: esPasanteEmp ? totalDescuentoBruto : Math.max(0, totalDescuentoBruto - 240),
       atrasos: atrasos,
       minutosAtrasos: minutosAtrasos,
       almPlanta: almPlanta,
@@ -3530,6 +3746,10 @@ function cargarReportes() {
 
   // Totales generales
   let totalFaltas = stats.reduce((s, r) => s + r.faltas, 0);
+  let totalDiasCampo = stats.reduce((s, r) => s + (r.diasCampo || 0), 0);
+  let totalDiasVacaciones = stats.reduce((s, r) => s + (r.diasVacaciones || 0), 0);
+  let totalDiasJustificados = stats.reduce((s, r) => s + (r.diasJustificados || 0), 0);
+  let totalDiasExtras = stats.reduce((s, r) => s + (r.diasExtras || 0), 0);
   let totalPermisoMedico = stats.reduce((s, r) => s + r.permisoMedico, 0);
   let totalPermisoPersonal = stats.reduce((s, r) => s + r.permisoPersonal, 0);
   let totalAtrasos = stats.reduce((s, r) => s + r.atrasos, 0);
@@ -3838,10 +4058,26 @@ function filtrarTablaReportes() {
         } else {
           if (col.id === 'asistencias') {
             contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'diasCampo') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#ecfeff; color:#0891b2; border:1px solid #a5f3fc; font-weight:700;"><i class="fas fa-hard-hat" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
           } else if (col.id === 'faltas') {
             contenido = (valor > 0)
               ? `<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle" style="font-size:8.5px;"></i> ${valor}</span>`
               : `<span class="rep-badge-falta-zero">0</span>`;
+          } else if (col.id === 'diasVacaciones') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;"><i class="fas fa-umbrella-beach" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
+          } else if (col.id === 'diasJustificados') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe; font-weight:700;"><i class="fas fa-shield-alt" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
+          } else if (col.id === 'diasExtras') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; font-weight:700;"><i class="fas fa-calendar-plus" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
           } else if (col.id === 'atrasos') {
             contenido = (valor > 0)
               ? `<span class="rep-badge-pill rep-badge-atraso-alert"><i class="fas fa-clock" style="font-size:8.5px;"></i> ${valor}</span>`
@@ -4014,6 +4250,65 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     || (window._cacheDesvinculados || []).find(x => String(x.id).trim() === String(id).trim());
   if (!e) return;
 
+  // Helper global para cruce resiliente de vacaciones individuales
+  if (typeof window.buscarVacacionesEnKpiIndiv !== 'function') {
+    window.buscarVacacionesEnKpiIndiv = function (emp, kpiIndiv) {
+      if (!emp || !kpiIndiv || typeof kpiIndiv !== 'object') return null;
+
+      const empId = String(emp.id || '').trim();
+      const empCed = String(emp.cedula || '').trim();
+      const empNom = String(emp.nombre || '').trim().toUpperCase();
+
+      // 1. Coincidencia directa por ID
+      if (empId && kpiIndiv[empId]) return kpiIndiv[empId];
+
+      // 2. Coincidencia directa por Cédula
+      if (empCed && kpiIndiv[empCed]) return kpiIndiv[empCed];
+
+      // 3. Coincidencia por Cédula con o sin ceros a la izquierda
+      if (empCed) {
+        const cedPadded = empCed.padStart(10, '0');
+        const cedUnpadded = empCed.replace(/^0+/, '');
+        if (kpiIndiv[cedPadded]) return kpiIndiv[cedPadded];
+        if (kpiIndiv[cedUnpadded]) return kpiIndiv[cedUnpadded];
+      }
+
+      // 4. Coincidencia directa por Nombre exacto
+      if (empNom && kpiIndiv[empNom]) return kpiIndiv[empNom];
+
+      // 5. Búsqueda exhaustiva en las claves del objeto
+      const keys = Object.keys(kpiIndiv);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const kTrim = String(k).trim();
+        const kUpper = kTrim.toUpperCase();
+
+        // Por ID
+        if (empId && kTrim === empId) return kpiIndiv[k];
+
+        // Por Cédula
+        if (empCed && (kTrim === empCed || kTrim.padStart(10, '0') === empCed.padStart(10, '0') || kTrim.replace(/^0+/, '') === empCed.replace(/^0+/, ''))) {
+          return kpiIndiv[k];
+        }
+
+        // Por Nombre
+        if (empNom && kUpper.length > 5) {
+          if (kUpper === empNom || empNom.includes(kUpper) || kUpper.includes(empNom)) {
+            return kpiIndiv[k];
+          }
+          const palabrasEmp = empNom.split(/\s+/).filter(p => p.length > 2);
+          const palabrasKey = kUpper.split(/\s+/).filter(p => p.length > 2);
+          const coincidencias = palabrasEmp.filter(p => palabrasKey.includes(p));
+          if (coincidencias.length >= 2 && coincidencias.length >= Math.min(palabrasEmp.length, palabrasKey.length) - 1) {
+            return kpiIndiv[k];
+          }
+        }
+      }
+
+      return null;
+    };
+  }
+
   // Precargar saldo y lista de vacaciones inmediatamente desde memoria/caché local
   let vacacionesList = [];
   let vacEmpInicial = null;
@@ -4023,13 +4318,21 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       vacacionesList = vCache.filter(v => String(v.empleadoId || v.id || '').trim() === String(id).trim());
     }
     const kpiIndiv = window.kpiVacacionesIndividual || (JSON.parse(localStorage.getItem('tcontrol_vacaciones_cache_v3') || '{}').kpiVacacionesIndividual || {});
-    if (kpiIndiv && kpiIndiv[id]) {
-      vacEmpInicial = kpiIndiv[id];
-    }
-  } catch (e) { }
+    vacEmpInicial = window.buscarVacacionesEnKpiIndiv(e, kpiIndiv);
+  } catch (ePreVac) { }
 
-  // Actualizar vacaciones en segundo plano sin bloquear
-  jsonpRequest({ accion: 'obtenerVacacionesEmpleado', empleadoId: id }).then(function (vacRes) {
+  // Actualizar vacaciones en segundo plano sin bloquear, enviando id, cédula y nombre para cruce exacto en Sheets
+  const paramsVac = {
+    accion: 'obtenerVacacionesEmpleado',
+    empleadoId: id,
+    cedula: e.cedula || '',
+    nombre: e.nombre || ''
+  };
+  const promVac = (window.FirebaseBackend && typeof window.FirebaseBackend.ejecutar === 'function')
+    ? window.FirebaseBackend.ejecutar('obtenerVacacionesEmpleado', paramsVac)
+    : jsonpRequest(paramsVac);
+
+  promVac.then(function (vacRes) {
     if (vacRes && !vacRes.error) {
       const nuevasVacs = (vacRes.vacaciones || []).filter(v => String(v.empleadoId || v.id || '').trim() === String(id).trim());
       const cambioVacs = JSON.stringify(nuevasVacs) !== JSON.stringify(vacacionesList);
@@ -4037,6 +4340,11 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (cambioVacs) {
         rebuildTable();
       }
+
+      if (vacRes.kpiVacacionesIndividual && typeof vacRes.kpiVacacionesIndividual === 'object') {
+        window.kpiVacacionesIndividual = Object.assign(window.kpiVacacionesIndividual || {}, vacRes.kpiVacacionesIndividual);
+      }
+
       actualizarCardVacaciones(vacRes.vacacionesTomadasHoy, vacRes.vacacionesRestantesHoy);
     }
   }).catch(err => {
@@ -4058,9 +4366,10 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   // Si no hay registros en el período actual (ej: colaborador desvinculado en meses previos) y tiene marcaciones anteriores
-  if (regs.length === 0 && indexPeriodo === 0 && todosRegs.length > 0 && !customInicio) {
+  // IMPORTANTE: NO redirigir si se está regularizando una fecha del período actual o si tiene fechas por regularizar
+  if (regs.length === 0 && indexPeriodo === 0 && todosRegs.length > 0 && !customInicio && !fechaEnfocar && (!e._fechasRegularizar || e._fechasRegularizar.length === 0)) {
     const ultReg = [...todosRegs].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
-    if (ultReg && ultReg.fecha) {
+    if (ultReg && ultReg.fecha && ultReg.fecha < R_INI) {
       const idxPeriodoConRegs = periodos.findIndex(p => ultReg.fecha >= p.inicio && ultReg.fecha <= p.fin);
       if (idxPeriodoConRegs > 0) {
         console.log(`ℹ️ Redirigiendo automáticamente a período ${periodos[idxPeriodoConRegs].label} para ${e.nombre}`);
@@ -4080,7 +4389,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           fullRegs = await window.FirebaseBackend.obtenerRegistros({
             empleadoId: id,
             force: false,
-            incluirArchivados: !esPeriodoActual,
+            incluirArchivados: true,
             asyncSync: true
           });
         } else if (typeof jsonpRequest === 'function') {
@@ -4088,7 +4397,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             accion: 'obtenerRegistros',
             empleadoId: id,
             force: false,
-            incluirArchivados: !esPeriodoActual
+            incluirArchivados: true
           });
         }
         if (Array.isArray(fullRegs) && fullRegs.length > 0) {
@@ -4199,11 +4508,16 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     }
 
     const chipsHtml = listaFechas.map(it => `
-      <button type="button" onclick="window.enfocarFechaEnDetalle('${it.fecha}')" class="btn-chip-regularizar-detalle" style="background: #ffffff; border: 1.5px solid #f97316; color: #9a3412; padding: 4px 10px; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.15s ease;" title="Clic para ir directamente al registro del ${it.fecha}${it.minutos ? ' (' + it.minutos + ' min pendientes)' : ''}">
-        <i class="fas fa-calendar-day" style="color: #ea580c; font-size: 11px;"></i>
-        <span>${it.label}</span>
-        <span style="background: #ffedd5; color: #c2410c; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700; border: 1px solid #fed7aa;">${it.motivo}</span>
-      </button>
+      <div style="display:inline-flex; align-items:center; background:#ffffff; border:1.5px solid #f97316; border-radius:7px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.06); transition:all 0.15s ease;">
+        <button type="button" onclick="window.enfocarFechaEnDetalle('${it.fecha}')" class="btn-chip-regularizar-detalle" style="background:#ffffff; border:none; color:#9a3412; padding:4px 8px; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Clic para ir directamente al registro del ${it.fecha}${it.minutos ? ' (' + it.minutos + ' min)' : ''}">
+          <i class="fas fa-calendar-day" style="color:#ea580c; font-size:10px;"></i>
+          <span>${it.label}</span>
+          <span style="background:#ffedd5; color:#c2410c; padding:1px 5px; border-radius:4px; font-size:9.5px; font-weight:700; border:1px solid #fed7aa;">${it.motivo}</span>
+        </button>
+        <button type="button" onclick="event.stopPropagation(); window.solicitarRegularizacionWhatsApp('${e.id}', '${it.fecha}', '${it.motivo}')" style="background:#f0fdf4; border:none; border-left:1px solid #fed7aa; color:#16a34a; padding:4px 7px; cursor:pointer; font-size:11px; display:inline-flex; align-items:center;" title="Solicitar justificativo al colaborador por WhatsApp">
+          <i class="fab fa-whatsapp"></i>
+        </button>
+      </div>
     `).join('');
 
     return `
@@ -4284,6 +4598,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         if (!porDia[fNorm]) {
           porDia[fNorm] = { registros: [], almuerzo: null };
         }
+        // Si el colaborador ya tiene marcaciones de asistencia reales (ENTRADA / SALIDA) en este día, NO inyectar vacación virtual
+        const tieneMarcacionesReales = porDia[fNorm].registros.some(r => {
+          const t = String(r.tipo || '').toUpperCase();
+          return ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(t);
+        });
+        if (tieneMarcacionesReales) {
+          return;
+        }
         // Evitar duplicar si por alguna razón ya existe un registro de tipo VACACIONES o VACACION en ese día
         const yaExiste = porDia[fNorm].registros.some(r => r.tipo === 'VACACIONES' || r.tipo === 'VACACION');
         if (!yaExiste) {
@@ -4352,8 +4674,189 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     let totExtra50 = 0, totExtra100 = 0;
     let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0;
     let totDescuentoBruto = 0;
+    let totDescuentoBrutoTotalRaw = 0;
+    let totDescuentoNeto = 0;
     const esSuperPermiso = ['7', '1058'].includes(String(sessionData.id || ''));
     let fechasARegularizar = [];
+    const esPasanteDet = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
+
+    // ============================================================
+    // CÁLCULO CRONOLÓGICO DE LA BOLSA DE 4 HORAS (240 MINUTOS) POR PERÍODO
+    // Las primeras 4 horas de déficit no justificado son de libre disponibilidad del colaborador
+    // Solo el tiempo excedente ("fuera de las 4 horas") se computa como tiempo por justificar y descuento
+    // ============================================================
+    let fechasCronologicas = [...fechasOrdenadas].sort((a, b) => a.localeCompare(b));
+    let saldoBeneficio4h = esPasanteDet ? 0 : 240;
+    let mapBeneficioPorDia = {};
+
+    fechasCronologicas.forEach(f => {
+      let d = porDia[f];
+      let regsDia = [...d.registros].sort((a, b) => {
+        if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+        return String(a.hora || '').localeCompare(String(b.hora || ''));
+      });
+      const dayOfWeek = new Date(f + 'T12:00:00').getDay();
+      const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
+      const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
+
+      const esCampoHoy = regsDia.some(r => {
+        const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const modo = String(r.modo || r.modo_trabajo || '').toUpperCase();
+        const raz = String(r.razon_ausencia || r.razon_permiso || r.razon_justificac || r.razon_salida || r.observacion || '').toUpperCase();
+        const est = String(r.estado || '').toUpperCase();
+        return t.includes('CAMPO') || modo.includes('CAMPO') || raz.includes('CAMPO') || est.includes('CAMPO');
+      });
+
+      const isJustificado = esCampoHoy || regsDia.some(r => {
+        const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const razAus = String(r.razon_ausencia || '').trim();
+        if (tieneAsistencia && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) return false;
+        if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) {
+          if (tieneAsistencia && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) return false;
+          return true;
+        }
+        const razPerm = String(r.razon_permiso || '').trim();
+        const razJust = String(r.razon_justificac || '').trim();
+        if (razAus && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razAus.toUpperCase())) return true;
+        if (razPerm && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razPerm.toUpperCase())) return true;
+        if (razJust && !['—', '-', ''].includes(razJust.toUpperCase())) return true;
+        if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(tipo)) {
+          if (tipo.includes('JUSTIFIC') || tipo.includes('CAMPO') || tipo.includes('VACAC') || tipo.includes('MEDIC') || tipo.includes('CALAMIDAD') || tipo.includes('CUMPLE') || tipo.includes('PERSONAL')) return true;
+        }
+        return false;
+      });
+
+      let periodosDia = [];
+      let entradaPendiente = null;
+      let ultimoSalidaMins = null;
+
+      regsDia.forEach(r => {
+        const tipo = String(r.tipo || '').toUpperCase();
+        if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO' || tipo === 'ENTRADA_CAMPO') {
+          let mE = obtenerMinutos(r.timestamp || r.hora);
+          if (entradaPendiente) {
+            let mPend = obtenerMinutos(entradaPendiente.timestamp || entradaPendiente.hora);
+            if (mPend !== null && mE !== null && Math.abs(mE - mPend) <= 2) return;
+          }
+          entradaPendiente = r;
+        } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO' || tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante') {
+          if (entradaPendiente) {
+            periodosDia.push({ entrada: entradaPendiente, salida: r });
+            ultimoSalidaMins = obtenerMinutos(r.timestamp || r.hora);
+            entradaPendiente = null;
+          } else {
+            periodosDia.push({ entrada: null, salida: r });
+          }
+        }
+      });
+      if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
+      if (periodosDia.length === 0) periodosDia.push({ entrada: null, salida: null });
+
+      let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
+      let atrasoMins = 0;
+      if (primerReg && !esPasanteDet) {
+        let mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
+        let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+        if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
+      }
+
+      let ultSalReg = [...regsDia].reverse().find(r => {
+        const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        return t.includes('SALIDA');
+      });
+      if (ultSalReg) {
+        let mS = obtenerMinutos(ultSalReg.hora || ultSalReg.timestamp);
+        if (mS !== null) ultimoSalidaMins = mS;
+      }
+
+      let minsSalidaTemprana = 0;
+      let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+      if (!esFestivo && !esPasanteDet && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
+        minsSalidaTemprana = refSalida - ultimoSalidaMins;
+      }
+
+      let tiempoPersonal = 0, tiempoMedico = 0, tiempoJustificado = 0;
+      const hasCumpleanos = regsDia.some(r => {
+        const raz = String(r.razon_ausencia || '').toLowerCase();
+        const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
+      });
+      if (hasCumpleanos) tiempoJustificado += 240;
+
+      const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
+      const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
+      const medMins = regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
+      const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
+      tiempoPersonal += persMins;
+      tiempoMedico += medMins;
+      tiempoJustificado += justMins;
+
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : 0;
+      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
+      if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
+        atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
+      }
+
+      let rawAtrasoMins = atrasoMins;
+      let rawSalidaTemprana = minsSalidaTemprana;
+      let atrasoMinsDia = atrasoMins;
+      let salidaTempMinsDia = minsSalidaTemprana;
+
+      if (esPasanteDet) {
+        atrasoMinsDia = 0;
+        salidaTempMinsDia = 0;
+      } else {
+        const tieneJustifEntradaTardia = regsDia.some(r => r.razon_entrada_tardia && !['—', '-', ''].includes(String(r.razon_entrada_tardia).trim()));
+        const permisosTotales = tiempoPersonal + tiempoMedico + tiempoJustificado;
+        if (tieneJustifEntradaTardia) {
+          atrasoMinsDia = 0;
+        } else {
+          atrasoMinsDia = Math.max(0, rawAtrasoMins - permisosTotales);
+        }
+        const tieneJustifSalidaTemprana = regsDia.some(r => r.razon_salida_temprana && !['—', '-', ''].includes(String(r.razon_salida_temprana).trim()));
+        if (tieneJustifSalidaTemprana) {
+          salidaTempMinsDia = 0;
+        } else {
+          const permisosRestantes = Math.max(0, permisosTotales - (tieneJustifEntradaTardia ? 0 : rawAtrasoMins));
+          salidaTempMinsDia = Math.max(0, rawSalidaTemprana - permisosRestantes);
+        }
+      }
+
+      let rawTJ = 0;
+      const esPrevioAlRegistro = Boolean(d.previoAlRegistro);
+      const esHoyOFuturo = f >= hoyStrLocal;
+      if ((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet) {
+        rawTJ = (esPasanteDet && periodosDia.some(p => p.entrada && !p.salida)) ? 60 : 0;
+      } else {
+        let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
+        let totalPermisosHoy = tiempoPersonal + tiempoMedico;
+        let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+        rawTJ = Math.max(0, unaccountedMissing - tiempoJustificado);
+      }
+
+      let rawDescuento = tiempoPersonal + (rawTJ > 0 ? Math.max(rawTJ, atrasoMinsDia) : atrasoMinsDia);
+      totDescuentoBrutoTotalRaw += rawDescuento;
+
+      // Absorber déficit con la bolsa de 4 horas (240 min) del período
+      let consumo4h = 0;
+      if (!esPasanteDet && saldoBeneficio4h > 0 && rawDescuento > 0) {
+        consumo4h = Math.min(saldoBeneficio4h, rawDescuento);
+        saldoBeneficio4h -= consumo4h;
+      }
+
+      let tjNeto = Math.max(0, rawTJ - consumo4h);
+      let descuentoNeto = Math.max(0, rawDescuento - consumo4h);
+
+      mapBeneficioPorDia[f] = {
+        consumo4h,
+        tjNeto,
+        descuentoNeto,
+        rawTJ,
+        rawDescuento,
+        atrasoMinsDia,
+        salidaTempMinsDia
+      };
+    });
 
     let filas = fechasOrdenadas.map(f => {
       let d = porDia[f];
@@ -4366,16 +4869,38 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const esMarcacionOrdinaria = (tipo) => ['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(String(tipo).toUpperCase());
       const esAusenciaTipo = (tipo) => !esMarcacionOrdinaria(tipo);
 
-      const isJustificado = regsDia.some(r => {
-        if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) return true;
-        if (r.razon_ausencia && String(r.razon_ausencia).trim() !== '' && String(r.razon_ausencia).trim() !== '—') return true;
-        const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(tipo)) return true;
-        return false;
-      });
-
       const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
       const esFalta = regsDia.some(r => esAusenciaTipo(r.tipo)) || !tieneAsistencia;
+
+      const esCampoHoy = regsDia.some(r => {
+        const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const modo = String(r.modo || r.modo_trabajo || '').toUpperCase();
+        const raz = String(r.razon_ausencia || r.razon_permiso || r.razon_justificac || r.razon_salida || r.observacion || '').toUpperCase();
+        const est = String(r.estado || '').toUpperCase();
+        return t.includes('CAMPO') || modo.includes('CAMPO') || raz.includes('CAMPO') || est.includes('CAMPO');
+      });
+
+      const isJustificado = esCampoHoy || regsDia.some(r => {
+        const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        const razAus = String(r.razon_ausencia || '').trim();
+        // Si el colaborador asistió a trabajar, un residuo de vacación no debe anular atrasos ni justificar falta
+        if (tieneAsistencia && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) {
+          return false;
+        }
+        if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) {
+          if (tieneAsistencia && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) return false;
+          return true;
+        }
+        const razPerm = String(r.razon_permiso || '').trim();
+        const razJust = String(r.razon_justificac || '').trim();
+        if (razAus && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razAus.toUpperCase())) return true;
+        if (razPerm && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razPerm.toUpperCase())) return true;
+        if (razJust && !['—', '-', ''].includes(razJust.toUpperCase())) return true;
+        if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(tipo)) {
+          if (tipo.includes('JUSTIFIC') || tipo.includes('CAMPO') || tipo.includes('VACAC') || tipo.includes('MEDIC') || tipo.includes('CALAMIDAD') || tipo.includes('CUMPLE') || tipo.includes('PERSONAL')) return true;
+        }
+        return false;
+      });
 
       let periodosDia = [];
       let entradaPendiente = null;
@@ -4396,7 +4921,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             minutosPermisoHoy += (mE - ultimoSalidaMins);
           }
           entradaPendiente = r;
-        } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO') {
+        } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO' || tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante') {
           if (entradaPendiente) {
             periodosDia.push({ entrada: entradaPendiente, salida: r });
             ultimoSalidaMins = obtenerMinutos(r.timestamp || r.hora);
@@ -4428,14 +4953,24 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         return p.salida ? formatearHora(p.salida.timestamp || p.salida.hora) : '--:--';
       }).join('<br>');
 
-      let aBadge = (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? '<span class="pill ok">🏢 Sí</span>' : (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') ? '<span class="pill" style="background:#dbeafe; color:#1e40af;">🏠 No</span>' : '<span class="pill dim">❓ —</span>';
-      if (esMaster && !esFalta) {
+      let aBadge;
+      if (d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') {
+        aBadge = '<span class="pill ok">🏢 Sí</span>';
+      } else if (d.almuerzo === 'NO' || d.almuerzo === 'FUERA') {
+        aBadge = '<span class="pill" style="background:#dbeafe; color:#1e40af;">🏠 No</span>';
+      } else if (f > hoyStrLocal || !tieneAsistencia) {
+        aBadge = '<span style="color:#94a3b8;">—</span>';
+      } else {
+        aBadge = '<span class="pill dim">❓ —</span>';
+      }
+      if (esMaster && !esFalta && (tieneAsistencia || d.almuerzo)) {
         aBadge = `<span class="editable-pill" onclick="event.stopPropagation();cambiarEstadoAlmuerzo('${e.id}', '${(d.almuerzo === 'SI' || d.almuerzo === 'PLANTA') ? 'NO' : 'SI'}', '${f}')">${aBadge}</span>`;
       }
 
       let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
       let atrasoMins = 0;
-      if (primerReg) {
+      const esPasanteDet = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
+      if (primerReg && !esPasanteDet) {
         let mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
         let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
         if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
@@ -4506,18 +5041,24 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       let razonAusenciaVal = '';
       let razonJustificadaVal = '';
       regsDia.forEach(r => {
-        if (r.razon_ausencia) {
-          razonAusenciaVal = r.razon_ausencia;
-        } else if (r.tipo && esAusenciaTipo(r.tipo)) {
-          const t = r.tipo.toUpperCase();
-          if (t === 'VACACIONES' || t === 'VACACION') razonAusenciaVal = 'Vacación';
-          else if (t === 'PERMISO_MEDICO') razonAusenciaVal = 'Permiso Médico';
-          else if (t === 'PERMISO_PERSONAL') razonAusenciaVal = 'Permiso Personal';
-          else if (t === 'CALAMIDAD_DOMESTICA') razonAusenciaVal = 'Calamidad Doméstica';
-          else if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO') razonAusenciaVal = 'Salida a Campo';
-          else if (t === 'CUMPLEAÑOS' || t === 'CUMPLEANOS') razonAusenciaVal = 'Cumpleaños';
-          else if (t === 'SALIDA_JUSTIFICADA') razonAusenciaVal = 'Salida Justificada';
-          else razonAusenciaVal = r.tipo;
+        const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+        let tipoLegible = '';
+        if (t === 'VACACIONES' || t === 'VACACION') tipoLegible = 'Vacación';
+        else if (t === 'PERMISO_MEDICO') tipoLegible = 'Permiso Médico';
+        else if (t === 'PERMISO_PERSONAL') tipoLegible = 'Permiso Personal';
+        else if (t === 'CALAMIDAD_DOMESTICA') tipoLegible = 'Calamidad Doméstica';
+        else if (t === 'TRABAJO_DE_CAMPO' || t === 'SALIDA_A_CAMPO' || t === 'SALIDA_CAMPO' || t === 'ENTRADA_CAMPO') tipoLegible = 'Salida a Campo';
+        else if (t === 'CUMPLEAÑOS' || t === 'CUMPLEANOS') tipoLegible = 'Cumpleaños';
+        else if (t === 'SALIDA_JUSTIFICADA' || t === 'FALTA_JUSTIFICADA') tipoLegible = 'Salida Justificada';
+
+        const obsTexto = String(r.razon_ausencia || r.razon_justificac || '').trim();
+        if (tipoLegible) {
+          razonAusenciaVal = tipoLegible;
+          if (obsTexto && obsTexto !== tipoLegible && obsTexto !== '—' && obsTexto !== '-') {
+            razonJustificadaVal = obsTexto;
+          }
+        } else if (obsTexto && obsTexto !== '—' && obsTexto !== '-') {
+          razonAusenciaVal = obsTexto;
         } else if (r.justificado === 'SI' && r.razon_justificac) {
           razonJustificadaVal = r.razon_justificac;
         }
@@ -4528,7 +5069,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const razonTextoFinal = razonAusenciaVal || razonJustificadaVal;
       if (razonTextoFinal) {
         let rIco = '📌';
-        const rLower = razonTextoFinal.toLowerCase();
+        const rLower = (razonAusenciaVal || razonTextoFinal).toLowerCase();
         if (rLower.includes('vacac')) rIco = '🏖️';
         else if (rLower.includes('medico')) rIco = '🩺';
         else if (rLower.includes('personal')) rIco = '👤';
@@ -4537,7 +5078,12 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         else if (rLower.includes('justif')) rIco = '✅';
         else if (rLower.includes('campo')) rIco = '🚗';
         else if (rLower.includes('feriado')) rIco = '🏛️';
-        razonDisplayHtml = `<span class="pill" style="background:#f5f3ff; color:#6d28d9; font-size:10px; font-weight:700; border:1px solid #ddd6fe;" title="${escapeHtml(razonTextoFinal)}">${rIco} ${escapeHtml(razonTextoFinal)}</span>`;
+
+        let badgeLabel = razonAusenciaVal || razonTextoFinal;
+        if (razonJustificadaVal && razonAusenciaVal && razonJustificadaVal !== razonAusenciaVal) {
+          badgeLabel = `${razonAusenciaVal}: ${razonJustificadaVal}`;
+        }
+        razonDisplayHtml = `<span class="pill" style="background:#f5f3ff; color:#6d28d9; font-size:10px; font-weight:700; border:1px solid #ddd6fe;" title="${escapeHtml(razonTextoFinal)}">${rIco} ${escapeHtml(badgeLabel)}</span>`;
       }
 
       let rowStyle = "";
@@ -4634,7 +5180,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
       let minsSalidaTemprana = 0;
       let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
-      if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
+      if (!esFestivo && !esPasanteDet && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
         minsSalidaTemprana = refSalida - ultimoSalidaMins;
       }
 
@@ -4715,10 +5261,15 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
       const esPrevioAlRegistro = Boolean(d.previoAlRegistro);
       const esHoyOFuturo = f >= getLocalHoyStr();
-      if (isJustificado || esHoyOFuturo || esPrevioAlRegistro) {
-        tiempoPorJustificar = 0;
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+      if ((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet) {
+        if (esPasanteDet) {
+          const tieneEntradaSinSalida = periodosDia.some(p => p.entrada && !p.salida);
+          tiempoPorJustificar = tieneEntradaSinSalida ? 60 : 0;
+        } else {
+          tiempoPorJustificar = 0;
+        }
       } else {
-        let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
         let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
         let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoPorJustificar;
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
@@ -4727,25 +5278,42 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
-      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
+      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
       if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
         atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
       }
 
       const originalAtrasoMins = atrasoMins;
       const originalSalidaTemprana = minsSalidaTemprana;
-      if (isJustificado) {
+      if (esPasanteDet) {
         atrasoMins = 0;
         minsSalidaTemprana = 0;
       } else {
+        const tieneJustifEntradaTardia = regsDia.some(r => r.razon_entrada_tardia && !['—', '-', ''].includes(String(r.razon_entrada_tardia).trim()));
         const permisosTotales = tiempoPersonal + tiempoMedico + tiempoJustificado;
-        atrasoMins = Math.max(0, originalAtrasoMins - permisosTotales);
-        const permisosRestantes = Math.max(0, permisosTotales - originalAtrasoMins);
-        minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
+        if (tieneJustifEntradaTardia) {
+          atrasoMins = 0;
+        } else {
+          atrasoMins = Math.max(0, originalAtrasoMins - permisosTotales);
+        }
+        const tieneJustifSalidaTemprana = regsDia.some(r => r.razon_salida_temprana && !['—', '-', ''].includes(String(r.razon_salida_temprana).trim()));
+        if (tieneJustifSalidaTemprana) {
+          minsSalidaTemprana = 0;
+        } else {
+          const permisosRestantes = Math.max(0, permisosTotales - (tieneJustifEntradaTardia ? 0 : originalAtrasoMins));
+          minsSalidaTemprana = Math.max(0, originalSalidaTemprana - permisosRestantes);
+        }
       }
 
-      // Horas netas trabajadas e independientes de permisos personales
-      const descuentoDia = tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins);
+      // Beneficio de 4 horas por período: aplicar valores netos precalculados
+      const infoBeneficio = mapBeneficioPorDia[f] || {};
+      const consumo4h = infoBeneficio.consumo4h || 0;
+      if (infoBeneficio.tjNeto !== undefined) {
+        tiempoPorJustificar = infoBeneficio.tjNeto;
+      }
+      const descuentoDia = (infoBeneficio.descuentoNeto !== undefined)
+        ? infoBeneficio.descuentoNeto
+        : (tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins));
       const descuentoDiaVis = descuentoDia;
 
       const todosRegsConModo = regsDia.filter(r => r.modo);
@@ -4788,7 +5356,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       totTM += tiempoMedico;
       totTJustificado += tiempoJustificado;
       totTJ += tiempoPorJustificar;
-      totDescuentoBruto += descuentoDia;
+      totDescuentoBruto += (infoBeneficio.rawDescuento !== undefined ? infoBeneficio.rawDescuento : descuentoDia);
+      totDescuentoNeto += descuentoDia;
       totHoras += netWorked;
       totAtrasos += atrasoMins;
       totEmpresa += minsEmpresa;
@@ -4803,20 +5372,32 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const esDiaLaboralOrdinario = (dayOfWeek !== 0 && dayOfWeek !== 6 && !esFestivo);
       const faltaMarcacionEntrada = periodosDia.some(p => !p.entrada && p.salida);
       const faltaMarcacionSalida = periodosDia.some(p => p.entrada && !p.salida);
-      const esFaltaSinJustificar = esFalta && !isJustificado && !esPrevioAlRegistro;
+      const esFaltaSinJustificar = esFalta && !isJustificado && !esCampoHoy && !esPrevioAlRegistro;
 
-      // CRÍTICO: Excluir estrictamente la fecha actual (hoy) y días previos al registro del colaborador
-      if (esDiaLaboralOrdinario && f < hoyStrLocal && !esPrevioAlRegistro) {
+      // CRÍTICO: Excluir estrictamente la fecha actual (hoy), días justificados, días de campo y días previos al registro
+      if (esDiaLaboralOrdinario && f < hoyStrLocal && !esPrevioAlRegistro && !isJustificado && !esCampoHoy) {
         const fParts = f.split('-');
         const fFmt = (fParts.length === 3) ? `${fParts[2]}/${fParts[1]}` : f;
         if (esFaltaSinJustificar) {
           fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Inasistencia', tipo: 'ausencia' });
-        } else if (faltaMarcacionSalida) {
-          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Salida', tipo: 'incompleto' });
-        } else if (faltaMarcacionEntrada) {
-          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Entrada', tipo: 'incompleto' });
+        } else if (esPasanteDet) {
+          // Pasantes: horario flexible. Solo si falta salida o entrada se solicita regularizar
+          if (faltaMarcacionSalida) {
+            fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Salida', tipo: 'incompleto', minutos: 0 });
+          } else if (faltaMarcacionEntrada) {
+            fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Sin Entrada', tipo: 'incompleto', minutos: 0 });
+          }
         } else if (tiempoPorJustificar > 60) {
-          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Tiempo por justificar', tipo: 'tiempo', minutos: tiempoPorJustificar });
+          let motivoTexto = 'Tiempo por justificar';
+          let tipoTexto = 'tiempo';
+          if (faltaMarcacionSalida && netWorkedOrdinario < 240) {
+            motivoTexto = 'Sin Salida';
+            tipoTexto = 'incompleto';
+          } else if (faltaMarcacionEntrada && netWorkedOrdinario < 240) {
+            motivoTexto = 'Sin Entrada';
+            tipoTexto = 'incompleto';
+          }
+          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: motivoTexto, tipo: tipoTexto, minutos: tiempoPorJustificar });
         }
       }
 
@@ -4850,15 +5431,19 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       </tr>`;
       }
 
-      // CRÍTICO: Solo es ausencia de día completo si el usuario NO tuvo marcaciones de asistencia
-      const esAusenciaEspecial = esFalta && !tieneAsistencia && (
-        ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada', 'Calamidad Doméstica', 'Feriado', 'Inasistencia'].includes(razonAusenciaVal) ||
-        ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada'].includes(razonJustificadaVal) ||
-        Boolean(d.faltaInasistencia)
+      // CRÍTICO: Ausencia o evento especial de día completo (si el usuario NO tuvo marcaciones de asistencia)
+      const esAusenciaEspecial = !tieneAsistencia && (
+        esFalta ||
+        ['Vacación', 'Vacacion', 'Vacaciones', 'Permiso Médico', 'Permiso Personal', 'Salida Justificada', 'Calamidad Doméstica', 'Feriado', 'Inasistencia', 'Salida a Campo'].some(k => (razonAusenciaVal || '').toLowerCase().includes(k.toLowerCase()) || (razonJustificadaVal || '').toLowerCase().includes(k.toLowerCase())) ||
+        Boolean(d.faltaInasistencia) ||
+        regsDia.some(r => r.justificado === 'SI' || (r.tipo && esAusenciaTipo(r.tipo)))
       );
 
       if (esAusenciaEspecial) {
         const razonMostrar = razonAusenciaVal || razonJustificadaVal || (d.faltaInasistencia ? 'Inasistencia Injustificada' : 'Ausencia');
+        const descMostrar = (razonJustificadaVal && razonJustificadaVal !== razonMostrar)
+          ? razonJustificadaVal
+          : (d.faltaInasistencia ? 'Sin registro de asistencia en día laborable' : 'Día completo sin marcaciones registradas');
         let cardBg = 'rgba(79, 70, 229, 0.04)';
         let cardBorder = '#c7d2fe';
         let badgeBg = '#e0e7ff';
@@ -4884,6 +5469,12 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           cardBorder = '#e9d5ff';
           badgeBg = '#f3e8ff';
           badgeColor = '#6b21a8';
+        } else if (rLower.includes('campo')) {
+          icon = '🚗';
+          cardBg = 'rgba(8, 145, 178, 0.04)';
+          cardBorder = '#a5f3fc';
+          badgeBg = '#ecfeff';
+          badgeColor = '#0891b2';
         } else if (rLower.includes('feriado')) {
           icon = '🏛️';
           cardBg = 'rgba(99, 102, 241, 0.04)';
@@ -4913,7 +5504,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
                 ${icon} ${razonMostrar.toUpperCase()}
               </span>
               <span style="font-size:10.5px; color:#64748b; font-weight:600;">
-                ${d.faltaInasistencia ? 'Sin registro de asistencia en día laborable' : 'Día completo sin marcaciones registradas'}
+                ${escapeHtml(descMostrar)}
               </span>
             </div>
             <button type="button" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')" style="font-size:10.5px; color:#4f46e5; font-weight:700; display:inline-flex; align-items:center; gap:4px; background:#ffffff; padding:3px 10px; border-radius:12px; border:1px solid #c7d2fe; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
@@ -4942,7 +5533,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         badgesNovedades.push(`<span class="badge-tiempo badge-med" title="Permiso Médico: ${minutosAHHMMSS(tiempoMedico)}"><i class="fas fa-briefcase-medical" style="font-size:9px;"></i> TM: ${minutosAHHMMSS(tiempoMedico)}</span>`);
       }
       if (tiempoPorJustificar > 0) {
-        badgesNovedades.push(`<span class="badge-tiempo badge-falt" title="Tiempo por Justificar / Faltante: ${minutosAHHMMSS(tiempoPorJustificar)}"><i class="fas fa-exclamation-triangle" style="font-size:9px;"></i> Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
+        badgesNovedades.push(`<span class="badge-tiempo badge-falt" title="Tiempo por Justificar / Faltante (fuera de las 4h): ${minutosAHHMMSS(tiempoPorJustificar)}"><i class="fas fa-exclamation-triangle" style="font-size:9px;"></i> Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
       }
       if (razonTextoFinal && !['vacación', 'vacacion', 'vacaciones', 'laboral'].includes(razonTextoFinal.toLowerCase())) {
         badgesNovedades.push(razonDisplayHtml);
@@ -4989,16 +5580,11 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     thH = Math.floor(totHoras / 60) || 0;
     thM = totHoras % 60 || 0;
 
-    const totDescontarFinal = Math.max(0, totDescuentoBruto - 240);
+    const totDescontarFinal = totDescuentoNeto;
 
     let celdaTotalDescuentoHtml = '—';
     if (totDescontarFinal > 0) {
       celdaTotalDescuentoHtml = `<span style="color:var(--red); font-weight:700;" title="Total Bruto: ${minutosAHHMMSS(totDescuentoBruto)} - 4h Beneficio = ${minutosAHHMMSS(totDescontarFinal)}">${minutosAHHMMSS(totDescontarFinal)}</span>`;
-    } else if (totDescuentoBruto > 0) {
-      celdaTotalDescuentoHtml = `<div style="display:flex; flex-direction:column; align-items:center; line-height:1.1;" title="Total Bruto: ${minutosAHHMMSS(totDescuentoBruto)} — Totalmente cubierto por las 4h de beneficio de la empresa">
-            <span style="color:#16a34a; font-weight:700;">00:00:00</span>
-            <span style="font-size:8px; color:#16a34a; font-weight:600;">(Cubierto 4h)</span>
-          </div>`;
     }
 
     // Fila de totales para el tfoot
@@ -5050,12 +5636,23 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   function actualizarCardVacaciones(vacacionesTomadasHoy, vacacionesRestantesHoy) {
     const container = document.getElementById('card-vacaciones-detalle');
     if (container) {
-      let totalVacsTomadas = vacacionesTomadasHoy !== null && vacacionesTomadasHoy !== undefined
+      const kpiIndiv = window.kpiVacacionesIndividual || (JSON.parse(localStorage.getItem('tcontrol_vacaciones_cache_v3') || '{}').kpiVacacionesIndividual || {});
+      const infoVac = (typeof window.buscarVacacionesEnKpiIndiv === 'function' ? window.buscarVacacionesEnKpiIndiv(e, kpiIndiv) : null) || vacEmpInicial;
+
+      let totalVacsTomadas = (vacacionesTomadasHoy !== null && vacacionesTomadasHoy !== undefined && vacacionesTomadasHoy !== '')
         ? vacacionesTomadasHoy
-        : vacacionesList.length;
-      let totalVacsRestantes = vacacionesRestantesHoy !== null && vacacionesRestantesHoy !== undefined
+        : (infoVac && infoVac.tomadas !== undefined && infoVac.tomadas !== null ? infoVac.tomadas : vacacionesList.length);
+
+      let totalVacsRestantes = (vacacionesRestantesHoy !== null && vacacionesRestantesHoy !== undefined && vacacionesRestantesHoy !== '' && vacacionesRestantesHoy !== '--')
         ? vacacionesRestantesHoy
-        : '--';
+        : (infoVac && infoVac.restantes !== undefined && infoVac.restantes !== null ? infoVac.restantes : null);
+
+      // Si aún no se obtuvieron restantes directamente de la hoja, deducir de los días legales (15 días anuales en Ecuador)
+      if (totalVacsRestantes === null || totalVacsRestantes === undefined || totalVacsRestantes === '--') {
+        const limiteVac = parseFloat(e.vacaciones_totales || e.vacaciones_disponibles || (infoVac && infoVac.adjudicadas)) || 15;
+        const tomadasNum = parseFloat(totalVacsTomadas) || 0;
+        totalVacsRestantes = Math.max(0, limiteVac - tomadasNum);
+      }
 
       let listaVacacionesHTML = '';
       if (vacacionesList.length > 0) {
@@ -5356,6 +5953,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
   if (vacEmpInicial) {
     actualizarCardVacaciones(vacEmpInicial.tomadas, vacEmpInicial.restantes);
+  } else {
+    actualizarCardVacaciones(null, null);
   }
 
   if (window.fechaEnfocarDetalleActual) {
@@ -10637,6 +11236,70 @@ window.enfocarFechaEnDetalle = function (fecha, reintentos = 6) {
   }
 };
 
+// ============================================================
+// SOLICITUD DE REGULARIZACIÓN AL COLABORADOR VÍA WHATSAPP
+// Estrictamente enfocado en fechas pendientes dentro del período actual
+// ============================================================
+window.solicitarRegularizacionWhatsApp = function (empleadoId, fechaIso, motivo = 'Inasistencia') {
+  const pool = (typeof empCache !== 'undefined' && empCache.length) ? empCache : (window.empCache || []);
+  const emp = pool.find(x => String(x.id).trim() === String(empleadoId).trim())
+    || (window.empEliminadosCache || []).find(x => String(x.id).trim() === String(empleadoId).trim());
+
+  if (!emp) {
+    if (typeof mostrarToast === 'function') mostrarToast('Colaborador no encontrado', 'error');
+    return;
+  }
+
+  // Verificar si la fecha corresponde al período actual
+  const pActual = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
+  if (pActual && fechaIso) {
+    if (fechaIso < pActual.inicio || fechaIso > pActual.fin) {
+      if (typeof mostrarToast === 'function') {
+        mostrarToast(`⚠️ La fecha ${fechaIso} no pertenece al período actual (${pActual.inicio} a ${pActual.fin}).`, 'warn');
+      }
+    }
+  }
+
+  const nombreDest = (typeof obtenerPrimerNombreYPrimerApellido === 'function')
+    ? obtenerPrimerNombreYPrimerApellido(emp.nombre)
+    : ((emp.nombre || 'Colaborador').trim().split(' ')[0]);
+
+  const fParts = (fechaIso || '').split('-');
+  const fFmt = (fParts.length === 3) ? `${fParts[2]}/${fParts[1]}/${fParts[0]}` : fechaIso;
+
+  const mensaje = `Estimado(a) *${nombreDest}*, le saludamos de Supervisión T-Control.\n\nLe recordamos que dentro del *período actual* mantiene pendiente la regularización de su asistencia de la fecha *${fFmt}* (Novedad: *${motivo}*).\n\nPor favor remita su justificativo médico o laboral correspondiente para asentar su jornada en nómina.\n\n¡Muchas gracias! 📋`;
+
+  // Si existe el modal de WhatsApp individual, abrirlo con este mensaje preconfigurado
+  if (typeof window.abrirModalMensajeIndividualWhatsApp === 'function') {
+    window.abrirModalMensajeIndividualWhatsApp(emp.id);
+    setTimeout(() => {
+      const txt = document.getElementById('txtMensajeWaIndividual');
+      if (txt) {
+        txt.value = mensaje;
+        if (typeof window.actualizarContadorCaracteresWa === 'function') window.actualizarContadorCaracteresWa();
+      }
+    }, 180);
+  } else {
+    // Fallback: abrir wa.me directamente
+    const rawTel = (emp.telefono || emp.celular || emp.whatsapp || '').toString().trim();
+    const numWa = (typeof window.normalizarNumeroParaWhatsApp === 'function')
+      ? window.normalizarNumeroParaWhatsApp(rawTel)
+      : rawTel.replace(/[^\d]/g, '');
+    if (numWa) {
+      window.open(`https://wa.me/${numWa}?text=${encodeURIComponent(mensaje)}`, '_blank');
+    } else {
+      if (typeof mostrarToast === 'function') mostrarToast('El colaborador no tiene teléfono registrado para WhatsApp', 'error');
+    }
+  }
+};
+
+window.solicitarRegularizacionWhatsAppModal = function () {
+  const ctx = window._modalJornadaContexto;
+  if (!ctx) return;
+  const motivo = ctx.razonActual || (ctx.faltanteJornada > 0 ? 'Jornada Incompleta' : (!ctx.tieneAsistencia ? 'Inasistencia' : 'Sin Salida/Entrada'));
+  window.solicitarRegularizacionWhatsApp(ctx.empleadoId, ctx.fecha, motivo);
+};
+
 // ==========================================
 // EVENTO: ACTUALIZACIÓN REACTIVA DE REGISTROS ARCHIVADOS (SHEETS / INDEXEDDB)
 // ==========================================
@@ -10656,9 +11319,8 @@ window.addEventListener('archivadosActualizados', function (ev) {
         const emp = empMap[eid];
         if (!emp.registros) emp.registros = [];
         const f = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(r.fecha) : r.fecha;
-        const tipo = (r.tipo || '').toUpperCase();
-        const yaExiste = emp.registros.some(er => er.fecha === f && er.tipo === tipo);
-        if (!yaExiste) {
+        const regExistente = emp.registros.find(er => er.fecha === f && er.tipo === tipo);
+        if (!regExistente) {
           emp.registros.push({
             id: r.id || `arch_${eid}_${f}_${tipo}`,
             fecha: f,
@@ -10669,8 +11331,17 @@ window.addEventListener('archivadosActualizados', function (ev) {
             horasExtra: r.horasExtra || 'NO',
             justificado: r.justificado || '',
             razon_justificac: r.razon_justificac || '',
-            razon_ausencia: r.razon_ausencia || ''
+            razon_ausencia: r.razon_ausencia || '',
+            razon_permiso: r.razon_permiso || '',
+            permiso_personal_mins: Number(r.permiso_personal_mins || 0),
+            permiso_medico_mins: Number(r.permiso_medico_mins || 0),
+            tiempo_justificado_mins: Number(r.tiempo_justificado_mins || 0)
           });
+        } else {
+          if (r.tiempo_justificado_mins) regExistente.tiempo_justificado_mins = Number(r.tiempo_justificado_mins);
+          if (r.permiso_personal_mins) regExistente.permiso_personal_mins = Number(r.permiso_personal_mins);
+          if (r.permiso_medico_mins) regExistente.permiso_medico_mins = Number(r.permiso_medico_mins);
+          if (r.razon_permiso && !regExistente.razon_permiso) regExistente.razon_permiso = r.razon_permiso;
         }
       }
     });

@@ -1207,6 +1207,9 @@ window.aplicarPlantillaWaIndividual = function (tipo) {
     case 'cumple':
       mensaje = `¡Estimado(a) ${nombreDest}, te deseamos un muy Feliz Cumpleaños! 🎂🎉 De parte de todo el equipo de T-Control te enviamos un afectuoso saludo y los mejores deseos en tu día especial. ¡Que disfrutes al máximo! ✨`;
       break;
+    case 'regularizacion':
+      mensaje = `Estimado(a) ${nombreDest}, le saludamos de Supervisión T-Control. Le recordamos que mantiene pendiente la regularización de su asistencia de una fecha dentro del período actual. Por favor remita su justificativo médico o laboral correspondiente a la brevedad. ¡Muchas gracias! 📋`;
+      break;
     case 'limpiar':
       mensaje = '';
       break;

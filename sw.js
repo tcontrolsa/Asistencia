@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.83';
+const CACHE_NAME = 'tcontrol-v1.95';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)

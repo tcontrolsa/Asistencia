@@ -205,12 +205,12 @@ function doPost(e) {
         var sheetRegs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
         if (!sheetRegs) {
           sheetRegs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('REGISTROS');
-          sheetRegs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS']);
+          sheetRegs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS', 'TIEMPO_JUSTIFICADO_MINS']);
         }
         var sheetVacs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('VACACIONES');
         if (!sheetVacs) {
           sheetVacs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('VACACIONES');
-          sheetVacs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS']);
+          sheetVacs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS', 'TIEMPO_JUSTIFICADO_MINS']);
         }
         
         var registros = data.registros || [];
@@ -416,6 +416,17 @@ function doPost(e) {
         var filterId = data.empleadoId ? String(data.empleadoId).trim() : null;
         var tz = Session.getScriptTimeZone();
         var registros = [];
+
+        var headers = dataRange[0] || [];
+        var colTJ = COLUMNAS.TIEMPO_JUSTIFICADO_MINS;
+        var colPP = COLUMNAS.PERMISO_PERSONAL_MINS;
+        var colPM = COLUMNAS.PERMISO_MEDICO_MINS;
+        for (var c = 0; c < headers.length; c++) {
+          var hNorm = String(headers[c] || '').toUpperCase().trim();
+          if (hNorm === 'TIEMPO_JUSTIFICADO_MINS' || hNorm === 'TIEMPO_JUSTIFICADO' || hNorm === 'JUSTIFICADO_MINS') colTJ = c;
+          if (hNorm === 'PERMISO_PERSONAL_MINS' || hNorm === 'PERMISO_PERSONAL') colPP = c;
+          if (hNorm === 'PERMISO_MEDICO_MINS' || hNorm === 'PERMISO_MEDICO') colPM = c;
+        }
         
         for (var i = 1; i < dataRange.length; i++) {
           var r = dataRange[i];
@@ -476,9 +487,12 @@ function doPost(e) {
           
           var r_razonSalidaTemprana = r[COLUMNAS.RAZON_SALIDA_TEMPRANA]?String(r[COLUMNAS.RAZON_SALIDA_TEMPRANA]):'';
           var r_razonEntradaTardia = r[COLUMNAS.RAZON_ENTRADA_TARDIA]?String(r[COLUMNAS.RAZON_ENTRADA_TARDIA]):'';
-          var r_permisoPersonalMins = r[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(r[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0;
-          var r_permisoMedicoMins = r[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(r[COLUMNAS.PERMISO_MEDICO_MINS]) : 0;
-          var r_tiempoJustificadoMins = r[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(r[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0;
+          var valPP = (colPP < r.length) ? r[colPP] : undefined;
+          var valPM = (colPM < r.length) ? r[colPM] : undefined;
+          var valTJ = (colTJ < r.length) ? r[colTJ] : undefined;
+          var r_permisoPersonalMins = (valPP !== undefined && valPP !== '' && !isNaN(Number(valPP))) ? Number(valPP) : 0;
+          var r_permisoMedicoMins = (valPM !== undefined && valPM !== '' && !isNaN(Number(valPM))) ? Number(valPM) : 0;
+          var r_tiempoJustificadoMins = (valTJ !== undefined && valTJ !== '' && !isNaN(Number(valTJ))) ? Number(valTJ) : 0;
           
           registros.push({
             fecha: fechaStr, 
@@ -656,6 +670,18 @@ function procesarAccion(params) {
       var registros = [];
       var empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
       var tz = Session.getScriptTimeZone() || 'America/Guayaquil';
+
+      var headers = dataRange[0] || [];
+      var colTJ = COLUMNAS.TIEMPO_JUSTIFICADO_MINS;
+      var colPP = COLUMNAS.PERMISO_PERSONAL_MINS;
+      var colPM = COLUMNAS.PERMISO_MEDICO_MINS;
+      for (var c = 0; c < headers.length; c++) {
+        var hNorm = String(headers[c] || '').toUpperCase().trim();
+        if (hNorm === 'TIEMPO_JUSTIFICADO_MINS' || hNorm === 'TIEMPO_JUSTIFICADO' || hNorm === 'JUSTIFICADO_MINS') colTJ = c;
+        if (hNorm === 'PERMISO_PERSONAL_MINS' || hNorm === 'PERMISO_PERSONAL') colPP = c;
+        if (hNorm === 'PERMISO_MEDICO_MINS' || hNorm === 'PERMISO_MEDICO') colPM = c;
+      }
+
       for (var i = 1; i < dataRange.length; i++) {
         var r = dataRange[i];
         var rEmpId = r[1]?String(r[1]).trim():'';
@@ -697,11 +723,15 @@ function procesarAccion(params) {
           }
         }
 
+        var valPP = (colPP < r.length) ? r[colPP] : undefined;
+        var valPM = (colPM < r.length) ? r[colPM] : undefined;
+        var valTJ = (colTJ < r.length) ? r[colTJ] : undefined;
+
         registros.push({
           fecha: fechaStr, empleadoId: rEmpId, nombre: r[2]?String(r[2]):'', tipo: r[3]?String(r[3]):'', almuerzo: r[4]?String(r[4]):'', hora: horaStr, lat: r[6]?String(r[6]):'', lng: r[7]?String(r[7]):'', dispositivo: r[8]?String(r[8]):'', timestamp: r[9]?String(r[9]):'', dia: r[10]?String(r[10]):'', modo: r[11]?String(r[11]):'', horasExtra: r[12]?String(r[12]):'', autoriza: r[13]?String(r[13]):'', razonSalidaTemprana: r[14]?String(r[14]):'', quienJustifica: r[15]?String(r[15]):'', razonEntradaTardia: r[16]?String(r[16]):'', quienJustificaEntrada: r[17]?String(r[17]):'', tipoSalida: r[18]?String(r[18]):'', razonPermiso: r[19]?String(r[19]):'', justificado: r[20]?String(r[20]):'', razon_justificac: r[21]?String(r[21]):'',
-          permiso_personal_mins: r[22] !== undefined && r[22] !== '' ? Number(r[22]) : 0,
-          permiso_medico_mins:   r[23] !== undefined && r[23] !== '' ? Number(r[23]) : 0,
-          tiempo_justificado_mins: r[24] !== undefined && r[24] !== '' ? Number(r[24]) : 0
+          permiso_personal_mins: (valPP !== undefined && valPP !== '' && !isNaN(Number(valPP))) ? Number(valPP) : 0,
+          permiso_medico_mins:   (valPM !== undefined && valPM !== '' && !isNaN(Number(valPM))) ? Number(valPM) : 0,
+          tiempo_justificado_mins: (valTJ !== undefined && valTJ !== '' && !isNaN(Number(valTJ))) ? Number(valTJ) : 0
         });
       }
       return { ok: true, registros: registros };
@@ -1838,8 +1868,8 @@ function guardarRegistro(data) {
       tsFinal = fechaRegistro;
     }
 
-    // Armar fila (21 columnas A-U)
-    const nuevaFila = new Array(21).fill("");
+    // Armar fila (25 columnas A-Y)
+    const nuevaFila = new Array(25).fill("");
     nuevaFila[COLUMNAS.FECHA]                = fechaStr;  // <-- usa la fecha correcta (puede ser pasada)
     nuevaFila[COLUMNAS.ID]                   = data.id.toString().trim();
     nuevaFila[COLUMNAS.NOMBRE]               = infoEmpleado.nombre;
@@ -1860,7 +1890,11 @@ function guardarRegistro(data) {
     nuevaFila[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA] = data.quien_justifica_entrada || "";
     nuevaFila[COLUMNAS.TIPO_SALIDA]          = data.tipo_salida || "";
     nuevaFila[COLUMNAS.RAZON_PERMISO]        = data.razon_permiso || "";
+    nuevaFila[COLUMNAS.JUSTIFICADO]          = data.justificado || "";
     nuevaFila[COLUMNAS.RAZON_AUSENCIA]       = data.razon_ausencia || "";
+    nuevaFila[COLUMNAS.PERMISO_PERSONAL_MINS] = data.permiso_personal_mins || "";
+    nuevaFila[COLUMNAS.PERMISO_MEDICO_MINS]   = data.permiso_medico_mins || "";
+    nuevaFila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] = data.tiempo_justificado_mins || "";
     
     hoja.appendRow(nuevaFila);
     return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
@@ -1880,6 +1914,14 @@ function obtenerRegistrosEmpleado(empleadoId) {
     const registros = [];
     const timeZone = Session.getScriptTimeZone();
     const idBuscar = empleadoId.toString().trim();
+    const headers = data.length > 0 ? data[0].map(h => String(h || '').trim().toUpperCase()) : [];
+    let colTJ = headers.indexOf('TIEMPO_JUSTIFICADO_MINS');
+    if (colTJ === -1) colTJ = (COLUMNAS && COLUMNAS.TIEMPO_JUSTIFICADO_MINS !== undefined) ? COLUMNAS.TIEMPO_JUSTIFICADO_MINS : 24;
+    let colPP = headers.indexOf('PERMISO_PERSONAL_MINS');
+    if (colPP === -1) colPP = (COLUMNAS && COLUMNAS.PERMISO_PERSONAL_MINS !== undefined) ? COLUMNAS.PERMISO_PERSONAL_MINS : 22;
+    let colPM = headers.indexOf('PERMISO_MEDICO_MINS');
+    if (colPM === -1) colPM = (COLUMNAS && COLUMNAS.PERMISO_MEDICO_MINS !== undefined) ? COLUMNAS.PERMISO_MEDICO_MINS : 23;
+
     for (let i = 1; i < data.length; i++) {
       const fila = data[i];
       const idRegistro = fila[COLUMNAS.ID]?.toString().trim() || '';
@@ -1904,6 +1946,7 @@ function obtenerRegistrosEmpleado(empleadoId) {
         registros.push({
           fecha: fechaStr,
           id: fila[COLUMNAS.ID]?.toString() || '',
+          empleadoId: fila[COLUMNAS.ID]?.toString() || '',
           nombre: fila[COLUMNAS.NOMBRE]?.toString() || '',
           tipo: fila[COLUMNAS.TIPO]?.toString() || '',
           almuerzo: fila[COLUMNAS.ALMUERZO]?.toString() || '',
@@ -1922,9 +1965,9 @@ function obtenerRegistrosEmpleado(empleadoId) {
           tipo_salida: fila[COLUMNAS.TIPO_SALIDA]?.toString() || '',
           razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || '',
           razon_ausencia: fila[COLUMNAS.RAZON_AUSENCIA]?.toString() || '',
-          permiso_personal_mins: fila[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(fila[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0,
-          permiso_medico_mins: fila[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(fila[COLUMNAS.PERMISO_MEDICO_MINS]) : 0,
-          tiempo_justificado_mins: fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0
+          permiso_personal_mins: (colPP < fila.length && fila[colPP] !== '' && fila[colPP] !== null && !isNaN(fila[colPP])) ? Number(fila[colPP]) : 0,
+          permiso_medico_mins: (colPM < fila.length && fila[colPM] !== '' && fila[colPM] !== null && !isNaN(fila[colPM])) ? Number(fila[colPM]) : 0,
+          tiempo_justificado_mins: (colTJ < fila.length && fila[colTJ] !== '' && fila[colTJ] !== null && !isNaN(fila[colTJ])) ? Number(fila[colTJ]) : 0
         });
       }
     }
@@ -1961,6 +2004,7 @@ function obtenerRegistrosEmpleado(empleadoId) {
                 registros.push({
                   fecha: fechaStr,
                   id: rowData[COLUMNAS.ID]?.toString() || '',
+                  empleadoId: rowData[COLUMNAS.ID]?.toString() || '',
                   nombre: rowData[COLUMNAS.NOMBRE]?.toString() || '',
                   tipo: rowData[COLUMNAS.TIPO]?.toString() || '',
                   almuerzo: rowData[COLUMNAS.ALMUERZO]?.toString() || '',
@@ -1979,9 +2023,9 @@ function obtenerRegistrosEmpleado(empleadoId) {
                   tipo_salida: rowData[COLUMNAS.TIPO_SALIDA]?.toString() || '',
                   razon_permiso: rowData[COLUMNAS.RAZON_PERMISO]?.toString() || '',
                   razon_ausencia: rowData[COLUMNAS.RAZON_AUSENCIA]?.toString() || '',
-                  permiso_personal_mins: rowData[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(rowData[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0,
-                  permiso_medico_mins: rowData[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(rowData[COLUMNAS.PERMISO_MEDICO_MINS]) : 0,
-                  tiempo_justificado_mins: rowData[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(rowData[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0
+                  permiso_personal_mins: (colPP < rowData.length && rowData[colPP] !== '' && rowData[colPP] !== null && !isNaN(rowData[colPP])) ? Number(rowData[colPP]) : 0,
+                  permiso_medico_mins: (colPM < rowData.length && rowData[colPM] !== '' && rowData[colPM] !== null && !isNaN(rowData[colPM])) ? Number(rowData[colPM]) : 0,
+                  tiempo_justificado_mins: (colTJ < rowData.length && rowData[colTJ] !== '' && rowData[colTJ] !== null && !isNaN(rowData[colTJ])) ? Number(rowData[colTJ]) : 0
                 });
               }
             }
@@ -2038,6 +2082,14 @@ function obtenerDatosSupervisorConTimestamp() {
     
     // Procesar registros
     const registros = [];
+    const regHeaders = registrosData.length > 0 ? registrosData[0].map(h => String(h || '').trim().toUpperCase()) : [];
+    let colTJ = regHeaders.indexOf('TIEMPO_JUSTIFICADO_MINS');
+    if (colTJ === -1) colTJ = (COLUMNAS && COLUMNAS.TIEMPO_JUSTIFICADO_MINS !== undefined) ? COLUMNAS.TIEMPO_JUSTIFICADO_MINS : 24;
+    let colPP = regHeaders.indexOf('PERMISO_PERSONAL_MINS');
+    if (colPP === -1) colPP = (COLUMNAS && COLUMNAS.PERMISO_PERSONAL_MINS !== undefined) ? COLUMNAS.PERMISO_PERSONAL_MINS : 22;
+    let colPM = regHeaders.indexOf('PERMISO_MEDICO_MINS');
+    if (colPM === -1) colPM = (COLUMNAS && COLUMNAS.PERMISO_MEDICO_MINS !== undefined) ? COLUMNAS.PERMISO_MEDICO_MINS : 23;
+
     for (let i = 1; i < registrosData.length; i++) {
       const fila = registrosData[i];
       if (!fila[COLUMNAS.FECHA] && !fila[COLUMNAS.TIMESTAMP]) continue;
@@ -2080,6 +2132,7 @@ function obtenerDatosSupervisorConTimestamp() {
       registros.push({
         fecha: fechaStr,
         id: fila[COLUMNAS.ID]?.toString() || '',
+        empleadoId: fila[COLUMNAS.ID]?.toString() || '',
         nombre: fila[COLUMNAS.NOMBRE]?.toString() || '',
         tipo: fila[COLUMNAS.TIPO]?.toString() || '',
         almuerzo: fila[COLUMNAS.ALMUERZO]?.toString() || '',
@@ -2095,9 +2148,9 @@ function obtenerDatosSupervisorConTimestamp() {
         quien_justifica_entrada: fila[COLUMNAS.QUIEN_JUSTIFICA_ENTRADA]?.toString() || '',
         tipo_salida: fila[COLUMNAS.TIPO_SALIDA]?.toString() || '',
         razon_permiso: fila[COLUMNAS.RAZON_PERMISO]?.toString() || '',
-        permiso_personal_mins: fila[COLUMNAS.PERMISO_PERSONAL_MINS] ? Number(fila[COLUMNAS.PERMISO_PERSONAL_MINS]) : 0,
-        permiso_medico_mins: fila[COLUMNAS.PERMISO_MEDICO_MINS] ? Number(fila[COLUMNAS.PERMISO_MEDICO_MINS]) : 0,
-        tiempo_justificado_mins: fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] ? Number(fila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS]) : 0,
+        permiso_personal_mins: (colPP < fila.length && fila[colPP] !== '' && fila[colPP] !== null && !isNaN(fila[colPP])) ? Number(fila[colPP]) : 0,
+        permiso_medico_mins: (colPM < fila.length && fila[colPM] !== '' && fila[colPM] !== null && !isNaN(fila[colPM])) ? Number(fila[colPM]) : 0,
+        tiempo_justificado_mins: (colTJ < fila.length && fila[colTJ] !== '' && fila[colTJ] !== null && !isNaN(fila[colTJ])) ? Number(fila[colTJ]) : 0,
         justificado: fila[COLUMNAS.JUSTIFICADO]?.toString() || 'NO',
         razon_justificac: fila[COLUMNAS.RAZON_JUSTIFICAC]?.toString() || '',
         razon_ausencia: (function() {
@@ -3829,6 +3882,11 @@ function actualizarRegistroArchivado(params) {
       else if (campo === 'tipo') colIdx = COLUMNAS.TIPO;
       else if (campo === 'razon_entrada_tardia') colIdx = COLUMNAS.RAZON_ENTRADA_TARDIA;
       else if (campo === 'razon_salida') colIdx = COLUMNAS.RAZON_SALIDA_TEMPRANA;
+      else if (campo === 'permiso_personal_mins') colIdx = COLUMNAS.PERMISO_PERSONAL_MINS;
+      else if (campo === 'permiso_medico_mins') colIdx = COLUMNAS.PERMISO_MEDICO_MINS;
+      else if (campo === 'tiempo_justificado_mins') colIdx = COLUMNAS.TIEMPO_JUSTIFICADO_MINS;
+      else if (campo === 'razon_permiso') colIdx = COLUMNAS.RAZON_PERMISO;
+      else if (campo === 'razon_ausencia') colIdx = COLUMNAS.RAZON_AUSENCIA;
       else if (campo === 'justificado') {
         if (params.tipo) sheet.getRange(filaIndex, COLUMNAS.TIPO + 1).setValue(params.tipo);
         sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue("00:00:00");
@@ -3840,6 +3898,20 @@ function actualizarRegistroArchivado(params) {
       }
       
       if (colIdx !== -1) {
+        // Asegurar encabezado si no existe
+        if (data.length > 0 && colIdx >= 0) {
+          var hTitle = data[0][colIdx];
+          if (!hTitle || String(hTitle).trim() === '') {
+            var headerMap = {
+              [COLUMNAS.TIEMPO_JUSTIFICADO_MINS]: 'TIEMPO_JUSTIFICADO_MINS',
+              [COLUMNAS.PERMISO_PERSONAL_MINS]: 'PERMISO_PERSONAL_MINS',
+              [COLUMNAS.PERMISO_MEDICO_MINS]: 'PERMISO_MEDICO_MINS'
+            };
+            if (headerMap[colIdx]) {
+              sheet.getRange(1, colIdx + 1).setValue(headerMap[colIdx]);
+            }
+          }
+        }
         sheet.getRange(filaIndex, colIdx + 1).setValue(valor);
         if (params.tipo && colIdx !== COLUMNAS.TIPO) sheet.getRange(filaIndex, COLUMNAS.TIPO + 1).setValue(params.tipo);
         if (colIdx === COLUMNAS.TIPO && esAusenciaTipo(valor)) sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue("00:00:00");
@@ -3881,6 +3953,10 @@ function actualizarRegistroArchivado(params) {
         nuevaFila[COLUMNAS.MODO] = params.modo || "EMPRESA";
         nuevaFila[COLUMNAS.HORAS_EXTRA] = params.horasExtra || "NO";
         nuevaFila[COLUMNAS.DIA] = obtenerDiaEcuador(new Date(fFinal + 'T12:00:00'));
+        nuevaFila[COLUMNAS.PERMISO_PERSONAL_MINS] = params.permiso_personal_mins || '';
+        nuevaFila[COLUMNAS.PERMISO_MEDICO_MINS] = params.permiso_medico_mins || '';
+        nuevaFila[COLUMNAS.TIEMPO_JUSTIFICADO_MINS] = params.tiempo_justificado_mins || '';
+        nuevaFila[COLUMNAS.RAZON_PERMISO] = params.razon_permiso || '';
         
         if (campo === 'justificado' || tipo === 'JUSTIFICACION') {
           nuevaFila[20] = 'SI';
@@ -4599,8 +4675,20 @@ function guardarPermisoSupervisor(params) {
       return { ok: false, error: `No se encontró registro para empleado ${empleadoId} en ${fecha}.` };
     }
 
+    let colFinal = colDestino;
+    if (data.length > 0) {
+      const headers = data[0].map(h => String(h || '').trim().toUpperCase());
+      const targetHeader = (tipo === 'personal') ? 'PERMISO_PERSONAL_MINS' : (tipo === 'medico' ? 'PERMISO_MEDICO_MINS' : 'TIEMPO_JUSTIFICADO_MINS');
+      const foundIdx = headers.indexOf(targetHeader);
+      if (foundIdx !== -1) {
+        colFinal = foundIdx;
+      } else {
+        sheet.getRange(1, colDestino + 1).setValue(targetHeader);
+      }
+    }
+
     // Columnas en Sheets son 1-indexed
-    sheet.getRange(filaIndex, colDestino + 1).setValue(mins);
+    sheet.getRange(filaIndex, colFinal + 1).setValue(mins);
 
     if (params.comentario !== undefined) {
       const comentario = String(params.comentario || '').trim();
@@ -4689,6 +4777,8 @@ function obtenerVacacionesEmpleado(params) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
+    const cedulaReq = params.cedula ? String(params.cedula).trim() : null;
+    const nombreReq = params.nombre ? String(params.nombre).trim().toUpperCase() : null;
 
     let tomadoVal = null;
     let restanteVal = null;
@@ -4697,9 +4787,9 @@ function obtenerVacacionesEmpleado(params) {
     let totalAdjudicadas = 0;
     let totalTomadas = 0;
     let totalRestantes = 0;
-let vacacionesPorEmpleado = {};
+    let vacacionesPorEmpleado = {};
 
-try {
+    try {
       const calcSheet = ss.getSheetByName("CALCULAR_vacaciones");
       if (calcSheet) {
         const calcData = calcSheet.getDataRange().getValues();
@@ -4715,21 +4805,24 @@ try {
             continue;
           }
 
-          if (!empIdReq) {
-              totalAdjudicadas += parseFloat(row[6]) || 0;
-              totalTomadas += parseFloat(row[8]) || 0;
-              totalRestantes += parseFloat(row[9]) || 0;
+          var adj = parseFloat(row[6]) || 0;
+          var tom = parseFloat(row[8]) || 0;
+          var res = parseFloat(row[9]) || 0;
 
-              vacacionesPorEmpleado[empIdRow] = {
-                adjudicadas: parseFloat(row[6]) || 0,
-                tomadas: parseFloat(row[8]) || 0,
-                restantes: parseFloat(row[9]) || 0
-              };
-          } else if (idColA === empIdReq || idColB === empIdReq) {
-            // Columna I (índice 8) es Vacaciones tomadas, Columna J (índice 9) es Vacaciones restantes
-            tomadoVal = (row[8] !== undefined && row[8] !== '') ? row[8] : 0;
-            restanteVal = (row[9] !== undefined && row[9] !== '') ? row[9] : 0;
-            break; // Solo necesitamos a este empleado
+          if (idColA) vacacionesPorEmpleado[idColA] = { adjudicadas: adj, tomadas: tom, restantes: res };
+          if (idColB) vacacionesPorEmpleado[idColB] = { adjudicadas: adj, tomadas: tom, restantes: res };
+
+          totalAdjudicadas += adj;
+          totalTomadas += tom;
+          totalRestantes += res;
+
+          var matchEmp = (empIdReq && (idColA === empIdReq || idColB === empIdReq)) ||
+                         (cedulaReq && (idColA === cedulaReq || idColB === cedulaReq || idColA.replace(/^0+/, '') === cedulaReq.replace(/^0+/, ''))) ||
+                         (nombreReq && (idColA.toUpperCase() === nombreReq || idColB.toUpperCase() === nombreReq || idColB.toUpperCase().includes(nombreReq)));
+
+          if (matchEmp && tomadoVal === null) {
+            tomadoVal = (row[8] !== undefined && row[8] !== '') ? row[8] : tom;
+            restanteVal = (row[9] !== undefined && row[9] !== '') ? row[9] : res;
           }
         }
       }
@@ -4739,11 +4832,11 @@ try {
 
     const sheet = ss.getSheetByName("VACACIONES");
     if (!sheet) {
-      return { ok: true, vacaciones: [], vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal };
+      return { ok: true, vacaciones: [], vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal, kpiVacacionesIndividual: vacacionesPorEmpleado };
     }
     const dataRange = sheet.getDataRange().getValues();
     if (dataRange.length <= 1) {
-      return { ok: true, vacaciones: [], vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal };
+      return { ok: true, vacaciones: [], vacacionesTomadasHoy: tomadoVal, vacacionesRestantesHoy: restanteVal, kpiVacacionesIndividual: vacacionesPorEmpleado };
     }
     
     const vacaciones = [];
@@ -4752,7 +4845,9 @@ try {
     for (var i = 1; i < dataRange.length; i++) {
       var r = dataRange[i];
       var rEmpId = r[1] ? String(r[1]).trim() : '';
-      if (empIdReq && rEmpId !== empIdReq) continue;
+      var rCed = r[0] ? String(r[0]).trim() : '';
+      var matchVac = (!empIdReq) || (rEmpId === empIdReq) || (cedulaReq && (rCed === cedulaReq || rEmpId === cedulaReq));
+      if (!matchVac) continue;
       
       // Formatear la fecha para evitar objetos Date en el JSON de respuesta
       var fechaVal = r[0];
@@ -4776,13 +4871,13 @@ try {
       vacaciones: vacaciones, 
       vacacionesTomadasHoy: tomadoVal, 
       vacacionesRestantesHoy: restanteVal,
-      kpiVacaciones: !empIdReq ? {
+      kpiVacaciones: {
         adjudicadas: totalAdjudicadas,
         tomadas: totalTomadas,
         restantes: totalRestantes
-      } : null,
-kpiVacacionesIndividual: !empIdReq ? vacacionesPorEmpleado : null
-};
+      },
+      kpiVacacionesIndividual: vacacionesPorEmpleado
+    };
 } catch(e) {
     return { error: e.toString() };
   }

@@ -4452,6 +4452,9 @@
             <button type="button" onclick="window.aplicarPlantillaWaIndividual('cumple')" class="btn-plantilla-wa" style="background:#fef3c7; border:1px solid #fde68a; color:#b45309; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
               🎂 Cumpleaños
             </button>
+            <button type="button" onclick="window.aplicarPlantillaWaIndividual('regularizacion')" class="btn-plantilla-wa" style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-size:11px; font-weight:700; padding:4px 10px; border-radius:8px; cursor:pointer;">
+              📋 Regularización
+            </button>
             <button type="button" onclick="window.aplicarPlantillaWaIndividual('limpiar')" class="btn-plantilla-wa" style="background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:600; padding:4px 10px; border-radius:8px; cursor:pointer;">
               ✏️ Borrar
             </button>
@@ -5036,9 +5039,14 @@
 
       <!-- Modal Footer -->
       <div style="padding:16px 24px; background:#ffffff; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; gap:12px; flex-wrap:wrap;">
-        <button type="button" class="btn" onclick="window.eliminarMarcacionesDiaModal()" style="font-size:15px; font-weight:700; padding:10px 16px; border-radius:8px; background:#fff1f2; border:1.5px solid #fecdd3; color:#be123c; cursor:pointer; display:inline-flex; align-items:center; gap:6px;" title="Eliminar marcaciones registradas para este día">
-          <i class="fas fa-trash-alt"></i> Limpiar Registros
-        </button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" class="btn" onclick="window.eliminarMarcacionesDiaModal()" style="font-size:14px; font-weight:700; padding:9px 15px; border-radius:8px; background:#fff1f2; border:1.5px solid #fecdd3; color:#be123c; cursor:pointer; display:inline-flex; align-items:center; gap:6px;" title="Eliminar marcaciones registradas para este día">
+            <i class="fas fa-trash-alt"></i> Limpiar Registros
+          </button>
+          <button type="button" class="btn" onclick="window.solicitarRegularizacionWhatsAppModal()" style="font-size:14px; font-weight:700; padding:9px 15px; border-radius:8px; background:#f0fdf4; border:1.5px solid #bbf7d0; color:#15803d; cursor:pointer; display:inline-flex; align-items:center; gap:6px;" title="Solicitar justificativo al colaborador por WhatsApp">
+            <i class="fab fa-whatsapp" style="color:#16a34a; font-size:15px;"></i> Solicitar Regularización
+          </button>
+        </div>
 
         <div style="display:flex; gap:10px;">
           <button type="button" class="btn" onclick="window.cerrarModalGestionJornada()" style="font-size:15px; font-weight:700; padding:10px 20px; border-radius:8px; background:#f1f5f9; border:1.5px solid #cbd5e1; color:#475569; cursor:pointer;">
@@ -5055,14 +5063,14 @@
 
   <script src="./JS/openwa_service.js?v=20260922_10"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20260923_01"></script>
+  <script src="./JS/supervisor_core.js?v=20260924_06"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260922_05"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260922_10"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20260923_01"></script>
-  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20260923_01"></script>
+  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20260924_06"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil
