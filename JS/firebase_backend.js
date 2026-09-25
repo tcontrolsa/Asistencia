@@ -16,6 +16,13 @@ const firebaseConfig = {
 // Inicializar Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+try {
+    db.settings({
+        experimentalForceLongPolling: true
+    });
+} catch (e) {
+    console.warn("Aviso configurando settings de Firestore:", e);
+}
 window.db = db;
 
 // Variable global para usar desde INDEX_PRUEBAS.html
@@ -3935,8 +3942,12 @@ window.FirebaseBackend = {
                     const batch = db.batch();
                     params.logs.slice(0, 200).forEach(l => {
                         const ref = db.collection('logs_whatsapp').doc();
-                        const docData = { ...l };
-                        delete docData.accion;
+                        const docData = {};
+                        for (const [k, v] of Object.entries(l || {})) {
+                            if (k !== 'accion' && v !== undefined && typeof v !== 'function') {
+                                docData[k] = v;
+                            }
+                        }
                         batch.set(ref, {
                             ...docData,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -3945,8 +3956,12 @@ window.FirebaseBackend = {
                     await batch.commit();
                     guardadoFirestore = true;
                 } else {
-                    const docData = { ...params };
-                    delete docData.accion;
+                    const docData = {};
+                    for (const [k, v] of Object.entries(params || {})) {
+                        if (k !== 'accion' && v !== undefined && typeof v !== 'function') {
+                            docData[k] = v;
+                        }
+                    }
                     await db.collection('logs_whatsapp').add({
                         ...docData,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()

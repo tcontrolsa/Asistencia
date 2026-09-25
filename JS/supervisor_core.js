@@ -2321,6 +2321,248 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
 
 // ============================================================
 // ASISTENCIA - CARDS Y TABLA
+
+/**
+ * Función centralizada para determinar si un empleado tiene Vacaciones, Campo o Permiso/Justificación hoy.
+ * Resuelve registros directos de permiso, salidas con permiso, justificaciones, estados y minutos asignados.
+ */
+window.obtenerInfoAusenciaPermisoHoy = function (e, fechaEvaluada) {
+  const fTarget = fechaEvaluada || (typeof hoy !== 'undefined' ? hoy : (typeof getLocalHoyStr === 'function' ? getLocalHoyStr() : ''));
+  const isSinAsis = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+  const isVisitante = !!e.isVisitante;
+
+  if (isSinAsis || isVisitante) {
+    return {
+      esVacaciones: false,
+      esCampo: false,
+      esPermiso: false,
+      razon: '',
+      tipo: '',
+      minutos: 0,
+      icono: '',
+      textoBadge: ''
+    };
+  }
+
+  const regs = (e.registros || []).filter(r => r.fecha === fTarget);
+  const eReg = regs.find(r => r.tipo === 'ENTRADA');
+  const sReg = regs.find(r => (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante'));
+
+  // 1. Vacaciones
+  const estUpper = String(e.estado || '').toUpperCase();
+  const razonEmpUpper = String(e.razon_ausencia || e.razon_permiso || e._razonAusenciaHoy || '').toUpperCase();
+  const regVac = regs.find(r => {
+    const t = String(r.tipo || '').toUpperCase();
+    const te = String(r.tipo_estado || '').toUpperCase();
+    const ra = String(r.razon_ausencia || '').toUpperCase();
+    const rp = String(r.razon_permiso || '').toUpperCase();
+    return t.includes('VACAC') || te.includes('VACAC') || ra.includes('VACAC') || rp.includes('VACAC');
+  });
+  const esVacaciones = (estUpper.includes('VACAC') || razonEmpUpper.includes('VACAC') || !!regVac);
+  if (esVacaciones) {
+    return {
+      esVacaciones: true,
+      esCampo: false,
+      esPermiso: false,
+      razon: 'Vacación',
+      tipo: 'VACACIONES',
+      minutos: 0,
+      icono: '🏖️',
+      textoBadge: 'Vacación'
+    };
+  }
+
+  // 2. Permisos y Justificaciones (Evaluados con prioridad sobre modalidad por defecto)
+  let razonDetectada = '';
+  let tipoDetectado = '';
+  let minutos = 0;
+  let esSalidaConPermiso = false;
+  let tieneRegistroPermisoDirecto = false;
+
+  for (const r of regs) {
+    const t = String(r.tipo || '').toUpperCase();
+    const te = String(r.tipo_estado || '').toUpperCase();
+    const ts = String(r.tipo_salida || '').toUpperCase();
+    const tent = String(r.tipo_entrada || '').toUpperCase();
+    const ra = String(r.razon_ausencia || '').trim();
+    const rp = String(r.razon_permiso || '').trim();
+    const rsal = String(r.razon_salida || r.razon_salida_temprana || '').trim();
+    const rent = String(r.razon_entrada_tardia || '').trim();
+    const persMins = Number(r.permiso_personal_mins || 0);
+    const medMins = Number(r.permiso_medico_mins || 0);
+    const justMins = Number(r.tiempo_justificado_mins || 0);
+
+    if (persMins > 0) minutos += persMins;
+    if (medMins > 0) minutos += medMins;
+    if (justMins > 0) minutos += justMins;
+
+    const esTipoPermiso = [
+      'PERMISO', 'PERMISO_MEDICO', 'PERMISO_PERSONAL', 'FALTA_JUSTIFICADA',
+      'CALAMIDAD_DOMESTICA', 'SALIDA_JUSTIFICADA', 'CUMPLEAÑOS', 'CUMPLEANOS'
+    ].includes(t) || [
+      'PERMISO', 'PERMISO_MEDICO', 'PERMISO_PERSONAL', 'FALTA_JUSTIFICADA',
+      'CALAMIDAD_DOMESTICA', 'SALIDA_JUSTIFICADA', 'CUMPLEAÑOS', 'CUMPLEANOS'
+    ].includes(te);
+
+    if (esTipoPermiso) {
+      tieneRegistroPermisoDirecto = true;
+      tipoDetectado = tipoDetectado || te || t;
+      razonDetectada = razonDetectada || ra || rp || te || t;
+    }
+
+    if (t === 'ESTADO' && (ra || rp || te)) {
+      const combEstado = `${te} ${ra} ${rp}`.toUpperCase();
+      if (!combEstado.includes('CAMPO') && !combEstado.includes('VACAC')) {
+        tieneRegistroPermisoDirecto = true;
+        tipoDetectado = tipoDetectado || te || 'ESTADO';
+        razonDetectada = razonDetectada || ra || rp || te;
+      }
+    }
+
+    // Registro de ausencia no-marcapaso (y que no sea Campo/Vacación)
+    if (t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'SOLO_ALMUERZO') {
+      const combRa = `${t} ${ra} ${rp}`.toUpperCase();
+      if (!combRa.includes('CAMPO') && !combRa.includes('VACAC')) {
+        if (ra) {
+          tieneRegistroPermisoDirecto = true;
+          razonDetectada = razonDetectada || ra;
+          tipoDetectado = tipoDetectado || t;
+        }
+        if (rp) {
+          tieneRegistroPermisoDirecto = true;
+          razonDetectada = razonDetectada || rp;
+        }
+      }
+    }
+
+    // Salida anticipada / con permiso
+    if (t === 'SALIDA' || ts) {
+      if (ts.includes('PERMIS') || ['permiso_medico', 'cumpleanos', 'permiso_personal', 'salida_justificada'].includes(rsal.toLowerCase()) || rsal.toLowerCase().includes('permiso')) {
+        esSalidaConPermiso = true;
+        tipoDetectado = tipoDetectado || 'SALIDA_CON_PERMISO';
+        razonDetectada = razonDetectada || rsal || rp || 'Salida con Permiso';
+      }
+      if (rp && !rp.toUpperCase().includes('CAMPO') && !rp.toUpperCase().includes('VACAC')) {
+        razonDetectada = razonDetectada || rp;
+      }
+    }
+
+    // Entrada con permiso / justificada
+    if (t === 'ENTRADA' || tent) {
+      if (tent.includes('PERMIS') || rent.toLowerCase().includes('permiso')) {
+        tipoDetectado = tipoDetectado || 'ENTRADA_CON_PERMISO';
+        razonDetectada = razonDetectada || rent || rp || 'Entrada con Permiso';
+      }
+      if (rp && !rp.toUpperCase().includes('CAMPO') && !rp.toUpperCase().includes('VACAC')) {
+        razonDetectada = razonDetectada || rp;
+      }
+    }
+  }
+
+  // Minutos a nivel de empleado si existen
+  const ePersMins = Number(e.permiso_personal_mins || 0);
+  const eMedMins = Number(e.permiso_medico_mins || 0);
+  if (ePersMins > 0) minutos += ePersMins;
+  if (eMedMins > 0) minutos += eMedMins;
+
+  // Estado a nivel de empleado
+  const esEstadoPermiso = [
+    'PERMISO', 'PERMISO_MEDICO', 'PERMISO_PERSONAL', 'FALTA_JUSTIFICADA',
+    'CALAMIDAD_DOMESTICA', 'SALIDA_JUSTIFICADA', 'CUMPLEAÑOS', 'CUMPLEANOS'
+  ].includes(estUpper) || (estUpper.includes('PERMIS') && !estUpper.includes('CAMPO'));
+
+  if (esEstadoPermiso) {
+    tipoDetectado = tipoDetectado || estUpper;
+    razonDetectada = razonDetectada || e.estado;
+  }
+
+  if (e.razon_permiso && String(e.razon_permiso).trim() && !String(e.razon_permiso).toUpperCase().includes('CAMPO') && !String(e.razon_permiso).toUpperCase().includes('VACAC')) {
+    razonDetectada = razonDetectada || String(e.razon_permiso).trim();
+  }
+  if (e.razon_ausencia && String(e.razon_ausencia).trim() && !String(e.razon_ausencia).toUpperCase().includes('CAMPO') && !String(e.razon_ausencia).toUpperCase().includes('VACAC')) {
+    razonDetectada = razonDetectada || String(e.razon_ausencia).trim();
+  }
+  if (e._razonAusenciaHoy && String(e._razonAusenciaHoy).trim() && !String(e._razonAusenciaHoy).toUpperCase().includes('CAMPO') && !String(e._razonAusenciaHoy).toUpperCase().includes('VACAC')) {
+    razonDetectada = razonDetectada || String(e._razonAusenciaHoy).trim();
+  }
+
+  const esPermiso = (minutos > 0) || esSalidaConPermiso || esEstadoPermiso || tieneRegistroPermisoDirecto || Boolean(razonDetectada);
+
+  if (esPermiso) {
+    const combinada = `${tipoDetectado} ${razonDetectada}`.toUpperCase();
+    let icono = '📋';
+    let textoBadge = razonDetectada || 'Permiso';
+
+    if (combinada.includes('MEDIC') || combinada.includes('SALUD') || combinada.includes('DOCTOR')) {
+      icono = '🩺';
+      if (!razonDetectada || razonDetectada.toUpperCase() === 'PERMISO_MEDICO' || razonDetectada === 'permiso_medico') textoBadge = 'Permiso Médico';
+    } else if (combinada.includes('PERSONAL')) {
+      icono = '👤';
+      if (!razonDetectada || razonDetectada.toUpperCase() === 'PERMISO_PERSONAL' || razonDetectada === 'permiso_personal') textoBadge = 'Permiso Personal';
+    } else if (combinada.includes('JUSTIFIC')) {
+      icono = '✅';
+      if (!razonDetectada || razonDetectada.toUpperCase() === 'FALTA_JUSTIFICADA' || razonDetectada === 'salida_justificada') textoBadge = 'Falta Justificada';
+    } else if (combinada.includes('CALAMIDAD') || combinada.includes('DOMESTICA')) {
+      icono = '🏠';
+      if (!razonDetectada || razonDetectada.toUpperCase() === 'CALAMIDAD_DOMESTICA') textoBadge = 'Calamidad Doméstica';
+    } else if (combinada.includes('CUMPLEA')) {
+      icono = '🎂';
+      if (!razonDetectada || razonDetectada.toUpperCase().includes('CUMPLEA') || razonDetectada === 'cumpleanos') textoBadge = 'Cumpleaños';
+    }
+
+    if (minutos > 0 && !textoBadge.includes(`${minutos}m`) && !textoBadge.includes(`${minutos} min`)) {
+      textoBadge = `${textoBadge} (${minutos}m)`;
+    }
+
+    return {
+      esVacaciones: false,
+      esCampo: false,
+      esPermiso: true,
+      razon: razonDetectada || textoBadge,
+      tipo: tipoDetectado || 'PERMISO',
+      minutos: minutos,
+      esSalidaConPermiso: esSalidaConPermiso,
+      icono: icono,
+      textoBadge: textoBadge
+    };
+  }
+
+  // 3. Campo (Si no tiene vacación ni permiso)
+  const modoEmpUpper = String(e.modo || '').toUpperCase();
+  const modoRegUpper = String(eReg?.modo || sReg?.modo || '').toUpperCase();
+  const regCampo = regs.find(r => {
+    const m = String(r.modo || '').toUpperCase();
+    const t = String(r.tipo || '').toUpperCase();
+    const ts = String(r.tipo_salida || '').toUpperCase();
+    const ra = String(r.razon_ausencia || '').toUpperCase();
+    return m.includes('CAMPO') || t.includes('CAMPO') || ts.includes('CAMPO') || ra.includes('CAMPO');
+  });
+  const esCampo = (modoEmpUpper.includes('CAMPO') || modoRegUpper.includes('CAMPO') || razonEmpUpper.includes('CAMPO') || !!regCampo);
+  if (esCampo) {
+    return {
+      esVacaciones: false,
+      esCampo: true,
+      esPermiso: false,
+      razon: 'Campo',
+      tipo: 'CAMPO',
+      minutos: 0,
+      icono: '🚗',
+      textoBadge: 'Campo'
+    };
+  }
+
+  return {
+    esVacaciones: false,
+    esCampo: false,
+    esPermiso: false,
+    razon: '',
+    tipo: '',
+    minutos: 0,
+    icono: '',
+    textoBadge: ''
+  };
+};
+
 function cargarAsistencia() {
   hoy = getLocalHoyStr();
   const canEditAttendance = tienePermisoAdmin();
@@ -2371,15 +2613,7 @@ function cargarAsistencia() {
   const evalFin = pActual ? pActual.fin : null;
 
   empCache.forEach(e => {
-    let fReg = (e.registros || []).find(r => {
-      const t = String(r.tipo).toUpperCase();
-      return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
-    });
-    let rHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : '';
-    let rUpper = rHoy.toUpperCase();
     let isSinAsis = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
-    let modoStr = (e.modo || '').toUpperCase();
-    let regCampo = (e.registros || []).some(reg => reg.modo === 'CAMPO' && reg.fecha === hoy);
 
     if (!isSinAsis) {
       let fechasReg = window.obtenerFechasPendientesRegularizarEmpleado(e, evalInicio, evalFin);
@@ -2392,17 +2626,21 @@ function cargarAsistencia() {
         countPorRegularizar++;
       }
 
-      if (rUpper.includes('VACACI') || (e.estado || '').toUpperCase() === 'VACACIONES') {
+      const infoAus = window.obtenerInfoAusenciaPermisoHoy(e, hoy);
+      e._infoAusenciaHoy = infoAus;
+
+      if (infoAus.esVacaciones) {
         countVacaciones++;
-      } else if (rUpper.includes('CAMPO') || modoStr.includes('CAMPO') || regCampo) {
-        countCampo++;
-      } else if (rUpper.length > 0) {
+      } else if (infoAus.esPermiso) {
         countPermisos++;
+      } else if (infoAus.esCampo) {
+        countCampo++;
       } else if (!e.entradaHoy) {
         countSinMarcar++;
       }
     } else {
       e._fechasRegularizar = [];
+      e._infoAusenciaHoy = { esVacaciones: false, esCampo: false, esPermiso: false };
     }
   });
 
@@ -2506,43 +2744,26 @@ function cargarAsistencia() {
       sHtml = `<span class="editable-cell rep-asis-empty" ${clickSalida} title="${canEditAttendance ? 'Clic para registrar salida manual' : ''}">—</span>`;
     }
 
-    let fReg = (e.registros || []).find(r => {
-      const t = String(r.tipo).toUpperCase();
-      return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
-    });
-    let razonAusenciaHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : '';
+    const infoAus = e._infoAusenciaHoy || window.obtenerInfoAusenciaPermisoHoy(e, hoy);
+    let razonAusenciaHoy = infoAus.razon || '';
     let isSinAsistencia = (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
 
     // Modo y Campo
-    let modo = eReg?.modo || sReg?.modo || (e.entradaHoy ? 'EMPRESA' : '-');
-    let modoStr = (eReg?.modo || sReg?.modo || e.modo || '').toUpperCase();
-    let regCampo = (e.registros || []).some(reg => reg.fecha === hoy && (
-      String(reg.modo || '').toUpperCase().includes('CAMPO') ||
-      String(reg.tipo || '').toUpperCase().includes('CAMPO') ||
-      String(reg.tipo_salida || '').toUpperCase().includes('CAMPO')
-    ));
-    let rUpper = (razonAusenciaHoy || '').toUpperCase();
-    let esCampo = modoStr.includes('CAMPO') || rUpper.includes('CAMPO') || regCampo;
-    let esVacaciones = rUpper.includes('VACAC') || (e.estado || '').toUpperCase() === 'VACACIONES';
+    let modo = eReg?.modo || sReg?.modo || (infoAus.esCampo ? 'CAMPO' : (e.entradaHoy ? 'EMPRESA' : '-'));
 
     let estHtml = '';
     let ausenciaHtml = '<span class="rep-asis-empty">—</span>';
 
     if (isSinAsistencia) {
       estHtml = '<span class="rep-badge-pill" style="background:#f1f5f9; color:#64748b; border:1px dashed #cbd5e1;"><i class="fas fa-utensils"></i> Solo Alm.</span>';
-    } else if (esCampo) {
+    } else if (infoAus.esVacaciones) {
+      estHtml = '<span class="rep-badge-pill" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a; font-weight:700;"><i class="fas fa-umbrella-beach"></i> Vacación</span>';
+    } else if (infoAus.esPermiso) {
+      const clickPerm = canEditAttendance ? `onclick="event.stopPropagation();"` : '';
+      estHtml = `<span class="rep-badge-pill" style="background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; font-weight:700;" ${clickPerm} title="${escapeHtml(infoAus.razon || 'Permiso')}"><i class="fas fa-file-signature"></i> ${infoAus.icono} ${escapeHtml(infoAus.textoBadge)}</span>`;
+    } else if (infoAus.esCampo) {
       let clickModo = canEditAttendance ? `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'modo', '${modo || 'CAMPO'}', '${hoy}')"` : '';
       estHtml = `<span class="rep-badge-pill rep-badge-campo" ${clickModo} title="${canEditAttendance ? 'Clic para editar modo' : 'En Campo'}"><i class="fas fa-truck-pickup" style="font-size:9.5px;"></i> Campo</span>`;
-    } else if (esVacaciones) {
-      estHtml = '<span class="rep-badge-pill" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a; font-weight:700;"><i class="fas fa-umbrella-beach"></i> Vacación</span>';
-    } else if (razonAusenciaHoy) {
-      let rIco = '📋';
-      if (rUpper.includes('MEDIC')) rIco = '🩺';
-      else if (rUpper.includes('PERSONAL')) rIco = '👤';
-      else if (rUpper.includes('JUSTIFIC')) rIco = '✅';
-      else if (rUpper.includes('CALAMIDAD')) rIco = '🏠';
-      else if (rUpper.includes('CUMPLEA')) rIco = '🎂';
-      estHtml = `<span class="rep-badge-pill" style="background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; font-weight:700;"><i class="fas fa-file-signature"></i> ${rIco} ${escapeHtml(razonAusenciaHoy)}</span>`;
     } else if (!e.entradaHoy) {
       let badgeAusente = '<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle"></i> Ausente</span>';
 
@@ -2635,7 +2856,7 @@ function cargarAsistencia() {
       `;
     }
 
-    return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, _razonAusenciaHoy: razonAusenciaHoy, id: e.id, isSinAsistencia, _fechasRegularizar: e._fechasRegularizar || [] };
+    return { ...e, _eH: eHtml, _sH: sHtml, _est: estHtml, _ausencia: ausenciaHtml, _toggle: toggle, _tard: tard, _entradaHoy: e.entradaHoy, _almuerzoHoy: e.almuerzoHoy, _salidaHoy: e.salidaHoy, _modo: modoHtml, _extras: extrasHtml, _razonAusenciaHoy: razonAusenciaHoy, _infoAus: infoAus, _tienePermisoHoy: infoAus.esPermiso, _esVacacionesHoy: infoAus.esVacaciones, _esCampoHoy: infoAus.esCampo, id: e.id, isSinAsistencia, _fechasRegularizar: e._fechasRegularizar || [] };
   });
 
   let extrasHoyTb = window.obtenerAlmuerzosExtraConsolidados(hoy, hoy);
@@ -2698,33 +2919,25 @@ function filtrarAsistenciaTabla() {
   let data = (window._asisData || []).filter(e => {
     if (q && !e.nombre.toLowerCase().includes(q) && !(e.area || '').toLowerCase().includes(q) && !(e.id || '').includes(q) && !(e.cargo || '').toLowerCase().includes(q)) return false;
 
-    let fReg = (e.registros || []).find(r => {
-      const t = String(r.tipo).toUpperCase();
-      return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
-    });
-    let rHoy = fReg ? (fReg.razon_ausencia || fReg.razon_permiso || '') : (e._razonAusenciaHoy || e.razon_ausencia || e.razon_permiso || '');
-    let rUpper = String(rHoy || '').toUpperCase();
-    let modoStr = String(e._modo || e.modo || '').toUpperCase();
-    let regCampo = (e.registros || []).some(reg => reg.modo === 'CAMPO' && reg.fecha === hoy);
+    const infoAus = e._infoAus || e._infoAusenciaHoy || window.obtenerInfoAusenciaPermisoHoy(e, hoy);
 
     if (filtroAsistenciaActual === 'presente' && (!e._entradaHoy || e._salidaHoy)) return false;
     if (filtroAsistenciaActual === 'sin_marcar') {
       if (e._entradaHoy || e.isVisitante || e.isSinAsistencia) return false;
-      if (rUpper.length > 0 || (e.estado || '').toUpperCase() === 'VACACIONES') return false;
+      if (infoAus.esVacaciones || infoAus.esCampo || infoAus.esPermiso) return false;
       return true;
     }
     if (filtroAsistenciaActual === 'en_campo') {
-      if (e.isVisitante) return false;
-      return modoStr.includes('CAMPO') || rUpper.includes('CAMPO') || regCampo;
+      if (e.isVisitante || e.isSinAsistencia) return false;
+      return infoAus.esCampo;
     }
     if (filtroAsistenciaActual === 'vacaciones') {
-      if (e.isVisitante) return false;
-      return rUpper.includes('VACACI') || (e.estado || '').toUpperCase() === 'VACACIONES';
+      if (e.isVisitante || e.isSinAsistencia) return false;
+      return infoAus.esVacaciones;
     }
     if (filtroAsistenciaActual === 'permisos') {
-      if (e.isVisitante) return false;
-      if (rUpper.includes('VACACI') || rUpper.includes('CAMPO')) return false;
-      return rUpper.length > 0;
+      if (e.isVisitante || e.isSinAsistencia) return false;
+      return infoAus.esPermiso;
     }
     if (filtroAsistenciaActual === 'por_regularizar') {
       if (e.isVisitante || e.isSinAsistencia) return false;
@@ -2735,7 +2948,7 @@ function filtrarAsistenciaTabla() {
       });
       return fechasPeriodo.length > 0;
     }
-    if (filtroAsistenciaActual === 'ausente' && (e._entradaHoy || e.isVisitante)) return false;
+    if (filtroAsistenciaActual === 'ausente' && (e._entradaHoy || e.isVisitante || e.isSinAsistencia)) return false;
     if (filtroAsistenciaActual === 'tardanza' && !e._tard) return false;
     if (filtroAsistenciaActual === 'almuerzo_si') {
       if (e.isVisitante) {
@@ -2879,7 +3092,7 @@ function filtrarAsistenciaTabla() {
     'sin_marcar': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
     'en_campo': ['Empleado', 'Área', 'Entrada', 'Salida', 'Extras', 'Estado', 'Almuerzo'],
     'vacaciones': ['Empleado', 'Área', 'Estado'],
-    'permisos': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
+    'permisos': ['Empleado', 'Área', 'Entrada', 'Salida', 'Estado', 'Almuerzo'],
     'por_regularizar': ['Empleado', 'Área', 'Regularización', 'Entrada', 'Salida', 'Estado', 'Almuerzo'],
     'ausente': ['Empleado', 'Área', 'Estado', 'Almuerzo'],
     'tardanza': ['Empleado', 'Área', 'Entrada', 'Extras', 'Estado', 'Almuerzo'],
@@ -2934,7 +3147,7 @@ window.guardarRazonAusenciaGlobal = async function (empleadoId, valorSeleccionad
     if (!emp.registros) emp.registros = [];
     let fReg = emp.registros.find(r => {
       const t = String(r.tipo).toUpperCase();
-      return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
+      return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'SOLO_ALMUERZO' && r.fecha === hoy;
     });
     if (!fReg) {
       fReg = {
@@ -3134,6 +3347,10 @@ window.sortAsistencia = sortAsistencia;
 const COLUMNAS_DISPONIBLES = [
   { id: 'area', label: 'Área', tipo: 'texto', cat: 'general', catLabel: 'Datos Generales', icono: 'fa-building', color: '#475569', colorBg: '#f8fafc', colorHeader: '#334155' },
   { id: 'asistencias', label: 'Asistencias', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-user-check', color: '#047857', colorBg: '#ecfdf5', colorHeader: '#047857' },
+  { id: 'entradas', label: 'Entradas Reg.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-sign-in-alt', color: '#059669', colorBg: '#ecfdf5', colorHeader: '#059669' },
+  { id: 'entradasAuto', label: 'Entradas Auto.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-robot', color: '#d97706', colorBg: '#fffbeb', colorHeader: '#d97706' },
+  { id: 'salidas', label: 'Salidas Reg.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-sign-out-alt', color: '#0284c7', colorBg: '#f0f9ff', colorHeader: '#0284c7' },
+  { id: 'salidasAuto', label: 'Salidas Auto.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-magic', color: '#7c3aed', colorBg: '#faf5ff', colorHeader: '#7c3aed' },
   { id: 'diasCampo', label: 'Días Campo', tipo: 'numero', cat: 'campo', catLabel: 'Trabajo en Campo', icono: 'fa-hard-hat', color: '#0891b2', colorBg: '#ecfeff', colorHeader: '#0891b2' },
   { id: 'faltas', label: 'Faltas', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-calendar-times', color: '#b91c1c', colorBg: '#fef2f2', colorHeader: '#b91c1c' },
   { id: 'diasVacaciones', label: 'Vacaciones', tipo: 'numero', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-umbrella-beach', color: '#059669', colorBg: '#ecfdf5', colorHeader: '#059669' },
@@ -3163,13 +3380,18 @@ function obtenerColumnasVisibles() {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        ['diasCampo', 'diasVacaciones', 'diasJustificados', 'diasExtras'].forEach(colId => {
+        ['diasCampo', 'diasVacaciones', 'diasJustificados', 'diasExtras', 'entradas', 'entradasAuto', 'salidas', 'salidasAuto'].forEach(colId => {
           if (!parsed.includes(colId)) {
-            const idxFaltas = parsed.indexOf('faltas');
-            if (idxFaltas > -1) {
-              parsed.splice(idxFaltas + 1, 0, colId);
+            const idxAsis = parsed.indexOf('asistencias');
+            if (['entradas', 'entradasAuto', 'salidas', 'salidasAuto'].includes(colId) && idxAsis > -1) {
+              parsed.splice(idxAsis + 1, 0, colId);
             } else {
-              parsed.push(colId);
+              const idxFaltas = parsed.indexOf('faltas');
+              if (idxFaltas > -1) {
+                parsed.splice(idxFaltas + 1, 0, colId);
+              } else {
+                parsed.push(colId);
+              }
             }
           }
         });
@@ -3390,11 +3612,53 @@ function cargarReportes() {
 
   const hoyRep = getLocalHoyStr();
 
+  const esRegistroAutocompletado = function (r) {
+    if (!r) return false;
+    const disp = String(r.dispositivo || '').trim().toUpperCase();
+    const razonSal = String(r.razon_salida || r.razon_salida_temprana || '').toLowerCase();
+    const razonJust = String(r.razon_justificac || r.razon_ausencia || '').toLowerCase();
+    const razonEnt = String(r.razon_entrada_tardia || '').toLowerCase();
+    const quien = String(r.quien_justifica || r.quienJustifica || r.quien_justifica_entrada || r.quienJustificaEntrada || '').trim().toUpperCase();
+    const tipo = String(r.tipo || r.tipo_salida || '').trim().toUpperCase();
+
+    return (
+      disp === 'AUTO_COMPLETAR' ||
+      quien === 'SISTEMA' ||
+      razonSal.includes('no registr') ||
+      razonJust.includes('no registr') ||
+      razonEnt.includes('no registr') ||
+      tipo.includes('AUTO')
+    );
+  };
+
   let listaEmpleados = window.obtenerListaEmpleadosReportes();
 
   let stats = listaEmpleados.map(e => {
-    let entradas = (e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= R_INI && r.fecha <= R_FIN);
-    let salidas = (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= R_INI && r.fecha <= R_FIN);
+    let regsRango = (e.registros || []).filter(r => r.fecha >= R_INI && r.fecha <= R_FIN);
+    let entradas = regsRango.filter(r => String(r.tipo || '').toUpperCase() === 'ENTRADA');
+    let salidas = regsRango.filter(r => String(r.tipo || '').toUpperCase() === 'SALIDA');
+
+    let numEntradasReg = 0;
+    let numEntradasAuto = 0;
+    let numSalidasReg = 0;
+    let numSalidasAuto = 0;
+
+    regsRango.forEach(r => {
+      const tipo = String(r.tipo || '').toUpperCase();
+      if (tipo === 'ENTRADA') {
+        if (esRegistroAutocompletado(r)) {
+          numEntradasAuto++;
+        } else {
+          numEntradasReg++;
+        }
+      } else if (tipo === 'SALIDA') {
+        if (esRegistroAutocompletado(r)) {
+          numSalidasAuto++;
+        } else {
+          numSalidasReg++;
+        }
+      }
+    });
 
     // Delimitar evaluación de días hábiles si el colaborador tiene fecha de ingreso o salida
     const fSalida = (e.fecha_salida || e.fechaDesvinculacion) ? (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) : null;
@@ -3708,6 +3972,35 @@ function cargarReportes() {
       totalTiempoPorJustificar += tiempoJustificarHoy;
     });
 
+    // Detectar salidas pendientes o autocompletadas en días pasados con entrada pero sin salida registrada
+    todasLasFechas.forEach(fecha => {
+      if (fecha < hoyRep) {
+        if (fSalida && fecha > fSalida) return;
+        if (iniEvalEmp && fecha < iniEvalEmp) return;
+        const regsDia = regsRango.filter(r => (typeof normalizarFechaStr === 'function' ? normalizarFechaStr(r.fecha) : r.fecha) === fecha);
+        const tieneEntrada = regsDia.some(r => {
+          const t = String(r.tipo || '').toUpperCase();
+          return t === 'ENTRADA' || t === 'RETORNO_CAMPO' || t === 'ENTRADA_CAMPO';
+        });
+        const tieneSalida = regsDia.some(r => {
+          const t = String(r.tipo || '').toUpperCase();
+          return t === 'SALIDA' || t === 'SALIDA_CAMPO';
+        });
+        if (tieneEntrada && !tieneSalida) {
+          const esCampoOJornadaJustificada = regsDia.some(r => {
+            const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
+            const m = String(r.modo || r.modo_trabajo || '').toUpperCase();
+            const raz = String(r.razon_ausencia || r.razon_permiso || r.razon_justificac || r.razon_salida || r.observacion || '').toUpperCase();
+            const est = String(r.estado || '').toUpperCase();
+            return t.includes('CAMPO') || m.includes('CAMPO') || raz.includes('CAMPO') || est.includes('CAMPO') || r.justificado === 'SI' || r.justificada === 'SI' || t.includes('JUSTIFIC');
+          });
+          if (!esCampoOJornadaJustificada) {
+            numSalidasAuto++;
+          }
+        }
+      }
+    });
+
     let diasTotalesTrabajados = diasAsistidosPlantaSet.size + diasCampoSet.size;
     puntualidad = diasTotalesTrabajados ? (esPasanteEmp ? 100 : Math.round((1 - atrasos / diasTotalesTrabajados) * 100)) : 0;
 
@@ -3740,11 +4033,27 @@ function cargarReportes() {
       horasCampo100: horasCampo100,
       totalExtras50: horasExtra50 + horasCampo50,
       totalExtras100: horasExtra100 + horasCampo100,
-      totalHorasExtra: (horasExtra50 + horasExtra100 + horasCampo50 + horasCampo100)
+      totalHorasExtra: (horasExtra50 + horasExtra100 + horasCampo50 + horasCampo100),
+      entradas: numEntradasReg,
+      entradasReg: numEntradasReg,
+      entradasAuto: numEntradasAuto,
+      salidas: numSalidasReg,
+      salidasReg: numSalidasReg,
+      salidasAuto: numSalidasAuto
     };
   });
 
   // Totales generales
+  let totalEntradasReg = stats.reduce((s, r) => s + (r.entradas || 0), 0);
+  let totalEntradasAuto = stats.reduce((s, r) => s + (r.entradasAuto || 0), 0);
+  let totalSalidasReg = stats.reduce((s, r) => s + (r.salidas || 0), 0);
+  let totalSalidasAuto = stats.reduce((s, r) => s + (r.salidasAuto || 0), 0);
+
+  if ($('repEntradasReg')) $('repEntradasReg').textContent = totalEntradasReg;
+  if ($('repEntradasAuto')) $('repEntradasAuto').textContent = totalEntradasAuto;
+  if ($('repSalidasReg')) $('repSalidasReg').textContent = totalSalidasReg;
+  if ($('repSalidasAuto')) $('repSalidasAuto').textContent = totalSalidasAuto;
+
   let totalFaltas = stats.reduce((s, r) => s + r.faltas, 0);
   let totalDiasCampo = stats.reduce((s, r) => s + (r.diasCampo || 0), 0);
   let totalDiasVacaciones = stats.reduce((s, r) => s + (r.diasVacaciones || 0), 0);
@@ -4058,6 +4367,18 @@ function filtrarTablaReportes() {
         } else {
           if (col.id === 'asistencias') {
             contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'entradas') {
+            contenido = `<span class="rep-badge-pill" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;"><i class="fas fa-sign-in-alt" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'entradasAuto') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#fffbeb; color:#d97706; border:1px solid #fde68a; font-weight:700;"><i class="fas fa-robot" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
+          } else if (col.id === 'salidas') {
+            contenido = `<span class="rep-badge-pill" style="background:#f0f9ff; color:#0284c7; border:1px solid #bae6fd; font-weight:700;"><i class="fas fa-sign-out-alt" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'salidasAuto') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#faf5ff; color:#7c3aed; border:1px solid #ddd6fe; font-weight:700;"><i class="fas fa-magic" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
           } else if (col.id === 'diasCampo') {
             contenido = (valor > 0)
               ? `<span class="rep-badge-pill" style="background:#ecfeff; color:#0891b2; border:1px solid #a5f3fc; font-weight:700;"><i class="fas fa-hard-hat" style="font-size:8.5px;"></i> ${valor}</span>`
@@ -11319,6 +11640,7 @@ window.addEventListener('archivadosActualizados', function (ev) {
         const emp = empMap[eid];
         if (!emp.registros) emp.registros = [];
         const f = (typeof normalizarFechaStr === 'function') ? normalizarFechaStr(r.fecha) : r.fecha;
+        const tipo = String(r.tipo || r.tipo_registro || '').trim().toUpperCase();
         const regExistente = emp.registros.find(er => er.fecha === f && er.tipo === tipo);
         if (!regExistente) {
           emp.registros.push({

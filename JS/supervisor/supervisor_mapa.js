@@ -161,7 +161,7 @@ window.obtenerEstadoEmpleadoEnFecha = function (emp, fechaStr) {
 
   const rAusencia = regs.find(r => {
     const t = String(r.tipo || '').toUpperCase();
-    return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'ESTADO' && t !== 'SOLO_ALMUERZO';
+    return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'SOLO_ALMUERZO';
   });
   const razonStr = String(rAusencia?.razon_ausencia || rAusencia?.razon_permiso || rAusencia?.observacion || rAusencia?.tipo || '').toUpperCase();
   const modoStr = String(regs.find(r => r.modo)?.modo || rEntrada?.modo || '').toUpperCase();

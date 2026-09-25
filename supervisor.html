@@ -13,7 +13,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20260922_10"></script>
+  <script src="./JS/firebase_backend.js?v=20260925_01"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -1376,6 +1376,34 @@
 
         <div class="metric-card" style="margin-bottom:var(--gap)">
           <div class="metric-title"><i class="fas fa-calendar-alt"></i> Resumen Mensual</div>
+
+          <!-- KPI Cards de Marcaciones (Entradas y Salidas) -->
+          <div class="reportes-grid" style="margin-bottom:var(--gap); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('entradasReg')" style="cursor:pointer;" title="Clic para ver detalle de Entradas Registradas">
+              <div class="reporte-icon green" style="background: rgba(16, 185, 129, 0.1); color: #059669;"><i class="fas fa-sign-in-alt"></i></div>
+              <div class="reporte-value" id="repEntradasReg" style="color: #059669;">--</div>
+              <div class="reporte-label">Entradas Registradas</div>
+              <div class="reporte-period">marcaciones directas</div>
+            </div>
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('entradasAuto')" style="cursor:pointer;" title="Clic para ver detalle de Entradas Autocompletadas">
+              <div class="reporte-icon amber" style="background: rgba(245, 158, 11, 0.1); color: #d97706;"><i class="fas fa-robot"></i></div>
+              <div class="reporte-value" id="repEntradasAuto" style="color: #d97706;">--</div>
+              <div class="reporte-label">Entradas Auto.</div>
+              <div class="reporte-period">sistema / regularizadas</div>
+            </div>
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('salidasReg')" style="cursor:pointer;" title="Clic para ver detalle de Salidas Registradas">
+              <div class="reporte-icon blue" style="background: rgba(2, 132, 199, 0.1); color: #0284c7;"><i class="fas fa-sign-out-alt"></i></div>
+              <div class="reporte-value" id="repSalidasReg" style="color: #0284c7;">--</div>
+              <div class="reporte-label">Salidas Registradas</div>
+              <div class="reporte-period">marcaciones directas</div>
+            </div>
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('salidasAuto')" style="cursor:pointer;" title="Clic para ver detalle de Salidas Autocompletadas">
+              <div class="reporte-icon purple" style="background: rgba(124, 58, 237, 0.1); color: #7c3aed;"><i class="fas fa-magic"></i></div>
+              <div class="reporte-value" id="repSalidasAuto" style="color: #7c3aed;">--</div>
+              <div class="reporte-label">Salidas Auto.</div>
+              <div class="reporte-period">autocompletadas / sistema</div>
+            </div>
+          </div>
 
           <!-- KPI Cards de Reportes -->
           <div class="reportes-grid" style="margin-bottom:var(--gap)">
@@ -5063,14 +5091,14 @@
 
   <script src="./JS/openwa_service.js?v=20260922_10"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20260924_06"></script>
+  <script src="./JS/supervisor_core.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20260917_05"></script>
-  <script src="./JS/supervisor/supervisor_mapa.js?v=20260922_05"></script>
-  <script src="./JS/supervisor/supervisor_invitados.js?v=20260922_10"></script>
+  <script src="./JS/supervisor/supervisor_mapa.js?v=20260925_02"></script>
+  <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20260923_01"></script>
-  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20260924_06"></script>
+  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20260925_03"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

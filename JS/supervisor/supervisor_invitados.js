@@ -175,6 +175,142 @@ window.mostrarDetalleCalculoCard = function (tipo) {
     } else {
       mostrarToast(`Total Planta: ${totalAlmLunch} (${totalAlmPlanta} emp. + ${totalAlmExt} extras)`, 'info');
     }
+  } else if (tipo === 'entradasReg' || tipo === 'entradas') {
+    let totalEntradasReg = stats.reduce((s, r) => s + (r.entradas || 0), 0);
+    let ranking = stats.filter(e => (e.entradas || 0) > 0).sort((a, b) => (b.entradas || 0) - (a.entradas || 0));
+    let titulo = "Detalle de Entradas Registradas";
+    let contenido = `
+      <div style="text-align:left; font-size:13px; color:#1e293b; line-height:1.6;">
+        <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:12px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span><i class="fas fa-sign-in-alt" style="color:#059669; margin-right:6px;"></i> <strong>Total Entradas Registradas:</strong></span>
+            <strong style="color:#059669; font-size:17px;">${totalEntradasReg}</strong>
+          </div>
+          <div style="font-size:11.5px; color:#047857; margin-top:4px;">
+            Marcaciones presenciales y manuales registradas en el período.
+          </div>
+        </div>
+        <div style="font-weight:700; margin-bottom:6px; font-size:12px; color:#475569;">Desglose por Colaborador (${ranking.length} con entradas):</div>
+        <div style="max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; padding:6px; background:#ffffff; font-size:11.5px;">
+          ${ranking.length ? ranking.map(e => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 8px; border-bottom:1px solid #f1f5f9;">
+              <div>
+                <strong>${escapeHtml(e.nombre)}</strong>
+                <span style="color:#64748b; font-size:10.5px; margin-left:6px;">${escapeHtml(e.area || '')}</span>
+              </div>
+              <span class="rep-badge-pill" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;">${e.entradas || 0}</span>
+            </div>
+          `).join('') : '<div style="color:#94a3b8; padding:8px;">Sin registros en este período.</div>'}
+        </div>
+      </div>
+    `;
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({ title: titulo, html: contenido, icon: 'info', confirmButtonText: 'Entendido', confirmButtonColor: '#059669' });
+    } else {
+      mostrarToast(`Total Entradas Registradas: ${totalEntradasReg}`, 'info');
+    }
+  } else if (tipo === 'entradasAuto') {
+    let totalEntradasAuto = stats.reduce((s, r) => s + (r.entradasAuto || 0), 0);
+    let ranking = stats.filter(e => (e.entradasAuto || 0) > 0).sort((a, b) => (b.entradasAuto || 0) - (a.entradasAuto || 0));
+    let titulo = "Detalle de Entradas Autocompletadas";
+    let contenido = `
+      <div style="text-align:left; font-size:13px; color:#1e293b; line-height:1.6;">
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span><i class="fas fa-robot" style="color:#d97706; margin-right:6px;"></i> <strong>Total Entradas Auto.:</strong></span>
+            <strong style="color:#d97706; font-size:17px;">${totalEntradasAuto}</strong>
+          </div>
+          <div style="font-size:11.5px; color:#b45309; margin-top:4px;">
+            Marcaciones de entrada regularizadas por sistema o generadas automáticamente.
+          </div>
+        </div>
+        <div style="font-weight:700; margin-bottom:6px; font-size:12px; color:#475569;">Desglose por Colaborador (${ranking.length}):</div>
+        <div style="max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; padding:6px; background:#ffffff; font-size:11.5px;">
+          ${ranking.length ? ranking.map(e => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 8px; border-bottom:1px solid #f1f5f9;">
+              <div>
+                <strong>${escapeHtml(e.nombre)}</strong>
+                <span style="color:#64748b; font-size:10.5px; margin-left:6px;">${escapeHtml(e.area || '')}</span>
+              </div>
+              <span class="rep-badge-pill" style="background:#fffbeb; color:#d97706; border:1px solid #fde68a; font-weight:700;">${e.entradasAuto || 0}</span>
+            </div>
+          `).join('') : '<div style="color:#94a3b8; padding:8px;">No se registran entradas autocompletadas en este período.</div>'}
+        </div>
+      </div>
+    `;
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({ title: titulo, html: contenido, icon: 'info', confirmButtonText: 'Entendido', confirmButtonColor: '#d97706' });
+    } else {
+      mostrarToast(`Total Entradas Autocompletadas: ${totalEntradasAuto}`, 'info');
+    }
+  } else if (tipo === 'salidasReg' || tipo === 'salidas') {
+    let totalSalidasReg = stats.reduce((s, r) => s + (r.salidas || 0), 0);
+    let ranking = stats.filter(e => (e.salidas || 0) > 0).sort((a, b) => (b.salidas || 0) - (a.salidas || 0));
+    let titulo = "Detalle de Salidas Registradas";
+    let contenido = `
+      <div style="text-align:left; font-size:13px; color:#1e293b; line-height:1.6;">
+        <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:12px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span><i class="fas fa-sign-out-alt" style="color:#0284c7; margin-right:6px;"></i> <strong>Total Salidas Registradas:</strong></span>
+            <strong style="color:#0284c7; font-size:17px;">${totalSalidasReg}</strong>
+          </div>
+          <div style="font-size:11.5px; color:#0369a1; margin-top:4px;">
+            Marcaciones presenciales y manuales de salida registradas en el período.
+          </div>
+        </div>
+        <div style="font-weight:700; margin-bottom:6px; font-size:12px; color:#475569;">Desglose por Colaborador (${ranking.length} con salidas):</div>
+        <div style="max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; padding:6px; background:#ffffff; font-size:11.5px;">
+          ${ranking.length ? ranking.map(e => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 8px; border-bottom:1px solid #f1f5f9;">
+              <div>
+                <strong>${escapeHtml(e.nombre)}</strong>
+                <span style="color:#64748b; font-size:10.5px; margin-left:6px;">${escapeHtml(e.area || '')}</span>
+              </div>
+              <span class="rep-badge-pill" style="background:#f0f9ff; color:#0284c7; border:1px solid #bae6fd; font-weight:700;">${e.salidas || 0}</span>
+            </div>
+          `).join('') : '<div style="color:#94a3b8; padding:8px;">Sin registros en este período.</div>'}
+        </div>
+      </div>
+    `;
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({ title: titulo, html: contenido, icon: 'info', confirmButtonText: 'Entendido', confirmButtonColor: '#0284c7' });
+    } else {
+      mostrarToast(`Total Salidas Registradas: ${totalSalidasReg}`, 'info');
+    }
+  } else if (tipo === 'salidasAuto') {
+    let totalSalidasAuto = stats.reduce((s, r) => s + (r.salidasAuto || 0), 0);
+    let ranking = stats.filter(e => (e.salidasAuto || 0) > 0).sort((a, b) => (b.salidasAuto || 0) - (a.salidasAuto || 0));
+    let titulo = "Detalle de Salidas Autocompletadas";
+    let contenido = `
+      <div style="text-align:left; font-size:13px; color:#1e293b; line-height:1.6;">
+        <div style="background:#faf5ff; border:1px solid #ddd6fe; border-radius:10px; padding:12px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span><i class="fas fa-magic" style="color:#7c3aed; margin-right:6px;"></i> <strong>Total Salidas Autocompletadas:</strong></span>
+            <strong style="color:#7c3aed; font-size:17px;">${totalSalidasAuto}</strong>
+          </div>
+          <div style="font-size:11.5px; color:#6d28d9; margin-top:4px;">
+            Salidas regularizadas automáticamente por el sistema (dispositivo AUTO_COMPLETAR) o jornadas con entrada sin marcación de salida en el período.
+          </div>
+        </div>
+        <div style="font-weight:700; margin-bottom:6px; font-size:12px; color:#475569;">Colaboradores con Salidas Autocompletadas (${ranking.length}):</div>
+        <div style="max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; padding:6px; background:#ffffff; font-size:11.5px;">
+          ${ranking.length ? ranking.map(e => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 8px; border-bottom:1px solid #f1f5f9;">
+              <div>
+                <strong>${escapeHtml(e.nombre)}</strong>
+                <span style="color:#64748b; font-size:10.5px; margin-left:6px;">${escapeHtml(e.area || '')}</span>
+              </div>
+              <span class="rep-badge-pill" style="background:#faf5ff; color:#7c3aed; border:1px solid #ddd6fe; font-weight:700;">${e.salidasAuto || 0}</span>
+            </div>
+          `).join('') : '<div style="color:#10b981; padding:8px; font-weight:600;"><i class="fas fa-check-circle"></i> Excelente: todos los colaboradores han registrado sus salidas.</div>'}
+        </div>
+      </div>
+    `;
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({ title: titulo, html: contenido, icon: 'info', confirmButtonText: 'Entendido', confirmButtonColor: '#7c3aed' });
+    } else {
+      mostrarToast(`Total Salidas Autocompletadas: ${totalSalidasAuto}`, 'info');
+    }
   } else {
     mostrarToast(`Métrica: ${tipo}`, 'info');
   }

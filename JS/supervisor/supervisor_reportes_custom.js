@@ -7,7 +7,7 @@
 // ============================================================
 // CREADOR INTERACTIVO DE REPORTES CUSTOM
 // ============================================================
-const DEFAULT_COLUMNAS_CUSTOM = ['area', 'asistencias', 'diasCampo', 'faltas', 'diasVacaciones', 'diasJustificados', 'diasExtras', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+const DEFAULT_COLUMNAS_CUSTOM = ['area', 'asistencias', 'entradas', 'salidas', 'salidasAuto', 'diasCampo', 'faltas', 'diasVacaciones', 'diasJustificados', 'diasExtras', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
 
 function obtenerColumnasCustomActivas() {
   const saved = localStorage.getItem('columnasCustomActivasReporte');
@@ -15,13 +15,18 @@ function obtenerColumnasCustomActivas() {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        ['diasCampo', 'diasVacaciones', 'diasJustificados', 'diasExtras'].forEach(colId => {
+        ['diasCampo', 'diasVacaciones', 'diasJustificados', 'diasExtras', 'entradas', 'entradasAuto', 'salidas', 'salidasAuto'].forEach(colId => {
           if (!parsed.includes(colId)) {
-            const idxFaltas = parsed.indexOf('faltas');
-            if (idxFaltas > -1) {
-              parsed.splice(idxFaltas + 1, 0, colId);
+            const idxAsis = parsed.indexOf('asistencias');
+            if (['entradas', 'entradasAuto', 'salidas', 'salidasAuto'].includes(colId) && idxAsis > -1) {
+              parsed.splice(idxAsis + 1, 0, colId);
             } else {
-              parsed.push(colId);
+              const idxFaltas = parsed.indexOf('faltas');
+              if (idxFaltas > -1) {
+                parsed.splice(idxFaltas + 1, 0, colId);
+              } else {
+                parsed.push(colId);
+              }
             }
           }
         });
@@ -410,6 +415,18 @@ window.filtrarReporteInteractivo = function () {
         } else {
           if (col.id === 'asistencias') {
             contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'entradas') {
+            contenido = `<span class="rep-badge-pill" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;"><i class="fas fa-sign-in-alt" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'entradasAuto') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#fffbeb; color:#d97706; border:1px solid #fde68a; font-weight:700;"><i class="fas fa-robot" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
+          } else if (col.id === 'salidas') {
+            contenido = `<span class="rep-badge-pill" style="background:#f0f9ff; color:#0284c7; border:1px solid #bae6fd; font-weight:700;"><i class="fas fa-sign-out-alt" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'salidasAuto') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#faf5ff; color:#7c3aed; border:1px solid #ddd6fe; font-weight:700;"><i class="fas fa-magic" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#94a3b8; font-family:'Fira Code',monospace; font-size:11px;">0</span>`;
           } else if (col.id === 'diasCampo') {
             contenido = (valor > 0)
               ? `<span class="rep-badge-pill" style="background:#ecfeff; color:#0891b2; border:1px solid #a5f3fc; font-weight:700;"><i class="fas fa-hard-hat" style="font-size:8.5px;"></i> ${valor}</span>`
@@ -599,7 +616,7 @@ window.cargarPlantillaReporte = function (tipo) {
     columnasCustomActivas = ['horasExtra50', 'horasExtra100', 'horasCampoNormales', 'horasCampo50', 'horasCampo100', 'totalExtras50', 'totalExtras100'];
     mostrarToast('Plantilla de Horas Extra cargada', 'success');
   } else if (tipo === 'asistencias') {
-    columnasCustomActivas = ['asistencias', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'];
+    columnasCustomActivas = ['asistencias', 'entradas', 'salidas', 'salidasAuto', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'];
     mostrarToast('Plantilla de Asistencia y Atrasos cargada', 'success');
   } else if (tipo === 'completo') {
     columnasCustomActivas = COLUMNAS_DISPONIBLES.map(c => c.id);
@@ -1334,6 +1351,30 @@ window.exportarExcelReporteCustom = function () {
           } else if (col.id === 'asistencias') {
             if (num > 0) {
               cellBg = '#ecfdf5'; cellColor = '#047857'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'entradas') {
+            if (num > 0) {
+              cellBg = '#ecfdf5'; cellColor = '#059669'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'entradasAuto') {
+            if (num > 0) {
+              cellBg = '#fffbeb'; cellColor = '#d97706'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'salidas') {
+            if (num > 0) {
+              cellBg = '#f0f9ff'; cellColor = '#0284c7'; cellWeight = 'bold';
+            } else {
+              cellColor = '#94a3b8';
+            }
+          } else if (col.id === 'salidasAuto') {
+            if (num > 0) {
+              cellBg = '#faf5ff'; cellColor = '#7c3aed'; cellWeight = 'bold';
             } else {
               cellColor = '#94a3b8';
             }
