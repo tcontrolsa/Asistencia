@@ -1373,6 +1373,15 @@ async function obtenerRegistrosEmpleado(force = false) {
 async function registrar() {
     if (!verificarDistanciaEmpresa()) return;
 
+    if (empleado.tipoRegistro === 'SALIDA' && !window._salidaConfirmadaPreviamente) {
+        const horaSalidaConfig = (typeof obtenerHoraSalidaConfigrada === 'function') ? (obtenerHoraSalidaConfigrada() || '16:15') : '16:15';
+        if (typeof esAntesDeSalida === 'function' && esAntesDeSalida(horaSalidaConfig)) {
+            mostrarModalConfirmacionSalidaAnticipada(horaSalidaConfig);
+            return;
+        }
+    }
+    window._salidaConfirmadaPreviamente = false;
+
     // Proceder con el registro normal
     procederConRegistro();
 }
@@ -1432,11 +1441,119 @@ function obtenerHoraSalidaConfigrada() {
 
 function esAntesDeSalida(horaSalida) {
     const ahora = new Date();
-    const [horaSalidaHora, horaSalidaMin] = horaSalida.split(':').map(Number);
+    const [horaSalidaHora, horaSalidaMin] = (horaSalida || "16:15").split(':').map(Number);
     const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
     const salidaMinutos = horaSalidaHora * 60 + horaSalidaMin;
     return ahoraMinutos < salidaMinutos;
 }
+
+function mostrarModalConfirmacionSalidaAnticipada(horaSalidaConfig) {
+    const existingModal = document.getElementById('modalConfirmacionSalida');
+    if (existingModal) existingModal.remove();
+
+    const horaLimite = horaSalidaConfig || '16:15';
+    const ahora = new Date();
+    const horaActual = formatearHora(ahora);
+    const esPasante = (typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(empleado)) || 
+                      (empleado.cargo || '').toLowerCase() === 'pasante';
+
+    const modal = document.createElement('div');
+    modal.id = 'modalConfirmacionSalida';
+    modal.className = 'modal-backdrop-custom';
+    modal.style.cssText = `
+        position: fixed; inset: 0; z-index: 99999;
+        background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center; padding: 16px;
+    `;
+
+    modal.innerHTML = `
+        <div style="background: #ffffff; border-radius: 24px; width: 100%; max-width: 420px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); overflow: hidden; animation: popSuccess 0.28s cubic-bezier(0.16, 1, 0.3, 1);">
+            <!-- Header con gradiente distintivo -->
+            <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 22px 20px; color: white; text-align: center; position: relative;">
+                <div style="background: rgba(255,255,255,0.2); width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; margin: 0 auto 10px auto;">
+                    <i class="fas fa-sign-out-alt"></i>
+                </div>
+                <h4 style="margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.3px;">Confirmar Registro de Salida</h4>
+                <div style="margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.22); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+                    <i class="fas fa-clock"></i> Fin de jornada oficial: ${horaLimite}
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div style="padding: 22px 20px;">
+                <p style="color: #475569; font-size: 14.5px; line-height: 1.5; margin: 0 0 16px 0; text-align: center;">
+                    Estás registrando tu salida <strong>antes de finalizar la jornada (${horaLimite})</strong>.<br>
+                    ¿Deseas confirmar el registro para dar por concluida tu jornada laboral?
+                </p>
+
+                <!-- Tarjeta resumen informativa -->
+                <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 14px; margin-bottom: 20px; font-size: 13px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="color: #64748b; font-weight: 500;">Colaborador:</span>
+                        <span style="font-weight: 700; color: #0f172a; max-width: 65%; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${empleado.nombre || ''}</span>
+                    </div>
+                    ${esPasante ? `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="color: #64748b; font-weight: 500;">Tipo de Horario:</span>
+                        <span style="font-weight: 700; color: #7c3aed; background: #f5f3ff; padding: 2px 8px; border-radius: 6px; font-size: 11.5px;">🎓 Flexible (Pasante)</span>
+                    </div>
+                    ` : ''}
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="color: #64748b; font-weight: 500;">Hora de Salida:</span>
+                        <span style="font-weight: 800; color: #dc2626; font-size: 14px;">${horaActual}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #64748b; font-weight: 500;">Fin de Jornada:</span>
+                        <span style="font-weight: 700; color: #2563eb;">${horaLimite}</span>
+                    </div>
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="d-grid gap-2">
+                    <button type="button" id="btnConfirmarSalidaAnticipada" class="btn btn-danger btn-lg" onclick="window.confirmarSalidaAnticipadaAccion()" style="border-radius: 12px; font-size: 15.5px; font-weight: 700; padding: 13px; box-shadow: 0 4px 14px rgba(220,38,38,0.35);">
+                        <i class="fas fa-check-circle"></i> Sí, confirmar salida
+                    </button>
+                    
+                    <button type="button" class="btn btn-outline-secondary" onclick="window.cerrarModalConfirmacionSalida()" style="border-radius: 12px; font-size: 14.5px; font-weight: 600; padding: 10px;">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                </div>
+
+                <!-- Enlace alternativo si tiene un motivo o justificación específica -->
+                <div style="text-align: center; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e2e8f0;">
+                    <button type="button" onclick="window.abrirModalMotivosDesdeConfirmacion()" style="background: none; border: none; color: #2563eb; font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0;">
+                        <i class="fas fa-clipboard-list"></i> ¿Tienes un motivo especial o justificación? Clic aquí
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+window.confirmarSalidaAnticipadaAccion = function () {
+    const modal = document.getElementById('modalConfirmacionSalida');
+    if (modal) modal.remove();
+    window._salidaConfirmadaPreviamente = true;
+    empleado.tipoRegistro = 'SALIDA';
+    empleado.almuerzo = estado.almuerzo || '';
+    registrar();
+};
+
+window.cerrarModalConfirmacionSalida = function () {
+    const modal = document.getElementById('modalConfirmacionSalida');
+    if (modal) modal.remove();
+    window._salidaConfirmadaPreviamente = false;
+    empleado.tipoRegistro = '';
+};
+
+window.abrirModalMotivosDesdeConfirmacion = function () {
+    const modal = document.getElementById('modalConfirmacionSalida');
+    if (modal) modal.remove();
+    window._salidaConfirmadaPreviamente = false;
+    mostrarModalRazonSalida();
+};
 
 function mostrarModalRazonSalida() {
     const mainContent = document.getElementById('mainContent');
@@ -1808,6 +1925,11 @@ function iniciarRegistro(tipo) {
         }
     } else if (tipo === 'SALIDA') {
         empleado.almuerzo = estado.almuerzo || '';
+        const horaSalidaConfig = (typeof obtenerHoraSalidaConfigrada === 'function') ? (obtenerHoraSalidaConfigrada() || '16:15') : '16:15';
+        if (typeof esAntesDeSalida === 'function' && esAntesDeSalida(horaSalidaConfig)) {
+            mostrarModalConfirmacionSalidaAnticipada(horaSalidaConfig);
+            return;
+        }
         registrar();
     } else if (tipo === 'RETORNO_CAMPO') {
         empleado.tipoRegistro = 'RETORNO_CAMPO';

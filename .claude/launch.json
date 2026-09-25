@@ -8,6 +8,12 @@
       "port": 8000
     },
     {
+      "name": "gestion-ti-v2",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Users/tcontrol/Documents/GitHub/Procesos_TI/v2/tools/servidor-dev.js", "8010"],
+      "port": 8010
+    },
+    {
       "name": "python-http",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8001"],

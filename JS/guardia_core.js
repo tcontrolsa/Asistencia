@@ -463,6 +463,16 @@ async function registrar() {
         return;
     }
     
+    if (empleadoActual.tipo === 'SALIDA') {
+        const ahora = new Date();
+        const mins = ahora.getHours() * 60 + ahora.getMinutes();
+        if (mins < (16 * 60 + 15)) {
+            const horaStr = ahora.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+            const confirmar = confirm("⚠️ Salida anticipada (" + horaStr + ").\nLa jornada oficial finaliza a las 16:15.\n\n¿Desea confirmar el registro de salida para " + (empleadoActual.nombre || '') + "?");
+            if (!confirmar) return;
+        }
+    }
+    
     showLoading(true);
     const btn = $('btnRegistrar');
     btn.disabled = true;
