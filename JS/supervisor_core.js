@@ -7695,13 +7695,14 @@ function mostrarModalManual(empleadoIdDefault = null, fechaDefault = null) {
   if (!modal) return;
   const sel = $('manEmpleadoId');
   if (sel) {
-    sel.innerHTML = empCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (ID: ${e.id})</option>`).join('');
-    if (empleadoIdDefault) {
+    const lista = (typeof empCache !== 'undefined' && empCache && empCache.length) ? empCache : (window.empCache || []);
+    sel.innerHTML = lista.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (ID: ${e.id})</option>`).join('');
+    if (empleadoIdDefault && typeof empleadoIdDefault !== 'object') {
       sel.value = String(empleadoIdDefault).trim();
     }
   }
   const hoyLocal = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr(new Date()) : new Date().toISOString().slice(0, 10);
-  if ($('manFecha')) $('manFecha').value = fechaDefault || hoyLocal;
+  if ($('manFecha')) $('manFecha').value = (typeof fechaDefault === 'string') ? fechaDefault : hoyLocal;
   
   const ahora = new Date();
   const hh = String(ahora.getHours()).padStart(2, '0');
@@ -7728,17 +7729,26 @@ window.cerrarModalManual = cerrarModalManual;
 window.guardarRegistroManual = guardarRegistroManual;
 
 async function guardarRegistroManual() {
-  if (!tienePermisoAdmin()) { mostrarToast('Solo Administradores y Supervisores Admin pueden realizar esta acción.', 'error'); return; }
-  const eid = $('manEmpleadoId').value;
-  const fecha = $('manFecha').value;
-  const tipo = $('manTipo').value;
-  const hora = $('manHora').value;
-  const modo = $('manModo').value;
-  const almuerzo = $('manAlmuerzo').value;
-  const horasExtra = $('manHorasExtra').value;
-  const observacion = $('manObservacion').value;
+  let sessionData = {};
+  try { sessionData = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+  const rol = getSupervisorRole(sessionData);
+  if (rol !== 'ADMIN_MASTER' && rol !== 'SUPERVISOR_ADMIN' && rol !== 'SUPERVISOR') {
+    mostrarToast('Debe iniciar sesión como supervisor o administrador para crear registros.', 'error');
+    return;
+  }
+  const supervisorName = sessionData.nombre || (rol === 'ADMIN_MASTER' ? 'Admin Master' : 'Supervisor');
 
-  if (!fecha || !hora) { mostrarToast('Complete fecha y hora', 'error'); return; }
+  const eid = $('manEmpleadoId') ? $('manEmpleadoId').value : '';
+  const fecha = $('manFecha') ? $('manFecha').value : '';
+  const tipo = $('manTipo') ? $('manTipo').value : 'ENTRADA';
+  const hora = $('manHora') ? $('manHora').value : '';
+  const modo = $('manModo') ? $('manModo').value : 'EMPRESA';
+  const almuerzo = $('manAlmuerzo') ? $('manAlmuerzo').value : '';
+  const horasExtra = $('manHorasExtra') ? $('manHorasExtra').value : '';
+  const observacion = $('manObservacion') ? $('manObservacion').value.trim() : '';
+
+  if (!eid) { mostrarToast('Seleccione un colaborador', 'warning'); return; }
+  if (!fecha || !hora) { mostrarToast('Complete fecha y hora de la marcación', 'warning'); return; }
 
   mostrarLoader(true);
   try {
@@ -7747,33 +7757,101 @@ async function guardarRegistroManual() {
     let hVal = hora && hora.length === 5 ? hora + ':00' : hora;
     let fullTs = `${String(d).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${y} ${hVal}`;
 
-    const res = await jsonpRequest({
-      accion: 'actualizarRegistroGeneral',
-      docId: `${eid}_${tipo}_${fecha}_${hVal.replace(/:/g, '')}`,
-      empleadoId: eid,
-      tipo: tipo,
-      fecha: fecha,
-      campo: 'timestamp',
-      valor: fullTs,
-      modo: modo,
-      almuerzo: almuerzo,
-      horasExtra: horasExtra,
-      observacion: observacion
-    });
+    // Actualización optimista inmediata en memoria local
+    const pool = (typeof empCache !== 'undefined' && empCache && empCache.length) ? empCache : (window.empCache || []);
+    const emp = pool.find(x => String(x.id).trim() === String(eid).trim());
+    if (emp) {
+      if (!emp.registros) emp.registros = [];
+      const nuevoRegLocal = {
+        id: `${eid}_${tipo}_${fecha}_${hVal.replace(/:/g, '')}`,
+        empleadoId: eid,
+        nombre: emp.nombre,
+        fecha: fecha,
+        hora: hVal,
+        tipo: tipo,
+        modo: modo,
+        almuerzo: almuerzo || 'NO',
+        horasExtra: horasExtra || 'NO',
+        observacion: observacion,
+        dispositivo: 'MANUAL',
+        autoriza: supervisorName,
+        quien_justifica: supervisorName,
+        timestamp: fullTs
+      };
+      emp.registros.push(nuevoRegLocal);
+      const hoyLocal = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr(new Date()) : new Date().toISOString().slice(0, 10);
+      if (fecha === hoyLocal) {
+        if (tipo === 'ENTRADA') emp.entradaHoy = true;
+        if (tipo === 'SALIDA') emp.salidaHoy = true;
+      }
+    }
 
-    if (res.ok) {
-      mostrarToast('Registro guardado', 'success');
+    let res = null;
+    if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarRegistro === 'function') {
+      res = await window.FirebaseBackend.guardarRegistro({
+        id: eid,
+        empleadoId: eid,
+        fecha: fecha,
+        hora: hVal,
+        tipo: tipo,
+        modo: modo,
+        almuerzo: almuerzo,
+        horasExtra: horasExtra,
+        observacion: observacion,
+        dispositivo: 'MANUAL',
+        autoriza: supervisorName,
+        quien_justifica: supervisorName,
+        esManual: true
+      });
+    } else if (typeof jsonpRequest === 'function') {
+      res = await jsonpRequest({
+        accion: 'guardarRegistro',
+        id: eid,
+        empleadoId: eid,
+        fecha: fecha,
+        hora: hVal,
+        tipo: tipo,
+        modo: modo,
+        almuerzo: almuerzo,
+        horasExtra: horasExtra,
+        observacion: observacion,
+        dispositivo: 'MANUAL',
+        autoriza: supervisorName,
+        quien_justifica: supervisorName
+      });
+    }
+
+    if (res && (res.ok || !res.error)) {
+      mostrarToast('✅ Registro manual guardado correctamente', 'success');
       cerrarModalManual();
       limpiarCachesLocales();
-      cargarDatosCompletos(true, true).then(() => {
+
+      // Refrescar vista actual inmediatamente
+      if (panelActual === 'detalle') {
+        mostrarDetalle(eid);
+      } else if (panelActual === 'reportes') {
+        if (typeof cargarReportes === 'function') cargarReportes();
+        if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+      } else {
+        cargarAsistencia();
+      }
+
+      // Sincronizar en segundo plano datos frescos
+      cargarDatosCompletos(true, true, true).then(() => {
         if (panelActual === 'detalle') mostrarDetalle(eid);
-        else cargarAsistencia();
-      });
+        else if (panelActual === 'reportes') {
+          if (typeof cargarReportes === 'function') cargarReportes();
+          if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
+        } else {
+          cargarAsistencia();
+        }
+      }).catch(() => {});
     } else {
-      mostrarToast(res.error || 'Error', 'error');
+      mostrarToast(res?.error || 'Error al guardar el registro manual', 'error');
     }
   } catch (e) {
-    mostrarToast('Error de conexión', 'error');
+    console.error("Error al guardar registro manual:", e);
+    mostrarToast('Error de conexión al guardar el registro', 'error');
   } finally {
     mostrarLoader(false);
   }
@@ -8953,7 +9031,7 @@ $('btnRefresh').addEventListener('click', async () => {
   }
 });
 $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
-if ($('btnNuevoRegistroManual')) $('btnNuevoRegistroManual').addEventListener('click', mostrarModalManual);
+if ($('btnNuevoRegistroManual')) $('btnNuevoRegistroManual').addEventListener('click', () => mostrarModalManual());
 if ($('btnArchivar')) $('btnArchivar').addEventListener('click', iniciarArchivadoFirebase);
 
 document.getElementById('extraLunchModal').addEventListener('click', e => {
@@ -9138,7 +9216,12 @@ window.cambiarSeccionOpciones = function (seccion) {
         window.renderGestionRolesEmpleados();
       }
     }
-    if (secSistema) secSistema.style.display = (seccion === 'sistema') ? 'block' : 'none';
+    if (secSistema) {
+      secSistema.style.display = (seccion === 'sistema') ? 'block' : 'none';
+      if (seccion === 'sistema' && typeof window.cargarEstadoActualizacionForzada === 'function') {
+        window.cargarEstadoActualizacionForzada();
+      }
+    }
   }
 
   document.querySelectorAll('.btn-sec-opc').forEach(btn => btn.classList.remove('active'));
@@ -13344,4 +13427,80 @@ window.eliminarMarcacionesDiaModal = async function () {
 // - JS/supervisor/supervisor_invitados.js
 // Se cargan independientemente en supervisor.html
 // ============================================================
+
+// ============================================================
+// FORZAR ACTUALIZACIÓN REMOTA DE TERMINALES
+// ============================================================
+window.cargarEstadoActualizacionForzada = async function () {
+  try {
+    const lbl = $('lblFechaUltimaActRemota');
+    if (!lbl) return;
+    if (window.FirebaseBackend && typeof window.FirebaseBackend.obtenerConfiguraciones === 'function') {
+      const cfg = await window.FirebaseBackend.obtenerConfiguraciones();
+      if (cfg && cfg.forzar_actualizacion_ts) {
+        const d = new Date(Number(cfg.forzar_actualizacion_ts));
+        lbl.textContent = d.toLocaleString('es-EC') + (cfg.forzar_actualizacion_version ? ` (${cfg.forzar_actualizacion_version})` : '');
+      } else {
+        lbl.textContent = 'Ninguna registrada';
+      }
+    }
+  } catch (e) {
+    console.warn('Error cargando estado de actualización forzada:', e);
+  }
+};
+
+window.forzarActualizacionRemotaTerminales = async function () {
+  const confirmacion = confirm(
+    "⚠️ ¿ESTÁS SEGURO DE FORZAR LA ACTUALIZACIÓN EN TODOS LOS DISPOSITIVOS?\n\n" +
+    "Esta acción enviará una señal a través de Firebase a todos los terminales:\n" +
+    "• Teléfonos de empleados (PWA)\n" +
+    "• Terminales de guardia\n" +
+    "• Terminales de catering\n\n" +
+    "Al recibirla, cada dispositivo vaciará su caché local de forma automática y descargará la versión más reciente del sistema."
+  );
+  if (!confirmacion) return;
+
+  const btn = $('btnForzarActualizacionRemota');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Emitiendo señal remota...';
+  }
+
+  try {
+    const versionTag = 'v2.00_' + new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let res = null;
+    if (window.FirebaseBackend && typeof window.FirebaseBackend.forzarActualizacionRemota === 'function') {
+      res = await window.FirebaseBackend.forzarActualizacionRemota({
+        version: versionTag,
+        motivo: 'Actualización forzada desde Panel de Supervisión'
+      });
+    } else if (typeof jsonpRequest === 'function') {
+      res = await jsonpRequest({
+        accion: 'forzarActualizacionRemota',
+        version: versionTag,
+        motivo: 'Actualización forzada desde Panel de Supervisión'
+      });
+    }
+
+    if (res && (res.ok || res.success)) {
+      alert("✅ ¡Señal de actualización forzada emitida con éxito!\n\nLos dispositivos conectados purgarán su caché y cargarán la versión más reciente.");
+      const lbl = $('lblFechaUltimaActRemota');
+      if (lbl) {
+        lbl.textContent = new Date().toLocaleString('es-EC') + ` (${versionTag})`;
+      }
+    } else {
+      alert("❌ No se pudo emitir la señal: " + ((res && res.error) || 'Error desconocido'));
+    }
+  } catch (err) {
+    console.error("Error al forzar actualización remota:", err);
+    alert("❌ Error de comunicación: " + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+};
+
 

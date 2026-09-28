@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v1.95';
+const CACHE_NAME = 'tcontrol-v2.00';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -178,6 +178,18 @@ self.addEventListener('fetch', event => {
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (event.data && event.data.type === 'FORCE_PURGE_CACHE') {
+    event.waitUntil(
+      caches.keys()
+        .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+        .then(() => self.skipWaiting())
+        .then(() => {
+          if (event.ports && event.ports[0]) {
+            event.ports[0].postMessage({ success: true, version: CACHE_NAME });
+          }
+        })
+    );
   }
   if (event.data && event.data.type === 'GET_VERSION') {
     event.ports[0].postMessage({ version: CACHE_NAME });

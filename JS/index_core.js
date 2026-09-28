@@ -261,6 +261,9 @@ async function cargarConfiguracionesSistema() {
             localStorage.setItem('HORA_SALIDA', HORA_SALIDA);
             localStorage.setItem('HORA_ENTRADA_LIMITE', HORA_ENTRADA_LIMITE);
 
+            // Verificar si hay una señal remota de actualización forzada
+            verificarActualizacionForzada(res);
+
             // Pre-cargar el menú semanal
             jsonpRequest({ accion: 'obtenerMenuSemanal' }).then(m => {
                 if (m && !m.error) {
@@ -275,6 +278,74 @@ async function cargarConfiguracionesSistema() {
     }
     return false;
 }
+
+// ========== DETECCIÓN Y PURGA DE ACTUALIZACIÓN FORZADA REMOTA ==========
+async function verificarActualizacionForzada(config) {
+    if (!config || !config.forzar_actualizacion_ts) return;
+    const tsRemoto = Number(config.forzar_actualizacion_ts);
+    const tsLocal = Number(localStorage.getItem('tcontrol_ultima_act_forzada') || 0);
+    if (tsRemoto > tsLocal) {
+        console.log(`⚡ [PWA] Actualización forzada detectada (remoto: ${tsRemoto}, local: ${tsLocal}). Procediendo a purgar y actualizar...`);
+        await aplicarActualizacionForzadaTerminal(tsRemoto, config.forzar_actualizacion_version, config.forzar_actualizacion_motivo);
+    }
+}
+
+async function aplicarActualizacionForzadaTerminal(ts, version, motivo) {
+    try {
+        console.log(`⚡ [ACTUALIZACIÓN FORZADA] Purgando cachés y service workers (versión: ${version || ts})...`);
+        localStorage.setItem('tcontrol_ultima_act_forzada', String(ts || Date.now()));
+        
+        if (typeof mostrarToast === 'function') {
+            mostrarToast('🔄 Actualizando el sistema a la versión más reciente...', 'info');
+        }
+
+        // 1. Limpiar todos los cachés del navegador (Cache API)
+        if ('caches' in window) {
+            try {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(k => caches.delete(k)));
+                console.log('⚡ [PWA] Todos los cachés locales fueron borrados.');
+            } catch (ce) {
+                console.warn('Advertencia borrando caches:', ce);
+            }
+        }
+
+        // 2. Notificar al Service Worker para purga y forzar skipWaiting
+        if ('serviceWorker' in navigator) {
+            try {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                for (const reg of regs) {
+                    if (reg.active) {
+                        reg.active.postMessage({ type: 'FORCE_PURGE_CACHE' });
+                        reg.active.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                    if (reg.waiting) {
+                        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                    await reg.update().catch(() => {});
+                }
+            } catch (swe) {
+                console.warn('Advertencia actualizando SW:', swe);
+            }
+        }
+
+        // 3. Forzar recarga con parámetro cache-buster
+        setTimeout(() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('v_update', ts || Date.now());
+            window.location.replace(url.toString());
+        }, 500);
+    } catch (e) {
+        console.error('Error durante la actualización forzada:', e);
+        window.location.reload(true);
+    }
+}
+
+window.forzarActualizacionTerminalManual = async function() {
+    if (confirm("¿Deseas descargar la última versión del sistema y limpiar la memoria caché de este dispositivo?\n\nEsta acción descargará todos los archivos actualizados.")) {
+        await aplicarActualizacionForzadaTerminal(Date.now(), 'manual', 'Solicitud manual del usuario');
+    }
+};
 
 // ========== FUNCIÓN PARA AJUSTAR LAYOUT ==========
 function ajustarLayout() {
@@ -5764,6 +5835,9 @@ async function renderProfilePage() {
                         <button class="btn btn-outline-secondary w-100" onclick="location.reload()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; transition: all 0.2s; border-color: #cbd5e1; color: #334155; background: white;">
                             <i class="fas fa-arrows-rotate" style="color: #64748b;"></i> Sincronizar Datos
                         </button>
+                        <button class="btn w-100" onclick="window.forzarActualizacionTerminalManual()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; transition: all 0.2s; border: 1px solid #bae6fd; background: #f0f9ff; color: #0284c7; cursor: pointer;">
+                            <i class="fas fa-cloud-arrow-down" style="color: #0284c7;"></i> Forzar Descarga de Actualizaciones
+                        </button>
                         <button class="btn btn-outline-primary w-100" onclick="verificarDistanciaEmpresa()" style="font-size: 13.5px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; transition: all 0.2s; border-color: rgba(59,130,246,0.5); color: #2563eb; background: rgba(59,130,246,0.02);">
                             <i class="fas fa-location-dot" style="color: #3b82f6;"></i> Probar Rango de Ubicación
                         </button>
@@ -7953,25 +8027,55 @@ function toggleFirebase() {
 // PWA: REGISTRO DEL SERVICE WORKER + BOTÓN DE INSTALACIÓN
 // ========================================================
 (function initPWA() {
-    // 1. Registrar Service Worker
+    // 1. Registrar Service Worker y gestionar actualizaciones automáticas
     if ('serviceWorker' in navigator) {
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+                refreshing = true;
+                console.log('[PWA] Nuevo Service Worker activado. Recargando página...');
+                window.location.reload();
+            }
+        });
+
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
                 .then(reg => {
                     console.log('[PWA] Service Worker registrado:', reg.scope);
 
-                    // Detectar actualizaciones disponibles
+                    // Si ya hay un SW esperando en segundo plano, activarlo de inmediato
+                    if (reg.waiting) {
+                        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+
+                    // Detectar nuevas versiones durante la ejecución
                     reg.addEventListener('updatefound', () => {
                         const newSW = reg.installing;
+                        if (!newSW) return;
                         newSW.addEventListener('statechange', () => {
                             if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                                // Hay nueva versión — notificar al usuario
-                                console.log('[PWA] Nueva versión disponible');
+                                console.log('[PWA] Nueva versión disponible instalada. Activando...');
                                 if (typeof mostrarToast === 'function') {
-                                    mostrarToast('🔄 Nueva versión disponible. Recarga para actualizar.', 'info');
+                                    mostrarToast('🔄 Actualizando a la última versión...', 'info');
                                 }
+                                newSW.postMessage({ type: 'SKIP_WAITING' });
                             }
                         });
+                    });
+
+                    // Comprobar actualizaciones periódicamente cada 15 minutos
+                    setInterval(() => {
+                        reg.update().catch(() => {});
+                    }, 15 * 60 * 1000);
+
+                    // Comprobar actualizaciones cuando la pestaña vuelve a ser visible
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'visible') {
+                            reg.update().catch(() => {});
+                            if (typeof cargarConfiguracionesSistema === 'function') {
+                                cargarConfiguracionesSistema().catch(() => {});
+                            }
+                        }
                     });
                 })
                 .catch(err => console.warn('[PWA] Error registrando SW:', err));

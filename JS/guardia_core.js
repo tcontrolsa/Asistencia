@@ -545,3 +545,46 @@ window.addEventListener('beforeunload', () => {
 });
 
 verificarEstadoSesion();
+
+// ============================================================
+//  ACTUALIZACIÓN FORZADA REMOTA (TERMINAL GUARDIA)
+// ============================================================
+async function verificarActualizacionRemotaGuardia() {
+    try {
+        if (!window.FirebaseBackend || typeof window.FirebaseBackend.obtenerConfiguraciones !== 'function') return;
+        const config = await window.FirebaseBackend.obtenerConfiguraciones();
+        if (!config || !config.forzar_actualizacion_ts) return;
+
+        const tsRemoto = Number(config.forzar_actualizacion_ts);
+        const tsLocal = Number(localStorage.getItem('guardia_ultima_act_forzada') || 0);
+
+        if (tsRemoto > tsLocal) {
+            console.log(`⚡ [GUARDIA] Actualización forzada detectada (ts: ${tsRemoto}). Purgando caché y recargando...`);
+            localStorage.setItem('guardia_ultima_act_forzada', String(tsRemoto));
+            mostrarToast('🔄 Actualizando terminal a la última versión...', 'info');
+
+            if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(k => caches.delete(k)));
+            }
+
+            setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('v_update', tsRemoto);
+                window.location.replace(url.toString());
+            }, 600);
+        }
+    } catch (e) {
+        console.warn('[GUARDIA] Error comprobando actualización remota:', e);
+    }
+}
+
+// Comprobación inicial y periódica cada 15 min
+setTimeout(verificarActualizacionRemotaGuardia, 3000);
+setInterval(verificarActualizacionRemotaGuardia, 15 * 60 * 1000);
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        verificarActualizacionRemotaGuardia();
+    }
+});

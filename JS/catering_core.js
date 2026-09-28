@@ -524,6 +524,8 @@ document.addEventListener('DOMContentLoaded', () => {
     restaurarPreferencias();
     verificarEstadoSesion();
     iniciarRecargaAutomatica();
+    setTimeout(verificarActualizacionRemotaCatering, 3000);
+    setInterval(verificarActualizacionRemotaCatering, 15 * 60 * 1000);
     
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
@@ -534,6 +536,39 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Prevenir errores de extensión silenciosamente
+// ============================================================
+//  ACTUALIZACIÓN FORZADA REMOTA (TERMINAL CATERING)
+// ============================================================
+async function verificarActualizacionRemotaCatering() {
+    try {
+        if (!window.FirebaseBackend || typeof window.FirebaseBackend.obtenerConfiguraciones !== 'function') return;
+        const config = await window.FirebaseBackend.obtenerConfiguraciones();
+        if (!config || !config.forzar_actualizacion_ts) return;
+
+        const tsRemoto = Number(config.forzar_actualizacion_ts);
+        const tsLocal = Number(localStorage.getItem('catering_ultima_act_forzada') || 0);
+
+        if (tsRemoto > tsLocal) {
+            console.log(`⚡ [CATERING] Actualización forzada detectada (ts: ${tsRemoto}). Purgando caché y recargando...`);
+            localStorage.setItem('catering_ultima_act_forzada', String(tsRemoto));
+            mostrarToast('🔄 Actualizando terminal a la última versión...', false);
+
+            if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(k => caches.delete(k)));
+            }
+
+            setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('v_update', tsRemoto);
+                window.location.replace(url.toString());
+            }, 600);
+        }
+    } catch (e) {
+        console.warn('[CATERING] Error verificando actualización remota:', e);
+    }
+}
+
 window.addEventListener('error', (e) => {
     if (e.message && e.message.includes('Could not establish connection')) {
         e.preventDefault();

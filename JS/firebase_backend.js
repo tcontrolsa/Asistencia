@@ -64,6 +64,8 @@ window.FirebaseBackend = {
                     return await this.obtenerConfiguraciones(params);
                 case 'guardarConfiguraciones':
                     return await this.guardarConfiguraciones(params);
+                case 'forzarActualizacionRemota':
+                    return await this.forzarActualizacionRemota(params);
                 case 'obtenerMenuSemanal':
                     return await this.obtenerMenuSemanal(params);
                 case 'guardarMenuSemanal':
@@ -1150,8 +1152,8 @@ window.FirebaseBackend = {
             }
         }
 
-        // Evitar duplicados (excepto ausencias/ESTADO)
-        if (esMarcacionOrdinaria(data.tipo) && data.tipo !== 'ESTADO') {
+        // Evitar duplicados (excepto ausencias/ESTADO/MANUAL)
+        if (esMarcacionOrdinaria(data.tipo) && data.tipo !== 'ESTADO' && data.dispositivo !== 'MANUAL' && data.dispositivo !== 'MANUAL_SUPERVISOR' && !data.esManual) {
             const hoyActualStr = `${ahora.getFullYear()}-${(ahora.getMonth() + 1).toString().padStart(2, '0')}-${ahora.getDate().toString().padStart(2, '0')}`;
             const dupQuery = await db.collection('registros')
                 .where('empleadoId', '==', empleadoId)
@@ -1262,7 +1264,7 @@ window.FirebaseBackend = {
         await db.collection('registros').doc(idDocumento).set(nuevoRegistro);
 
         // Sincronización en segundo plano con Google Sheets (para registrar fila en REGISTROS)
-        if (esAusenciaTipo(data.tipo)) {
+        if (esAusenciaTipo(data.tipo) || data.dispositivo === 'MANUAL' || data.dispositivo === 'MANUAL_SUPERVISOR' || data.esManual) {
             this._jsonp({
                 accion: 'guardarRegistro',
                 id: empleadoId,
@@ -1272,9 +1274,13 @@ window.FirebaseBackend = {
                 fecha_falta: fechaStr,
                 hora: horaStr,
                 modo: modo,
-                razon_ausencia: nuevoRegistro.razon_ausencia,
-                razon_justificac: nuevoRegistro.razon_justificac,
-                justificado: nuevoRegistro.justificado,
+                almuerzo: almuerzo,
+                horasExtra: horasExtra,
+                dispositivo: 'MANUAL',
+                observacion: data.observacion || data.razon_ausencia || "",
+                razon_ausencia: data.observacion || data.razon_ausencia || "",
+                razon_justificac: data.observacion || data.razon_ausencia || "",
+                justificado: nuevoRegistro.justificado || 'NO',
                 quien_justifica: data.quien_justifica || 'Supervisor'
             }, 0, 1, 15000).catch(err => {
                 console.info("ℹ️ Sincronización secundaria Sheets (guardarRegistro):", err.message);
@@ -1455,7 +1461,10 @@ window.FirebaseBackend = {
                     ubicacion: { ...configDefault.ubicacion, ...(configFinal.ubicacion || {}) },
                     horarios: { ...configDefault.horarios, ...(configFinal.horarios || {}) },
                     registro: { ...configDefault.registro, ...(configFinal.registro || {}) },
-                    otras: { ...configDefault.otras, ...(configFinal.otras || {}) }
+                    otras: { ...configDefault.otras, ...(configFinal.otras || {}) },
+                    forzar_actualizacion_ts: rawData.forzar_actualizacion_ts || configFinal.forzar_actualizacion_ts || 0,
+                    forzar_actualizacion_version: rawData.forzar_actualizacion_version || configFinal.forzar_actualizacion_version || '',
+                    forzar_actualizacion_motivo: rawData.forzar_actualizacion_motivo || configFinal.forzar_actualizacion_motivo || ''
                 };
 
                 const emSnap = await db.collection('configuracion').doc('emergencia').get();
@@ -1468,6 +1477,7 @@ window.FirebaseBackend = {
             console.warn("⚠️ No se encontró el documento 'configuracion/sistema', usando valores por defecto.");
             const emSnap2 = await db.collection('configuracion').doc('emergencia').get();
             configDefault.emergencia = emSnap2.exists ? emSnap2.data() : { activa: false, nombre: '', habilitadoPor: '', fecha: '' };
+            configDefault.forzar_actualizacion_ts = 0;
             return configDefault;
         } catch (error) {
             console.error("🔥 Error en obtenerConfiguraciones:", error);
@@ -1986,10 +1996,36 @@ window.FirebaseBackend = {
             await db.collection('configuracion').doc('sistema').set({
                 valor: config,
                 fecha_actualizacion: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            }, { merge: true });
             return { ok: true };
         } catch (e) {
             return { error: e.message };
+        }
+    },
+
+    async forzarActualizacionRemota(params = {}) {
+        try {
+            const now = Date.now();
+            const version = params.version || 'v2.00_' + new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const motivo = params.motivo || 'Actualización requerida por el administrador';
+
+            await db.collection('configuracion').doc('sistema').set({
+                forzar_actualizacion_ts: now,
+                forzar_actualizacion_version: version,
+                forzar_actualizacion_motivo: motivo,
+                fecha_actualizacion: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            console.log(`🚀 Señal de actualización forzada emitida a Firestore: ts=${now}, version=${version}`);
+            return {
+                ok: true,
+                ts: now,
+                version: version,
+                mensaje: 'Señal de actualización emitida exitosamente.'
+            };
+        } catch (error) {
+            console.error("🔥 Error emitiendo forzarActualizacionRemota:", error);
+            return { error: error.message };
         }
     },
 
