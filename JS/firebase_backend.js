@@ -1655,7 +1655,7 @@ window.FirebaseBackend = {
                     }
                 }
 
-                return await this._jsonp({
+                return await this._enviarCambioArchivado({
                     accion: 'actualizarRegistroArchivado',
                     empleadoId: empleadoId,
                     fecha: fecha,
@@ -1809,7 +1809,7 @@ window.FirebaseBackend = {
         // 1. Google Sheets primero
         let sheetsRes = null;
         try {
-            sheetsRes = await this._jsonp({
+            sheetsRes = await this._enviarCambioArchivado({
                 accion: 'actualizarRegistroArchivado',
                 empleadoId: empleadoId,
                 fecha: fecha,
@@ -1897,7 +1897,7 @@ window.FirebaseBackend = {
             const hoyStrLocal = this._hoyStr();
             if (fecha < hoyStrLocal) {
                 try {
-                    await this._jsonp({
+                    await this._enviarCambioArchivado({
                         accion: 'actualizarRegistroArchivado',
                         empleadoId: empleadoId,
                         fecha: fecha,
@@ -1951,7 +1951,7 @@ window.FirebaseBackend = {
 
         if (docId && String(docId).startsWith('arch_')) {
             try {
-                return await this._jsonp({
+                return await this._enviarCambioArchivado({
                     accion: 'eliminarRegistroArchivado',
                     empleadoId: empleadoId,
                     fecha: fecha,
@@ -3700,6 +3700,47 @@ window.FirebaseBackend = {
         return this._jsonp(p, 0, maxRetries, timeoutMs);
     },
 
+    // Ediciones de registros archivados (actualizarRegistroArchivado, guardarPermisoSupervisor,
+    // eliminarRegistroArchivado): se guardan en PostgreSQL al instante y el servidor las reenvía
+    // a Google Sheets con los mismos parámetros. Sin base fría disponible, van directo a Apps Script.
+    async _enviarCambioArchivado(params, maxRetries = 2, timeoutMs = 35000) {
+        const p = {};
+        for (const k in params) if (params[k] !== undefined && params[k] !== null) p[k] = params[k];
+        let anterior = null, fueToken = false;
+        for (let intento = 0; intento < 2; intento++) {
+            const base = await this._urlHistorico(intento > 0);
+            if (!base || (base === anterior && !fueToken)) break;
+            anterior = base;
+            fueToken = false;
+            try {
+                const token = await this._tokenHistorico();
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 15000);
+                let resp;
+                try {
+                    resp = await fetch(`${base}/rpc/encolar_cambio_archivado`, {
+                        method: 'POST',
+                        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ p }),
+                        signal: ctrl.signal
+                    });
+                } finally { clearTimeout(t); }
+                if (resp.status === 401) {
+                    sessionStorage.removeItem('tcontrol_token_historico');
+                    fueToken = true;
+                }
+                if (!resp.ok) throw new Error('PostgREST HTTP ' + resp.status);
+                const res = await resp.json();
+                console.log(`⚡ ${p.accion} guardado en PostgreSQL${res && res.encolado ? ` (cambio #${res.encolado}, se replica a Sheets)` : ''}`);
+                return res;
+            } catch (e) {
+                console.warn('Base fría no disponible para editar:', e.message || e);
+            }
+        }
+        console.log(`📄 ${params.accion} directo a Sheets`);
+        return this._jsonp(params, 0, maxRetries, timeoutMs);
+    },
+
     _jsonp(params, _retryCount = 0, maxRetries = 2, timeoutMs = 15000) {
         const MAX_RETRIES = maxRetries;
         const RETRY_DELAY_MS = [1000, 2000];
@@ -4197,7 +4238,7 @@ window.FirebaseBackend = {
             // 1. PRIMERO: Buscar y actualizar en la hoja REGISTROS de Google Sheets
             const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
             try {
-                const resSheets = await this._jsonp(sheetsParams, 0, 1, 35000);
+                const resSheets = await this._enviarCambioArchivado(sheetsParams, 1, 35000);
                 if (resSheets && resSheets.ok) {
                     console.log("✅ Permiso actualizado en Google Sheets (Hoja REGISTROS):", resSheets.msg || 'OK');
                 } else if (resSheets && resSheets.error) {
