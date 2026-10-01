@@ -13,6 +13,11 @@ const firebaseConfig = {
     measurementId: "G-X0NRST4Y8L"
 };
 
+// Base fría (PostgREST sobre tcontrol_historico) para los registros archivados.
+// Vacío = se usa la URL que publica el túnel del servidor en Firestore
+// (configuracion/historico.url); si tampoco hay, se sigue leyendo de Google Sheets.
+const HISTORICO_API_URL = '';
+
 // Inicializar Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -904,10 +909,7 @@ window.FirebaseBackend = {
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
             const _fetchArchivados = async () => {
                 try {
-                    const resJson = await this._jsonp({
-                        accion: 'obtenerRegistrosArchivados',
-                        empleadoId: empleadoId
-                    }, 0, 2, 20000);
+                    const resJson = await this._obtenerRegistrosArchivados({ empleadoId }, 2, 20000);
                     if (resJson.ok && resJson.registros) {
                         archivadosData.registros = resJson.registros;
                         archivadosData.lastSync = new Date().toISOString();
@@ -3184,7 +3186,7 @@ window.FirebaseBackend = {
             const _fetchArchivados = async () => {
                 try {
                     // Timeout de 75 segundos con reintentos para soportar respuestas pesadas de Sheets (~12MB)
-                    const resJson = await this._jsonp({ accion: 'obtenerRegistrosArchivados' }, 0, 2, 75000);
+                    const resJson = await this._obtenerRegistrosArchivados({}, 2, 75000);
                     if (resJson && resJson.ok && resJson.registros) {
                         this._cacheArchivadosMemoria = resJson.registros;
                         archivadosData.registros = resJson.registros;
@@ -3605,6 +3607,97 @@ window.FirebaseBackend = {
             }
             return { error: "Error de red al conectar con Sheets: " + error.message };
         }
+    },
+
+    async _tokenHistorico() {
+        const KEY = 'tcontrol_token_historico';
+        try {
+            const c = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+            if (c && c.token && c.exp * 1000 - Date.now() > 5 * 60 * 1000) return c.token;
+        } catch (e) { }
+        const res = await this._jsonp({ accion: 'tokenHistorico' }, 0, 1, 15000);
+        if (!res || !res.ok || !res.token) throw new Error((res && res.error) || 'sin token');
+        try { sessionStorage.setItem(KEY, JSON.stringify({ token: res.token, exp: res.exp })); } catch (e) { }
+        return res.token;
+    },
+
+    // URL de PostgREST: constante fija o la publicada en Firestore por el túnel (cambia al reiniciarlo).
+    async _urlHistorico(refrescar = false) {
+        const fija = window.TCONTROL_HISTORICO_URL || HISTORICO_API_URL;
+        if (fija) return fija.replace(/\/+$/, '');
+        const KEY = 'tcontrol_url_historico';
+        if (!refrescar) {
+            try {
+                const c = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+                if (c && Date.now() - c.t < 10 * 60 * 1000) return c.url;
+            } catch (e) { }
+        }
+        let url = '';
+        try {
+            const doc = await db.collection('configuracion').doc('historico').get();
+            url = ((doc.exists && doc.data().url) || '').replace(/\/+$/, '');
+        } catch (e) { console.warn('No se pudo leer configuracion/historico:', e); }
+        try { sessionStorage.setItem(KEY, JSON.stringify({ url, t: Date.now() })); } catch (e) { }
+        return url;
+    },
+
+    // Registros archivados: PostgREST si hay URL de la base fría; si falla, Sheets.
+    // Devuelve el mismo formato que la acción obtenerRegistrosArchivados de Apps Script.
+    async _obtenerRegistrosArchivados(params = {}, maxRetries = 2, timeoutMs = 20000) {
+        let anterior = null, fueToken = false;
+        for (let intento = 0; intento < 2; intento++) {
+            // Segundo intento solo si cambió la URL (el túnel se reinició) o si falló el token
+            const base = await this._urlHistorico(intento > 0);
+            if (!base || (base === anterior && !fueToken)) break;
+            anterior = base;
+            fueToken = false;
+            try {
+                const token = await this._tokenHistorico();
+                const PAGINA = 20000;
+                const registros = [];
+                for (let offset = 0; ; offset += PAGINA) {
+                    // Solo la hoja REGISTROS (las vacaciones se cargan aparte) y los campos de Apps Script
+                    const q = new URLSearchParams({
+                        select: 'fecha,empleadoId,nombre,tipo,almuerzo,hora,lat,lng,dispositivo,timestamp,dia,modo,' +
+                            'horasExtra,autoriza,razonSalidaTemprana,quienJustifica,razonEntradaTardia,' +
+                            'quienJustificaEntrada,tipoSalida,razonPermiso,justificado,razon_justificac,' +
+                            'permiso_personal_mins,permiso_medico_mins,tiempo_justificado_mins',
+                        hoja_origen: 'eq.REGISTROS',
+                        order: 'id', limit: String(PAGINA), offset: String(offset)
+                    });
+                    if (params.empleadoId) q.set('empleadoId', 'eq.' + String(params.empleadoId).trim());
+                    const ctrl = new AbortController();
+                    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+                    let resp;
+                    try {
+                        resp = await fetch(`${base}/registros_archivados?${q}`, {
+                            headers: { Authorization: 'Bearer ' + token },
+                            signal: ctrl.signal
+                        });
+                    } finally { clearTimeout(t); }
+                    if (resp.status === 401) {
+                        sessionStorage.removeItem('tcontrol_token_historico');
+                        fueToken = true;
+                    }
+                    if (!resp.ok) throw new Error('PostgREST HTTP ' + resp.status);
+                    const pagina = await resp.json();
+                    for (const r of pagina) {
+                        r.lat = r.lat == null ? '' : String(r.lat);
+                        r.lng = r.lng == null ? '' : String(r.lng);
+                        registros.push(r);
+                    }
+                    if (pagina.length < PAGINA) break;
+                }
+                console.log(`⚡ ${registros.length} registros archivados desde PostgreSQL`);
+                return { ok: true, registros };
+            } catch (e) {
+                console.warn('Base fría no disponible:', e.message || e);
+            }
+        }
+        const p = { accion: 'obtenerRegistrosArchivados' };
+        if (params.empleadoId) p.empleadoId = params.empleadoId;
+        console.log('📄 Registros archivados desde Sheets');
+        return this._jsonp(p, 0, maxRetries, timeoutMs);
     },
 
     _jsonp(params, _retryCount = 0, maxRetries = 2, timeoutMs = 15000) {

@@ -801,10 +801,43 @@ function procesarAccion(params) {
 
     case 'obtenerVacacionesEmpleado':
       return obtenerVacacionesEmpleado(params);
-      
+
+    case 'tokenHistorico':
+      return emitirTokenHistorico(params);
+
     default:
       return { error: `Acción no reconocida: ${accion}` };
   }
+}
+
+/**
+ * JWT (HS256) de solo lectura para el PostgREST de la base fría (tcontrol_historico).
+ * El secreto vive en Propiedades del script → PGRST_JWT_SECRET (mismo valor que db/.env);
+ * nunca en el código ni en el frontend. Vigencia: 12 horas.
+ */
+function emitirTokenHistorico(params) {
+  var secreto = PropertiesService.getScriptProperties().getProperty('PGRST_JWT_SECRET');
+  if (!secreto) return { ok: false, error: 'PGRST_JWT_SECRET no configurado en Propiedades del script' };
+
+  var b64url = function (bytesOrString) {
+    return Utilities.base64EncodeWebSafe(bytesOrString).replace(/=+$/, '');
+  };
+  var exp = Math.floor(Date.now() / 1000) + 12 * 3600;
+  var header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  var payload = b64url(JSON.stringify({
+    role: 'tcontrol_lector',
+    empleado_id: params.empleadoId ? String(params.empleadoId).trim() : null,
+    exp: exp
+  }));
+  var firma = b64url(Utilities.computeHmacSha256Signature(header + '.' + payload, secreto));
+  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp };
+}
+
+/** Ejecutar desde el editor (▶) para comprobar la configuración antes de publicar. */
+function probarTokenHistorico() {
+  var res = emitirTokenHistorico({});
+  if (!res.ok) throw new Error(res.error);
+  Logger.log('Token emitido correctamente (vence ' + new Date(res.exp * 1000) + ')');
 }
 
 function normalizarHeaderAKey(header) {
