@@ -17,6 +17,11 @@ const firebaseConfig = {
 // Vacío = se usa la URL que publica el túnel del servidor en Firestore
 // (configuracion/historico.url); si tampoco hay, se sigue leyendo de Google Sheets.
 const HISTORICO_API_URL = '';
+// Campos que devuelve obtenerRegistrosArchivados de Apps Script (mismo formato desde PostgREST)
+const CAMPOS_ARCHIVADOS = 'fecha,empleadoId,nombre,tipo,almuerzo,hora,lat,lng,dispositivo,timestamp,dia,modo,' +
+    'horasExtra,autoriza,razonSalidaTemprana,quienJustifica,razonEntradaTardia,quienJustificaEntrada,' +
+    'tipoSalida,razonPermiso,justificado,razon_justificac,permiso_personal_mins,permiso_medico_mins,' +
+    'tiempo_justificado_mins';
 
 // Inicializar Firebase
 firebase.initializeApp(firebaseConfig);
@@ -3658,10 +3663,7 @@ window.FirebaseBackend = {
                 for (let offset = 0; ; offset += PAGINA) {
                     // Solo la hoja REGISTROS (las vacaciones se cargan aparte) y los campos de Apps Script
                     const q = new URLSearchParams({
-                        select: 'fecha,empleadoId,nombre,tipo,almuerzo,hora,lat,lng,dispositivo,timestamp,dia,modo,' +
-                            'horasExtra,autoriza,razonSalidaTemprana,quienJustifica,razonEntradaTardia,' +
-                            'quienJustificaEntrada,tipoSalida,razonPermiso,justificado,razon_justificac,' +
-                            'permiso_personal_mins,permiso_medico_mins,tiempo_justificado_mins',
+                        select: CAMPOS_ARCHIVADOS,
                         hoja_origen: 'eq.REGISTROS',
                         order: 'id', limit: String(PAGINA), offset: String(offset)
                     });
@@ -3700,6 +3702,42 @@ window.FirebaseBackend = {
         return this._jsonp(p, 0, maxRetries, timeoutMs);
     },
 
+    // Reemplaza en todas las cachés locales de archivados (memoria, IndexedDB, localStorage)
+    // los registros de un colaborador por los actuales de PostgreSQL.
+    async _refrescarCacheArchivados(base, token, empleadoId) {
+        const eid = String(empleadoId).trim();
+        try {
+            const q = new URLSearchParams({ select: CAMPOS_ARCHIVADOS, hoja_origen: 'eq.REGISTROS', empleadoId: 'eq.' + eid, order: 'id' });
+            const resp = await fetch(`${base}/registros_archivados?${q}`, { headers: { Authorization: 'Bearer ' + token } });
+            if (!resp.ok) return;
+            const nuevos = (await resp.json()).map(r => ({
+                ...r, lat: r.lat == null ? '' : String(r.lat), lng: r.lng == null ? '' : String(r.lng)
+            }));
+            const esDelEmpleado = r => String(r.empleadoId || r.id_empleado || '').trim() === eid;
+            const reemplazar = lista => lista.filter(r => !esDelEmpleado(r)).concat(nuevos);
+
+            if (Array.isArray(this._cacheArchivadosMemoria)) {
+                this._cacheArchivadosMemoria = reemplazar(this._cacheArchivadosMemoria);
+            }
+            const idb = await this._leerIDB('tcontrol_archivados_cache_idb');
+            if (idb && Array.isArray(idb.registros)) {
+                idb.registros = reemplazar(idb.registros);
+                await this._guardarIDB('tcontrol_archivados_cache_idb', idb);
+            }
+            for (const clave of ['tcontrol_archivados_cache_v2', `tcontrol_archivados_cache_${eid}_v2`]) {
+                try {
+                    const guardado = JSON.parse(localStorage.getItem(clave) || 'null');
+                    if (guardado && Array.isArray(guardado.registros)) {
+                        guardado.registros = reemplazar(guardado.registros);
+                        localStorage.setItem(clave, JSON.stringify(guardado));
+                    }
+                } catch (e) { }
+            }
+        } catch (e) {
+            console.warn('No se pudo refrescar la caché de archivados:', e.message || e);
+        }
+    },
+
     // Ediciones de registros archivados (actualizarRegistroArchivado, guardarPermisoSupervisor,
     // eliminarRegistroArchivado): se guardan en PostgreSQL al instante y el servidor las reenvía
     // a Google Sheets con los mismos parámetros. Sin base fría disponible, van directo a Apps Script.
@@ -3732,6 +3770,8 @@ window.FirebaseBackend = {
                 if (!resp.ok) throw new Error('PostgREST HTTP ' + resp.status);
                 const res = await resp.json();
                 console.log(`⚡ ${p.accion} guardado en PostgreSQL${res && res.encolado ? ` (cambio #${res.encolado}, se replica a Sheets)` : ''}`);
+                // Que el refresco automático del panel (cada 2 min, usa caché) ya vea el cambio
+                if (res && res.ok && p.empleadoId) await this._refrescarCacheArchivados(base, token, p.empleadoId);
                 return res;
             } catch (e) {
                 console.warn('Base fría no disponible para editar:', e.message || e);
