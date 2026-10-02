@@ -4272,6 +4272,7 @@ window.aplicarPresetFechasReporte = function (preset) {
   document.querySelectorAll('.btn-date-preset').forEach(b => {
     b.classList.toggle('active', b.dataset.preset === preset);
   });
+  if ($('rep2RangoFechas')) $('rep2RangoFechas').style.display = 'none';
 
   cargarReportes();
   if (typeof actualizarReporteInteractivo === 'function') {
@@ -4312,6 +4313,7 @@ window.limpiarFiltroRangoFechasReportes = function () {
   if (inputFechaDash) inputFechaDash.value = '';
   if (btnLimpiar) btnLimpiar.style.display = 'none';
   if (btnLimpiarDash) btnLimpiarDash.style.display = 'none';
+  if ($('rep2RangoFechas')) $('rep2RangoFechas').style.display = 'none';
 
   document.querySelectorAll('.btn-date-preset').forEach(b => {
     b.classList.toggle('active', b.dataset.preset === 'periodo');
@@ -4330,7 +4332,9 @@ window.filtrarReportePorRangoFechas = function () {
 
   if (fechaInicio || fechaFin) {
     if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
-    document.querySelectorAll('.btn-date-preset').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.btn-date-preset').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === 'rango');
+    });
   } else {
     if (btnLimpiar) btnLimpiar.style.display = 'none';
     document.querySelectorAll('.btn-date-preset').forEach(b => {
@@ -4365,6 +4369,7 @@ window.syncPeriodo = function (source) {
   if ($('filtroFechaDashboard')) $('filtroFechaDashboard').value = '';
   if ($('btnLimpiarFechaRep')) $('btnLimpiarFechaRep').style.display = 'none';
   if ($('btnLimpiarFechaDash')) $('btnLimpiarFechaDash').style.display = 'none';
+  if ($('rep2RangoFechas')) $('rep2RangoFechas').style.display = 'none';
 
   document.querySelectorAll('.btn-date-preset').forEach(b => {
     b.classList.toggle('active', b.dataset.preset === 'periodo');

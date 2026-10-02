@@ -661,6 +661,120 @@
       color: #38bdf8 !important;
     }
 
+    /* ========================================================
+       REPORTES v2: cabecera compacta, resumen, filtros y vistas
+       ======================================================== */
+    .rep2-card {
+      background: #ffffff;
+      border: 1px solid var(--g200);
+      border-radius: 14px;
+      padding: 12px 14px 0;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .rep2-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+    .rep2-muted { color: var(--g500); font-size: 12px; }
+    .rep2-periodo { display: flex; align-items: center; gap: 4px; }
+    .rep2-select-periodo {
+      font-family: inherit; font-size: 14.5px; font-weight: 700; color: #0f172a;
+      border: 1px solid transparent; background: transparent; border-radius: 8px;
+      padding: 5px 6px; cursor: pointer; max-width: 260px;
+    }
+    .rep2-select-periodo:hover, .rep2-select-periodo:focus { border-color: var(--g200); background: #f8fafc; outline: none; }
+    .rep2-icon-btn {
+      width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--g200);
+      background: #fff; color: var(--g600); cursor: pointer; display: inline-flex;
+      align-items: center; justify-content: center; font-size: 12px;
+    }
+    .rep2-icon-btn:hover { background: #f1f5f9; color: #0f172a; }
+    .rep2-segmented { display: inline-flex; background: #f1f5f9; border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+    .rep2-card .btn-date-preset {
+      border: none; background: transparent; color: var(--g600); font-family: inherit;
+      font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+      box-shadow: none; white-space: nowrap;
+    }
+    .rep2-card .btn-date-preset:hover { color: #0f172a; background: rgba(255,255,255,.6); }
+    .rep2-card .btn-date-preset.active { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,.12); }
+    .rep2-rango { display: inline-flex; align-items: center; gap: 6px; }
+    .rep2-rango input[type="date"] {
+      font-family: inherit; font-size: 12px; border: 1px solid var(--g200); border-radius: 8px;
+      padding: 5px 8px; color: #0f172a; background: #fff;
+    }
+    .rep2-card .badge-rango-activo {
+      background: transparent !important; border: none !important; color: var(--g500) !important;
+      font-size: 12px; font-weight: 500; padding: 0; box-shadow: none;
+    }
+    .rep2-card .badge-rango-activo i { display: none; }
+    .rep2-card .badge-rango-activo strong { color: var(--g700); font-weight: 600; }
+    .rep2-export { position: relative; margin-left: auto; }
+    .rep2-btn {
+      font-family: inherit; font-size: 12.5px; font-weight: 600; color: #0f172a; background: #fff;
+      border: 1px solid var(--g300); border-radius: 8px; padding: 7px 12px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .rep2-btn:hover { background: #f8fafc; }
+    .rep2-caret { font-size: 9px; opacity: .6; }
+    .rep2-menu {
+      position: absolute; right: 0; top: calc(100% + 4px); z-index: 60; min-width: 190px;
+      background: #fff; border: 1px solid var(--g200); border-radius: 10px; padding: 4px;
+      box-shadow: 0 10px 24px rgba(15,23,42,.12);
+    }
+    .rep2-menu button {
+      display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent;
+      font-family: inherit; font-size: 12.5px; color: #0f172a; padding: 8px 10px; border-radius: 7px;
+      cursor: pointer; text-align: left;
+    }
+    .rep2-menu button:hover { background: #f1f5f9; }
+    .rep2-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+    .rep2-kpi { background: #f8fafc; border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .rep2-kpi span { font-size: 11.5px; color: var(--g500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rep2-kpi strong { font-size: 18px; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .rep2-kpi-warn strong { color: #b45309; }
+    .rep2-kpi-danger strong { color: #b91c1c; }
+    .rep2-search { position: relative; flex: 1 1 220px; min-width: 180px; }
+    .rep2-search i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--g400); font-size: 12px; }
+    .rep2-search input {
+      width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px;
+      border: 1px solid var(--g200); border-radius: 8px; padding: 7px 10px 7px 30px; background: #fff;
+    }
+    .rep2-search input:focus, .rep2-select:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .rep2-select {
+      font-family: inherit; font-size: 12.5px; color: #0f172a; border: 1px solid var(--g200);
+      border-radius: 8px; padding: 7px 8px; background: #fff; cursor: pointer; max-width: 210px;
+    }
+    .rep2-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+    .rep2-pills .btn-filter-pill {
+      font-family: inherit; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+      border: 1px solid var(--g200) !important; background: #fff !important; color: var(--g600) !important; cursor: pointer;
+    }
+    .rep2-pills .btn-filter-pill.active { background: #eff6ff !important; color: #1d4ed8 !important; border-color: #93c5fd !important; }
+    .rep2-tabs-row {
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+      border-top: 1px solid var(--g100); margin: 0 -14px; padding: 0 14px;
+    }
+    .rep2-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+    .rep2-tabs::-webkit-scrollbar { display: none; }
+    .rep2-tab {
+      font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--g500); background: transparent;
+      border: none; border-bottom: 2.5px solid transparent; padding: 10px 12px; cursor: pointer; white-space: nowrap;
+    }
+    .rep2-tab:hover { color: #0f172a; }
+    .rep2-tab.active { color: #0f172a; border-bottom-color: var(--red, #dc2626); }
+    .rep2-info { padding: 10px 0; white-space: nowrap; }
+    #panel-reportes .scroll-hint { display: none; }
+    @media (max-width: 720px) {
+      .rep2-export { margin-left: 0; }
+      .rep2-select { max-width: none; flex: 1 1 45%; }
+      .rep2-info { display: none; }
+      .rep2-select-periodo { font-size: 13px; min-width: 0; flex: 1 1 auto; }
+      .rep2-periodo { flex: 1 1 100%; }
+      .rep2-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+      .rep2-kpi { padding: 6px 8px; }
+      .rep2-kpi span { font-size: 11px; letter-spacing: -0.2px; }
+      .rep2-kpi strong { font-size: 15px; }
+    }
     /* ESTILOS PREMIUM PARA LA PESTAÑA ASISTENCIA */
     .asistencia-table-card {
       background: #ffffff;
@@ -1523,103 +1637,96 @@
 
       <!-- PANEL REPORTES -->
       <div id="panel-reportes" class="panel">
-        <!-- BARRA SUPERIOR DE REPORTES: COMPACTA, ELEGANTE Y OPTIMIZADA -->
-        <div class="reportes-toolbar-container">
-          <!-- FILA 1: CONTROL DE TIEMPO (PERIODO / RANGO / PRESETS) Y EXPORTACIONES -->
-          <div class="reportes-toolbar-row reportes-row-primary">
-            <div class="reportes-group-left">
-              <!-- Selector Período Mensual (26 al 25) -->
-              <div class="reportes-control-pill" title="Seleccionar Período Oficial de Nómina">
-                <span class="control-label"><i class="fas fa-calendar-alt" style="color:var(--red);"></i> Período:</span>
-                <select id="periodoMensual" class="filter-select select-clean" onchange="syncPeriodo('rep')"></select>
-              </div>
-
-              <!-- Filtro de Rango de Fechas Personalizado -->
-              <div class="reportes-control-pill date-range-pill" title="Filtrar por rango de fechas específico">
-                <span class="control-label"><i class="fas fa-calendar-day" style="color:var(--blue);"></i> Fechas:</span>
-                <input type="date" id="filtroFechaReportesInicio" onchange="filtrarReportePorRangoFechas()" title="Fecha Desde" class="date-input-clean">
-                <span class="range-separator"><i class="fas fa-arrow-right"></i></span>
-                <input type="date" id="filtroFechaReportesFinalizacion" onchange="filtrarReportePorRangoFechas()" title="Fecha Hasta" class="date-input-clean">
-                <button type="button" onclick="limpiarFiltroRangoFechasReportes()" id="btnLimpiarFechaRep" class="btn-clear-date" style="display:none;" title="Limpiar filtro de fechas">
-                  <i class="fas fa-times-circle"></i>
-                </button>
-              </div>
-
-              <!-- Botones Presets Rápidos de Fechas -->
-              <div class="date-presets-group">
-                <button type="button" class="btn-date-preset active" data-preset="periodo" onclick="aplicarPresetFechasReporte('periodo')" title="Ver mes completo del período actual">Mes Completo</button>
-                <button type="button" class="btn-date-preset" data-preset="quincena1" onclick="aplicarPresetFechasReporte('quincena1')" title="1ª Quincena: 26 al 10">1ª Quincena</button>
-                <button type="button" class="btn-date-preset" data-preset="quincena2" onclick="aplicarPresetFechasReporte('quincena2')" title="2ª Quincena: 11 al 25">2ª Quincena</button>
-                <button type="button" class="btn-date-preset" data-preset="hoy" onclick="aplicarPresetFechasReporte('hoy')" title="Ver solo registros de hoy">Hoy</button>
-              </div>
-
-              <!-- Badge Dinámico de Estado del Rango Activo -->
-              <div id="badgeEstadoRangoReporte" class="badge-rango-activo" style="display:none;"></div>
+        <!-- REPORTES: CABECERA DE PERÍODO, RESUMEN, FILTROS Y VISTAS -->
+        <div class="rep2-card">
+          <!-- FILA 1: PERÍODO + RANGO + EXPORTAR -->
+          <div class="rep2-row rep2-row-periodo">
+            <div class="rep2-periodo">
+              <button type="button" class="rep2-icon-btn" onclick="moverPeriodoReporte(1)" title="Período anterior" aria-label="Período anterior"><i class="fas fa-chevron-left"></i></button>
+              <select id="periodoMensual" class="rep2-select-periodo" onchange="syncPeriodo('rep')" title="Período oficial de nómina (26 al 25)"></select>
+              <button type="button" class="rep2-icon-btn" onclick="moverPeriodoReporte(-1)" title="Período siguiente" aria-label="Período siguiente"><i class="fas fa-chevron-right"></i></button>
             </div>
 
-            <!-- Botones de Exportación / Acciones -->
-            <div class="reportes-group-actions">
-              <button type="button" class="btn-export btn-export-excel" onclick="exportarExcelReporteCustom()" title="Descargar reporte en formato Microsoft Excel (.xls)">
-                <i class="fas fa-file-excel"></i> <span>Excel</span>
-              </button>
-              <button type="button" class="btn-export btn-export-sheets" onclick="exportarGoogleSheetsReporteCustom()" title="Exportar pestaña directa en tu archivo de Google Sheets">
-                <i class="fab fa-google-drive"></i> <span>Google Sheets</span>
-              </button>
-              <button type="button" class="btn-export btn-export-print" onclick="imprimirReporteCustom()" title="Imprimir o guardar como PDF">
-                <i class="fas fa-print"></i> <span>Imprimir / PDF</span>
-              </button>
+            <div class="rep2-segmented" role="group" aria-label="Rango del reporte">
+              <button type="button" class="btn-date-preset active" data-preset="periodo" onclick="aplicarPresetFechasReporte('periodo')" title="Período completo (26 al 25)">Mes</button>
+              <button type="button" class="btn-date-preset" data-preset="quincena1" onclick="aplicarPresetFechasReporte('quincena1')" title="1ª quincena: 26 al 10">1ª quincena</button>
+              <button type="button" class="btn-date-preset" data-preset="quincena2" onclick="aplicarPresetFechasReporte('quincena2')" title="2ª quincena: 11 al 25">2ª quincena</button>
+              <button type="button" class="btn-date-preset" data-preset="hoy" onclick="aplicarPresetFechasReporte('hoy')" title="Solo hoy">Hoy</button>
+              <button type="button" class="btn-date-preset" data-preset="rango" id="btnRangoPersonalizadoRep" onclick="toggleRangoPersonalizadoReporte()" title="Elegir fechas exactas"><i class="fas fa-calendar-day"></i> Rango</button>
+            </div>
+
+            <div class="rep2-rango" id="rep2RangoFechas" style="display:none;">
+              <input type="date" id="filtroFechaReportesInicio" onchange="filtrarReportePorRangoFechas()" title="Desde">
+              <span class="rep2-muted">a</span>
+              <input type="date" id="filtroFechaReportesFinalizacion" onchange="filtrarReportePorRangoFechas()" title="Hasta">
+              <button type="button" onclick="limpiarFiltroRangoFechasReportes()" id="btnLimpiarFechaRep" class="rep2-icon-btn" style="display:none;" title="Quitar rango" aria-label="Quitar rango"><i class="fas fa-times"></i></button>
+            </div>
+
+            <div id="badgeEstadoRangoReporte" class="badge-rango-activo" style="display:none;"></div>
+
+            <div class="rep2-export" id="rep2Export">
+              <button type="button" class="rep2-btn" onclick="toggleMenuExportarReporte(event)" aria-haspopup="true"><i class="fas fa-download"></i> Exportar <i class="fas fa-chevron-down rep2-caret"></i></button>
+              <div class="rep2-menu" id="rep2MenuExportar" style="display:none;">
+                <button type="button" onclick="cerrarMenuExportarReporte(); exportarExcelReporteCustom()"><i class="fas fa-file-excel" style="color:#16a34a;"></i> Excel (.xls)</button>
+                <button type="button" onclick="cerrarMenuExportarReporte(); exportarGoogleSheetsReporteCustom()"><i class="fab fa-google-drive" style="color:#2563eb;"></i> Google Sheets</button>
+                <button type="button" onclick="cerrarMenuExportarReporte(); imprimirReporteCustom()"><i class="fas fa-print" style="color:#475569;"></i> Imprimir / PDF</button>
+              </div>
             </div>
           </div>
 
-          <!-- FILA 2: BÚSQUEDA, FILTROS RÁPIDOS, PLANTILLAS Y CONFIGURADOR DE COLUMNAS -->
-          <div class="reportes-toolbar-row reportes-row-secondary">
-            <div class="reportes-search-wrap">
-              <i class="fas fa-search search-icon"></i>
-              <input type="text" id="searchReportesCustom" class="search-input-compact" placeholder="Buscar por colaborador, cédula o área...">
+          <!-- FILA 2: RESUMEN DEL PERÍODO (según filtros) -->
+          <div class="rep2-kpis" id="rep2Kpis">
+            <div class="rep2-kpi" title="Colaboradores en el reporte"><span>Personal</span><strong id="rep2KpiEmpleados">--</strong></div>
+            <div class="rep2-kpi"><span>Asistencias</span><strong id="rep2KpiAsistencias">--</strong></div>
+            <div class="rep2-kpi"><span>Puntualidad</span><strong id="rep2KpiPuntualidad">--</strong></div>
+            <div class="rep2-kpi rep2-kpi-warn"><span>Atrasos</span><strong id="rep2KpiAtrasos">--</strong></div>
+            <div class="rep2-kpi rep2-kpi-danger"><span>Faltas</span><strong id="rep2KpiFaltas">--</strong></div>
+            <div class="rep2-kpi" title="Horas extra 50% (incluye campo)"><span>H.E. 50%</span><strong id="rep2KpiExtra50">--</strong></div>
+            <div class="rep2-kpi" title="Horas extra 100% (incluye campo)"><span>H.E. 100%</span><strong id="rep2KpiExtra100">--</strong></div>
+            <div class="rep2-kpi" title="Tiempo por justificar"><span>Por justificar</span><strong id="rep2KpiPorJustificar">--</strong></div>
+          </div>
+
+          <!-- FILA 3: FILTROS -->
+          <div class="rep2-row rep2-row-filtros">
+            <div class="rep2-search">
+              <i class="fas fa-search"></i>
+              <input type="text" id="searchReportesCustom" placeholder="Buscar por nombre, ID o área">
               <input type="hidden" id="searchReportes" value="">
             </div>
-
-            <!-- Filtros Rápidos de Colaboradores -->
-            <div class="reportes-quick-filters" id="filtrosRapidosCargo">
-              <button type="button" class="btn-filter-pill active" onclick="setFiltroRapidoReporte('', this)">TODOS</button>
-              <button type="button" class="btn-filter-pill" onclick="setFiltroRapidoReporte('pasante', this)">Pasante</button>
-              <button type="button" class="btn-filter-pill" onclick="setFiltroRapidoReporte('sin asistencia', this)">Sin Asistencia</button>
-              <button type="button" class="btn-filter-pill" onclick="setFiltroRapidoReporte('almuerzos extra', this)"><i class="fas fa-utensils"></i> Almuerzos Extra</button>
-              <button type="button" class="btn-filter-pill btn-pill-desv" onclick="setFiltroRapidoReporte('desvinculados', this)" title="Ver solo colaboradores desvinculados"><i class="fas fa-user-slash"></i> Desvinculados</button>
-              <button type="button" class="btn-filter-pill btn-pill-elim" onclick="setFiltroRapidoReporte('eliminados', this)" title="Ver colaboradores eliminados con histórico"><i class="fas fa-user-minus"></i> Eliminados</button>
+            <select id="filtroAreaReporte" class="rep2-select" onchange="filtrarReporteInteractivo()" title="Filtrar por área">
+              <option value="">Todas las áreas</option>
+            </select>
+            <select id="filtroEstadoReporte" class="rep2-select" onchange="cambiarEstadoColaboradoresReporte()" title="Qué colaboradores incluir">
+              <option value="activos">Activos</option>
+              <option value="activos_desv">Activos y desvinculados</option>
+              <option value="todos">Todos (incluye eliminados)</option>
+              <option value="solo_desv">Solo desvinculados</option>
+              <option value="solo_elim">Solo eliminados</option>
+            </select>
+            <div class="rep2-pills" id="filtrosRapidosCargo">
+              <button type="button" class="btn-filter-pill active" data-cargo="" onclick="setFiltroRapidoReporte('', this)">Todos</button>
+              <button type="button" class="btn-filter-pill" data-cargo="pasante" onclick="setFiltroRapidoReporte('pasante', this)">Pasantes</button>
+              <button type="button" class="btn-filter-pill" data-cargo="sin asistencia" onclick="setFiltroRapidoReporte('sin asistencia', this)">Sin asistencia</button>
             </div>
             <input type="hidden" id="filtroCargoReporte" value="">
+            <!-- Compatibilidad: el estado de bajas se maneja con #filtroEstadoReporte -->
+            <input type="checkbox" id="chkIncluirDesvinculadosRep" hidden>
+            <input type="checkbox" id="chkIncluirEliminadosRep" hidden>
+          </div>
 
-            <!-- Plantillas de Columnas Rápidas -->
-            <div class="reportes-templates-group">
-              <span class="templates-label"><i class="fas fa-layer-group" style="color:var(--blue);"></i> Vistas:</span>
-              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('almuerzos')" title="Ver columnas de almuerzos en planta y fuera"><i class="fas fa-utensils"></i> Almuerzos</button>
-              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('extras')" title="Ver horas extra 50%, 100% y campo"><i class="fas fa-clock"></i> H. Extra</button>
-              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('asistencias')" title="Ver asistencias, atrasos y puntualidad"><i class="fas fa-calendar-check"></i> Asistencia</button>
-              <button type="button" class="btn-template-pill" onclick="cargarPlantillaReporte('completo')" title="Ver todas las columnas"><i class="fas fa-th"></i> Completo</button>
+          <!-- FILA 4: VISTAS (PESTAÑAS) -->
+          <div class="rep2-tabs-row">
+            <div class="rep2-tabs" id="rep2TabsVista" role="tablist">
+              <button type="button" class="rep2-tab" data-vista="resumen" onclick="cargarPlantillaReporte('resumen')">Resumen</button>
+              <button type="button" class="rep2-tab" data-vista="asistencias" onclick="cargarPlantillaReporte('asistencias')">Asistencia</button>
+              <button type="button" class="rep2-tab" data-vista="extras" onclick="cargarPlantillaReporte('extras')">Horas extra</button>
+              <button type="button" class="rep2-tab" data-vista="permisos" onclick="cargarPlantillaReporte('permisos')">Permisos</button>
+              <button type="button" class="rep2-tab" data-vista="almuerzos" onclick="cargarPlantillaReporte('almuerzos')">Almuerzos</button>
+              <button type="button" class="rep2-tab" data-vista="almuerzosExtra" onclick="cargarPlantillaReporte('almuerzosExtra')">Almuerzos extra</button>
+              <button type="button" class="rep2-tab" data-vista="completo" onclick="cargarPlantillaReporte('completo')">Completo</button>
+              <button type="button" class="rep2-tab" data-vista="personalizada" id="btnToggleColsLayout" onclick="toggleSelectorColumnas()" title="Elegir columnas"><i class="fas fa-sliders-h"></i> Personalizada (<span id="lblCountColsActivas">0</span>)</button>
             </div>
-
-            <!-- Botón Desplegable para Configurar Columnas -->
-            <div class="reportes-columns-tools">
-              <button type="button" id="btnToggleColsLayout" class="btn-toggle-cols" onclick="toggleSelectorColumnas()" title="Abrir/Cerrar selector interactivo de columnas">
-                <i class="fas fa-columns" style="color:var(--red);"></i> Columnas (<span id="lblCountColsActivas">0</span>) <i class="fas fa-chevron-down toggle-arrow"></i>
-              </button>
-            </div>
-
-            <!-- Checkboxes auxiliares discretos -->
-            <div class="reportes-toggles-minor">
-              <label class="toggle-checkbox-label" title="Incluir desvinculados en el cálculo general">
-                <input type="checkbox" id="chkIncluirDesvinculadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()">
-                <span>+ Desvinculados</span>
-              </label>
-              <label class="toggle-checkbox-label" title="Incluir eliminados en el cálculo general">
-                <input type="checkbox" id="chkIncluirEliminadosRep" onchange="window.cambiarFiltroDesvinculadosReporte()">
-                <span>+ Eliminados</span>
-              </label>
-            </div>
-
-            <!-- Contador de Resultados / Estado -->
-            <div id="reporteCustomInfo" class="reporte-custom-counter">Cargando...</div>
+            <div id="reporteCustomInfo" class="rep2-muted rep2-info">Cargando...</div>
           </div>
         </div>
 
@@ -5105,14 +5212,14 @@
 
   <script src="./JS/openwa_service.js?v=20261002_02"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261002_03"></script>
+  <script src="./JS/supervisor_core.js?v=20261002_04"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261002_02"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260925_02"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20260923_01"></script>
-  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261002_01"></script>
+  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261002_02"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

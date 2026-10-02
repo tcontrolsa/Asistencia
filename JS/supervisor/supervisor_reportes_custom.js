@@ -124,13 +124,11 @@ window.toggleSelectorColumnas = function () {
   if (!c) return;
   const isOculto = c.style.display === 'none' || getComputedStyle(c).display === 'none';
   c.style.display = isOculto ? 'block' : 'none';
-  const btn = $('btnToggleColsLayout');
-  if (btn) {
-    btn.classList.toggle('active', isOculto);
-    btn.style.background = isOculto ? '#eff6ff' : '#ffffff';
-    btn.style.borderColor = isOculto ? '#2563eb' : 'var(--g300)';
-    btn.style.color = isOculto ? '#1e40af' : 'var(--g700)';
+  if (isOculto && $('filtroCargoReporte')?.value === 'almuerzos extra') {
+    $('filtroCargoReporte').value = '';
+    filtrarReporteInteractivo();
   }
+  actualizarTabsVistaReporte();
 };
 
 window.agregarColumnaCustom = function (colId) {
@@ -194,22 +192,7 @@ window.setFiltroRapidoReporte = function (cargoVal, btnElement) {
   if ($('filtroCargoReporte')) {
     $('filtroCargoReporte').value = cargoVal;
   }
-  if (btnElement && btnElement.parentElement) {
-    const btns = btnElement.parentElement.querySelectorAll('.btn-filter, .btn-filter-pill');
-    btns.forEach(b => b.classList.remove('active'));
-    btnElement.classList.add('active');
-    // Actualizar el estilo visual para mostrar el botón activo con un color de fondo diferente
-    btns.forEach(b => {
-      b.style.background = '#f8fafc';
-      b.style.color = 'var(--g600)';
-      b.style.borderColor = 'var(--g200)';
-    });
-    const isElim = cargoVal === 'eliminados';
-    const isDesv = cargoVal === 'desvinculados';
-    btnElement.style.background = isDesv ? '#7c3aed' : (isElim ? '#e11d48' : 'var(--blue)');
-    btnElement.style.color = '#fff';
-    btnElement.style.borderColor = isDesv ? '#7c3aed' : (isElim ? '#e11d48' : 'var(--blue)');
-  }
+  marcarFiltroRapidoReporte(cargoVal);
   if (typeof actualizarReporteInteractivo === 'function') actualizarReporteInteractivo();
   if (typeof cargarReportes === 'function') cargarReportes();
   filtrarReporteInteractivo();
@@ -223,7 +206,15 @@ window.obtenerDatosFiltradosReporteCustom = function (q = '', fCargo = '') {
     ? window._reportesCustomData
     : (_reportesCustomData && _reportesCustomData.length ? _reportesCustomData : (window._reportesData || []));
 
+  const fArea = ($('filtroAreaReporte')?.value || '').toLowerCase();
+  const fEstado = $('filtroEstadoReporte')?.value || 'activos';
+  const esDesv = e => !!e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado' || (e.estadoBadge && e.estadoBadge.toLowerCase().includes('desvinculado')) || (e.motivo_salida && e.motivo_salida.length > 0);
+  const esElim = e => !!e.esEliminado || e.activo === false || (e.area || '').toLowerCase() === 'eliminado' || (e.cargo || '').toLowerCase() === 'eliminado';
+
   return baseData.filter(e => {
+    if (fArea && (e.area || '').toLowerCase() !== fArea) return false;
+    if (fEstado === 'solo_desv' && !esDesv(e)) return false;
+    if (fEstado === 'solo_elim' && !(esElim(e) && !esDesv(e))) return false;
     let matchQ = !q || (e.nombre || '').toLowerCase().includes(q) || (e.area || '').toLowerCase().includes(q) || String(e.id || '').toLowerCase().includes(q);
     let matchCargo = !fCargo;
     if (fCargo === 'desvinculados') {
@@ -254,14 +245,13 @@ window.filtrarReporteInteractivo = function () {
   // Actualizar badge visual de estado del rango si existe
   const badgeRango = $('badgeEstadoRangoReporte');
   if (badgeRango) {
+    // El período ya se ve en el selector; el badge solo aparece con quincena/hoy/rango
     if (rango.esFiltroPersonalizado) {
       badgeRango.className = 'badge-rango-activo badge-rango-filtro';
-      badgeRango.innerHTML = `<i class="fas fa-filter"></i> Filtro: <strong>${escapeHtml(rango.labelRango)}</strong>`;
+      badgeRango.innerHTML = `<i class="fas fa-filter"></i> <strong>${escapeHtml(rango.labelRango)}</strong>`;
       badgeRango.style.display = 'inline-flex';
     } else {
-      badgeRango.className = 'badge-rango-activo badge-rango-periodo';
-      badgeRango.innerHTML = `<i class="fas fa-calendar-alt"></i> Período: <strong>${escapeHtml(rango.labelRango)}</strong>`;
-      badgeRango.style.display = 'inline-flex';
+      badgeRango.style.display = 'none';
     }
   }
 
@@ -273,7 +263,12 @@ window.filtrarReporteInteractivo = function () {
       : '<i class="fas fa-sort-down" style="color:var(--red);margin-left:4px;font-size:9px"></i>';
   }
 
+  actualizarOpcionesAreaReporte();
+  actualizarTabsVistaReporte();
+  if ($('filtrosRapidosCargo')) $('filtrosRapidosCargo').style.display = fCargo === 'almuerzos extra' ? 'none' : '';
+
   if (fCargo === 'almuerzos extra') {
+    actualizarResumenReporte(window.obtenerDatosFiltradosReporteCustom(q, ''));
     // Ocultar personalizador de columnas cuando se muestran almuerzos extra
     if ($('reportsLayoutContainer')) {
       $('reportsLayoutContainer').style.display = 'none';
@@ -315,7 +310,7 @@ window.filtrarReporteInteractivo = function () {
 
     if (!extras.length) {
       bodyT.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--g500);"><i class="fas fa-search" style="font-size:18px; margin-bottom:8px; display:block;"></i> No hay almuerzos extras registrados en este rango/período (${escapeHtml(rango.labelRango)}).</td></tr>`;
-      if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = `Mostrando 0 registros (0 almuerzos extras) | ${rango.labelRango}`;
+      if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = '0 registros';
       return;
     }
 
@@ -338,12 +333,13 @@ window.filtrarReporteInteractivo = function () {
 
     if ($('reporteCustomInfo')) {
       let totalCant = extras.reduce((acc, ae) => acc + parseInt(ae.cantidad || 0), 0);
-      $('reporteCustomInfo').textContent = `Mostrando ${extras.length} registros (${totalCant} almuerzos extras) | ${rango.labelRango}`;
+      $('reporteCustomInfo').textContent = `${extras.length} registros · ${totalCant} almuerzos`;
     }
     return;
   }
 
   let data = window.obtenerDatosFiltradosReporteCustom(q, fCargo);
+  actualizarResumenReporte(data);
 
   // Ordenar
   if (_sortCustomReport.col) {
@@ -386,7 +382,7 @@ window.filtrarReporteInteractivo = function () {
 
   if (!data.length) {
     bodyT.innerHTML = `<tr><td colspan="${columnasCustomActivas.length + 1}" style="text-align:center; padding:35px; color:var(--g500);"><i class="fas fa-search" style="font-size:22px; margin-bottom:8px; display:block; color:var(--blue);"></i> No se encontraron resultados para el rango/período (<strong>${escapeHtml(rango.labelRango)}</strong>).</td></tr>`;
-    if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = `Mostrando 0 colaboradores | ${rango.labelRango}`;
+    if ($('reporteCustomInfo')) $('reporteCustomInfo').textContent = '0 colaboradores';
     return;
   }
 
@@ -559,8 +555,7 @@ window.filtrarReporteInteractivo = function () {
   }
 
   if ($('reporteCustomInfo')) {
-    let infoRango = rango.esFiltroPersonalizado ? ` | Filtro: ${rango.labelRango}` : ` | ${rango.labelRango}`;
-    $('reporteCustomInfo').textContent = `Mostrando ${data.length} de ${empCache.length} colaboradores${infoRango}`;
+    $('reporteCustomInfo').textContent = `${data.length} de ${empCache.length} colaboradores`;
   }
 };
 
@@ -568,22 +563,9 @@ window.restablecerColumnasDefault = function () {
   // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
   if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
     $('filtroCargoReporte').value = '';
-    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter, #filtrosRapidosCargo .btn-filter-pill');
-    btns.forEach(b => {
-      b.classList.remove('active');
-      b.style.background = '#f8fafc';
-      b.style.color = 'var(--g600)';
-      b.style.borderColor = 'var(--g200)';
-    });
-    const btnTodos = Array.from(btns).find(b => b.textContent.trim().toUpperCase() === 'TODOS');
-    if (btnTodos) {
-      btnTodos.classList.add('active');
-      btnTodos.style.background = 'var(--blue)';
-      btnTodos.style.color = '#fff';
-      btnTodos.style.borderColor = 'var(--blue)';
-    }
+    marcarFiltroRapidoReporte('');
   }
-  columnasCustomActivas = [...DEFAULT_COLUMNAS_CUSTOM];
+  columnasCustomActivas.splice(0, columnasCustomActivas.length, ...DEFAULT_COLUMNAS_CUSTOM);
   guardarColumnasCustomActivas(columnasCustomActivas);
   renderizarColumnasInteractivas();
   filtrarReporteInteractivo();
@@ -594,38 +576,130 @@ window.cargarPlantillaReporte = function (tipo) {
   // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
   if ($('filtroCargoReporte') && $('filtroCargoReporte').value === 'almuerzos extra') {
     $('filtroCargoReporte').value = '';
-    const btns = document.querySelectorAll('#filtrosRapidosCargo .btn-filter, #filtrosRapidosCargo .btn-filter-pill');
-    btns.forEach(b => {
-      b.classList.remove('active');
-      b.style.background = '#f8fafc';
-      b.style.color = 'var(--g600)';
-      b.style.borderColor = 'var(--g200)';
-    });
-    const btnTodos = Array.from(btns).find(b => b.textContent.trim().toUpperCase() === 'TODOS');
-    if (btnTodos) {
-      btnTodos.classList.add('active');
-      btnTodos.style.background = 'var(--blue)';
-      btnTodos.style.color = '#fff';
-      btnTodos.style.borderColor = 'var(--blue)';
-    }
+    marcarFiltroRapidoReporte('');
   }
-  if (tipo === 'almuerzos') {
-    columnasCustomActivas = ['asistencias', 'almPlanta', 'almFuera'];
-    mostrarToast('Plantilla de Almuerzos cargada', 'success');
-  } else if (tipo === 'extras') {
-    columnasCustomActivas = ['horasExtra50', 'horasExtra100', 'horasCampoNormales', 'horasCampo50', 'horasCampo100', 'totalExtras50', 'totalExtras100'];
-    mostrarToast('Plantilla de Horas Extra cargada', 'success');
-  } else if (tipo === 'asistencias') {
-    columnasCustomActivas = ['asistencias', 'entradas', 'salidas', 'salidasAuto', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'];
-    mostrarToast('Plantilla de Asistencia y Atrasos cargada', 'success');
-  } else if (tipo === 'completo') {
-    columnasCustomActivas = COLUMNAS_DISPONIBLES.map(c => c.id);
-    mostrarToast('Plantilla de Reporte Completo cargada', 'success');
+  if ($('reportsLayoutContainer')) $('reportsLayoutContainer').style.display = 'none';
+  if (tipo === 'almuerzosExtra') {
+    if ($('filtroCargoReporte')) $('filtroCargoReporte').value = 'almuerzos extra';
+    _sortCustomReport = { col: 'fecha', dir: 'desc' };
+    filtrarReporteInteractivo();
+    return;
   }
+  const columnas = columnasDeVistaReporte(tipo);
+  if (!columnas) return;
+  columnasCustomActivas.splice(0, columnasCustomActivas.length, ...columnas);
+  if (_sortCustomReport.col === 'fecha') _sortCustomReport = { col: 'nombre', dir: 'asc' };
   guardarColumnasCustomActivas(columnasCustomActivas);
   renderizarColumnasInteractivas();
   filtrarReporteInteractivo();
 };
+
+// ---------- Navegación de la pestaña Reportes (vistas, filtros, resumen) ----------
+const VISTAS_REPORTE = {
+  resumen: () => [...DEFAULT_COLUMNAS_CUSTOM],
+  asistencias: () => ['area', 'asistencias', 'entradas', 'salidas', 'salidasAuto', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'],
+  extras: () => ['area', 'diasExtras', 'horasExtra50', 'horasExtra100', 'horasCampoNormales', 'horasCampo50', 'horasCampo100', 'totalExtras50', 'totalExtras100'],
+  permisos: () => ['area', 'diasVacaciones', 'diasJustificados', 'permisoMedico', 'permisoPersonal', 'tiempoPorJustificar', 'tiempoADescontar'],
+  almuerzos: () => ['area', 'asistencias', 'almPlanta', 'almFuera'],
+  completo: () => COLUMNAS_DISPONIBLES.map(c => c.id)
+};
+
+function columnasDeVistaReporte(tipo) {
+  return VISTAS_REPORTE[tipo] ? VISTAS_REPORTE[tipo]() : null;
+}
+
+window.actualizarTabsVistaReporte = function () {
+  const tabs = document.querySelectorAll('#rep2TabsVista .rep2-tab');
+  if (!tabs.length) return;
+  let vista = 'personalizada';
+  if ($('filtroCargoReporte')?.value === 'almuerzos extra') {
+    vista = 'almuerzosExtra';
+  } else {
+    const actual = columnasCustomActivas.join('|');
+    const encontrada = Object.keys(VISTAS_REPORTE).find(k => VISTAS_REPORTE[k]().join('|') === actual);
+    if (encontrada) vista = encontrada;
+  }
+  const drawerAbierto = $('reportsLayoutContainer')?.style.display === 'block';
+  tabs.forEach(t => {
+    const activa = drawerAbierto ? t.dataset.vista === 'personalizada' : t.dataset.vista === vista;
+    t.classList.toggle('active', activa);
+    t.setAttribute('aria-selected', activa ? 'true' : 'false');
+  });
+};
+
+window.marcarFiltroRapidoReporte = function (cargoVal) {
+  document.querySelectorAll('#filtrosRapidosCargo .btn-filter-pill').forEach(b => {
+    b.classList.toggle('active', (b.dataset.cargo || '') === (cargoVal || ''));
+  });
+};
+
+window.actualizarOpcionesAreaReporte = function () {
+  const sel = $('filtroAreaReporte');
+  if (!sel) return;
+  const base = window._reportesCustomData || [];
+  const areas = [...new Set(base.map(e => String(e.area || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const firma = areas.join('|');
+  if (sel.dataset.firma === firma) return;
+  const actual = sel.value;
+  sel.innerHTML = '<option value="">Todas las áreas</option>' + areas.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  sel.value = areas.includes(actual) ? actual : '';
+  sel.dataset.firma = firma;
+};
+
+window.actualizarResumenReporte = function (data) {
+  const sum = k => data.reduce((s, e) => s + (parseFloat(e[k]) || 0), 0);
+  const set = (id, v) => { if ($(id)) $(id).textContent = v; };
+  const conAsistencia = data.filter(e => (e.asistencias || 0) > 0);
+  const puntualidad = conAsistencia.length ? Math.round(conAsistencia.reduce((s, e) => s + (parseFloat(e.puntualidad) || 0), 0) / conAsistencia.length) : 0;
+  const horas = m => { const t = Math.round(m); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+  set('rep2KpiEmpleados', data.length);
+  set('rep2KpiAsistencias', Math.round(sum('asistencias')));
+  set('rep2KpiPuntualidad', conAsistencia.length ? `${puntualidad}%` : '—');
+  set('rep2KpiAtrasos', Math.round(sum('atrasos')));
+  set('rep2KpiFaltas', Math.round(sum('faltas')));
+  set('rep2KpiExtra50', horas(sum('totalExtras50')));
+  set('rep2KpiExtra100', horas(sum('totalExtras100')));
+  set('rep2KpiPorJustificar', horas(sum('tiempoPorJustificar')));
+};
+
+window.cambiarEstadoColaboradoresReporte = function () {
+  const estado = $('filtroEstadoReporte')?.value || 'activos';
+  if ($('chkIncluirDesvinculadosRep')) $('chkIncluirDesvinculadosRep').checked = ['activos_desv', 'todos', 'solo_desv'].includes(estado);
+  if ($('chkIncluirEliminadosRep')) $('chkIncluirEliminadosRep').checked = ['todos', 'solo_elim'].includes(estado);
+  window.cambiarFiltroDesvinculadosReporte();
+};
+
+window.moverPeriodoReporte = function (delta) {
+  const sel = $('periodoMensual');
+  if (!sel || !sel.options.length) return;
+  const nuevo = parseInt(sel.value || 0, 10) + delta;
+  if (nuevo < 0 || nuevo >= sel.options.length) return;
+  sel.value = String(nuevo);
+  syncPeriodo('rep');
+};
+
+window.toggleRangoPersonalizadoReporte = function () {
+  const c = $('rep2RangoFechas');
+  if (!c) return;
+  const abrir = c.style.display === 'none';
+  c.style.display = abrir ? 'inline-flex' : 'none';
+  if (abrir) $('filtroFechaReportesInicio')?.focus();
+};
+
+window.toggleMenuExportarReporte = function (ev) {
+  if (ev) ev.stopPropagation();
+  const m = $('rep2MenuExportar');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+};
+
+window.cerrarMenuExportarReporte = function () {
+  const m = $('rep2MenuExportar');
+  if (m) m.style.display = 'none';
+};
+
+document.addEventListener('click', e => {
+  if (!e.target.closest || !e.target.closest('#rep2Export')) cerrarMenuExportarReporte();
+});
 
 window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, customInicio = null, customFin = null) {
   const empIdStr = String(empleadoId || '').trim();
