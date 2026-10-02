@@ -406,6 +406,7 @@
     if (st.cargando) { c.innerHTML = `<div class="ev-root">${st.embebido ? '' : heroHtml()}<div class="ev-card ev-cargando"><i class="fas fa-spinner fa-spin"></i> Cargando evaluaciones…</div></div>`; return; }
     if (st.vista === 'form') { c.innerHTML = `<div class="ev-root">${formHtml(st)}</div>`; return; }
     if (st.vista === 'detalle') { c.innerHTML = `<div class="ev-root">${vistaDetalle(st)}</div>`; arriba(st); return; }
+    if (st.vista === 'persona') { c.innerHTML = `<div class="ev-root">${personaHtml(st)}</div>`; arriba(st); return; }
     c.innerHTML = `<div class="ev-root">${st.embebido ? '' : heroHtml()}${st.error ? `<div class="ev-card ev-error-card"><i class="fas fa-exclamation-triangle"></i> ${esc(st.error)} <button class="ev-link" data-ev="recargar">Reintentar</button></div>` : ''}${equipoHtml(st)}${miasHtml(st)}</div>`;
   }
 
@@ -433,7 +434,7 @@
       }
       return `<div class="ev-eq">
         <div class="ev-avatar">${m.foto_url ? `<img src="${esc(m.foto_url)}" alt="" onerror="this.remove()">` : ''}<span>${esc(iniciales(m.nombre))}</span></div>
-        <div class="ev-eq-info"><strong>${esc(m.nombre || m.id)}</strong><span class="ev-muted">${esc(m.cargo || '')}${m.area ? ' · ' + esc(m.area) : ''}</span>${acciones}</div>
+        <div class="ev-eq-info"><strong>${esc(m.nombre || m.id)}</strong><span class="ev-muted">${esc(m.cargo || '')}${m.area ? ' · ' + esc(m.area) : ''}${st.hechas.some(e => e.empleadoId === m.id) ? ` · <button class="ev-link" data-ev="persona" data-emp="${esc(m.id)}">Ver evolución</button>` : ''}</span>${acciones}</div>
       </div>`;
     }).join('');
     const pendientes = st.ses.equipo.filter(m => etapa(m).mensual && !st.hechas.some(e => e.empleadoId === m.id && e.tipo === 'MENSUAL' && e.periodo === st.mes)).length;
@@ -456,7 +457,8 @@
       </button>`).join('');
     if (!esEvaluado(st.emp) && !st.mias.length) return '';
     return `<div class="ev-card">
-      <h3 class="ev-h3"><i class="fas fa-chart-line"></i> Mis evaluaciones</h3>
+      <div class="ev-card-head"><h3 class="ev-h3"><i class="fas fa-chart-line"></i> Mis evaluaciones</h3>
+        ${st.mias.length ? `<button class="ev-btn ev-btn-sm" data-ev="persona" data-emp="${esc(st.emp.id)}"><i class="fas fa-chart-area"></i> Mi evolución</button>` : ''}</div>
       ${lista || '<p class="ev-muted">Todavía no tienes evaluaciones. Cuando tu jefe inmediato te evalúe, verás aquí tu resultado, sus comentarios y los compromisos acordados.</p>'}
     </div>`;
   }
@@ -481,6 +483,7 @@
     } else if (soyEvaluador && e.estado === 'enviada') {
       acciones = `<div class="ev-actions"><button class="ev-btn" data-ev="evaluar" data-tipo="${e.tipo}" data-emp="${esc(e.empleadoId)}" data-periodo="${esc(e.periodo)}"><i class="fas fa-pen"></i> Corregir evaluación</button></div>`;
     }
+    acciones += eliminarHtml(st, e);
     const historial = (st.historialDe ? st.historialDe(e) : '');
     return `<div class="ev-topbar"><button class="ev-back" data-ev="volver"><i class="fas fa-arrow-left"></i> Volver</button></div>
       ${detalleHtml(e, { acciones, historial })}`;
@@ -634,10 +637,18 @@
     } else if (a === 'evaluar') {
       abrirForm(st, b.dataset.emp, b.dataset.tipo, b.dataset.periodo);
     } else if (a === 'ver') {
-      st.sel = buscarEval(st, b.dataset.id);
-      if (st.sel) { st.vista = 'detalle'; pintar(st); }
+      const sel = buscarEval(st, b.dataset.id);
+      if (sel) ir(st, 'detalle', { sel });
+    } else if (a === 'persona') {
+      ir(st, 'persona', { persona: b.dataset.emp });
     } else if (a === 'volver') {
-      st.vista = st.volverA || 'inicio'; st.sel = null; pintar(st);
+      volver(st);
+    } else if (a === 'eliminar-pedir' || a === 'eliminar-cancelar') {
+      st.confirmandoEliminar = a === 'eliminar-pedir';
+      repintarSinSalto(st);
+      if (st.confirmandoEliminar) { const t = st.cont.querySelector('textarea[data-ev="motivo-eliminar"]'); if (t) t.focus({ preventScroll: true }); }
+    } else if (a === 'eliminar-ok') {
+      eliminarEval(st, Number(b.dataset.id), b);
     } else if (a === 'confirmar') {
       confirmar(st, Number(b.dataset.id), b);
     } else if (a === 'recargar') {
@@ -758,7 +769,7 @@
       cont.querySelectorAll('[data-subpanel]').forEach(p => { p.hidden = p.dataset.subpanel !== k; });
       if (montados[k]) { refrescarSub(k); return; }
       if (k === 'resultados') montados[k] = montarResultados(sub(k), opts);
-      if (k === 'equipo') montados[k] = montar(sub(k), { empleado: opts.empleado, embebido: true });
+      if (k === 'equipo') { montados[k] = montar(sub(k), { empleado: opts.empleado, embebido: true }); montados[k].empleados = opts.empleados; }
       if (k === 'asignaciones') montados[k] = montarAsignaciones(sub(k), opts);
     };
     // Al volver a una pestaña (o al panel) se recargan los datos: las evaluaciones cambian mientras está abierto
@@ -769,6 +780,7 @@
       if (!m.ses) return pintar(m);
       if (m.vista === 'form') return;                          // no perder una evaluación a medio llenar
       m.vista = k === 'resultados' ? 'resultados' : 'inicio';
+      m.pila = []; m.sel = null; m.persona = null;
       if (k === 'resultados') m.alIniciar(); else cargar(m);
     };
     let actual = 'resultados';
@@ -780,6 +792,8 @@
   function montarResultados(cont, opts) {
     const st = montar(cont, { empleado: opts.empleado, embebido: true, diferido: true });
     st.todas = [];
+    st.empleados = opts.empleados;
+    st.rVista = 'dashboard';
     st.filtro = { periodo: mesPorDefecto(), q: '', area: '', estado: '' };
     st.alIniciar = async () => {
       if (!st.ses.rrhh) { st.vista = 'sin-permiso'; return pintarResultados(st, opts); }
@@ -792,6 +806,7 @@
     st.onClick = (a, b) => {
       if (a === 'exportar') exportarExcel(st, opts);
       if (a === 'r-actualizar') cargarTodas(st, opts);
+      if (a === 'r-vista') { st.rVista = b.dataset.v; pintarResultados(st, opts); }
     };
     st.onChange = (a, el) => {
       if (a === 'r-periodo') { st.filtro.periodo = el.value; pintarResultados(st, opts); }
@@ -855,7 +870,7 @@
     const c = st.cont;
     if (!st.ses) return pintar(st);
     if (st.cargando) return pintar(st);
-    if (st.vista === 'detalle') return pintar(st);
+    if (st.vista === 'detalle' || st.vista === 'persona') return pintar(st);
     if (!st.ses.rrhh) {
       c.innerHTML = `<div class="ev-root"><div class="ev-card"><h3 class="ev-h3"><i class="fas fa-lock"></i> Resultados consolidados</h3>
         <p class="ev-muted">Solo Psicología Organizacional y los supervisores administradores ven los resultados de toda la empresa. Tus evaluaciones como jefe inmediato están en <strong>Mi equipo</strong>.</p></div></div>`;
@@ -876,16 +891,25 @@
     const opcionesPer = mesesDisponibles(12).map(m => `<option value="${m}" ${m === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')
       + `<option value="DIA75" ${f.periodo === 'DIA75' ? 'selected' : ''}>Seguimiento Día 75 (nuevos ingresos)</option>`;
     const etiquetaEstado = { 'pendiente': '<span class="ev-chip ev-chip-pend">Pendiente</span>', 'sin-evaluador': '<span class="ev-chip ev-chip-warn">Sin evaluador</span>' };
-    c.innerHTML = `<div class="ev-root">
-      ${st.error ? `<div class="ev-card ev-error-card"><i class="fas fa-exclamation-triangle"></i> ${esc(st.error)}</div>` : ''}
-      <div class="ev-card">
-        <div class="ev-card-head ev-wrap">
-          <select class="ev-select" data-ev="r-periodo">${opcionesPer}</select>
-          <div class="ev-acciones-der">
-            <button class="ev-btn ev-btn-sm" data-ev="r-actualizar" title="Volver a cargar desde la base"><i class="fas fa-sync-alt"></i> Actualizar</button>
-            <button class="ev-btn ev-btn-sm" data-ev="exportar"><i class="fas fa-file-excel"></i> Exportar Excel</button>
-          </div>
+    const barra = `<div class="ev-card ev-barra-r">
+        <select class="ev-select" data-ev="r-periodo">${opcionesPer}</select>
+        <div class="ev-seg" role="tablist">
+          <button class="${st.rVista === 'dashboard' ? 'ev-seg-on' : ''}" data-ev="r-vista" data-v="dashboard"><i class="fas fa-chart-pie"></i> Dashboard</button>
+          <button class="${st.rVista === 'tabla' ? 'ev-seg-on' : ''}" data-ev="r-vista" data-v="tabla"><i class="fas fa-list"></i> Colaboradores</button>
         </div>
+        <div class="ev-acciones-der">
+          <button class="ev-btn ev-btn-sm" data-ev="r-actualizar" title="Volver a cargar desde la base"><i class="fas fa-sync-alt"></i> Actualizar</button>
+          <button class="ev-btn ev-btn-sm" data-ev="exportar"><i class="fas fa-file-excel"></i> Exportar Excel</button>
+        </div>
+      </div>`;
+    const errorHtml = st.error ? `<div class="ev-card ev-error-card"><i class="fas fa-exclamation-triangle"></i> ${esc(st.error)}</div>` : '';
+    if (st.rVista === 'dashboard') {
+      c.innerHTML = `<div class="ev-root">${errorHtml}${barra}${dashboardHtml(st, opts)}</div>`;
+      return;
+    }
+    c.innerHTML = `<div class="ev-root">
+      ${errorHtml}${barra}
+      <div class="ev-card">
         <div class="ev-kpis">
           <div class="ev-kpi"><span>A evaluar</span><strong>${todas.length}</strong></div>
           <div class="ev-kpi"><span>Enviadas</span><strong>${cuenta('enviada')}</strong></div>
@@ -908,7 +932,7 @@
         </div>
         <div class="ev-tabla-wrap"><table class="ev-tabla">
           <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th>Resultado</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
-          <tbody>${filas.map(x => `<tr ${x.ev ? `data-ev="ver" data-id="${x.ev.id}" class="ev-fila-click"` : ''}>
+          <tbody>${filas.map(x => `<tr ${evalsDe(st, x.emp.id).length ? `data-ev="persona" data-emp="${esc(x.emp.id)}" class="ev-fila-click" title="Ver dashboard del colaborador"` : ''}>
             <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong><div class="ev-muted ev-small">${esc(x.emp.area || '')}${x.emp.cargo ? ' · ' + esc(x.emp.cargo) : ''}</div></td>
             <td>${esc(x.evaluador || '—')}</td>
             <td>${x.ev ? chipEstado(x.ev) : etiquetaEstado[x.estado]}</td>
@@ -916,7 +940,7 @@
             ${DIMENSIONES.map(d => `<td class="ev-num">${x.ev ? pct((x.ev.dimensiones[d.k] || {}).porcentaje) : '—'}</td>`).join('')}
           </tr>`).join('') || `<tr><td colspan="8" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>`}</tbody>
         </table></div>
-        <p class="ev-muted ev-small">${filas.length} de ${todas.length}. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'superaron los 90 días de prueba (o no tienen fecha de ingreso)'}.</p>
+        <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'superaron los 90 días de prueba (o no tienen fecha de ingreso)'}.</p>
       </div>
     </div>`;
   }
@@ -930,6 +954,238 @@
         <div class="ev-tend-bar"><div class="${claseNivel(x.nivel)}" style="height:${Math.round(Number(x.porcentaje) * 100)}%"></div></div>
         <strong>${pct(x.porcentaje)}</strong><span>${esc(x.periodo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(x.periodo).slice(0, 3) + ' ' + x.periodo.slice(2, 4))}</span>
       </div>`).join('')}</div></div>`;
+  }
+
+  // ---------------------------------------------------------------- dashboards
+  const ordenEval = (a, b) => String(a.fechaAplicacion || '').localeCompare(String(b.fechaAplicacion || '')) || String(a.periodo).localeCompare(String(b.periodo));
+  const etiquetaCorta = per => per === 'DIA75' ? 'Día 75' : (() => { const m = String(per).match(/^(\d{4})-(\d{2})$/); return m ? `${MESES[Number(m[2]) - 1].slice(0, 3)} ${m[1].slice(2)}` : per; })();
+  const promedio = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+  const puntos = d => `${d > 0 ? '+' : ''}${Math.round(d * 1000) / 10} pts`;
+
+  // Todas las evaluaciones conocidas de un colaborador (consolidado, equipo o propias), sin duplicar
+  function evalsDe(st, empId) {
+    const vistos = new Map();
+    [].concat(st.todas || [], st.hechas || [], st.mias || []).forEach(e => { if (String(e.empleadoId) === String(empId)) vistos.set(e.id, e); });
+    return Array.from(vistos.values()).sort(ordenEval);
+  }
+
+  // Línea de tendencia en SVG (sin librerías): bandas de nivel en 65/75/85/95 %
+  function lineaSvg(serie, opciones = {}) {
+    if (!serie.length) return '<p class="ev-muted">Sin datos todavía.</p>';
+    const W = 640, H = opciones.alto || 190, L = 38, R = 14, T = 14, B = 30;
+    const vals = serie.map(p => p.v);
+    const min = Math.max(0, Math.min(0.5, Math.floor((Math.min(...vals) - 0.05) * 20) / 20));
+    const X0 = L + 26, X1 = W - R - 26;   // margen interno: que etiquetas y puntos no choquen con el eje ni con el borde
+    const x = i => serie.length === 1 ? (X0 + X1) / 2 : X0 + i * (X1 - X0) / (serie.length - 1);
+    const y = v => T + (1 - (v - min) / (1 - min)) * (H - T - B);
+    const bandas = [0.65, 0.75, 0.85, 0.95].filter(v => v > min).map(v =>
+      `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="ev-svg-grid"/><text x="${L - 6}" y="${y(v) + 4}" class="ev-svg-eje" text-anchor="end">${Math.round(v * 100)}%</text>`).join('');
+    const ruta = serie.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+    const marcas = serie.map((p, i) => `<g class="${claseNivel(nivelDe(p.v))}"><circle cx="${x(i)}" cy="${y(p.v)}" r="5" class="ev-svg-punto"><title>${esc(p.t)}: ${pct(p.v)}${p.n ? ` (${p.n})` : ''}</title></circle>
+      <text x="${x(i)}" y="${y(p.v) - 10}" class="ev-svg-val" text-anchor="middle">${Math.round(p.v * 100)}</text>
+      <text x="${x(i)}" y="${H - 8}" class="ev-svg-eje" text-anchor="middle">${esc(p.t)}</text></g>`).join('');
+    return `<svg class="ev-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opciones.titulo || 'Tendencia')}">${bandas}<path d="${ruta}" class="ev-svg-linea"/>${marcas}</svg>`;
+  }
+
+  function barraH(etiqueta, v, extra = '') {
+    const p = Math.max(0, Math.min(1, Number(v) || 0));
+    return `<div class="ev-dim"><div class="ev-dim-top"><span>${etiqueta}</span><strong>${pct(p)}${extra}</strong></div>
+      <div class="ev-bar"><div class="ev-bar-fill ${claseNivel(nivelDe(p))}" style="width:${Math.round(p * 100)}%"></div></div></div>`;
+  }
+
+  // Dashboard individual
+  function personaHtml(st) {
+    const id = String(st.persona);
+    const evals = evalsDe(st, id);
+    const emp = (st.ses.equipo || []).find(m => String(m.id) === id)
+      || (st.empleados ? st.empleados().find(e => String(e.id) === id) : null)
+      || (String(st.emp.id) === id ? st.emp : null) || {};
+    const ult = evals[evals.length - 1];
+    const nombre = emp.nombre || (ult && ult.empleadoNombre) || id;
+    const cab = `<div class="ev-topbar"><button class="ev-back" data-ev="volver"><i class="fas fa-arrow-left"></i> Volver</button></div>
+      <div class="ev-card ev-persona-cab">
+        <div class="ev-avatar ev-avatar-lg">${emp.foto_url ? `<img src="${esc(emp.foto_url)}" alt="" onerror="this.remove()">` : ''}<span>${esc(iniciales(nombre))}</span></div>
+        <div><div class="ev-eyebrow">Dashboard de desempeño</div><h3>${esc(nombre)}</h3>
+        <div class="ev-muted">${esc(emp.cargo || (ult && ult.cargo) || '')}${(emp.area || (ult && ult.area)) ? ' · ' + esc(emp.area || ult.area) : ''}${ult ? ` · Evalúa ${esc(ult.evaluadorNombre || ult.evaluadorId)}` : ''}</div></div>
+      </div>`;
+    if (!evals.length) return cab + '<div class="ev-card ev-muted">Todavía no hay evaluaciones registradas para este colaborador.</div>';
+
+    const ant = evals[evals.length - 2];
+    const prom = promedio(evals.map(e => Number(e.porcentaje)));
+    const delta = ant ? Number(ult.porcentaje) - Number(ant.porcentaje) : null;
+    const promItem = i => promedio(evals.map(e => Number(e.calificaciones[i]) || 0).filter(Boolean));
+    const items = ITEMS.map((it, i) => ({ i, it, ult: Number(ult.calificaciones[i]) || 0, prom: promItem(i) || 0 }));
+    const debiles = items.slice().sort((a, b) => a.prom - b.prom || a.ult - b.ult).slice(0, 3);
+    const fuertes = items.slice().sort((a, b) => b.prom - a.prom || b.ult - a.ult).slice(0, 3);
+    const lista = l => l.map(x => `<li><span>${esc(x.it.c)}</span><strong class="ev-c${Math.round(x.prom)}">${(Math.round(x.prom * 10) / 10).toString()}</strong></li>`).join('');
+
+    return cab + `
+      <div class="ev-kpis">
+        <div class="ev-kpi"><span>Última evaluación</span><strong class="${claseNivel(ult.nivel)} ev-kpi-nivel">${pct(ult.porcentaje)}</strong><small>${esc(ult.nivel)} · ${esc(etiquetaPeriodo(ult.periodo))}</small></div>
+        <div class="ev-kpi"><span>Promedio</span><strong>${pct(prom)}</strong><small>${evals.length} evaluación(es)</small></div>
+        <div class="ev-kpi"><span>Vs. anterior</span><strong class="${delta === null ? '' : delta >= 0 ? 'ev-ok' : 'ev-danger'}">${delta === null ? '—' : puntos(delta)}</strong><small>${ant ? esc(etiquetaPeriodo(ant.periodo)) : 'Sin evaluación previa'}</small></div>
+        <div class="ev-kpi"><span>Estado</span><strong class="ev-kpi-txt">${ult.estado === 'confirmada' ? 'Confirmada' : 'Por confirmar'}</strong><small>${ult.proximaEvaluacion ? 'Próxima: ' + fechaCorta(ult.proximaEvaluacion) : ''}</small></div>
+      </div>
+      <div class="ev-card"><h4 class="ev-h4">Evolución del resultado</h4>${lineaSvg(evals.map(e => ({ t: etiquetaCorta(e.periodo), v: Number(e.porcentaje) })), { titulo: 'Evolución de ' + nombre })}
+        <p class="ev-muted ev-small">Líneas guía: 65 % Aceptable · 75 % Bueno · 85 % Muy bueno · 95 % Excelente. Mira la tendencia de varios meses, no un mes aislado.</p></div>
+      <div class="ev-grid2">
+        <div class="ev-card"><h4 class="ev-h4">Dimensiones · ${esc(etiquetaPeriodo(ult.periodo))}</h4>
+          <div class="ev-dims">${DIMENSIONES.map(d => {
+            const pd = promedio(evals.map(e => Number((e.dimensiones[d.k] || {}).porcentaje || 0)));
+            return barraH(d.t, (ult.dimensiones[d.k] || {}).porcentaje, evals.length > 1 ? ` <span class="ev-muted ev-small">prom. ${pct(pd)}</span>` : '');
+          }).join('')}</div></div>
+        <div class="ev-card"><h4 class="ev-h4">Fortalezas y aspectos a reforzar</h4>
+          <div class="ev-fyr"><div><h5><i class="fas fa-arrow-up ev-ok"></i> Más altas</h5><ul>${lista(fuertes)}</ul></div>
+          <div><h5><i class="fas fa-arrow-down ev-danger"></i> A reforzar</h5><ul>${lista(debiles)}</ul></div></div>
+          ${ult.compromisos ? `<div class="ev-texto ev-mt"><h4>Compromisos vigentes</h4><p>${esc(ult.compromisos)}</p></div>` : ''}
+        </div>
+      </div>
+      <div class="ev-card"><h4 class="ev-h4">Las 14 competencias</h4>
+        <div class="ev-tabla-wrap ev-tabla-libre"><table class="ev-tabla">
+          <thead><tr><th>Competencia</th><th class="ev-num">Peso</th><th class="ev-num">Última</th><th class="ev-num">Promedio</th><th>Histórico</th></tr></thead>
+          <tbody>${items.map(x => `<tr><td>${x.i + 1}. ${esc(x.it.c)}</td><td class="ev-num">${x.it.peso}%</td>
+            <td class="ev-num"><span class="ev-cal-pill ev-c${x.ult}">${x.ult || '–'}</span></td>
+            <td class="ev-num">${(Math.round(x.prom * 10) / 10).toString()}</td>
+            <td><div class="ev-mini">${evals.map(e => { const v = Number(e.calificaciones[x.i]) || 0; return `<span class="ev-c${v}" style="height:${v * 20}%" title="${esc(etiquetaPeriodo(e.periodo))}: ${v}"></span>`; }).join('')}</div></td></tr>`).join('')}</tbody>
+        </table></div></div>
+      <div class="ev-card"><h4 class="ev-h4">Historial</h4>${evals.slice().reverse().map(e => `
+        <button class="ev-mia" data-ev="ver" data-id="${e.id}">
+          <div><strong>${esc(etiquetaPeriodo(e.periodo))}</strong><span class="ev-muted">Evaluó ${esc(e.evaluadorNombre || e.evaluadorId)} · ${fechaCorta(e.fechaAplicacion)}</span></div>
+          <div class="ev-mia-der">${chipNivel(e)}${chipEstado(e)}<i class="fas fa-chevron-right"></i></div>
+        </button>`).join('')}</div>`;
+  }
+
+  // Dashboard general (RR.HH.)
+  function dashboardHtml(st, opts) {
+    const f = st.filtro;
+    const filas = filasResultados(st, opts);
+    const conEval = filas.filter(x => x.ev);
+    const prom = promedio(conEval.map(x => Number(x.ev.porcentaje)));
+    const cobertura = filas.length ? conEval.length / filas.length : 0;
+    const enRiesgo = conEval.filter(x => ['Requiere mejora', 'Aceptable'].includes(x.ev.nivel));
+
+    // Tendencia mensual (últimos 12 meses con datos)
+    const meses = mesesDisponibles(12).slice().reverse();
+    const serie = meses.map(m => {
+      const ev = st.todas.filter(e => e.tipo === 'MENSUAL' && e.periodo === m);
+      return ev.length ? { t: etiquetaCorta(m), v: promedio(ev.map(e => Number(e.porcentaje))), n: `${ev.length} eval.` } : null;
+    }).filter(Boolean);
+    let deltaMes = null;
+    if (f.periodo !== 'DIA75') {
+      const prev = st.todas.filter(e => e.tipo === 'MENSUAL' && e.periodo === mesAnterior(f.periodo, 1));
+      if (prev.length && prom !== null) deltaMes = prom - promedio(prev.map(e => Number(e.porcentaje)));
+    }
+
+    // Distribución por nivel
+    const niveles = ['Excelente', 'Muy bueno', 'Bueno', 'Aceptable', 'Requiere mejora'];
+    const dist = niveles.map(n => ({ n, c: conEval.filter(x => x.ev.nivel === n).length }));
+    const distHtml = conEval.length
+      ? `<div class="ev-stack">${dist.filter(d => d.c).map(d => `<div class="${claseNivel(d.n)}" style="flex:${d.c}" title="${d.n}: ${d.c}"></div>`).join('')}</div>
+         <div class="ev-leyenda">${dist.map(d => `<span><i class="${claseNivel(d.n)}"></i>${d.n} <strong>${d.c}</strong></span>`).join('')}</div>`
+      : '<p class="ev-muted">Sin evaluaciones en este período.</p>';
+
+    // Por área
+    const porArea = {};
+    conEval.forEach(x => { const a = x.emp.area || x.ev.area || 'Sin área'; (porArea[a] = porArea[a] || []).push(Number(x.ev.porcentaje)); });
+    const areas = Object.entries(porArea).map(([a, v]) => ({ a, p: promedio(v), n: v.length })).sort((x, y) => x.p - y.p);
+
+    // Competencias del período (promedio 1–5)
+    const compet = ITEMS.map((it, i) => ({ it, i, p: promedio(conEval.map(x => Number(x.ev.calificaciones[i]) || 0).filter(Boolean)) || 0 }));
+    const bajas = compet.slice().sort((a, b) => a.p - b.p).slice(0, 5);
+
+    // Alertas: nivel bajo o caída de 10 pts o más frente a su evaluación anterior
+    const alertas = [];
+    conEval.forEach(x => {
+      const hist = evalsDe(st, x.emp.id);
+      const idx = hist.findIndex(e => e.id === x.ev.id);
+      const ant = idx > 0 ? hist[idx - 1] : null;
+      const caida = ant ? Number(x.ev.porcentaje) - Number(ant.porcentaje) : 0;
+      if (['Requiere mejora', 'Aceptable'].includes(x.ev.nivel) || caida <= -0.10) {
+        alertas.push({ x, motivo: caida <= -0.10 ? `Bajó ${puntos(caida).replace('-', '')} vs. ${etiquetaPeriodo(ant.periodo)}` : x.ev.nivel });
+      }
+    });
+
+    return `
+      <div class="ev-kpis">
+        <div class="ev-kpi"><span>Cobertura</span><strong>${pct(cobertura)}</strong><small>${conEval.length} de ${filas.length} evaluados</small></div>
+        <div class="ev-kpi"><span>Confirmadas</span><strong class="ev-ok">${conEval.filter(x => x.ev.estado === 'confirmada').length}</strong><small>${conEval.filter(x => x.ev.estado === 'enviada').length} por confirmar</small></div>
+        <div class="ev-kpi"><span>Promedio general</span><strong class="${prom === null ? '' : claseNivel(nivelDe(prom)) + ' ev-kpi-nivel'}">${prom === null ? '—' : pct(prom)}</strong><small>${prom === null ? '' : nivelDe(prom)}</small></div>
+        <div class="ev-kpi"><span>Vs. mes anterior</span><strong class="${deltaMes === null ? '' : deltaMes >= 0 ? 'ev-ok' : 'ev-danger'}">${deltaMes === null ? '—' : puntos(deltaMes)}</strong><small>promedio general</small></div>
+        <div class="ev-kpi"><span>Aceptable o menos</span><strong class="ev-danger">${enRiesgo.length}</strong><small>requieren plan de mejora</small></div>
+        <div class="ev-kpi"><span>Pendientes</span><strong class="ev-warn">${filas.filter(x => x.estado === 'pendiente').length}</strong><small>${filas.filter(x => x.estado === 'sin-evaluador').length} sin evaluador</small></div>
+      </div>
+      <div class="ev-card"><h4 class="ev-h4">Tendencia del promedio general (mensual)</h4>${lineaSvg(serie, { titulo: 'Promedio general por mes' })}</div>
+      <div class="ev-grid2">
+        <div class="ev-card"><h4 class="ev-h4">Distribución por nivel · ${esc(etiquetaPeriodo(f.periodo))}</h4>${distHtml}</div>
+        <div class="ev-card"><h4 class="ev-h4">Promedio por dimensión</h4>${conEval.length ? `<div class="ev-dims">${DIMENSIONES.map(d => barraH(d.t, promedio(conEval.map(x => Number((x.ev.dimensiones[d.k] || {}).porcentaje || 0))))).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
+        <div class="ev-card"><h4 class="ev-h4">Promedio por área</h4>${areas.length ? `<div class="ev-dims">${areas.map(a => barraH(`${esc(a.a)} <span class="ev-muted ev-small">(${a.n})</span>`, a.p)).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
+        <div class="ev-card"><h4 class="ev-h4">Competencias más bajas</h4>${conEval.length ? `<ol class="ev-ranking">${bajas.map(b => `<li><span>${esc(b.it.c)}</span><strong class="ev-c${Math.round(b.p)}">${(Math.round(b.p * 10) / 10).toString()}</strong></li>`).join('')}</ol>
+          <p class="ev-muted ev-small">Promedio de 1 a 5 del período: dónde enfocar la capacitación.</p>` : '<p class="ev-muted">Sin datos.</p>'}</div>
+      </div>
+      <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-bell ev-warn"></i> Alertas</h4>
+        ${alertas.length ? alertas.map(a => `<button class="ev-mia" data-ev="persona" data-emp="${esc(a.x.emp.id)}">
+          <div><strong>${esc(a.x.emp.nombre || a.x.emp.id)}</strong><span class="ev-muted">${esc(a.x.emp.area || '')} · ${esc(a.motivo)}</span></div>
+          <div class="ev-mia-der">${chipNivel(a.x.ev)}<i class="fas fa-chevron-right"></i></div></button>`).join('')
+          : '<p class="ev-muted">Sin alertas: nadie en "Aceptable" o "Requiere mejora" ni con caídas de 10 puntos o más.</p>'}
+      </div>`;
+  }
+
+  // ---------------------------------------------------------------- eliminar
+  function puedeEliminar(st, e) {
+    if (st.ses.rrhh) return true;
+    return e.estado === 'enviada' && String(e.evaluadorId) === String(st.ses.empleadoId) && st.ses.equipo.some(m => String(m.id) === String(e.empleadoId));
+  }
+
+  function eliminarHtml(st, e) {
+    if (!puedeEliminar(st, e)) return '';
+    if (!st.confirmandoEliminar) {
+      return `<div class="ev-actions"><button class="ev-btn ev-btn-peligro" data-ev="eliminar-pedir"><i class="fas fa-trash-alt"></i> Eliminar evaluación</button></div>`;
+    }
+    return `<div class="ev-card ev-eliminar">
+      <h4 class="ev-h4"><i class="fas fa-exclamation-triangle"></i> ¿Eliminar esta evaluación?</h4>
+      <p class="ev-muted">Se borra la evaluación de ${esc(e.empleadoNombre || e.empleadoId)} (${esc(etiquetaPeriodo(e.periodo))}) y su fila en la hoja EVALUACIONES. Queda una copia de respaldo para auditoría.${e.estado === 'confirmada' ? ' <strong>El colaborador ya la había confirmado.</strong>' : ''}</p>
+      <textarea data-ev="motivo-eliminar" maxlength="300" rows="2" placeholder="Motivo (recomendado)"></textarea>
+      <div class="ev-actions ev-mt">
+        <button class="ev-btn" data-ev="eliminar-cancelar">Cancelar</button>
+        <button class="ev-btn ev-btn-peligro-solido" data-ev="eliminar-ok" data-id="${e.id}"><i class="fas fa-trash-alt"></i> Sí, eliminar</button>
+      </div>
+    </div>`;
+  }
+
+  async function eliminarEval(st, id, boton) {
+    const ta = st.cont.querySelector('textarea[data-ev="motivo-eliminar"]');
+    boton.disabled = true;
+    boton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando…';
+    try {
+      const res = await rpc(st.ses, 'eval_eliminar', { id, motivo: ta ? ta.value : '' });
+      if (!res.ok) throw new Error(res.error);
+      const fuera = arr => (arr || []).filter(e => e.id !== id);
+      st.mias = fuera(st.mias); st.hechas = fuera(st.hechas); if (st.todas) st.todas = fuera(st.todas);
+      st.confirmandoEliminar = false;
+      toast('Evaluación eliminada', 'success');
+      volver(st);
+    } catch (e) {
+      toast(e.message || String(e), 'error');
+      boton.disabled = false;
+      boton.innerHTML = '<i class="fas fa-trash-alt"></i> Sí, eliminar';
+    }
+  }
+
+  // ---------------------------------------------------------------- navegación (pila de vistas)
+  function ir(st, vista, cambios = {}) {
+    st.pila = st.pila || [];
+    st.pila.push({ vista: st.vista, sel: st.sel, persona: st.persona });
+    Object.assign(st, cambios, { vista, confirmandoEliminar: false });
+    pintar(st);
+  }
+  function volver(st) {
+    const prev = (st.pila || []).pop();
+    st.confirmandoEliminar = false;
+    if (prev) Object.assign(st, prev);
+    else { st.vista = st.volverA || 'inicio'; st.sel = null; }
+    // Si la evaluación que se veía ya no existe (eliminada), subir un nivel más
+    if (st.vista === 'detalle' && (!st.sel || !buscarEval(st, st.sel.id))) return volver(st);
+    pintar(st);
   }
 
   function exportarExcel(st, opts) {
@@ -1071,7 +1327,7 @@
   // Inicio del consolidado: el pintar genérico delega en pintarResultados cuando corresponde
   const pintarGenerico = pintar;
   pintar = function (st) {
-    if (st.pintarInicio && st.ses && !st.cargando && st.vista !== 'form' && st.vista !== 'detalle') return st.pintarInicio();
+    if (st.pintarInicio && st.ses && !st.cargando && !['form', 'detalle', 'persona'].includes(st.vista)) return st.pintarInicio();
     return pintarGenerico(st);
   };
 

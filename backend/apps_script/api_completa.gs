@@ -840,6 +840,9 @@ function procesarAccion(params) {
     case 'guardarEvaluacion':
       return guardarEvaluacionEnHoja(params);
 
+    case 'eliminarEvaluacion':
+      return eliminarEvaluacionEnHoja(params);
+
     default:
       return { error: `Acción no reconocida: ${accion}` };
   }

@@ -135,7 +135,7 @@ function sha256Hex_(texto) {
 // ---------------------------------------------------------------------
 // 3. Respaldo: la PWA llama a Apps Script y este reenvía a PostgREST
 // ---------------------------------------------------------------------
-var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar'];
+var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar', 'eval_eliminar'];
 
 function proxyEvaluacion(d) {
   var fn = String(d.fn || '');
@@ -217,6 +217,27 @@ function guardarEvaluacionEnHoja(p) {
     hoja.getRange(filaDestino, 32, 1, fila.length - 31).setNumberFormat('@');
     hoja.getRange(filaDestino, 1, 1, fila.length).setValues([fila.map(function (v) { return v === null || v === undefined ? '' : v; })]);
     return { ok: true, fila: filaDestino };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Evaluación eliminada en Postgres (desde la cola): se quita su fila de la hoja
+function eliminarEvaluacionEnHoja(p) {
+  var id = String(p.evaluacionId || '').trim();
+  if (!id) return { ok: false, error: 'Falta evaluacionId' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var hoja = hojaEvaluaciones_();
+    var n = hoja.getLastRow();
+    if (n < 2) return { ok: true, eliminadas: 0 };
+    var ids = hoja.getRange(2, 1, n - 1, 1).getValues();
+    var eliminadas = 0;
+    for (var r = ids.length - 1; r >= 0; r--) {
+      if (String(ids[r][0]).trim() === id) { hoja.deleteRow(r + 2); eliminadas++; }
+    }
+    return { ok: true, eliminadas: eliminadas };
   } finally {
     lock.releaseLock();
   }
