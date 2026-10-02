@@ -66,6 +66,16 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Colección 'notificaciones' (campana de la app y del panel)
+    // Los avisos los crea y limpia Apps Script (notificaciones.gs); el cliente solo los lee
+    // y se marca como lector (campo leidaPor). Texto mínimo: sin notas ni comentarios.
+    match /notificaciones/{avisoId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leidaPor']);
+      allow delete: if true; // limpieza automática de avisos de más de 60 días
+    }
+
     // Colección 'empleados_desvinculados' (Historial laboral pasivo LOPDP)
     // Custodia de registros pasivos: no pueden eliminarse desde clientes.
     match /empleados_desvinculados/{desvinculadoId} {
