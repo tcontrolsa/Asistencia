@@ -8,7 +8,7 @@
     const DEFAULT_CONFIG_WHATSAPP = {
         servidorUrl: 'http://192.168.10.129:2785',
         servidorUrlLocal: 'http://192.168.10.129:2785',
-        apiKey: 'owa_k1_0b88a4ca047df765c8256adaa1607c60afb4db126e383187653b0f0d0828d6d7',
+        apiKey: '', // la clave de OpenWA la pone el servidor (contenedor tunel-whatsapp); no va en el navegador
         activo: true,
         autoEnvioNoRegistro: false,
         horaCorteNoRegistro: '08:15',
@@ -430,7 +430,8 @@
                 let requiereApiKey = false;
                 let dataHealth = { status: 'ok', version: '5.0.0' };
 
-                if (apiKey && apiKey.trim()) {
+                // Por el túnel HTTPS el servidor agrega la clave: se consulta la sesión aunque el navegador no la tenga
+                if ((apiKey && apiKey.trim()) || String(urlBase).startsWith('https://')) {
                     try {
                         const ctrlMeta = new AbortController();
                         const tMeta = setTimeout(() => { try { ctrlMeta.abort(); } catch(e) {} }, 3000);

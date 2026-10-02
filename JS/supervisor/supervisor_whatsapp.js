@@ -207,7 +207,12 @@ window.inicializarPanelWhatsApp = async function () {
   const cfg = window.OpenWAService.config || {};
 
   if ($('txtWhatsAppServidorUrl')) $('txtWhatsAppServidorUrl').value = cfg.servidorUrl || 'http://192.168.10.129:2785';
-  if ($('txtWhatsAppApiKey')) $('txtWhatsAppApiKey').value = cfg.apiKey || '';
+  if ($('txtWhatsAppApiKey')) {
+    // La clave de OpenWA vive en el servidor (tunel-whatsapp): no se muestra ni se guarda en Firestore
+    $('txtWhatsAppApiKey').value = '';
+    $('txtWhatsAppApiKey').disabled = true;
+    $('txtWhatsAppApiKey').placeholder = 'Se configura en el servidor (tunel-whatsapp)';
+  }
   if ($('chkWhatsAppActivo')) $('chkWhatsAppActivo').checked = (cfg.activo !== false);
 
   if ($('chkWhatsAppAutoNoRegistro')) $('chkWhatsAppAutoNoRegistro').checked = !!cfg.autoEnvioNoRegistro;
@@ -433,7 +438,7 @@ window.guardarConfiguracionWhatsAppDesdePanel = async function () {
   if (!window.OpenWAService) return;
   const cfg = {
     servidorUrl: $('txtWhatsAppServidorUrl')?.value.trim() || window.OpenWAService.config?.servidorUrl || 'http://192.168.10.129:2785',
-    apiKey: $('txtWhatsAppApiKey')?.value.trim() || '',
+    apiKey: '', // no guardar la clave en Firestore (es de lectura pública)
     activo: $('chkWhatsAppActivo')?.checked ?? true,
     autoEnvioNoRegistro: $('chkWhatsAppAutoNoRegistro')?.checked ?? false,
     horaCorteNoRegistro: $('txtWhatsAppHoraCorte')?.value || '08:15',
