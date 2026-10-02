@@ -8,6 +8,9 @@
  *      cuyo evaluador_id es él) y si ve todas (rrhh = supervisor admin). Vigencia: 8 horas.
  *   2. guardarEvaluacion (lo llama sync-historico al replicar la cola): escribe o actualiza la
  *      fila de la evaluación en la hoja EVALUACIONES.
+ *   3. evalRpc (solo POST): respaldo para equipos o redes que bloquean *.trycloudflare.com.
+ *      Reenvía la llamada api.eval_* al PostgREST con el mismo token del colaborador;
+ *      PostgREST sigue decidiendo los permisos.
  *
  * Usa el mismo secreto PGRST_JWT_SECRET de Propiedades del script que tokenHistorico.
  * Pendiente fase 1 de seguridad: verificar contra CREDENCIALES (acceso_seguro.gs) en lugar
@@ -127,6 +130,46 @@ function camposFirestore_(fields) {
 function sha256Hex_(texto) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, texto, Utilities.Charset.UTF_8)
     .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+}
+
+// ---------------------------------------------------------------------
+// 3. Respaldo: la PWA llama a Apps Script y este reenvía a PostgREST
+// ---------------------------------------------------------------------
+var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar'];
+
+function proxyEvaluacion(d) {
+  var fn = String(d.fn || '');
+  if (EVAL_FUNCIONES_PROXY.indexOf(fn) === -1) return { status: 400, body: { ok: false, error: 'Función no permitida' } };
+  var token = String(d.token || '');
+  if (!token) return { status: 401, body: { ok: false, error: 'Sin token' } };
+  var cuerpo = typeof d.p === 'string' ? d.p : JSON.stringify(d.p || {});
+  if (cuerpo.length > 20000) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
+
+  var base = urlHistorico_();
+  if (!base) return { status: 503, body: { ok: false, error: 'Servidor de evaluaciones sin dirección publicada' } };
+  var res = UrlFetchApp.fetch(base + '/rpc/' + fn, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token },
+    payload: '{"p":' + cuerpo + '}'
+  });
+  var texto = res.getContentText();
+  var body;
+  try { body = JSON.parse(texto); } catch (e) { body = { ok: false, error: texto.slice(0, 200) }; }
+  return { status: res.getResponseCode(), body: body };
+}
+
+// URL del túnel publicada por el contenedor tunel-historico (caché 5 min)
+function urlHistorico_() {
+  var cache = CacheService.getScriptCache();
+  var url = cache.get('eval_url_historico');
+  if (url) return url;
+  var res = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/' + EVAL_PROYECTO_FIRESTORE +
+    '/databases/(default)/documents/configuracion/historico?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return '';
+  var campos = JSON.parse(res.getContentText()).fields || {};
+  url = String((campos.url && campos.url.stringValue) || '').replace(/\/+$/, '');
+  if (url) cache.put('eval_url_historico', url, 300);
+  return url;
 }
 
 // ---------------------------------------------------------------------

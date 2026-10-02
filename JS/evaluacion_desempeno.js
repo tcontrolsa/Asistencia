@@ -185,16 +185,40 @@
     return s;
   }
 
-  async function rpc(ses, fn, p) {
+  // Respuesta de PostgREST (directa o reenviada por Apps Script) → resultado o error claro
+  function interpretar(status, r) {
+    if (status === 401) { cerrarSesion(); throw Object.assign(new Error('Tu sesión venció. Vuelve a ingresar tu PIN.'), { sesion: true }); }
+    if (status < 200 || status >= 300) {
+      const det = r && (r.message || r.hint || r.error) || '';
+      throw Object.assign(new Error(`HTTP ${status}${det ? ': ' + det : ''}`), { servidor: true });
+    }
+    if (r && r.ok === false && /Sesión de evaluación no válida/.test(r.error || '')) {
+      cerrarSesion();
+      throw Object.assign(new Error(r.error), { sesion: true });
+    }
+    return r;
+  }
+
+  // Respaldo para redes o equipos que bloquean *.trycloudflare.com: Apps Script reenvía la llamada
+  const KEY_PROXY = 'tcontrol_eval_via_apps_script';
+  async function rpcPorAppsScript(ses, fn, p) {
+    const res = await window.FirebaseBackend._post({ accion: 'evalRpc', token: ses.token, fn, p: JSON.stringify(p) });
+    if (!res || typeof res.status !== 'number') {
+      throw new Error((res && res.error) || 'sin respuesta de Apps Script');
+    }
+    return interpretar(res.status, res.body);
+  }
+
+  async function rpcDirecto(ses, fn, p) {
     const fb = window.FirebaseBackend;
     let causa = '';
-    for (let intento = 0; intento < 3; intento++) {
+    for (let intento = 0; intento < 2; intento++) {
       // La URL del túnel se lee de Firestore y se guarda 10 min; si quedó vacía o falló, se vuelve a leer
       let base = await fb._urlHistorico(intento > 0);
       if (!base && intento === 0) base = await fb._urlHistorico(true);
       if (!base) { causa = 'sin dirección del servidor'; continue; }
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 25000);
+      const t = setTimeout(() => ctrl.abort(), 20000);
       try {
         const resp = await fetch(`${base}/rpc/${fn}`, {
           method: 'POST',
@@ -202,25 +226,49 @@
           body: JSON.stringify({ p }),
           signal: ctrl.signal
         });
-        if (resp.status === 401) { cerrarSesion(); throw Object.assign(new Error('Tu sesión venció. Vuelve a ingresar tu PIN.'), { sesion: true }); }
-        if (!resp.ok) {
-          let det = '';
-          try { const j = await resp.json(); det = j.message || j.hint || ''; } catch (e) { }
-          throw new Error(`HTTP ${resp.status}${det ? ': ' + det : ''}`);
-        }
-        const r = await resp.json();
-        if (r && r.ok === false && /Sesión de evaluación no válida/.test(r.error || '')) {
-          cerrarSesion();
-          throw Object.assign(new Error(r.error), { sesion: true });
-        }
-        return r;
+        let r = null;
+        try { r = await resp.json(); } catch (e) { }
+        return interpretar(resp.status, r);
       } catch (e) {
-        if (e.sesion) throw e;
+        if (e.sesion || e.servidor) throw e;
         causa = e.name === 'AbortError' ? 'el servidor tardó demasiado' : (e.message || String(e));
-        console.warn('Evaluaciones: base no disponible', causa);
+        console.warn('Evaluaciones: conexión directa falló', causa);
       } finally { clearTimeout(t); }
     }
-    throw new Error(`La base de evaluaciones no está disponible en este momento (${causa}). Intenta en unos minutos.`);
+    throw Object.assign(new Error(causa), { red: true });
+  }
+
+  async function rpc(ses, fn, p) {
+    let viaProxy = false;
+    try { viaProxy = sessionStorage.getItem(KEY_PROXY) === '1'; } catch (e) { }
+    if (!viaProxy) {
+      try {
+        return await rpcDirecto(ses, fn, p);
+      } catch (e) {
+        if (!e.red) throw e;
+        console.warn('Evaluaciones: se usa Apps Script como respaldo');
+        try { sessionStorage.setItem(KEY_PROXY, '1'); } catch (x) { }
+        try {
+          return await rpcPorAppsScript(ses, fn, p);
+        } catch (e2) {
+          if (e2.sesion || e2.servidor) throw e2;
+          throw new Error(`La base de evaluaciones no está disponible en este momento (${e.message}; respaldo: ${e2.message}). Intenta en unos minutos.`);
+        }
+      }
+    }
+    try {
+      return await rpcPorAppsScript(ses, fn, p);
+    } catch (e) {
+      if (e.sesion || e.servidor) throw e;
+      // El respaldo falló: probar de nuevo la conexión directa
+      try { sessionStorage.removeItem(KEY_PROXY); } catch (x) { }
+      try {
+        return await rpcDirecto(ses, fn, p);
+      } catch (e2) {
+        if (e2.sesion || e2.servidor) throw e2;
+        throw new Error(`La base de evaluaciones no está disponible en este momento (${e2.message}; respaldo: ${e.message}). Intenta en unos minutos.`);
+      }
+    }
   }
 
   // ---------------------------------------------------------------- piezas de interfaz

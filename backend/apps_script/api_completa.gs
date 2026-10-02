@@ -547,6 +547,10 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(emitirTokenEvaluacion(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      if (data.accion === 'evalRpc' && typeof proxyEvaluacion === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(proxyEvaluacion(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
 
       // Acceso seguro (acceso_seguro.gs): solo por POST, el PIN nunca viaja en la URL
       if (typeof ACCIONES_ACCESO !== 'undefined' && ACCIONES_ACCESO.indexOf(data.accion) !== -1) {
