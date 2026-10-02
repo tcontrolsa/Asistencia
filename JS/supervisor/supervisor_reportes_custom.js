@@ -793,8 +793,8 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
 
     // Descontar almuerzo
     let netWorked = minutosTrabajadosHoy;
-    if (!esFestivo && netWorked > 240) {
-      netWorked -= 45;
+    if (netWorked > 240) {
+      netWorked -= ALMUERZO_MIN; // también sábado, domingo y feriado
     }
 
     let ultSalReg = [...regsDia].reverse().find(r => {
@@ -812,13 +812,8 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       minsSalidaTemprana = refSalida - ultimoSalidaMins;
     }
 
-    // Horas extras independientes (no compensan faltantes)
-    let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI') || regsDia.some(r => (r.autoriza || '').includes('CAMPO'));
-    if (esFestivo && netWorked > 60) {
-      autorizadoGlobal = true;
-    } else if (!esFestivo && netWorked >= 600) {
-      autorizadoGlobal = true;
-    }
+    // Horas extras independientes (no compensan faltantes): reglas compartidas con el detalle
+    let autorizadoGlobal = Boolean(autorizacionExtrasDia(e, regsDia));
 
     periodosDia.forEach(p => {
       if (!p.entrada || !p.salida) return;
@@ -852,6 +847,18 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
         }
       }
     });
+    if (esFestivo) {
+      // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
+      if (h100 + hC100 > 240) {
+        if (h100 >= ALMUERZO_MIN) h100 -= ALMUERZO_MIN;
+        else hC100 = Math.max(0, hC100 - ALMUERZO_MIN);
+      }
+    } else {
+      // 50 %: solo si el día supera 45 min; completo con tope de 120 (oficina primero, luego campo)
+      const extra50Dia = aplicarReglaExtra50(h50 + hC50);
+      h50 = Math.min(h50, extra50Dia);
+      hC50 = extra50Dia - h50;
+    }
 
     let tiempoJustificado = 0;
     const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
@@ -878,6 +885,8 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoJustificado + tiempoPorJustificar;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
       tiempoPorJustificar += unaccountedMissing;
+      // Penalización por registro sin salida
+      tiempoPorJustificar += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
     }
 
     // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso

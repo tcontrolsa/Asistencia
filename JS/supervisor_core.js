@@ -775,6 +775,58 @@ function contarRegistrosInconclusos(periodosDia) {
   return (periodosDia || []).filter(p => p.entrada && (!p.salida || esSalidaSinRegistrar(p.salida))).length;
 }
 window.contarRegistrosInconclusos = contarRegistrosInconclusos;
+
+function esFinDeSemanaOFeriado(fecha) {
+  const dow = new Date(fecha + 'T12:00:00').getDay();
+  return dow === 0 || dow === 6 || esFeriadoODomingo(fecha);
+}
+window.esFinDeSemanaOFeriado = esFinDeSemanaOFeriado;
+
+// Horas extra de un día con las reglas vigentes (misma lógica que el detalle y los reportes).
+// Devuelve minutos { h50, hC50, h100, hC100 } (oficina / campo).
+function calcularExtrasDia(e, fecha, registrosDia) {
+  const regs = [...(registrosDia || [])].sort((a, b) => {
+    if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+    return String(a.hora || '').localeCompare(String(b.hora || ''));
+  });
+  const periodos = [];
+  let pendiente = null;
+  regs.forEach(r => {
+    const t = String(r.tipo || '').toUpperCase();
+    if (t === 'ENTRADA' || t === 'RETORNO_CAMPO' || t === 'ENTRADA_CAMPO') pendiente = r;
+    else if ((t === 'SALIDA' || t === 'SALIDA_CAMPO') && pendiente) { periodos.push({ entrada: pendiente, salida: r }); pendiente = null; }
+  });
+  const res = { h50: 0, hC50: 0, h100: 0, hC100: 0 };
+  if (!autorizacionExtrasDia(e, regs)) return res;
+  const festivo = esFinDeSemanaOFeriado(fecha);
+  let oficina50 = 0, campo50 = 0;
+  periodos.forEach(p => {
+    const mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+    const mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+    if (mE === null || mS === null || mS <= mE) return;
+    const enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
+    if (festivo) {
+      if (enCampo) res.hC100 += mS - mE; else res.h100 += mS - mE;
+    } else if (enCampo) {
+      const normal = Math.max(0, Math.min(mS, HORA_SALIDA_REF) - Math.max(mE, HORA_ENTRADA_REF));
+      campo50 += (mS - mE) - normal;
+    } else if (mS > HORA_SALIDA_REF) {
+      oficina50 += mS - Math.max(mE, HORA_SALIDA_REF);
+    }
+  });
+  if (festivo) {
+    if (res.h100 + res.hC100 > 240) {
+      if (res.h100 >= ALMUERZO_MIN) res.h100 -= ALMUERZO_MIN;
+      else res.hC100 = Math.max(0, res.hC100 - ALMUERZO_MIN);
+    }
+  } else {
+    const total50 = aplicarReglaExtra50(oficina50 + campo50);
+    res.h50 = Math.min(oficina50, total50);
+    res.hC50 = total50 - res.h50;
+  }
+  return res;
+}
+window.calcularExtrasDia = calcularExtrasDia;
 window.esColaboradorPasante = esEmpleadoPasante;
 
 function esEnCampo(lat, lng) {
@@ -1828,14 +1880,17 @@ function cargarDashboard() {
     if ($('promedioDiario')) $('promedioDiario').textContent = promDia;
     if ($('diasExcelente')) $('diasExcelente').textContent = diasExc;
 
-    // Horas extra: solo autorizadas, dentro del período
+    // Horas extra del período con las reglas vigentes (45/120 min al 50 %, fin de semana al 100 %,
+    // automáticas solo para TALLER): misma lógica que el detalle y los reportes
     let extraTotal = 0;
     empCache.forEach(e => {
-      (e.registros || []).filter(r => r.tipo === 'SALIDA' && r.fecha >= periodo.inicio && r.fecha <= hoy_ && (r.horasExtra === 'SI' || r.autoriza)).forEach(r => {
-        let m = obtenerMinutos(r.hora);
-        const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-        const refSalidaR = esFestivoR ? 900 : HORA_SALIDA_REF;
-        if (m !== null && m - refSalidaR > 1) extraTotal += m - refSalidaR;
+      const porFecha = {};
+      (e.registros || []).filter(r => r.fecha >= periodo.inicio && r.fecha <= hoy_).forEach(r => {
+        (porFecha[r.fecha] = porFecha[r.fecha] || []).push(r);
+      });
+      Object.keys(porFecha).forEach(f => {
+        const x = calcularExtrasDia(e, f, porFecha[f]);
+        extraTotal += x.h50 + x.hC50 + x.h100 + x.hC100;
       });
     });
     if ($('horasExtraTotal')) $('horasExtraTotal').textContent = formatearMinutos(extraTotal);
@@ -1933,20 +1988,23 @@ function cargarDashboard() {
           });
 
           let netWorked = minutosTrabajadosHoy;
-          if (!esFestivo && netWorked > 240) netWorked -= 45;
+          if (netWorked > 240) netWorked -= ALMUERZO_MIN;
 
           let expectedNet = esFestivo ? 0 : 480;
           let missingMinutes = Math.max(0, expectedNet - netWorked);
           let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
+          const penalSinSalida = PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
 
-          minsFaltantes = dayJustificar + unaccountedMissing;
+          minsFaltantes = dayJustificar + unaccountedMissing + penalSinSalida;
 
           // Determinar la razón
           if (minsFaltantes > 0) {
             let tieneEntradaSinSalida = periodosDia.some(p => p.entrada && !p.salida);
             if (tieneEntradaSinSalida) {
               razon = "Salida Faltante";
+            } else if (penalSinSalida > 0 && unaccountedMissing === 0 && dayJustificar === 0) {
+              razon = "Salida no registrada";
             } else if (dayJustificar > 0 && unaccountedMissing === 0) {
               razon = "Salida Intermedia";
             } else if (unaccountedMissing > 0 && dayJustificar === 0) {
@@ -2107,7 +2165,7 @@ function cargarAnalisisTardanzas() {
       let mins = obtenerMinutos(r.hora);
       if (mins === null) return;
       const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-      const refSal = esFestivoR ? 900 : HORA_SALIDA_REF;
+      const refSal = esFestivoR ? JORNADA_FIN_SEMANA.salida : HORA_SALIDA_REF;
       if (mins - refSal > 1) x++;
     });
     return { ...e, tardanzas: t, minP: m, extra: x, promE: nE ? Math.round(sE / nE) : null, nE, id: e.id };
@@ -2626,7 +2684,7 @@ function cargarAsistencia() {
   let ausentes = total - pres;
   const esFestivoHoy = esFeriadoODomingo(hoy) || (new Date(hoy + 'T12:00:00').getDay() === 6);
   const refEntradaHoy = esFestivoHoy ? 420 : HORA_ENTRADA_REF;
-  const refSalidaHoy = esFestivoHoy ? 900 : HORA_SALIDA_REF;
+  const refSalidaHoy = esFestivoHoy ? JORNADA_FIN_SEMANA.salida : HORA_SALIDA_REF;
 
   let tards = empCache.filter(e => {
     if (!e.entradaHoy) return false;
@@ -2852,7 +2910,7 @@ function cargarAsistencia() {
       estHtml = '<span class="rep-asis-empty">—</span>';
     }
 
-    let extrasVal = (eReg?.horasExtra === 'SI' || sReg?.horasExtra === 'SI') ? 'SI' : 'NO';
+    let extrasVal = autorizacionExtrasDia(e, (e.registros || []).filter(r => r.fecha === hoy)) ? 'SI' : 'NO';
 
     let modoBadge = '';
     if (modo === 'CAMPO') {
@@ -3927,17 +3985,13 @@ function cargarReportes() {
       });
 
       let netWorked = minutosTrabajadosHoy;
-      if (!esFestivo && netWorked > 240) netWorked -= 45;
+      if (netWorked > 240) netWorked -= ALMUERZO_MIN; // también sábado, domingo y feriado
 
-      // Horas extras independientes (no compensan faltantes)
-      let autorizado = regsDia.some(r => r.horasExtra === 'SI') || regsDia.some(r => (r.autoriza || '').includes('CAMPO'));
-      if (esFestivo && netWorked > 60) {
-        autorizado = true;
-      } else if (!esFestivo && netWorked >= 600) {
-        autorizado = true;
-      }
+      // Horas extras independientes (no compensan faltantes): reglas compartidas con el detalle
+      let autorizado = Boolean(autorizacionExtrasDia(e, regsDia));
 
       let extraMins50Acum = 0;
+      let campo50Dia = 0, extra100Dia = 0, campo100Dia = 0;
 
       periodosDia.forEach(p => {
         if (!p.entrada || !p.salida) return;
@@ -3949,20 +4003,20 @@ function cargarReportes() {
 
         if (esFestivo) {
           if (enCampo) {
-            if (autorizado) horasCampo100 += duracion;
+            if (autorizado) campo100Dia += duracion;
           } else {
-            if (autorizado) horasExtra100 += duracion;
+            if (autorizado) extra100Dia += duracion;
           }
         } else {
           let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
           if (enCampo) {
             if (mS <= H_INI || mE >= H_FIN) {
-              horasCampo50 += duracion;
+              campo50Dia += duracion;
             } else {
               let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
               let mExtra = duracion - mNormal;
               horasCampoNormales += mNormal;
-              horasCampo50 += mExtra;
+              campo50Dia += mExtra;
             }
           } else {
             if (autorizado && mS > H_FIN) {
@@ -3973,9 +4027,19 @@ function cargarReportes() {
       });
 
       if (esFestivo) {
-        // Ya calculados
+        // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
+        if (extra100Dia + campo100Dia > 240) {
+          if (extra100Dia >= ALMUERZO_MIN) extra100Dia -= ALMUERZO_MIN;
+          else campo100Dia = Math.max(0, campo100Dia - ALMUERZO_MIN);
+        }
+        horasExtra100 += extra100Dia;
+        horasCampo100 += campo100Dia;
       } else {
-        horasExtra50 += extraMins50Acum;
+        // 50 %: solo si el día supera 45 min; completo con tope de 120 (oficina primero, luego campo)
+        const extra50Dia = aplicarReglaExtra50(extraMins50Acum + campo50Dia);
+        const oficina50 = Math.min(extraMins50Acum, extra50Dia);
+        horasExtra50 += oficina50;
+        horasCampo50 += extra50Dia - oficina50;
       }
 
       // Sumar permisos asignados manualmente
@@ -3996,6 +4060,8 @@ function cargarReportes() {
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         tiempoJustificarHoy += unaccountedMissing;
         tiempoJustificarHoy = Math.max(0, tiempoJustificarHoy - tiempoJustificadoHoy);
+        // Penalización por registro sin salida
+        tiempoJustificarHoy += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
       }
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
@@ -12631,7 +12697,7 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   });
 
   let netWorked = minutosTrabajadosHoy;
-  if (!esFestivo && netWorked > 240) netWorked -= 45;
+  if (netWorked > 240) netWorked -= ALMUERZO_MIN; // también sábado, domingo y feriado
   netWorked = Math.max(0, netWorked);
 
   // Atraso detectado
@@ -12919,11 +12985,11 @@ window.recalcularTiemposModalJornada = function () {
       let dur = mS - mE;
       const ctx = window._modalJornadaContexto;
       const esFestivo = ctx?.esFestivo || false;
-      if (!esFestivo && dur > 240) dur -= 45;
+      if (dur > 240) dur -= ALMUERZO_MIN; // también sábado, domingo y feriado
       dur = Math.max(0, dur);
 
-      let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
-      let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+      let refEntrada = esFestivo ? JORNADA_FIN_SEMANA.entrada : HORA_ENTRADA_REF;
+      let refSalida = esFestivo ? JORNADA_FIN_SEMANA.salida : HORA_SALIDA_REF;
       let ordE = Math.max(refEntrada, mE);
       let ordS = Math.min(refSalida, mS);
       let ordDur = (ordS > ordE) ? (ordS - ordE) : 0;

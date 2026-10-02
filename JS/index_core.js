@@ -5026,19 +5026,19 @@ function calcularEstadisticas() {
         });
 
         let netWorked = minutosTrabajadosHoy;
-        if (!esFestivo && netWorked > 240) netWorked -= 45; // Restar descanso
+        if (netWorked > 240) netWorked -= 45; // Restar almuerzo (también sábado, domingo y feriado)
 
-        // Auto-autorización de horas extras
-        let autorizado = registrosDia.some(r => getVal(r, 'horasExtra', 13) === 'SI' || r.horasExtra === 'SI' || r[13] === 'SI');
-        if (esFestivo) {
-            if (netWorked > 60) autorizado = true;
-            if (netWorked <= 60) autorizado = false;
-        } else {
-            if (netWorked >= 600) autorizado = true;
-            if (netWorked - 480 <= 60) autorizado = false;
-        }
+        // Autorización de horas extras (mismas reglas que el panel de supervisor):
+        // automática solo para el área TALLER (y trabajo de campo); el resto, solo si un supervisor
+        // la autorizó ("SISTEMA (>45 MIN)" no cuenta para otras áreas)
+        const autorizaDe = r => String(getVal(r, 'autoriza', 13) || r.autoriza || '').trim().toUpperCase();
+        const esTallerEmp = String((empleado && empleado.area) || '').trim().toUpperCase() === 'TALLER';
+        let autorizado = registrosDia.some(r => autorizaDe(r).includes('CAMPO'))
+            || registrosDia.some(r => (getVal(r, 'horasExtra', 12) === 'SI' || r.horasExtra === 'SI') && !autorizaDe(r).startsWith('SISTEMA'))
+            || esTallerEmp;
 
         let extraMins50Acum = 0;
+        let campo50Dia = 0, extra100Dia = 0, campo100Dia = 0;
 
         periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
@@ -5055,20 +5055,20 @@ function calcularEstadisticas() {
 
             if (esFestivo) {
                 if (enCampo) {
-                    if (autorizado) horasCampo100 += duracion;
+                    if (autorizado) campo100Dia += duracion;
                 } else {
-                    if (autorizado) horasExtra100 += duracion;
+                    if (autorizado) extra100Dia += duracion;
                 }
             } else {
                 let H_INI = H_INI_REF, H_FIN = H_FIN_REF;
                 if (enCampo) {
                     if (mS <= H_INI || mE >= H_FIN) {
-                        horasCampo50 += duracion;
+                        campo50Dia += duracion;
                     } else {
                         let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
                         let mExtra = duracion - mNormal;
                         horasCampoNormales += mNormal;
-                        horasCampo50 += mExtra;
+                        campo50Dia += mExtra;
                     }
                 } else {
                     if (autorizado && mS > H_FIN) {
@@ -5078,8 +5078,20 @@ function calcularEstadisticas() {
             }
         });
 
-        if (!esFestivo) {
-            horasExtra50 += extraMins50Acum;
+        if (esFestivo) {
+            // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
+            if (extra100Dia + campo100Dia > 240) {
+                if (extra100Dia >= 45) extra100Dia -= 45;
+                else campo100Dia = Math.max(0, campo100Dia - 45);
+            }
+            horasExtra100 += extra100Dia;
+            horasCampo100 += campo100Dia;
+        } else {
+            // 50 %: solo si el día supera 45 min; completo con tope de 120 (oficina primero, luego campo)
+            const total50 = (extraMins50Acum + campo50Dia) > 45 ? Math.min(extraMins50Acum + campo50Dia, 120) : 0;
+            const oficina50 = Math.min(extraMins50Acum, total50);
+            horasExtra50 += oficina50;
+            horasCampo50 += total50 - oficina50;
         }
 
         // Acumular tiempo trabajado
@@ -8449,4 +8461,4 @@ async function renderEstadoPage() {
     html += `</div>`;
     mainContent.innerHTML = html;
 }
-// ========================================================
+// ========================================================
