@@ -201,8 +201,8 @@ window.FirebaseBackend = {
                             if (storedVac) {
                                 const parsedVac = JSON.parse(storedVac);
                                 const ageMs = parsedVac.lastSync ? (Date.now() - new Date(parsedVac.lastSync).getTime()) : Infinity;
-                                // formato 2: "adjudicadas" ya es el total (año anterior + año actual)
-                                if (parsedVac.formato === 2 && ageMs < 6 * 3600 * 1000 && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
+                                // formato 3: "adjudicadas" es el total (año anterior + año actual) y la lista es la de todos
+                                if (parsedVac.formato === 3 && ageMs < 6 * 3600 * 1000 && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
                                     window.kpiVacaciones = parsedVac.kpiVacaciones;
                                     window._kpiVacacionesCache = parsedVac.kpiVacaciones;
                                     window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
@@ -212,6 +212,7 @@ window.FirebaseBackend = {
                                     let filteredVacs = rawVacList;
                                     let tHoy = null;
                                     let rHoy = null;
+                                    if (!empIdReq && !empCedReq) window._vacacionesCache = rawVacList;
 
                                     if (empIdReq || empCedReq) {
                                         filteredVacs = rawVacList.filter(v => {
@@ -240,12 +241,15 @@ window.FirebaseBackend = {
                             }
                         } catch (eC) { }
                     }
+                    // Siempre se pide la lista COMPLETA a Sheets (una consulta compartida) y se filtra aquí por
+                    // colaborador: antes, si la primera consulta era de un solo colaborador, la respuesta parcial
+                    // se reutilizaba y se guardaba en caché como si fuera la de todos.
                     if (this._pendingVacacionesPromise) {
-                        return await this._pendingVacacionesPromise;
+                        return this._filtrarVacaciones(await this._pendingVacacionesPromise, params);
                     }
                     this._pendingVacacionesPromise = (async () => {
                         try {
-                            const raw = await this._jsonp(params, 0, 1, 15000);
+                            const raw = await this._jsonp({ accion: 'obtenerVacacionesEmpleado' }, 0, 1, 20000);
                             if (raw && raw.ok) {
                                 const rawIndiv = raw.kpiVacacionesIndividual || {};
                                 const kpiIndivLimpio = {};
@@ -276,12 +280,14 @@ window.FirebaseBackend = {
                                 window._kpiVacacionesCache = raw.kpiVacaciones;
                                 window.kpiVacacionesIndividual = kpiIndivLimpio;
                                 window._lastSheetsVacOk = Date.now();
+                                // Lista completa (sin filtro por empleado): es la que se fusiona con las marcaciones
+                                if (Array.isArray(raw.vacaciones)) window._vacacionesCache = raw.vacaciones;
                                 try {
                                     const cacheData = JSON.stringify({
                                         vacaciones: raw.vacaciones || [],
                                         kpiVacaciones: raw.kpiVacaciones,
                                         kpiVacacionesIndividual: kpiIndivLimpio,
-                                        formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 2 : 1,
+                                        formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1,
                                         lastSync: new Date().toISOString()
                                     });
                                     localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);
@@ -299,8 +305,7 @@ window.FirebaseBackend = {
                                     const parsedVac = JSON.parse(storedVac);
                                     if (parsedVac && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
                                         const rawVacList = parsedVac.vacaciones || [];
-                                        const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
-                                        const empCedReq = params.cedula ? String(params.cedula).trim() : null;
+                                        const empIdReq = null, empCedReq = null; // completa: se filtra afuera
                                         let filteredVacs = rawVacList;
                                         let tHoy = null;
                                         let rHoy = null;
@@ -342,7 +347,7 @@ window.FirebaseBackend = {
                             this._pendingVacacionesPromise = null;
                         }
                     })();
-                    return await this._pendingVacacionesPromise;
+                    return this._filtrarVacaciones(await this._pendingVacacionesPromise, params);
                 default:
                     console.warn("⚠️ Acción no reconocida:", accion);
                     return { error: "Acción no soportada en Firebase: " + accion };
@@ -3442,10 +3447,17 @@ window.FirebaseBackend = {
                 } catch (e) { }
             }
 
-            const _fetchVacacionesSheets = async () => {
+            const firmaVac = l => (l || []).length + '|' + (l || []).map(v => `${v.empleadoId}:${v.fecha}`).sort().slice(-50).join(',');
+            const firmaUsada = firmaVac(window._vacacionesCache);
+            const _fetchVacacionesSheets = async (recargarSiCambia = true) => {
                 try {
                     const vacRes = await this.procesarAccion({ accion: 'obtenerVacacionesEmpleado' });
                     if (vacRes && vacRes.ok) {
+                        // Las vacaciones viven solo en la hoja VACACIONES: si cambiaron respecto de las que se
+                        // fusionaron en este armado, se recargan los datos del panel (una vez, sin loader)
+                        if (recargarSiCambia && !vacRes.desdeCache && firmaVac(window._vacacionesCache) !== firmaUsada && typeof window.cargarDatosCompletos === 'function') {
+                            setTimeout(() => { try { window.cargarDatosCompletos(false, true); } catch (e) { } }, 1500);
+                        }
                         if (typeof renderizarCardKpiVacaciones === 'function') {
                             try { renderizarCardKpiVacaciones(); } catch (e) { }
                         }
@@ -3457,7 +3469,7 @@ window.FirebaseBackend = {
 
             const ahoraTs = Date.now();
             if (params.force || params.forceSheets || params.forceAll) {
-                await _fetchVacacionesSheets();
+                await _fetchVacacionesSheets(false);
             } else if (ahoraTs - (window._lastSheetsVacOk || 0) > 600000 && ahoraTs - (window._lastSheetsVacError || 0) > 300000) {
                 _fetchVacacionesSheets(); // En segundo plano, ¡nunca bloquea el arranque ni dispara el watchdog del loader!
             }
@@ -3602,6 +3614,26 @@ window.FirebaseBackend = {
             }
             return { error: "Error de red al conectar con Sheets: " + error.message };
         }
+    },
+
+    // Respuesta de obtenerVacacionesEmpleado (lista completa) → la de un colaborador si se pidió uno
+    _filtrarVacaciones(res, params = {}) {
+        const empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
+        const empCedReq = params.cedula ? String(params.cedula).trim() : null;
+        if (!res || !(empIdReq || empCedReq)) return res;
+        const vacaciones = (res.vacaciones || []).filter(v => {
+            const vId = String(v.empleadoId || v.id || '').trim();
+            const vCed = String(v.cedula || '').trim();
+            return (empIdReq && vId === empIdReq) || (empCedReq && (vCed === empCedReq || vId === empCedReq));
+        });
+        const kpiInd = res.kpiVacacionesIndividual || {};
+        const info = (empIdReq && kpiInd[empIdReq]) || (empCedReq && kpiInd[empCedReq]) || null;
+        return {
+            ...res,
+            vacaciones,
+            vacacionesTomadasHoy: info ? info.tomadas : null,
+            vacacionesRestantesHoy: info ? info.restantes : null
+        };
     },
 
     async _tokenHistorico() {

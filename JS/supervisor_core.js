@@ -1717,7 +1717,7 @@ function cargarDashboard() {
                 vacaciones: vacRes.vacaciones || [],
                 kpiVacaciones: window.kpiVacaciones,
                 kpiVacacionesIndividual: limpio,
-                formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 2 : 1,
+                formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1,
                 lastSync: new Date().toISOString()
               }));
             } catch(e) {}
@@ -2274,7 +2274,7 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
     });
 
     // 2. Detección completa de Faltas/Permisos Justificados y Vacaciones
-    const vacsRRHH = (window.vacacionesData && Array.isArray(window.vacacionesData.vacaciones)) ? window.vacacionesData.vacaciones : [];
+    const vacsRRHH = (window.vacacionesData && Array.isArray(window.vacacionesData.vacaciones)) ? window.vacacionesData.vacaciones : (Array.isArray(window._vacacionesCache) ? window._vacacionesCache : []);
     const esVacacionesRRHH = vacsRRHH.some(v => v && (String(v.empleadoId) === String(emp.id) || String(v.id_empleado) === String(emp.id)) && ((typeof normalizarFechaStr === 'function' ? normalizarFechaStr(v.fecha) : v.fecha) === f));
     const esEmpEnVacaciones = (emp.estado || '').toUpperCase() === 'VACACIONES';
 
@@ -11519,7 +11519,7 @@ window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
       });
 
       // Incorporar vacaciones registradas en el módulo de vacaciones de RRHH
-      const vacsRRHH = (window.vacacionesData && Array.isArray(window.vacacionesData.vacaciones)) ? window.vacacionesData.vacaciones : [];
+      const vacsRRHH = (window.vacacionesData && Array.isArray(window.vacacionesData.vacaciones)) ? window.vacacionesData.vacaciones : (Array.isArray(window._vacacionesCache) ? window._vacacionesCache : []);
       if (vacsRRHH.length > 0) {
         vacsRRHH.forEach(v => {
           if (v && (String(v.empleadoId) === String(e.id) || String(v.id_empleado) === String(e.id))) {
@@ -12220,7 +12220,7 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
           vacaciones: vacRes.vacaciones || [],
           kpiVacaciones: window.kpiVacaciones,
           kpiVacacionesIndividual: limpio,
-          formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 2 : 1,
+          formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1,
           lastSync: new Date().toISOString()
         });
         localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);
