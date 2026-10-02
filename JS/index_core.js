@@ -7378,7 +7378,10 @@ function renderDesarrolloPage() {
         cont.innerHTML = '<div class="glass-card text-center" style="background:white; border-radius:20px; padding:30px;">No se pudo cargar la evaluación de desempeño. Recarga la app.</div>';
         return;
     }
+    const enlace = window.__evEnlacePendiente || null;
+    window.__evEnlacePendiente = null;
     window.EvaluacionDesempeno.montar(cont, {
+        enlace,
         empleado: {
             id: String(empleado.id), nombre: empleado.nombre, area: empleado.area, cargo: empleado.cargo,
             supervisor: (estado && estado.esSupervisor) ? 'SI' : ''
@@ -7549,7 +7552,25 @@ async function verificarEstadoInicial() {
 // ========== INICIALIZACIÓN ==========
 // ========== CÁLCULOS Y FUNCIONES COODINADOR ==========
 
+// Campana de notificaciones (JS/notificaciones.js): avisos del colaborador
+function montarCampanaApp() {
+    const host = document.getElementById('notifHostApp');
+    if (!host || !window.Notificaciones || !empleado || !empleado.id) return;
+    host.hidden = false;
+    document.body.classList.add('nt-app-activa');
+    window.Notificaciones.montar(host, {
+        empleadoId: String(empleado.id),
+        onAbrir: enlace => {
+            if (enlace.modulo === 'desempeno') {
+                window.__evEnlacePendiente = enlace;
+                navigateTo('desarrollo');
+            }
+        }
+    });
+}
+
 function actualizarInterfazSegunCargo() {
+    try { montarCampanaApp(); } catch (e) { console.warn('Campana de notificaciones:', e); }
     const navItemExtras = document.getElementById('navItemExtras');
     const navItemAdmin = document.getElementById('navItemAdmin');
     if (!navItemExtras) return;

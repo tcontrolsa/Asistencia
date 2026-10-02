@@ -178,6 +178,7 @@ function urlHistorico_() {
 function guardarEvaluacionEnHoja(p) {
   var id = String(p.evaluacionId || '').trim();
   if (!id) return { ok: false, error: 'Falta evaluacionId' };
+  var resultado;
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -216,10 +217,15 @@ function guardarEvaluacionEnHoja(p) {
     hoja.getRange(filaDestino, 1, 1, 10).setNumberFormat('@');
     hoja.getRange(filaDestino, 32, 1, fila.length - 31).setNumberFormat('@');
     hoja.getRange(filaDestino, 1, 1, fila.length).setValues([fila.map(function (v) { return v === null || v === undefined ? '' : v; })]);
-    return { ok: true, fila: filaDestino };
+    resultado = { ok: true, fila: filaDestino };
   } finally {
     lock.releaseLock();
   }
+  // Avisos (campana y WhatsApp, notificaciones.gs) fuera del candado; nunca hacen fallar la réplica
+  if (p.evento && typeof notificarEvaluacion_ === 'function') {
+    try { notificarEvaluacion_(p); } catch (e) { Logger.log('Notificación no enviada: ' + e); }
+  }
+  return resultado;
 }
 
 // Evaluación eliminada en Postgres (desde la cola): se quita su fila de la hoja

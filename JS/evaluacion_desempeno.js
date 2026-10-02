@@ -368,7 +368,8 @@
   function montar(cont, opts) {
     const st = {
       cont, emp: opts.empleado || {}, ses: sesionGuardada((opts.empleado || {}).id), mias: [], hechas: [],
-      mes: mesPorDefecto(), vista: 'inicio', cargando: false, error: '', form: null, sel: null, embebido: !!opts.embebido
+      mes: mesPorDefecto(), vista: 'inicio', cargando: false, error: '', form: null, sel: null, embebido: !!opts.embebido,
+      enlace: opts.enlace || null
     };
     cont._ev = st;
     cont.addEventListener('click', ev => manejarClick(st, ev));
@@ -398,6 +399,20 @@
     }
     st.cargando = false;
     pintar(st);
+    aplicarEnlace(st);
+  }
+
+  // Enlace de una notificación: mes a mostrar y, si trae ID, el detalle de esa evaluación
+  function aplicarEnlace(st) {
+    const e = st.enlace;
+    if (!e || !st.ses || st.cargando) return;
+    st.enlace = null;
+    if (/^\d{4}-\d{2}$/.test(e.periodo || '')) { st.mes = e.periodo; if (st.filtro) st.filtro.periodo = e.periodo; }
+    else if (e.periodo === 'DIA75' && st.filtro) st.filtro.periodo = 'DIA75';
+    const sel = e.id ? buscarEval(st, e.id) : null;
+    if (sel) { st.pila = []; ir(st, 'detalle', { sel }); }
+    else if (e.id) { pintar(st); toast('Esa evaluación ya no está disponible.', 'warning'); }
+    else pintar(st);
   }
 
   function pintar(st) {
@@ -786,7 +801,18 @@
     let actual = 'resultados';
     cont.querySelectorAll('.ev-subtab').forEach(b => b.addEventListener('click', () => { actual = b.dataset.sub; abrir(actual); }));
     abrir('resultados');
-    cont._evPanel = { refrescar: () => abrir(actual) };
+    cont._evPanel = {
+      refrescar: () => abrir(actual),
+      // Desde una notificación: alertas → Resultados (si hay permiso); el resto → Mi equipo
+      abrirEnlace: enlace => {
+        actual = enlace.vista === 'resultados' ? 'resultados' : 'equipo';
+        abrir(actual);
+        const m = montados[actual];
+        if (!m) return;
+        m.enlace = enlace;
+        if (m.ses && !m.cargando && actual === 'resultados' && m.vista === 'resultados') aplicarEnlace(m);
+      }
+    };
   }
 
   function montarResultados(cont, opts) {
@@ -838,6 +864,7 @@
     st.cargando = false;
     st.vista = 'resultados';
     pintarResultados(st, opts);
+    aplicarEnlace(st);
   }
 
   function filasResultados(st, opts) {
@@ -1333,6 +1360,6 @@
 
   window.EvaluacionDesempeno = {
     ITEMS, DIMENSIONES, ESCALA, ROLES, calcular, nivelDe, rolDe, esEvaluador, esEvaluado, etapa,
-    montar, montarPanel, cerrarSesion
+    montar, montarPanel, cerrarSesion, abrirEnlace: (cont, enlace) => { if (cont && cont._ev) { cont._ev.enlace = enlace; aplicarEnlace(cont._ev); } }
   };
 })();

@@ -9007,7 +9007,24 @@ function cargarPanelDesempeno() {
 }
 window.cargarPanelDesempeno = cargarPanelDesempeno;
 
+// Campana de notificaciones (JS/notificaciones.js); RR.HH. también ve los avisos 'rol:rrhh'
+function montarCampanaPanel(session) {
+  const host = $('notifHostPanel');
+  if (!host || !window.Notificaciones || !session || !session.id) return;
+  window.Notificaciones.montar(host, {
+    empleadoId: String(session.id),
+    rrhh: tienePermisoAdmin(session),
+    onAbrir: enlace => {
+      if (enlace.modulo !== 'desempeno') return;
+      cambiarPanel('desempeno');
+      const cont = $('evPanelDesempeno');
+      if (cont && cont._evPanel) cont._evPanel.abrirEnlace(enlace);
+    }
+  });
+}
+
 function mostrarInformacionSupervisor(session) {
+  try { montarCampanaPanel(session); } catch (e) { console.warn('Campana de notificaciones:', e); }
   if (!session) return;
 
   const id = session.id || "";
