@@ -5033,8 +5033,10 @@ function calcularEstadisticas() {
         // la autorizó ("SISTEMA (>45 MIN)" no cuenta para otras áreas)
         const autorizaDe = r => String(getVal(r, 'autoriza', 13) || r.autoriza || '').trim().toUpperCase();
         const esTallerEmp = String((empleado && empleado.area) || '').trim().toUpperCase() === 'TALLER';
-        let autorizado = registrosDia.some(r => autorizaDe(r).includes('CAMPO'))
-            || registrosDia.some(r => (getVal(r, 'horasExtra', 12) === 'SI' || r.horasExtra === 'SI') && !autorizaDe(r).startsWith('SISTEMA'))
+        // Lo que autoriza un coordinador desde la pestaña Extras (su nombre) solo vale para TALLER;
+        // el supervisor autoriza desde el panel ("SUPERVISOR: nombre", o sin nombre en registros antiguos)
+        let autorizado = registrosDia.some(r => autorizaDe(r).includes('(CAMPO)'))
+            || registrosDia.some(r => (getVal(r, 'horasExtra', 12) === 'SI' || r.horasExtra === 'SI') && (autorizaDe(r) === '' || autorizaDe(r).startsWith('SUPERVISOR:')))
             || esTallerEmp;
 
         let extraMins50Acum = 0;

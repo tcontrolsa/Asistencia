@@ -3942,6 +3942,7 @@ function actualizarRegistroArchivado(params) {
       else if (campo === 'tiempo_justificado_mins') colIdx = COLUMNAS.TIEMPO_JUSTIFICADO_MINS;
       else if (campo === 'razon_permiso') colIdx = COLUMNAS.RAZON_PERMISO;
       else if (campo === 'razon_ausencia') colIdx = COLUMNAS.RAZON_AUSENCIA;
+      else if (campo === 'autoriza') colIdx = COLUMNAS.AUTORIZA; // "SUPERVISOR: nombre" al autorizar extras desde el panel
       else if (campo === 'justificado') {
         if (params.tipo) sheet.getRange(filaIndex, COLUMNAS.TIPO + 1).setValue(params.tipo);
         sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue("00:00:00");

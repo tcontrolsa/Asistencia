@@ -751,12 +751,18 @@ function aplicarReglaExtra50(minutos) {
 }
 window.aplicarReglaExtra50 = aplicarReglaExtra50;
 
-// ¿Tiene autorización de horas extra ese día? Devuelve el origen o null
+// ¿Tiene autorización de horas extra ese día? Devuelve el origen o null.
+// - campo: "SISTEMA (CAMPO)".
+// - supervisor (vale para cualquier área): autorizado desde el panel, "SUPERVISOR: nombre"
+//   o, en registros antiguos, "Horas extra: SÍ" sin nombre.
+// - taller: automáticas para el área TALLER (incluye lo que autorizan los coordinadores).
+// Lo que autoriza un coordinador desde la pestaña Extras (su nombre en "autoriza") y
+// "SISTEMA (>45 MIN)" no valen fuera de TALLER.
 function autorizacionExtrasDia(e, regsDia) {
   const regs = regsDia || [];
-  if (regs.some(r => String(r.autoriza || '').toUpperCase().includes('CAMPO'))) return 'campo';
-  const manual = regs.some(r => r.horasExtra === 'SI' && !String(r.autoriza || '').trim().toUpperCase().startsWith('SISTEMA'));
-  if (manual) return 'supervisor';
+  const autDe = r => String(r.autoriza || '').trim().toUpperCase();
+  if (regs.some(r => autDe(r).includes('(CAMPO)'))) return 'campo';
+  if (regs.some(r => r.horasExtra === 'SI' && (autDe(r) === '' || autDe(r).startsWith('SUPERVISOR:')))) return 'supervisor';
   if (esAreaTaller(e)) return 'taller';
   return null;
 }
@@ -8372,6 +8378,17 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
 
   let campoRequest = campo;
   let valorRequest = nuevoValor;
+  let extraRequest = {};
+
+  // Autorizar horas extra desde el panel deja constancia de quién: "SUPERVISOR: nombre".
+  // Así vale para cualquier área (lo de los coordinadores en la pestaña Extras solo vale para TALLER).
+  if (campo === 'horasExtra' && nuevoValor === 'SI') {
+    let nombreSup = '';
+    try { nombreSup = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').nombre || ''; } catch (e) { }
+    campoRequest = 'autoriza';
+    valorRequest = 'SUPERVISOR: ' + (nombreSup || 'Panel');
+    extraRequest = { horasExtra: 'SI' };
+  }
 
   if (campo === 'hora') {
     let fParts = (targetFecha || '').includes('-') ? targetFecha.split('-') : targetFecha.split('/').reverse();
@@ -8412,6 +8429,7 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
         if (typeof window.normalizarRegistroDesdeTimestamp === 'function') window.normalizarRegistroDesdeTimestamp(reg);
       } else {
         reg[campo] = nuevoValor;
+        if (campoRequest === 'autoriza') reg.autoriza = valorRequest;
       }
     } else {
       let newReg = {
@@ -8467,7 +8485,8 @@ window.editarValorRegistro = async function (empleadoId, tipo, docId, campo, val
       tipo: tipo,
       fecha: targetFecha,
       campo: campoRequest,
-      valor: valorRequest
+      valor: valorRequest,
+      ...extraRequest
     });
     if (res && res.ok) {
       mostrarToast('Registro actualizado', 'success');
