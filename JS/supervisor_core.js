@@ -1710,14 +1710,18 @@ function cargarDashboard() {
             restantes: sumR !== 0 ? sumR : (parseFloat(globalVac.restantes) || 0)
           };
           window._kpiVacacionesCache = window.kpiVacaciones;
-          try {
-            localStorage.setItem('tcontrol_vacaciones_cache_v3', JSON.stringify({
-              vacaciones: vacRes.vacaciones || [],
-              kpiVacaciones: window.kpiVacaciones,
-              kpiVacacionesIndividual: limpio,
-              lastSync: new Date().toISOString()
-            }));
-          } catch(e) {}
+          // Si la respuesta salió de la caché, no se reescribe: renovaría lastSync y la caché nunca vencería
+          if (!vacRes.desdeCache) {
+            try {
+              localStorage.setItem('tcontrol_vacaciones_cache_v3', JSON.stringify({
+                vacaciones: vacRes.vacaciones || [],
+                kpiVacaciones: window.kpiVacaciones,
+                kpiVacacionesIndividual: limpio,
+                formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 2 : 1,
+                lastSync: new Date().toISOString()
+              }));
+            } catch(e) {}
+          }
           renderizarCardKpiVacaciones();
           if (typeof window.renderDetailedKPIs === 'function') {
             window.renderDetailedKPIs();
@@ -12210,10 +12214,13 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
       };
       window._kpiVacacionesCache = window.kpiVacaciones;
       try {
+        // Si la respuesta salió de la caché, no se reescribe: renovaría lastSync y la caché nunca vencería
+        if (vacRes.desdeCache) throw 'desdeCache';
         const cacheData = JSON.stringify({
           vacaciones: vacRes.vacaciones || [],
           kpiVacaciones: window.kpiVacaciones,
           kpiVacacionesIndividual: limpio,
+          formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 2 : 1,
           lastSync: new Date().toISOString()
         });
         localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);

@@ -201,7 +201,8 @@ window.FirebaseBackend = {
                             if (storedVac) {
                                 const parsedVac = JSON.parse(storedVac);
                                 const ageMs = parsedVac.lastSync ? (Date.now() - new Date(parsedVac.lastSync).getTime()) : Infinity;
-                                if (ageMs < 6 * 3600 * 1000 && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
+                                // formato 2: "adjudicadas" ya es el total (año anterior + año actual)
+                                if (parsedVac.formato === 2 && ageMs < 6 * 3600 * 1000 && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
                                     window.kpiVacaciones = parsedVac.kpiVacaciones;
                                     window._kpiVacacionesCache = parsedVac.kpiVacaciones;
                                     window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
@@ -256,6 +257,10 @@ window.FirebaseBackend = {
                                     const t = parseFloat(v.tomadas) || 0;
                                     const r = parseFloat(v.restantes) || 0;
                                     kpiIndivLimpio[k] = { adjudicadas: a, tomadas: t, restantes: r };
+                                    if (v.anioAnterior !== undefined) {
+                                        kpiIndivLimpio[k].anioAnterior = parseFloat(v.anioAnterior) || 0;
+                                        kpiIndivLimpio[k].delAnio = parseFloat(v.delAnio) || 0;
+                                    }
                                     sA += a;
                                     sT += t;
                                     sR += r;
@@ -276,6 +281,7 @@ window.FirebaseBackend = {
                                         vacaciones: raw.vacaciones || [],
                                         kpiVacaciones: raw.kpiVacaciones,
                                         kpiVacacionesIndividual: kpiIndivLimpio,
+                                        formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 2 : 1,
                                         lastSync: new Date().toISOString()
                                     });
                                     localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);

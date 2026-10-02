@@ -4878,12 +4878,17 @@ function obtenerVacacionesEmpleado(params) {
             continue;
           }
 
-          var adj = parseFloat(row[6]) || 0;
+          // Columnas: F restantes del año anterior (A), G días del año (B), H total A+B, I tomadas, J restantes.
+          // "Adjudicadas" es el total H (A+B): así adjudicadas − tomadas = restantes.
+          var anterior = parseFloat(row[5]) || 0;
+          var delAnio = parseFloat(row[6]) || 0;
+          var adj = (row[7] !== '' && row[7] !== null && !isNaN(parseFloat(row[7]))) ? parseFloat(row[7]) : anterior + delAnio;
           var tom = parseFloat(row[8]) || 0;
           var res = parseFloat(row[9]) || 0;
 
-          if (idColA) vacacionesPorEmpleado[idColA] = { adjudicadas: adj, tomadas: tom, restantes: res };
-          if (idColB) vacacionesPorEmpleado[idColB] = { adjudicadas: adj, tomadas: tom, restantes: res };
+          var infoVac = { adjudicadas: adj, tomadas: tom, restantes: res, anioAnterior: anterior, delAnio: delAnio };
+          if (idColA) vacacionesPorEmpleado[idColA] = infoVac;
+          if (idColB) vacacionesPorEmpleado[idColB] = infoVac;
 
           totalAdjudicadas += adj;
           totalTomadas += tom;
