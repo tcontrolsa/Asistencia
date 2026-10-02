@@ -7290,6 +7290,7 @@ async function cerrarSesion() {
         }
         localStorage.clear();
         sessionStorage.removeItem('justificar_popup_saltado');
+        sessionStorage.removeItem('tcontrol_sesion_eval');
         isAuthenticated = false;
         showLoading(false);
         location.reload();
@@ -7351,6 +7352,8 @@ async function navigateTo(page) {
             renderEstadoPage();
         } else if (page === 'admin') {
             renderAdminPage();
+        } else if (page === 'desarrollo') {
+            renderDesarrolloPage();
         }
         ajustarLayout();
     };
@@ -7365,6 +7368,23 @@ async function navigateTo(page) {
     }
 }
 window.navigateTo = navigateTo;
+
+// Evaluación de desempeño (JS/evaluacion_desempeno.js): evaluar al equipo y ver las propias
+function renderDesarrolloPage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `<div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;"><div id="evDesarrollo"></div></div>`;
+    const cont = document.getElementById('evDesarrollo');
+    if (!window.EvaluacionDesempeno || !empleado) {
+        cont.innerHTML = '<div class="glass-card text-center" style="background:white; border-radius:20px; padding:30px;">No se pudo cargar la evaluación de desempeño. Recarga la app.</div>';
+        return;
+    }
+    window.EvaluacionDesempeno.montar(cont, {
+        empleado: {
+            id: String(empleado.id), nombre: empleado.nombre, area: empleado.area, cargo: empleado.cargo,
+            supervisor: (estado && estado.esSupervisor) ? 'SI' : ''
+        }
+    });
+}
 
 function renderAdminPage() {
     const mainContent = document.getElementById('mainContent');

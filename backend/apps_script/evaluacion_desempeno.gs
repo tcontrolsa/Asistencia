@@ -1,0 +1,200 @@
+/**
+ * TCONTROL · Evaluación de desempeño (mensual y seguimiento Día 75)
+ *
+ * Las evaluaciones se guardan en PostgreSQL (tcontrol_historico, funciones api.eval_*).
+ * Este archivo:
+ *   1. tokenEvaluacion (solo POST): verifica el PIN del colaborador contra Firestore y emite un
+ *      JWT para PostgREST con quién es (empleado_id), a quién evalúa (equipo = colaboradores
+ *      cuyo evaluador_id es él) y si ve todas (rrhh = supervisor admin). Vigencia: 8 horas.
+ *   2. guardarEvaluacion (lo llama sync-historico al replicar la cola): escribe o actualiza la
+ *      fila de la evaluación en la hoja EVALUACIONES.
+ *
+ * Usa el mismo secreto PGRST_JWT_SECRET de Propiedades del script que tokenHistorico.
+ * Pendiente fase 1 de seguridad: verificar contra CREDENCIALES (acceso_seguro.gs) en lugar
+ * del PIN de Firestore.
+ */
+
+var HOJA_EVALUACIONES = 'EVALUACIONES';
+var EVAL_PROYECTO_FIRESTORE = 'tcontrol-asistencia';
+var EVAL_API_KEY_FIREBASE = 'AIzaSyDHAOvwmq4nt4IdalNdowYcak0clwEvFc4'; // pública (la usa la PWA)
+var EVAL_MAX_INTENTOS = 5;
+var EVAL_BLOQUEO_SEG = 15 * 60;
+var COLS_EVALUACIONES = [
+  'EVALUACION_ID', 'TIPO', 'MES_EVALUADO', 'FECHA_APLICACION', 'ID', 'COLABORADOR', 'AREA', 'CARGO',
+  'EVALUADOR_ID', 'EVALUADOR',
+  'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14',
+  'PUNTAJE', 'PORCENTAJE', 'NIVEL',
+  'DOMINIO_TECNICO_%', 'GESTION_TRABAJO_%', 'APRENDIZAJE_%', 'INTEGRACION_%',
+  'OBSERVACIONES', 'FORTALEZAS', 'OPORTUNIDADES_MEJORA', 'COMPROMISOS', 'PROXIMA_EVALUACION',
+  'ESTADO', 'CONFIRMADA_EN', 'COMENTARIO_COLABORADOR', 'ACTUALIZADO_EN'
+];
+
+// ---------------------------------------------------------------------
+// 1. Token de evaluaciones
+// ---------------------------------------------------------------------
+function emitirTokenEvaluacion(p) {
+  var id = String(p.empleadoId || '').trim();
+  var pin = String(p.pin || '').trim();
+  if (!id || !pin) return { ok: false, error: 'Ingresa tu PIN.' };
+
+  var cache = CacheService.getScriptCache();
+  var claveIntentos = 'eval_intentos_' + id;
+  var intentos = parseInt(cache.get(claveIntentos) || '0', 10);
+  if (intentos >= EVAL_MAX_INTENTOS) {
+    return { ok: false, error: 'Demasiados intentos. Espera 15 minutos.' };
+  }
+
+  var emp = leerEmpleadoFirestore_(id);
+  if (!emp) return { ok: false, error: 'Colaborador no encontrado.' };
+  if (String(emp.activo || 'SI').toUpperCase() === 'NO' || emp.activo === false) {
+    return { ok: false, error: 'Colaborador inactivo.' };
+  }
+  var guardado = String(emp.pin || '').trim();
+  var hash = sha256Hex_(pin);
+  if (!guardado || (guardado !== hash && guardado !== pin)) {
+    cache.put(claveIntentos, String(intentos + 1), EVAL_BLOQUEO_SEG);
+    return { ok: false, error: 'PIN incorrecto.' };
+  }
+  cache.remove(claveIntentos);
+
+  var secreto = PropertiesService.getScriptProperties().getProperty('PGRST_JWT_SECRET');
+  if (!secreto) return { ok: false, error: 'PGRST_JWT_SECRET no configurado en Propiedades del script' };
+
+  var equipo = equipoDeEvaluador_(id);
+  var sup = String(emp.supervisor || emp.rol || '').toUpperCase();
+  var rrhh = id === '1058' || sup.indexOf('ADMIN') !== -1;
+  var exp = Math.floor(Date.now() / 1000) + 8 * 3600;
+  var b64url = function (x) { return Utilities.base64EncodeWebSafe(x).replace(/=+$/, ''); };
+  var header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  var payload = b64url(Utilities.newBlob(JSON.stringify({
+    role: 'tcontrol_lector', eval: true, empleado_id: id,
+    equipo: equipo.map(function (e) { return e.id; }), rrhh: rrhh, exp: exp
+  })).getBytes());
+  var firma = b64url(Utilities.computeHmacSha256Signature(header + '.' + payload, secreto));
+  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp, rrhh: rrhh, equipo: equipo };
+}
+
+function leerEmpleadoFirestore_(id) {
+  var url = 'https://firestore.googleapis.com/v1/projects/' + EVAL_PROYECTO_FIRESTORE +
+    '/databases/(default)/documents/empleados/' + encodeURIComponent(id) + '?key=' + EVAL_API_KEY_FIREBASE;
+  var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return null;
+  return camposFirestore_(JSON.parse(res.getContentText()).fields || {});
+}
+
+// Colaboradores activos cuyo evaluador_id es este evaluador
+function equipoDeEvaluador_(id) {
+  var url = 'https://firestore.googleapis.com/v1/projects/' + EVAL_PROYECTO_FIRESTORE +
+    '/databases/(default)/documents:runQuery?key=' + EVAL_API_KEY_FIREBASE;
+  var consulta = {
+    structuredQuery: {
+      from: [{ collectionId: 'empleados' }],
+      where: { fieldFilter: { field: { fieldPath: 'evaluador_id' }, op: 'EQUAL', value: { stringValue: id } } }
+    }
+  };
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json', payload: JSON.stringify(consulta), muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) throw new Error('No se pudo leer el equipo: ' + res.getContentText().slice(0, 200));
+  var equipo = [];
+  JSON.parse(res.getContentText()).forEach(function (r) {
+    if (!r.document) return;
+    var e = camposFirestore_(r.document.fields || {});
+    var eid = String(e.id || r.document.name.split('/').pop()).trim();
+    if (!eid || eid === id) return;
+    if (String(e.activo || 'SI').toUpperCase() === 'NO' || e.activo === false) return;
+    var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase();
+    if (rol.indexOf('EVALUADO') === -1) return;
+    equipo.push({ id: eid, nombre: e.nombre || '', area: e.area || '', cargo: e.cargo || '',
+                  fecha_ingreso: e.fecha_ingreso || e.fechaIngreso || '', foto_url: e.foto_url || '' });
+  });
+  return equipo;
+}
+
+function camposFirestore_(fields) {
+  var o = {};
+  Object.keys(fields).forEach(function (k) {
+    var v = fields[k];
+    if ('stringValue' in v) o[k] = v.stringValue;
+    else if ('integerValue' in v) o[k] = String(v.integerValue);
+    else if ('doubleValue' in v) o[k] = String(v.doubleValue);
+    else if ('booleanValue' in v) o[k] = v.booleanValue;
+    else if ('timestampValue' in v) o[k] = v.timestampValue;
+  });
+  return o;
+}
+
+function sha256Hex_(texto) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, texto, Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+}
+
+// ---------------------------------------------------------------------
+// 2. Réplica a la hoja EVALUACIONES (desde la cola de Postgres)
+// ---------------------------------------------------------------------
+function guardarEvaluacionEnHoja(p) {
+  var id = String(p.evaluacionId || '').trim();
+  if (!id) return { ok: false, error: 'Falta evaluacionId' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var hoja = hojaEvaluaciones_();
+    var cal = String(p.calificaciones || '').split(',');
+    var obs = [];
+    try { obs = JSON.parse(p.observaciones || '[]'); } catch (e) { }
+    var dims = {};
+    try { dims = JSON.parse(p.dimensiones || '{}'); } catch (e) { }
+    var pctDim = function (k) { return dims[k] ? Math.round(dims[k].porcentaje * 1000) / 10 : ''; };
+    var notas = [];
+    obs.forEach(function (o, i) { if (o) notas.push((i + 1) + ': ' + o); });
+
+    var fila = [
+      id, p.tipo === 'DIA75' ? 'Día 75' : 'Mensual', p.periodo === 'DIA75' ? '' : p.periodo, p.fechaAplicacion,
+      p.empleadoId, p.empleadoNombre || '', p.area || '', p.cargo || '', p.evaluadorId, p.evaluadorNombre || ''
+    ];
+    for (var i = 0; i < 14; i++) fila.push(cal[i] ? Number(cal[i]) : '');
+    fila.push(Number(p.puntaje) || 0, Number(p.porcentaje) || 0, p.nivel || '',
+      pctDim('tecnico'), pctDim('gestion'), pctDim('aprendizaje'), pctDim('relacional'),
+      notas.join('\n'), p.fortalezas || '', p.mejoras || '', p.compromisos || '', p.proximaEvaluacion || '',
+      p.estado === 'confirmada' ? 'Confirmada' : 'Enviada', p.confirmadaEn || '', p.comentarioColaborador || '',
+      p.actualizadoEn || '');
+
+    var n = hoja.getLastRow();
+    var filaDestino = 0;
+    if (n > 1) {
+      var ids = hoja.getRange(2, 1, n - 1, 1).getValues();
+      for (var r = 0; r < ids.length; r++) {
+        if (String(ids[r][0]).trim() === id) { filaDestino = r + 2; break; }
+      }
+    }
+    if (!filaDestino) filaDestino = n + 1;
+    // IDs, mes y fechas como texto plano (evita que Sheets convierta "2026-09" en fecha);
+    // calificaciones, puntajes y porcentajes quedan numéricos
+    hoja.getRange(filaDestino, 1, 1, 10).setNumberFormat('@');
+    hoja.getRange(filaDestino, 32, 1, fila.length - 31).setNumberFormat('@');
+    hoja.getRange(filaDestino, 1, 1, fila.length).setValues([fila.map(function (v) { return v === null || v === undefined ? '' : v; })]);
+    return { ok: true, fila: filaDestino };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function hojaEvaluaciones_() {
+  var libro = SpreadsheetApp.getActiveSpreadsheet();
+  var hoja = libro.getSheetByName(HOJA_EVALUACIONES);
+  if (!hoja) {
+    hoja = libro.insertSheet(HOJA_EVALUACIONES);
+    hoja.getRange(1, 1, 1, COLS_EVALUACIONES.length).setValues([COLS_EVALUACIONES]).setFontWeight('bold');
+    hoja.setFrozenRows(1);
+  }
+  return hoja;
+}
+
+/** Ejecutar desde el editor (▶) para crear la hoja y comprobar el secreto antes de publicar. */
+function prepararEvaluaciones() {
+  hojaEvaluaciones_();
+  if (!PropertiesService.getScriptProperties().getProperty('PGRST_JWT_SECRET')) {
+    throw new Error('Falta PGRST_JWT_SECRET en Propiedades del script');
+  }
+  Logger.log('Hoja ' + HOJA_EVALUACIONES + ' lista y secreto configurado');
+}

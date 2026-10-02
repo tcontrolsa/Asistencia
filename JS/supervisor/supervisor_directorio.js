@@ -1071,6 +1071,11 @@ window.abrirModalEditarEmpleado = function (empleadoId) {
     $('editDirCultura').value = (emp.cultura_habilitada === false || emp.cultura_activa === false) ? 'NO' : 'SI';
   }
 
+  if ($('editDirEvalRol') && window.EvaluacionDesempeno) {
+    $('editDirEvalRol').value = window.EvaluacionDesempeno.rolDe(emp);
+    actualizarSelectEvaluadorDirectorio('editDir', emp.id, emp.evaluador_id || '');
+  }
+
   const imgPreview = $('editDirFotoPreview');
   if (imgPreview) {
     imgPreview.src = emp.foto_url || './assets/images/Logotipo T Control.png';
@@ -1123,6 +1128,10 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
     cultura_activa: (cultura === 'SI'),
     fechaNacimiento: fechaNacimiento
   };
+  if ($('editDirEvalRol')) {
+    datos.evaluacion_rol = $('editDirEvalRol').value;
+    datos.evaluador_id = datos.evaluacion_rol.includes('EVALUADO') && $('editDirEvaluador') ? $('editDirEvaluador').value : '';
+  }
 
   mostrarLoader(true);
   try {
@@ -1167,6 +1176,24 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
   }
 };
 
+// Evaluación de desempeño: lista de evaluadores posibles para el jefe inmediato
+window.actualizarSelectEvaluadorDirectorio = function (prefijo, empId, seleccionado) {
+  const rolSel = $(prefijo + 'EvalRol');
+  const sel = $(prefijo + 'Evaluador');
+  const grupo = $(prefijo + 'EvaluadorGrupo');
+  if (!rolSel || !sel || !window.EvaluacionDesempeno) return;
+  const aplica = rolSel.value.includes('EVALUADO');
+  if (grupo) grupo.style.display = aplica ? '' : 'none';
+  if (seleccionado === undefined) seleccionado = sel.value;
+  if (empId === undefined) empId = prefijo === 'editDir' ? ($('editDirId') ? $('editDirId').value : '') : '';
+  const evaluadores = (empCache || [])
+    .filter(e => String(e.id) !== String(empId) && String(e.activo || 'SI').toUpperCase() !== 'NO' && window.EvaluacionDesempeno.esEvaluador(e))
+    .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+  sel.innerHTML = '<option value="">— Sin asignar —</option>' + evaluadores
+    .map(e => `<option value="${escapeHtml(String(e.id))}">${escapeHtml(e.nombre || e.id)}${e.area ? ' · ' + escapeHtml(e.area) : ''}</option>`).join('');
+  sel.value = evaluadores.some(e => String(e.id) === String(seleccionado)) ? String(seleccionado) : '';
+};
+
 window.obtenerSiguienteIdDisponible = function () {
   const todos = [...(empCache || []), ...(window.empEliminadosCache || [])];
   const idsNumericos = todos
@@ -1199,6 +1226,10 @@ window.abrirModalNuevoEmpleadoDirectorio = function () {
   const siguienteId = window.obtenerSiguienteIdDisponible();
   if ($('nuevoDirId')) {
     $('nuevoDirId').value = siguienteId;
+  }
+  if ($('nuevoDirEvalRol')) {
+    $('nuevoDirEvalRol').value = 'EVALUADO';
+    actualizarSelectEvaluadorDirectorio('nuevoDir', siguienteId, '');
   }
 
   const modal = $('modalNuevoEmpleadoDirectorio');
@@ -1245,6 +1276,10 @@ window.guardarNuevoEmpleadoDirectorio = async function () {
     fecha_ingreso: (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0],
     creado: new Date().toISOString()
   };
+  if ($('nuevoDirEvalRol')) {
+    empObj.evaluacion_rol = $('nuevoDirEvalRol').value;
+    empObj.evaluador_id = empObj.evaluacion_rol.includes('EVALUADO') && $('nuevoDirEvaluador') ? $('nuevoDirEvaluador').value : '';
+  }
 
   mostrarLoader(true);
   try {

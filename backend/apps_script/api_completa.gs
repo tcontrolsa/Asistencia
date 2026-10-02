@@ -542,6 +542,12 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
       }
 
+      // Evaluación de desempeño (evaluacion_desempeno.gs): token tras verificar el PIN, solo por POST
+      if (data.accion === 'tokenEvaluacion' && typeof emitirTokenEvaluacion === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(emitirTokenEvaluacion(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Acceso seguro (acceso_seguro.gs): solo por POST, el PIN nunca viaja en la URL
       if (typeof ACCIONES_ACCESO !== 'undefined' && ACCIONES_ACCESO.indexOf(data.accion) !== -1) {
         return ContentService.createTextOutput(JSON.stringify(procesarAccesoSeguro(data)))
@@ -825,6 +831,10 @@ function procesarAccion(params) {
 
     case 'tokenHistorico':
       return emitirTokenHistorico(params);
+
+    // Réplica desde la cola de Postgres (sync-historico) → hoja EVALUACIONES
+    case 'guardarEvaluacion':
+      return guardarEvaluacionEnHoja(params);
 
     default:
       return { error: `Acción no reconocida: ${accion}` };

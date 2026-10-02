@@ -7122,7 +7122,8 @@ function cambiarPanel(panel) {
     servicios: 'Gestión & Servicios',
     detalle: 'Detalle de Empleado',
     opciones: 'Opciones adicionales',
-    whatsapp: 'Notificaciones WhatsApp'
+    whatsapp: 'Notificaciones WhatsApp',
+    desempeno: 'Evaluación de desempeño'
   };
   const titleText = titles[panel] || 'Supervisor';
   if ($('pageTitle')) $('pageTitle').textContent = titleText;
@@ -7147,6 +7148,9 @@ function cambiarPanel(panel) {
     }
     else if (panel === 'whatsapp') {
       if (typeof window.inicializarPanelWhatsApp === 'function') window.inicializarPanelWhatsApp();
+    }
+    else if (panel === 'desempeno') {
+      cargarPanelDesempeno();
     }
     else if (panel === 'opciones') {
       if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
@@ -8970,10 +8974,34 @@ function generarDeviceToken() {
 function cerrarSesionSupervisor() {
   if (confirm("¿Estás seguro de que deseas cerrar sesión del panel de supervisión?")) {
     localStorage.removeItem('SUPERVISOR_SESSION');
+    if (window.EvaluacionDesempeno) window.EvaluacionDesempeno.cerrarSesion();
     location.reload();
   }
 }
 window.cerrarSesionSupervisor = cerrarSesionSupervisor;
+
+// Evaluación de desempeño (JS/evaluacion_desempeno.js): resultados (RR.HH.), mi equipo y asignaciones
+function cargarPanelDesempeno() {
+  const cont = $('evPanelDesempeno');
+  if (!cont || cont.dataset.montado === '1') return;
+  if (!window.EvaluacionDesempeno) {
+    cont.innerHTML = '<div style="padding:30px; text-align:center; color:var(--g500);">No se pudo cargar el módulo de evaluación. Recarga la página.</div>';
+    return;
+  }
+  let ses = {};
+  try { ses = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+  const yo = (empCache || []).find(e => String(e.id) === String(ses.id)) || {};
+  cont.dataset.montado = '1';
+  window.EvaluacionDesempeno.montarPanel(cont, {
+    empleado: { id: String(ses.id || ''), nombre: ses.nombre || yo.nombre || '', area: yo.area, cargo: ses.cargo || yo.cargo, supervisor: ses.supervisor || yo.supervisor, evaluacion_rol: yo.evaluacion_rol },
+    empleados: () => empCache || [],
+    puedeAsignar: tienePermisoAdmin(),
+    guardarEmpleado: (id, datos) => (window.FirebaseBackend && window.USE_FIREBASE)
+      ? window.FirebaseBackend.actualizarEmpleado({ empleadoId: id, datos })
+      : Promise.resolve({ error: 'Firestore no disponible' })
+  });
+}
+window.cargarPanelDesempeno = cargarPanelDesempeno;
 
 function mostrarInformacionSupervisor(session) {
   if (!session) return;
