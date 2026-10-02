@@ -1216,39 +1216,76 @@
             }
         },
 
-        // Chequeo de reglas automáticas de recordatorio
-        async ejecutarChequeoAutomatico(listaEmpleadosSinMarcar = [], forzar = false) {
-            if (!forzar && (!this.config.activo || !this.config.autoEnvioNoRegistro)) {
-                return { ejecutado: false, motivo: 'Envío automático desactivado' };
+        // Reglas del recordatorio automático (configuración, día y hora de corte) para hoy
+        _reglasChequeoHoy() {
+            if (!this.config.activo || !this.config.autoEnvioNoRegistro) {
+                return { ok: false, motivo: 'Envío automático desactivado' };
             }
-
             const ahora = new Date();
             const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
             const diaActual = diasSemana[ahora.getDay()];
             const diasPermitidos = this.config.diasEnvio || ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES'];
-
-            if (!forzar && !diasPermitidos.includes(diaActual)) {
-                return { ejecutado: false, motivo: `Hoy (${diaActual}) no es un día configurado para envíos automáticos` };
+            if (!diasPermitidos.includes(diaActual)) {
+                return { ok: false, motivo: `Hoy (${diaActual}) no es un día configurado para envíos automáticos` };
             }
-
             const horaCorte = this.config.horaCorteNoRegistro || '08:15';
             const [corteH, corteM] = horaCorte.split(':').map(Number);
-            const horaActualMinutos = ahora.getHours() * 60 + ahora.getMinutes();
-            const corteMinutos = (corteH * 60) + (corteM || 0);
-
-            if (!forzar && horaActualMinutos < corteMinutos) {
-                return { ejecutado: false, motivo: `Aún no se alcanza la hora de corte (${horaCorte})` };
+            if (ahora.getHours() * 60 + ahora.getMinutes() < corteH * 60 + (corteM || 0)) {
+                return { ok: false, motivo: `Aún no se alcanza la hora de corte (${horaCorte})` };
             }
-
             // Fecha local (no UTC): con toISOString, después de las 19:00 en Ecuador ya sería "mañana"
             const fechaHoyStr = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`;
-            const checkKey = `tcontrol_waha_autocheck_${fechaHoyStr}`;
-            if (!forzar && localStorage.getItem(checkKey)) {
-                return { ejecutado: false, motivo: `El chequeo automático de hoy (${fechaHoyStr}) ya fue procesado` };
-            }
+            return { ok: true, fechaHoyStr, checkKey: `tcontrol_waha_autocheck_${fechaHoyStr}` };
+        },
 
+        // ¿Corresponde y falta el recordatorio de hoy? Solo lee: no envía ni toma el candado.
+        async chequeoAutomaticoPendiente() {
+            const reglas = this._reglasChequeoHoy();
+            if (!reglas.ok || localStorage.getItem(reglas.checkKey)) return false;
+            try {
+                const snap = await db.collection('configuracion').doc('whatsapp_autocheck').get();
+                if (snap.exists && snap.data().fecha === reglas.fechaHoyStr) {
+                    localStorage.setItem(reglas.checkKey, new Date().toISOString());
+                    return false;
+                }
+            } catch (e) {
+                console.warn('[OpenWA] No se pudo consultar el candado del recordatorio:', e);
+                return false;
+            }
+            return true;
+        },
+
+        // Chequeo de reglas automáticas de recordatorio
+        async ejecutarChequeoAutomatico(listaEmpleadosSinMarcar = [], forzar = false) {
             if (!forzar) {
-                localStorage.setItem(checkKey, new Date().toISOString());
+                const reglas = this._reglasChequeoHoy();
+                if (!reglas.ok) return { ejecutado: false, motivo: reglas.motivo };
+                if (localStorage.getItem(reglas.checkKey)) {
+                    return { ejecutado: false, motivo: `El chequeo automático de hoy (${reglas.fechaHoyStr}) ya fue procesado` };
+                }
+                // Candado compartido en Firestore: con varios supervisores conectados, envía solo el primero
+                let ganado = false;
+                try {
+                    let quien = '';
+                    try { quien = (JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').nombre) || ''; } catch (e) { }
+                    const ref = db.collection('configuracion').doc('whatsapp_autocheck');
+                    ganado = await db.runTransaction(async tx => {
+                        const snap = await tx.get(ref);
+                        if (snap.exists && snap.data().fecha === reglas.fechaHoyStr) return false;
+                        tx.set(ref, {
+                            fecha: reglas.fechaHoyStr,
+                            inicio: firebase.firestore.FieldValue.serverTimestamp(),
+                            por: quien,
+                            destinatarios: listaEmpleadosSinMarcar.length
+                        });
+                        return true;
+                    });
+                } catch (e) {
+                    // Sin candado no se envía (se reintenta en el siguiente chequeo)
+                    return { ejecutado: false, motivo: 'No se pudo tomar el candado del recordatorio: ' + (e.message || e) };
+                }
+                localStorage.setItem(reglas.checkKey, new Date().toISOString());
+                if (!ganado) return { ejecutado: false, motivo: 'Otro supervisor ya envió los recordatorios de hoy' };
             }
             this._ultimoCheckAuto = new Date();
 

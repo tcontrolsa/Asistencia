@@ -487,7 +487,16 @@ window.verificarAutoEnvioWhatsApp = async function (forzar = false) {
     return;
   }
 
-  // Chequeo periódico en segundo plano
+  try {
+    await window.OpenWAService.ejecutarChequeoAutomatico(calcularSinMarcarHoy(), false);
+  } catch (e) {
+    console.warn("[OpenWA] Error en verificación periódica de WhatsApp:", e);
+  }
+};
+
+// Colaboradores activos que hoy no registran entrada (excluye vacaciones, campo, justificados,
+// "solo almuerzo" y excluidos de asistencia)
+function calcularSinMarcarHoy() {
   const hoy = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
   const empActivos = (empCache || []).filter(e => {
     const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
@@ -514,13 +523,35 @@ window.verificarAutoEnvioWhatsApp = async function (forzar = false) {
 
     return true;
   });
+  return sinMarcar;
+}
 
+// Recordatorio automático "no registró entrada": cualquier panel de supervisor abierto lo revisa
+// cada 2 minutos (aunque la pestaña esté en segundo plano). Pasada la hora de corte en un día
+// configurado, recarga los datos de hoy y envía; el candado en Firestore evita envíos repetidos
+// entre varios supervisores.
+let _recordatorioEnCurso = false;
+async function revisarRecordatorioAutomatico() {
+  if (_recordatorioEnCurso || !window.OpenWAService) return;
+  if (!localStorage.getItem('SUPERVISOR_SESSION')) return;
+  const hoy = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
+  if (typeof esFeriadoODomingo === 'function' && esFeriadoODomingo(hoy)) return; // feriado: no avisar
+  _recordatorioEnCurso = true;
   try {
-    await window.OpenWAService.ejecutarChequeoAutomatico(sinMarcar, false);
+    if (!(await window.OpenWAService.chequeoAutomaticoPendiente())) return;
+    // Datos frescos: quién ya marcó entrada hasta este momento
+    await cargarDatosCompletos(false, true);
+    if (!Array.isArray(empCache) || empCache.length === 0) return; // sin datos no se decide nada
+    const res = await window.OpenWAService.ejecutarChequeoAutomatico(calcularSinMarcarHoy(), false);
+    console.log('[OpenWA] Recordatorio automático "no registró entrada":', res);
   } catch (e) {
-    console.warn("[OpenWA] Error en verificación periódica de WhatsApp:", e);
+    console.warn('[OpenWA] Error en el recordatorio automático:', e);
+  } finally {
+    _recordatorioEnCurso = false;
   }
-};
+}
+setInterval(revisarRecordatorioAutomatico, 120000);
+setTimeout(revisarRecordatorioAutomatico, 45000);
 
 window.restablecerConfiguracionWhatsApp = function () {
   if (!confirm('¿Deseas restablecer la plantilla activa a su texto predeterminado?')) return;
