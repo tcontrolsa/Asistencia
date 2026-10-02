@@ -32,6 +32,7 @@
 }
 .ev-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .ev-wrap { flex-wrap: wrap; }
+.ev-acciones-der { display: flex; gap: 6px; flex-wrap: wrap; }
 .ev-h3 { font-size: 16px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px; color: var(--ev-tx); }
 .ev-h3 i { color: var(--ev-rojo); font-size: 14px; }
 .ev-h4 { font-size: 14px; font-weight: 700; margin: 0 0 10px; color: var(--ev-tx); }

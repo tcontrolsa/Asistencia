@@ -756,13 +756,25 @@
     const abrir = k => {
       cont.querySelectorAll('.ev-subtab').forEach(b => b.classList.toggle('ev-subtab-on', b.dataset.sub === k));
       cont.querySelectorAll('[data-subpanel]').forEach(p => { p.hidden = p.dataset.subpanel !== k; });
-      if (montados[k]) { if (k === 'asignaciones') montados[k].refrescar(); return; }
+      if (montados[k]) { refrescarSub(k); return; }
       if (k === 'resultados') montados[k] = montarResultados(sub(k), opts);
       if (k === 'equipo') montados[k] = montar(sub(k), { empleado: opts.empleado, embebido: true });
       if (k === 'asignaciones') montados[k] = montarAsignaciones(sub(k), opts);
     };
-    cont.querySelectorAll('.ev-subtab').forEach(b => b.addEventListener('click', () => abrir(b.dataset.sub)));
+    // Al volver a una pestaña (o al panel) se recargan los datos: las evaluaciones cambian mientras está abierto
+    const refrescarSub = k => {
+      const m = montados[k];
+      if (k === 'asignaciones') return m.refrescar();
+      if (!m.ses) m.ses = sesionGuardada(opts.empleado.id);   // PIN ingresado en la otra pestaña
+      if (!m.ses) return pintar(m);
+      if (m.vista === 'form') return;                          // no perder una evaluación a medio llenar
+      m.vista = k === 'resultados' ? 'resultados' : 'inicio';
+      if (k === 'resultados') m.alIniciar(); else cargar(m);
+    };
+    let actual = 'resultados';
+    cont.querySelectorAll('.ev-subtab').forEach(b => b.addEventListener('click', () => { actual = b.dataset.sub; abrir(actual); }));
     abrir('resultados');
+    cont._evPanel = { refrescar: () => abrir(actual) };
   }
 
   function montarResultados(cont, opts) {
@@ -779,6 +791,7 @@
     st.volverA = 'resultados';
     st.onClick = (a, b) => {
       if (a === 'exportar') exportarExcel(st, opts);
+      if (a === 'r-actualizar') cargarTodas(st, opts);
     };
     st.onChange = (a, el) => {
       if (a === 'r-periodo') { st.filtro.periodo = el.value; pintarResultados(st, opts); }
@@ -868,7 +881,10 @@
       <div class="ev-card">
         <div class="ev-card-head ev-wrap">
           <select class="ev-select" data-ev="r-periodo">${opcionesPer}</select>
-          <button class="ev-btn ev-btn-sm" data-ev="exportar"><i class="fas fa-file-excel"></i> Exportar Excel</button>
+          <div class="ev-acciones-der">
+            <button class="ev-btn ev-btn-sm" data-ev="r-actualizar" title="Volver a cargar desde la base"><i class="fas fa-sync-alt"></i> Actualizar</button>
+            <button class="ev-btn ev-btn-sm" data-ev="exportar"><i class="fas fa-file-excel"></i> Exportar Excel</button>
+          </div>
         </div>
         <div class="ev-kpis">
           <div class="ev-kpi"><span>A evaluar</span><strong>${todas.length}</strong></div>

@@ -8983,7 +8983,11 @@ window.cerrarSesionSupervisor = cerrarSesionSupervisor;
 // Evaluación de desempeño (JS/evaluacion_desempeno.js): resultados (RR.HH.), mi equipo y asignaciones
 function cargarPanelDesempeno() {
   const cont = $('evPanelDesempeno');
-  if (!cont || cont.dataset.montado === '1') return;
+  if (!cont) return;
+  if (cont.dataset.montado === '1') {
+    if (cont._evPanel) cont._evPanel.refrescar();
+    return;
+  }
   if (!window.EvaluacionDesempeno) {
     cont.innerHTML = '<div style="padding:30px; text-align:center; color:var(--g500);">No se pudo cargar el módulo de evaluación. Recarga la página.</div>';
     return;
