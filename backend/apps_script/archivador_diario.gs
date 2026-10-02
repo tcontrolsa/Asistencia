@@ -10,6 +10,9 @@
 // =================== CONFIGURACIÓN ===================
 var FIRESTORE_PROJECT_ID = "tcontrol-asistencia";
 var DIAS_A_MANTENER = 60;
+// DESACTIVADO (oct 2026): el archivado lo hace el panel de supervisor (archivarRegistros en
+// api_completa.gs), que evita duplicados. Este archivador agrega filas sin revisar si ya existen.
+var ARCHIVADO_AUTOMATICO_ACTIVO = false;
 
 // Nombres de las hojas de cálculo destino
 var HOJA_REGISTROS_NAME = "REGISTROS";
@@ -28,6 +31,10 @@ var ENCABEZADOS_OFICIALES = [
  * Programada para ejecutarse automáticamente.
  */
 function ejecutarArchivadoDiario() {
+  if (!ARCHIVADO_AUTOMATICO_ACTIVO) {
+    console.log("Archivador automático desactivado: el archivado se hace desde el panel de supervisor.");
+    return;
+  }
   console.log("=== INICIANDO ARCHIVADO AUTOMÁTICO DIARIO DE FIRESTORE ===");
   
   // 1. Calcular límite de fecha de corte (hace DIAS_A_MANTENER días)

@@ -222,6 +222,8 @@ function doPost(e) {
         // Cachear claves existentes de REGISTROS para evitar duplicados
         var existingRegKeys = {};
         var existingAbsenceRow = {}; // kFecha + '|' + kId -> rowIndex (1-indexed)
+        var existingAbsenceTipo = {}; // kFecha + '|' + kId -> tipo de esa fila
+        var filasVacacionEnRegistros = []; // vacaciones que quedaron en REGISTROS: se quitan al pasar a VACACIONES
         var lastRowRegs = sheetRegs.getLastRow();
         if (lastRowRegs > 1) {
           var dataExistenteRegs = sheetRegs.getRange(2, 1, lastRowRegs - 1, 6).getValues();
@@ -235,6 +237,7 @@ function doPost(e) {
               existingRegKeys[kFecha + '|' + kId + '|' + kTipo + '|' + kHora] = true;
               if (esAusenciaTipo(kTipo) || kTipo === 'FALTA') {
                 existingAbsenceRow[kFecha + '|' + kId] = k + 2;
+                existingAbsenceTipo[kFecha + '|' + kId] = kTipo;
               }
             }
           }
@@ -292,6 +295,14 @@ function doPost(e) {
           var esVacaciones = (String(r_tipo).toUpperCase() === 'VACACIONES' || String(r_tipo).toUpperCase() === 'VACACION');
 
           if (esVacaciones) {
+            // Si esta vacación quedó también en REGISTROS (escritura inmediata antigua), se quita de ahí
+            var keyAbsVac = normDate(r_fecha) + '|' + String(r_id).trim();
+            var tipoEnRegs = existingAbsenceTipo[keyAbsVac];
+            if (existingAbsenceRow[keyAbsVac] && (tipoEnRegs === 'VACACIONES' || tipoEnRegs === 'VACACION')) {
+              filasVacacionEnRegistros.push(existingAbsenceRow[keyAbsVac]);
+              delete existingAbsenceRow[keyAbsVac];
+              delete existingAbsenceTipo[keyAbsVac];
+            }
             var keyVac = normDate(r_fecha) + '|' + String(r_id).trim() + '|' + String(r_tipo).trim().toUpperCase();
             if (existingVacKeys[keyVac]) {
               omitidosRegs++;
@@ -345,6 +356,10 @@ function doPost(e) {
         if (filasVacs.length > 0) {
           sheetVacs.getRange(sheetVacs.getLastRow() + 1, 1, filasVacs.length, filasVacs[0].length).setValues(filasVacs);
         }
+        // Quitar de REGISTROS las vacaciones que ya quedaron en VACACIONES (de abajo hacia arriba)
+        filasVacacionEnRegistros.sort(function (a, b) { return b - a; }).forEach(function (fila) {
+          sheetRegs.deleteRow(fila);
+        });
 
         // Archivado en bloque de Almuerzos Extra / Invitados
         var filasAlm = [];
@@ -525,6 +540,12 @@ function doPost(e) {
       if (data.accion === 'escribirHojaActualizar') {
         var res = escribirHojaActualizar(data);
         return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // Acceso seguro (acceso_seguro.gs): solo por POST, el PIN nunca viaja en la URL
+      if (typeof ACCIONES_ACCESO !== 'undefined' && ACCIONES_ACCESO.indexOf(data.accion) !== -1) {
+        return ContentService.createTextOutput(JSON.stringify(procesarAccesoSeguro(data)))
+          .setMimeType(ContentService.MimeType.JSON);
       }
     }
   } catch(e) {}

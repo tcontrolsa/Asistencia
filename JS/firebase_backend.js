@@ -1270,29 +1270,10 @@ window.FirebaseBackend = {
 
         await db.collection('registros').doc(idDocumento).set(nuevoRegistro);
 
-        // Sincronización en segundo plano con Google Sheets (para registrar fila en REGISTROS)
-        if (esAusenciaTipo(data.tipo) || data.dispositivo === 'MANUAL' || data.dispositivo === 'MANUAL_SUPERVISOR' || data.esManual) {
-            this._jsonp({
-                accion: 'guardarRegistro',
-                id: empleadoId,
-                empleadoId: empleadoId,
-                tipo: data.tipo,
-                fecha: fechaStr,
-                fecha_falta: fechaStr,
-                hora: horaStr,
-                modo: modo,
-                almuerzo: almuerzo,
-                horasExtra: horasExtra,
-                dispositivo: 'MANUAL',
-                observacion: data.observacion || data.razon_ausencia || "",
-                razon_ausencia: data.observacion || data.razon_ausencia || "",
-                razon_justificac: data.observacion || data.razon_ausencia || "",
-                justificado: nuevoRegistro.justificado || 'NO',
-                quien_justifica: data.quien_justifica || 'Supervisor'
-            }, 0, 1, 15000).catch(err => {
-                console.info("ℹ️ Sincronización secundaria Sheets (guardarRegistro):", err.message);
-            });
-        }
+        // Un solo camino a Google Sheets: este documento llega a REGISTROS (o VACACIONES) cuando el
+        // supervisor archiva desde el panel (archivarRegistros, que evita duplicados). Antes se escribía
+        // además una fila inmediata en REGISTROS: las vacaciones quedaban en dos hojas y, si la ausencia
+        // se borraba el mismo día, la fila de la hoja quedaba huérfana.
 
         return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
     },
