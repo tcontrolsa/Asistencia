@@ -187,11 +187,14 @@
 
   async function rpc(ses, fn, p) {
     const fb = window.FirebaseBackend;
-    for (let intento = 0; intento < 2; intento++) {
-      const base = await fb._urlHistorico(intento > 0);
-      if (!base) break;
+    let causa = '';
+    for (let intento = 0; intento < 3; intento++) {
+      // La URL del túnel se lee de Firestore y se guarda 10 min; si quedó vacía o falló, se vuelve a leer
+      let base = await fb._urlHistorico(intento > 0);
+      if (!base && intento === 0) base = await fb._urlHistorico(true);
+      if (!base) { causa = 'sin dirección del servidor'; continue; }
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 20000);
+      const t = setTimeout(() => ctrl.abort(), 25000);
       try {
         const resp = await fetch(`${base}/rpc/${fn}`, {
           method: 'POST',
@@ -200,7 +203,11 @@
           signal: ctrl.signal
         });
         if (resp.status === 401) { cerrarSesion(); throw Object.assign(new Error('Tu sesión venció. Vuelve a ingresar tu PIN.'), { sesion: true }); }
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (!resp.ok) {
+          let det = '';
+          try { const j = await resp.json(); det = j.message || j.hint || ''; } catch (e) { }
+          throw new Error(`HTTP ${resp.status}${det ? ': ' + det : ''}`);
+        }
         const r = await resp.json();
         if (r && r.ok === false && /Sesión de evaluación no válida/.test(r.error || '')) {
           cerrarSesion();
@@ -209,10 +216,11 @@
         return r;
       } catch (e) {
         if (e.sesion) throw e;
-        console.warn('Evaluaciones: base no disponible', e.message || e);
+        causa = e.name === 'AbortError' ? 'el servidor tardó demasiado' : (e.message || String(e));
+        console.warn('Evaluaciones: base no disponible', causa);
       } finally { clearTimeout(t); }
     }
-    throw new Error('La base de evaluaciones no está disponible en este momento. Intenta en unos minutos.');
+    throw new Error(`La base de evaluaciones no está disponible en este momento (${causa}). Intenta en unos minutos.`);
   }
 
   // ---------------------------------------------------------------- piezas de interfaz
