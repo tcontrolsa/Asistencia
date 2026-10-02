@@ -1119,12 +1119,15 @@ window.FirebaseBackend = {
         let horasExtra = modo === "CAMPO" ? "SI" : "NO";
         let autoriza = data.autoriza || (modo === "CAMPO" ? "SISTEMA (CAMPO)" : "");
 
-        if (data.tipo === 'SALIDA') {
+        // Autorización automática de extras (>45 min después de la salida): solo área TALLER.
+        // El resto necesita que un supervisor las autorice.
+        const esTaller = String(infoEmpleado.area || '').trim().toUpperCase() === 'TALLER';
+        if (data.tipo === 'SALIDA' && esTaller) {
             const hPartes = String(horaStr).trim().split(':');
             if (hPartes.length >= 2) {
                 const minsSalida = parseInt(hPartes[0], 10) * 60 + parseInt(hPartes[1], 10);
                 const dayOfWeek = fechaRegistro.getDay(); // 0: Dom, 6: Sab
-                const refSalida = dayOfWeek === 6 ? 900 : (dayOfWeek === 0 ? 450 : 975); // 16:15 = 975 min, Sabado 15:00 = 900 min
+                const refSalida = (dayOfWeek === 0 || dayOfWeek === 6) ? 915 : 975; // L-V 16:15; sábado y domingo 15:15
                 if (minsSalida - refSalida > 45) {
                     horasExtra = "SI";
                     if (!autoriza) autoriza = "SISTEMA (>45 MIN)";

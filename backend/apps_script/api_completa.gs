@@ -1787,7 +1787,8 @@ function guardarRegistro(data) {
     if (modo === "CAMPO") {
       horasExtra = "SI";
       if (!autoriza) autoriza = "SISTEMA (CAMPO)";
-    } else if (data.tipo === 'SALIDA') {
+    } else if (data.tipo === 'SALIDA' && String(infoEmpleado.area || '').trim().toUpperCase() === 'TALLER') {
+      // Autorización automática de extras (>45 min después de la salida): solo área TALLER
       const hVal = data.hora || Utilities.formatDate(ahora, Session.getScriptTimeZone(), "HH:mm:ss");
       const hPartes = String(hVal).trim().split(':');
       if (hPartes.length >= 2) {
@@ -1795,7 +1796,7 @@ function guardarRegistro(data) {
         const diaU = (diaDesc || '').toUpperCase();
         const esSab = diaU.includes('SÁB') || diaU.includes('SAB');
         const esDom = diaU.includes('DOM');
-        const refSalida = esSab ? 900 : (esDom ? 450 : 975); // 16:15 = 975 min, Sábado 15:00 = 900 min
+        const refSalida = (esSab || esDom) ? 915 : 975; // L-V 16:15; sábado y domingo 15:15
         if (minsSalida - refSalida > 45) {
           horasExtra = "SI";
           if (!autoriza) autoriza = "SISTEMA (>45 MIN)";

@@ -723,6 +723,58 @@ function esEmpleadoPasante(e) {
   return false;
 }
 window.esEmpleadoPasante = esEmpleadoPasante;
+
+// ============================================================
+// REGLAS DE JORNADA Y HORAS EXTRA (oct 2026)
+// - Lunes a viernes: 07:30–16:15 con 45 min de almuerzo (480 min netos).
+// - Sábado, domingo y feriados: 07:00–15:15; todo lo trabajado es extra al 100 %
+//   (se descuentan 45 min de almuerzo si trabajó más de 4 h).
+// - Extra al 50 %: solo si supera 45 min en el día; se cuenta completa con tope de 120 min.
+// - Autorización automática de extras solo para el área TALLER; el resto, solo si un
+//   supervisor la autoriza (no cuenta "SISTEMA (>45 MIN)"). Campo se mantiene automático.
+// - Registro sin salida (salida autocompletada o sin marcar): 15 min de tiempo por justificar.
+// ============================================================
+const JORNADA_FIN_SEMANA = { entrada: 420, salida: 915 }; // 07:00 – 15:15
+const ALMUERZO_MIN = 45;
+const EXTRA50_UMBRAL_MIN = 45;
+const EXTRA50_TOPE_MIN = 120;
+const PENALIZACION_SIN_SALIDA_MIN = 15;
+
+function esAreaTaller(e) {
+  return String((e && (e.area || e.departamento)) || '').trim().toUpperCase() === 'TALLER';
+}
+window.esAreaTaller = esAreaTaller;
+
+// Extra al 50 % del día: 0 si no supera el umbral; si lo supera, completa hasta el tope
+function aplicarReglaExtra50(minutos) {
+  return minutos > EXTRA50_UMBRAL_MIN ? Math.min(minutos, EXTRA50_TOPE_MIN) : 0;
+}
+window.aplicarReglaExtra50 = aplicarReglaExtra50;
+
+// ¿Tiene autorización de horas extra ese día? Devuelve el origen o null
+function autorizacionExtrasDia(e, regsDia) {
+  const regs = regsDia || [];
+  if (regs.some(r => String(r.autoriza || '').toUpperCase().includes('CAMPO'))) return 'campo';
+  const manual = regs.some(r => r.horasExtra === 'SI' && !String(r.autoriza || '').trim().toUpperCase().startsWith('SISTEMA'));
+  if (manual) return 'supervisor';
+  if (esAreaTaller(e)) return 'taller';
+  return null;
+}
+window.autorizacionExtrasDia = autorizacionExtrasDia;
+
+// Salida que el colaborador no registró (la completó el sistema)
+function esSalidaSinRegistrar(r) {
+  if (!r) return false;
+  const disp = String(r.dispositivo || '').trim().toUpperCase();
+  const razon = String(r.razon_salida || r.razon_salida_temprana || r.razon_justificac || r.razon_ausencia || '').toLowerCase();
+  return disp === 'AUTO_COMPLETAR' || razon.includes('no registr');
+}
+
+// Registros inconclusos del día: tramos con entrada sin salida + salidas autocompletadas
+function contarRegistrosInconclusos(periodosDia) {
+  return (periodosDia || []).filter(p => p.entrada && (!p.salida || esSalidaSinRegistrar(p.salida))).length;
+}
+window.contarRegistrosInconclusos = contarRegistrosInconclusos;
 window.esColaboradorPasante = esEmpleadoPasante;
 
 function esEnCampo(lat, lng) {
@@ -5153,6 +5205,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         let totalPermisosHoy = tiempoPersonal + tiempoMedico;
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         rawTJ = Math.max(0, unaccountedMissing - tiempoJustificado);
+        // Penalización por registro sin salida (no la compensan permisos ni justificaciones)
+        rawTJ += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
       }
 
       let rawDescuento = tiempoPersonal + (rawTJ > 0 ? Math.max(rawTJ, atrasoMinsDia) : atrasoMinsDia);
@@ -5482,8 +5536,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       });
 
       let netWorked = minutosTrabajadosHoy;
-      if (!esFestivo && netWorked > 240) {
-        netWorked -= 45;
+      // 45 min de almuerzo si trabajó más de 4 h (también sábado, domingo y feriado)
+      if (netWorked > 240) {
+        netWorked -= ALMUERZO_MIN;
         if (minsEmpresa > 240) minsEmpresa -= 45;
         else if (minsCampo > 240) minsCampo -= 45;
       }
@@ -5505,21 +5560,20 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         minsSalidaTemprana = refSalida - ultimoSalidaMins;
       }
 
-      // Horas extras independientes (no compensan faltantes)
-      let autorizadoGlobal = regsDia.some(r => r.horasExtra === 'SI') || regsDia.some(r => (r.autoriza || '').includes('CAMPO'));
-      if (esFestivo && netWorked > 60) {
-        autorizadoGlobal = true;
-      } else if (!esFestivo && netWorked >= 600) {
-        autorizadoGlobal = true;
-      }
+      // Horas extras independientes (no compensan faltantes).
+      // Automáticas solo para TALLER (y campo); el resto requiere autorización del supervisor.
+      const origenAutorizacion = autorizacionExtrasDia(e, regsDia);
+      let autorizadoGlobal = Boolean(origenAutorizacion);
 
       let extBadgeVal = autorizadoGlobal ? 'SI' : 'NO';
-      let extBadge = autorizadoGlobal ? '<span class="pill ok">SI</span>' : '<span class="pill dim">NO</span>';
-      if (regsDia.some(r => (r.autoriza || '').includes('CAMPO'))) {
+      let extBadge = autorizadoGlobal ? '<span class="pill ok" title="Autorizadas por supervisor">SI</span>' : '<span class="pill dim" title="Sin autorización: las horas extra no se cuentan">NO</span>';
+      if (origenAutorizacion === 'campo') {
         extBadge = '<span class="pill ok" title="Auto-autorizado por Campo">CAMPO</span>';
+      } else if (origenAutorizacion === 'taller') {
+        extBadge = '<span class="pill ok" title="Automático para el área TALLER (más de 45 min, tope 120 min)">AUTO</span>';
       }
       let extBadgeHtml = extBadge;
-      if (esMaster && regsDia.length > 0 && !esFalta) {
+      if (esMaster && regsDia.length > 0 && !esFalta && origenAutorizacion !== 'taller' && origenAutorizacion !== 'campo') {
         extBadgeHtml = `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', '${extBadgeVal}', '${f}')">${extBadge}</span>`;
       }
 
@@ -5560,8 +5614,17 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       });
 
       if (esFestivo) {
+        // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
+        if (h100 + hC100 > 240) {
+          if (h100 >= ALMUERZO_MIN) h100 -= ALMUERZO_MIN;
+          else hC100 = Math.max(0, hC100 - ALMUERZO_MIN);
+        }
       } else {
-        h50 = extraMins50Acum;
+        // 50 %: solo si el día supera 45 min de extra; se cuenta completo con tope de 120 min
+        // (primero lo de oficina, luego lo de campo)
+        const extra50Dia = aplicarReglaExtra50(extraMins50Acum + hC50);
+        h50 = Math.min(extraMins50Acum, extra50Dia);
+        hC50 = extra50Dia - h50;
       }
 
       let tiempoJustificado = 0;
@@ -5596,6 +5659,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         tiempoPorJustificar += unaccountedMissing;
         tiempoPorJustificar = Math.max(0, tiempoPorJustificar - tiempoJustificado);
+        tiempoPorJustificar += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
       }
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
@@ -5668,6 +5732,13 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
       if (tiempoPorJustificar > 0) {
         badgesTiemposHtml.push(`<span class="badge-tiempo badge-falt" title="Tiempo Por Justificar: ${minutosAHHMMSS(tiempoPorJustificar)}">Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
+      }
+      const registrosInconclusos = (!esHoyOFuturo && !esPrevioAlRegistro && !esPasanteDet && !(isJustificado && !tieneAsistencia))
+        ? contarRegistrosInconclusos(periodosDia) : 0;
+      let badgePenalizacionHtml = '';
+      if (registrosInconclusos > 0) {
+        const penal = registrosInconclusos * PENALIZACION_SIN_SALIDA_MIN;
+        badgePenalizacionHtml = (`<span class="badge-tiempo badge-falt" title="No registró su salida: ${penal} min de penalización sumados al tiempo por justificar (la bolsa de 4 h del período puede absorberlos)"><i class="fas fa-sign-out-alt" style="font-size:9px;"></i> Sin salida: −${penal}m</span>`);
       }
 
       const badgesStr = badgesTiemposHtml.length > 0 ? badgesTiemposHtml.join(' ') : '<span style="color:#94a3b8; font-size:10px;">—</span>';
@@ -5856,6 +5927,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (tiempoPorJustificar > 0) {
         badgesNovedades.push(`<span class="badge-tiempo badge-falt" title="Tiempo por Justificar / Faltante (fuera de las 4h): ${minutosAHHMMSS(tiempoPorJustificar)}"><i class="fas fa-exclamation-triangle" style="font-size:9px;"></i> Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
       }
+      if (badgePenalizacionHtml) badgesNovedades.push(badgePenalizacionHtml);
       if (razonTextoFinal && !['vacación', 'vacacion', 'vacaciones', 'laboral'].includes(razonTextoFinal.toLowerCase())) {
         badgesNovedades.push(razonDisplayHtml);
       }
