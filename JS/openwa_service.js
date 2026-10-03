@@ -1225,6 +1225,10 @@
             const ahora = new Date();
             const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
             const diaActual = diasSemana[ahora.getDay()];
+            // Fines de semana nunca, aunque la configuración guardada incluya el sábado
+            if (diaActual === 'SABADO' || diaActual === 'DOMINGO') {
+                return { ok: false, motivo: `Hoy (${diaActual}) es fin de semana: sin envíos automáticos` };
+            }
             const diasPermitidos = this.config.diasEnvio || ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES'];
             if (!diasPermitidos.includes(diaActual)) {
                 return { ok: false, motivo: `Hoy (${diaActual}) no es un día configurado para envíos automáticos` };

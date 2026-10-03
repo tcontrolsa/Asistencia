@@ -541,6 +541,7 @@ async function revisarRecordatorioAutomatico() {
   if (!localStorage.getItem('SUPERVISOR_SESSION')) return;
   const hoy = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
   if (typeof esFeriadoODomingo === 'function' && esFeriadoODomingo(hoy)) return; // feriado: no avisar
+  if (new Date(hoy + 'T12:00:00').getDay() === 6) return; // sábado: no avisar
   _recordatorioEnCurso = true;
   try {
     if (!(await window.OpenWAService.chequeoAutomaticoPendiente())) return;

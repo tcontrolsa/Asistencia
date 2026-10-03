@@ -13,8 +13,12 @@
  *     (a los 3 y 6 días) y Día 75 de nuevos ingresos (desde el día 60). También borra avisos de
  *     más de 60 días.
  *
- * WhatsApp: usa enviarWhatsAppAcceso_ (acceso_seguro.gs) por el túnel del servidor. Solo de 07:00
- * a 20:00 y como máximo NOTIF_MAX_WHATSAPP por ejecución. Se apaga con la propiedad del script
+ * Fines de semana: no hay recordatorios ni WhatsApp (los avisos de eventos quedan solo en la
+ * campana). Si el día 25, el último del mes o el 3 caen en sábado o domingo, el recordatorio
+ * sale el lunes.
+ *
+ * WhatsApp: usa enviarWhatsAppAcceso_ (acceso_seguro.gs) por el túnel del servidor. Solo de lunes a
+ * viernes, de 07:00 a 20:00 y como máximo NOTIF_MAX_WHATSAPP por ejecución. Se apaga con la propiedad del script
  * NOTIF_WHATSAPP = NO.
  *
  * Ejecutar una vez desde el editor (▶): instalarRecordatorios()
@@ -70,6 +74,11 @@ function crearNotificacion_(n) {
   return true;
 }
 
+// 6 = sábado, 7 = domingo (zona horaria de Ecuador)
+function esFinDeSemana_(fecha) {
+  return Number(Utilities.formatDate(fecha || new Date(), NOTIF_TZ, 'u')) >= 6;
+}
+
 function whatsappActivo_() {
   return String(PropertiesService.getScriptProperties().getProperty('NOTIF_WHATSAPP') || 'SI').toUpperCase() !== 'NO';
 }
@@ -77,6 +86,7 @@ function whatsappActivo_() {
 // WhatsApp a un colaborador (por su teléfono en Firestore), con horario y tope por ejecución
 function whatsappA_(empleadoId, texto) {
   if (!whatsappActivo_() || typeof enviarWhatsAppAcceso_ !== 'function') return { ok: false, error: 'WhatsApp desactivado' };
+  if (esFinDeSemana_()) return { ok: false, error: 'Fin de semana' };
   var hora = Number(Utilities.formatDate(new Date(), NOTIF_TZ, 'H'));
   if (hora < 7 || hora >= 20) return { ok: false, error: 'Fuera de horario' };
   if (_notifWhatsAppEnviados >= NOTIF_MAX_WHATSAPP) return { ok: false, error: 'Tope de envíos alcanzado' };
@@ -141,9 +151,14 @@ function recordatoriosDiarios() {
   try {
     _notifWhatsAppEnviados = 0;
     var resumen = { pendientes: 0, porConfirmar: 0, dia75: 0, borradas: 0 };
+    // Fines de semana: solo la limpieza de avisos viejos
+    if (esFinDeSemana_()) {
+      resumen.borradas = borrarNotificacionesViejas_();
+      Logger.log('Fin de semana: sin recordatorios · ' + JSON.stringify(resumen));
+      return resumen;
+    }
     var hoy = Utilities.formatDate(new Date(), NOTIF_TZ, 'yyyy-MM-dd');
     var partes = hoy.split('-').map(Number);
-    var ultimoDia = new Date(partes[0], partes[1], 0).getDate();
     var empleados = listarEmpleadosFirestore_();
     var activos = empleados.filter(function (e) { return String(e.activo || 'SI').toUpperCase() !== 'NO' && e.activo !== false; });
     var porId = {};
@@ -154,10 +169,14 @@ function recordatoriosDiarios() {
     var evals = listarEvaluacionesSistema_(desde);
     if (evals === null) { Logger.log('Sin acceso a la base de evaluaciones: se omiten los recordatorios'); return resumen; }
 
-    // 1. Jefes con evaluaciones mensuales pendientes
+    // 1. Jefes con evaluaciones mensuales pendientes: días 25, último del mes y 3 del siguiente
+    //    (si caen en fin de semana, el lunes)
     var mesObjetivo = null;
-    if (partes[2] === 25 || partes[2] === ultimoDia) mesObjetivo = mesDesplazado_(partes[0], partes[1], 0);
-    else if (partes[2] === 3) mesObjetivo = mesDesplazado_(partes[0], partes[1], -1);
+    diasCubiertosHoy_().forEach(function (d) {
+      var ultimo = new Date(d.anio, d.mes, 0).getDate();
+      if (d.dia === 25 || d.dia === ultimo) mesObjetivo = mesDesplazado_(d.anio, d.mes, 0);
+      else if (d.dia === 3) mesObjetivo = mesDesplazado_(d.anio, d.mes, -1);
+    });
     if (mesObjetivo) {
       var hechas = {};
       evals.forEach(function (e) { if (e.tipo === 'MENSUAL' && e.periodo === mesObjetivo) hechas[e.empleadoId] = true; });
@@ -234,6 +253,17 @@ function recordatoriosDiarios() {
   } finally {
     lock.releaseLock();
   }
+}
+
+// Fechas que "atiende" la ejecución de hoy: hoy y, si es lunes, también el sábado y el domingo
+function diasCubiertosHoy_() {
+  var dias = [];
+  var atras = Number(Utilities.formatDate(new Date(), NOTIF_TZ, 'u')) === 1 ? 2 : 0;
+  for (var i = 0; i <= atras; i++) {
+    var p = Utilities.formatDate(new Date(Date.now() - i * 86400000), NOTIF_TZ, 'yyyy-MM-dd').split('-').map(Number);
+    dias.push({ anio: p[0], mes: p[1], dia: p[2] });
+  }
+  return dias;
 }
 
 function mesDesplazado_(anio, mes, delta) {
