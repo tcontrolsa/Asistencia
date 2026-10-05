@@ -933,8 +933,10 @@ window.FirebaseBackend = {
                             localStorage.setItem(CACHE_ARCHIVADOS_KEY, JSON.stringify(archivadosData));
                             console.log("✅ Registros archivados de Sheets actualizados para el empleado.");
                         } catch (e) { }
+                        return true;
                     }
                 } catch (e) { console.warn("Error consultando archivados:", e); }
+                return false;
             };
 
             const tieneSincronizacionPrevia = Boolean(archivadosData.lastSync);
@@ -943,7 +945,8 @@ window.FirebaseBackend = {
                     _fetchArchivados();
                 } else {
                     console.log(`📥 Sincronizando registros archivados de Sheets para empleado ${empleadoId}...`);
-                    await _fetchArchivados();
+                    // Si no se pudo leer el historial, las faltas calculadas con la caché no son fiables
+                    window._historialArchivadoIncompleto = !(await _fetchArchivados());
                 }
             } else if (horasArchivados > 4) {
                 // Sincronización en segundo plano sin congelar la interfaz

@@ -1426,10 +1426,19 @@ async function obtenerRegistrosEmpleado(force = false) {
             return;
         }
 
+        // Tras el refresco forzado: si el historial no se pudo leer, no pedir justificar días
+        // que quizá sí tienen marcación; si ya no hay faltas, cerrar la pantalla de justificar.
+        if (force && window._historialArchivadoIncompleto && faltas.length > 0) {
+            console.warn('Historial archivado no disponible: se omite la pantalla de justificar', faltas);
+            faltas = [];
+        }
+        const pantallaJustificarAbierta = Boolean(document.querySelector('#mainContent .falta-chk'));
         if (faltas.length > 0 && currentPage === 'home') {
             if (sessionStorage.getItem('justificar_popup_saltado') !== 'true') {
                 mostrarModalFaltasPasadas(faltas);
             }
+        } else if (pantallaJustificarAbierta && currentPage === 'home') {
+            renderHomePage();
         }
 
         if (currentPage === 'history') actualizarHistorialAgrupado();
