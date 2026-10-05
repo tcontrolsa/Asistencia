@@ -1051,7 +1051,17 @@ window.abrirModalEditarEmpleado = function (empleadoId) {
   if ($('editDirArea')) $('editDirArea').value = emp.area || '';
   if ($('editDirCargo')) $('editDirCargo').value = emp.cargo || '';
   if ($('editDirTelefono')) $('editDirTelefono').value = emp.telefono || '';
-  if ($('editDirPin')) $('editDirPin').value = emp.pin || '';
+  if ($('editDirPin')) {
+    // La mayoría ya tiene la contraseña cifrada (SHA-256, 64 caracteres): no se muestra.
+    // Vacío = se conserva la actual; escribir 4 dígitos la reemplaza.
+    const pinGuardado = String(emp.pin || '').trim();
+    const cifrado = pinGuardado.length >= 20;
+    $('editDirPin').value = cifrado ? '' : pinGuardado;
+    $('editDirPin').placeholder = cifrado ? 'Sin cambios' : '••••';
+    $('editDirPin').title = cifrado
+      ? 'El colaborador ya tiene contraseña. Déjalo vacío para conservarla o escribe 4 dígitos para restablecerla.'
+      : '4 dígitos numéricos para marcar';
+  }
 
   const fNacInputVal = normalizarFechaParaInput(obtenerFechaNacimientoEmpleado(emp));
   if ($('editDirFechaNacimiento')) $('editDirFechaNacimiento').value = fNacInputVal;
