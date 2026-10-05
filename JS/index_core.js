@@ -932,8 +932,84 @@ function abrirPanelAdmin() {
     window.open('admin_config.html', '_blank');
 }
 
+// ========== GUÍA DEL MODO CAMPO ==========
+const RADIO_PROYECTO_CAMPO = 300;
+
+// Tarjeta de 3 pasos que indica al colaborador qué le falta para registrar en campo.
+function guiaCampoHtml() {
+    const hayGps = Boolean(posicion.lat && posicion.lng);
+    const tieneProyecto = Boolean(empleado.baseLat && empleado.baseLng);
+    const distEmpresa = hayGps ? calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA) : null;
+    const distProyecto = hayGps && tieneProyecto
+        ? calcularDistancia(posicion.lat, posicion.lng, parseFloat(empleado.baseLat), parseFloat(empleado.baseLng))
+        : null;
+    const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+
+    const pasos = [
+        {
+            ok: distEmpresa !== null && distEmpresa > RADIO_METROS,
+            titulo: 'Estar fuera de la empresa',
+            detalle: !hayGps ? 'Esperando tu ubicación (GPS)…'
+                : distEmpresa > RADIO_METROS ? `Estás a ${m(distEmpresa)} de la empresa`
+                : `Estás dentro de la empresa (${m(distEmpresa)}): usa OFICINA`
+        },
+        {
+            ok: tieneProyecto,
+            titulo: 'Fijar la ubicación del proyecto',
+            detalle: tieneProyecto ? 'Ubicación guardada. Si cambiaste de obra, actualízala'
+                : 'Ya en el lugar de trabajo, pulsa el botón de abajo'
+        },
+        {
+            ok: distProyecto !== null && distProyecto <= RADIO_PROYECTO_CAMPO,
+            titulo: `Estar a menos de ${RADIO_PROYECTO_CAMPO} m del proyecto`,
+            detalle: !tieneProyecto ? 'Primero fija la ubicación del proyecto'
+                : distProyecto === null ? 'Esperando tu ubicación (GPS)…'
+                : distProyecto <= RADIO_PROYECTO_CAMPO ? `Estás a ${m(distProyecto)} del proyecto`
+                : `Estás a ${m(distProyecto)} del proyecto: acércate o actualiza la ubicación`
+        }
+    ];
+    const listo = pasos.every(p => p.ok);
+
+    return `
+        <div style="text-align: left; background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: 14px; padding: 12px 14px; max-width: 340px; margin: 0 auto;">
+            <div style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px;">
+                <i class="fas fa-route"></i> Para registrar en campo
+            </div>
+            ${pasos.map((p, i) => `
+                <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px;">
+                    <div style="flex: 0 0 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: ${p.ok ? '#10b981' : '#e2e8f0'}; color: ${p.ok ? 'white' : '#475569'};">
+                        ${p.ok ? '<i class="fas fa-check"></i>' : i + 1}
+                    </div>
+                    <div style="line-height: 1.3;">
+                        <div style="font-size: 12.5px; font-weight: 700; color: ${p.ok ? '#166534' : '#0f172a'};">${p.titulo}</div>
+                        <div style="font-size: 11.5px; color: #64748b;">${p.detalle}</div>
+                    </div>
+                </div>
+            `).join('')}
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                <button onclick="fijarBaseCampo()" style="flex: 1; padding: 8px 12px; border-radius: 10px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                    <i class="fas fa-location-arrow"></i> ${tieneProyecto ? 'ACTUALIZAR PROYECTO' : 'FIJAR UBICACIÓN PROYECTO'}
+                </button>
+                <button onclick="solicitarPermisoGPS()" title="Volver a leer el GPS" style="padding: 8px 12px; border-radius: 10px; background: white; color: #0369a1; border: 1.5px solid #bae6fd; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-sync-alt"></i> GPS
+                </button>
+            </div>
+            ${listo ? `
+                <div style="margin-top: 10px; font-size: 12px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 8px; padding: 6px 10px;">
+                    <i class="fas fa-check-circle"></i> Listo: ya puedes registrar en campo
+                </div>` : ''}
+        </div>
+    `;
+}
+
+function actualizarGuiaCampo() {
+    const cont = document.getElementById('guiaCampo');
+    if (cont && currentMode === 'CAMPO') cont.innerHTML = guiaCampoHtml();
+}
+
 // ========== FUNCIONES DE DISTANCIA ==========
 function verificarDistanciaEmpresa(silencioso = false) {
+    actualizarGuiaCampo();
     if (!posicion.lat || !posicion.lng) {
         if (!silencioso) mostrarToast('Obteniendo ubicación...', 'info');
         return false;
@@ -959,7 +1035,7 @@ function verificarDistanciaEmpresa(silencioso = false) {
         }
         targetLat = parseFloat(empleado.baseLat);
         targetLng = parseFloat(empleado.baseLng);
-        radio = 300; // Radio sugerido para campo
+        radio = RADIO_PROYECTO_CAMPO;
         msgError = 'Fuera del área del proyecto';
     }
 
@@ -4018,11 +4094,7 @@ function renderHomePage() {
                         </div>
 
                         ${currentMode === 'CAMPO' ? `
-                            <div style="margin-top: 10px; animation: fadeIn 0.3s ease;">
-                                <button onclick="fijarBaseCampo()" style="padding: 8px 16px; border-radius: 12px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11px; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(3,105,161,0.2);">
-                                    <i class="fas fa-location-arrow"></i> ${empleado.baseLat ? 'ACTUALIZAR PROYECTO' : 'FIJAR UBICACIÓN PROYECTO'}
-                                </button>
-                            </div>
+                            <div id="guiaCampo" style="margin-top: 12px; animation: fadeIn 0.3s ease;">${guiaCampoHtml()}</div>
                         ` : ''}
                     </div>
                     
