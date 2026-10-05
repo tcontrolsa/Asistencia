@@ -1464,10 +1464,14 @@ window.cambiarModo = function (modo) {
             solicitarPermisoGPS();
             return;
         }
+        // CAMPO solo se habilita fuera de la geocerca de la empresa (RADIO_METROS, 250 m)
         const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-        if (dist <= 250000) {
-            mostrarToast(`No puedes activar CAMPO a menos de 250km de la base (Distancia actual: ${(dist / 1000).toFixed(1)} km)`, 'error');
+        if (dist <= RADIO_METROS) {
+            mostrarToast(`Estás dentro de la empresa (${Math.round(dist)} m): registra en modo OFICINA`, 'error');
             return;
+        }
+        if (!empleado.baseLat || !empleado.baseLng) {
+            mostrarToast('Pulsa "FIJAR UBICACIÓN PROYECTO" antes de registrar en campo', 'info');
         }
     }
     currentMode = modo;
