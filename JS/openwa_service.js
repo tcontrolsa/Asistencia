@@ -1407,6 +1407,55 @@
             }
         },
 
+        // Notificar a los Supervisores Administradores que un colaborador pide permiso para registrar en campo
+        async notificarSupAdminsSolicitudCampo(detalles = {}) {
+            try {
+                let destinatarios = [];
+                if (typeof db !== 'undefined' && db) {
+                    try {
+                        const snap = await db.collection('empleados').get();
+                        snap.forEach(doc => {
+                            const d = doc.data() || {};
+                            const id = String(d.id || doc.id).trim();
+                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
+                            if (String(d.activo || 'SI').toUpperCase() === 'NO') return;
+                            if ((id === '1058' || supVal.includes('ADMIN')) && d.telefono) {
+                                destinatarios.push({ id, nombre: d.nombre || 'Sup. Admin', telefono: d.telefono });
+                            }
+                        });
+                    } catch (e) {
+                        console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e);
+                    }
+                }
+                if (destinatarios.length === 0) return { ok: false, error: 'Sin destinatarios' };
+
+                const f = s => { const p = String(s || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(s || ''); };
+                const mensaje =
+                    `🚗 *TCONTROL - Solicitud de registro en campo*
+
+` +
+                    `*${detalles.empleadoNombre || 'Colaborador'}* (ID: ${detalles.empleadoId || '--'}, Área: ${detalles.empleadoArea || 'General'}) solicita registrar su asistencia en campo:
+
+` +
+                    `• *Desde:* ${f(detalles.desde)}
+` +
+                    `• *Hasta:* ${f(detalles.hasta)}
+` +
+                    `• *Proyecto / motivo:* ${detalles.motivo || '--'}
+
+` +
+                    `👉 *Acción requerida:* aprobar o rechazar en el panel de Supervisor (aviso *Solicitudes de campo* en Control Diario).`;
+
+                const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
+                const res = await Promise.allSettled(envios);
+                const enviados = res.filter(r => r.status === 'fulfilled' && r.value && r.value.ok !== false).length;
+                return { ok: enviados > 0, total: destinatarios.length, enviados };
+            } catch (err) {
+                console.warn("[OpenWA] Error en notificarSupAdminsSolicitudCampo:", err);
+                return { ok: false, error: err.message };
+            }
+        },
+
         // Enviar recordatorio manual/periódico a Sup. Admins con el resumen de solicitudes pendientes
         async notificarSupAdminsRecordatorioPendientes(solicitudesPendientes = []) {
             try {

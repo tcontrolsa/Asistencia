@@ -15,7 +15,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20261005_05"></script>
+  <script src="./JS/firebase_backend.js?v=20261005_06"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -1706,6 +1706,7 @@
 
         <!-- SUBPANEL 1: CONTROL DIARIO -->
         <div id="subpanel-asistencia-control" class="subpanel active">
+          <div id="bannerSolicitudesCampo" style="display:none;"></div>
           <div class="asistencia-header-row" style="background:#ffffff; border:1px solid var(--g200); border-radius:12px; padding:10px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
             <div class="cards-grid cards-agrupadas">
               <div class="kpi-grupo" style="--n:4">
@@ -5168,9 +5169,9 @@
     </div>
   </div>
 
-  <script src="./JS/openwa_service.js?v=20261003_01"></script>
+  <script src="./JS/openwa_service.js?v=20261005_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261005_03"></script>
+  <script src="./JS/supervisor_core.js?v=20261005_04"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261003_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260925_02"></script>

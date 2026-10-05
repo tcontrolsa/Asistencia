@@ -933,11 +933,127 @@ function abrirPanelAdmin() {
 }
 
 // ========== GUÍA DEL MODO CAMPO ==========
-// Solo los colaboradores con campo_autorizado (lo activa el supervisor) ven el selector OFICINA/CAMPO.
-// En CAMPO registran entrada y salida fuera de la geocerca de la empresa; se guarda su ubicación GPS.
+// Solo quien tiene un permiso de campo vigente (período aprobado por un supervisor admin) ve el
+// selector OFICINA/CAMPO. En CAMPO registra entrada y salida fuera de la geocerca de la empresa y
+// se guarda su ubicación GPS. Al vencer el período debe volver a solicitarlo desde la app.
 function esCampoAutorizado() {
-    return Boolean(typeof empleado !== 'undefined' && empleado && empleado.campoAutorizado === true);
+    if (typeof empleado === 'undefined' || !empleado || empleado.campoAutorizado !== true) return false;
+    return !empleado.campoHasta || getLocalHoyStr(new Date()) <= empleado.campoHasta;
 }
+
+function fechaCortaCampo(f) {
+    const p = String(f || '').split('-');
+    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(f || '');
+}
+
+// Estado del permiso bajo el nombre: vigente (chip), pendiente, aprobado a futuro o botón para solicitarlo
+function campoPermisoHtml() {
+    const hoy = getLocalHoyStr(new Date());
+    const sol = empleado.campoSolicitud || null;
+    const caja = (bg, borde, color, html) => `<div style="margin: 12px auto 0; max-width: 340px; text-align: left; background: ${bg}; border: 1.5px solid ${borde}; border-radius: 12px; padding: 10px 12px; font-size: 12px; color: ${color}; line-height: 1.4;">${html}</div>`;
+    const boton = (txt) => `<button onclick="abrirSolicitudCampo()" style="margin-top: 8px; width: 100%; padding: 8px 12px; border-radius: 10px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11.5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><i class="fas fa-calendar-plus"></i> ${txt}</button>`;
+
+    if (esCampoAutorizado()) {
+        return `<div style="margin-top: 8px; font-size: 11px; font-weight: 700; color: #92400e;">
+            <i class="fas fa-calendar-check"></i> Campo autorizado hasta el ${fechaCortaCampo(empleado.campoHasta)}
+        </div>`;
+    }
+    if (sol && sol.estado === 'PENDIENTE' && String(sol.hasta || '') >= hoy) {
+        return caja('#eff6ff', '#bfdbfe', '#1e3a8a', `
+            <strong><i class="fas fa-hourglass-half"></i> Solicitud de campo enviada</strong><br>
+            Del ${fechaCortaCampo(sol.desde)} al ${fechaCortaCampo(sol.hasta)} · ${escapeHtml(sol.motivo || '')}<br>
+            <span style="color:#475569;">Esperando aprobación de supervisión. Te avisaremos por WhatsApp.</span>`);
+    }
+    if (sol && sol.estado === 'APROBADA' && String(sol.desde || '') > hoy) {
+        return caja('#ecfdf5', '#a7f3d0', '#065f46', `
+            <strong><i class="fas fa-calendar-check"></i> Permiso de campo aprobado</strong><br>
+            Podrás registrar en campo del ${fechaCortaCampo(sol.desde)} al ${fechaCortaCampo(sol.hasta)}.`);
+    }
+    let previo = '';
+    if (sol && sol.estado === 'RECHAZADA') {
+        previo = `<strong style="color:#b91c1c;"><i class="fas fa-circle-xmark"></i> Tu última solicitud no fue aprobada</strong>${sol.comentario ? '<br>' + escapeHtml(sol.comentario) : ''}<br>`;
+    } else if (empleado.campoHasta && empleado.campoHasta < hoy) {
+        previo = `<strong><i class="fas fa-calendar-xmark"></i> Tu permiso de campo venció el ${fechaCortaCampo(empleado.campoHasta)}</strong><br>`;
+    }
+    return caja('#f8fafc', '#e2e8f0', '#334155', `${previo}<span style="color:#475569;">¿Vas a trabajar fuera de la empresa? Pide permiso para registrar en campo.</span>${boton('SOLICITAR REGISTRO EN CAMPO')}`);
+}
+
+window.abrirSolicitudCampo = function () {
+    document.getElementById('modalSolicitudCampo')?.remove();
+    const hoy = getLocalHoyStr(new Date());
+    const modal = document.createElement('div');
+    modal.id = 'modalSolicitudCampo';
+    modal.style.cssText = 'position: fixed; inset: 0; z-index: 99999; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 16px;';
+    const campo = 'width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid #cbd5e1; font-size: 14px; color: #0f172a; background: #f8fafc; box-sizing: border-box;';
+    const etiqueta = 'display: block; font-size: 12px; font-weight: 800; color: #334155; margin-bottom: 6px; text-transform: uppercase;';
+    modal.innerHTML = `
+        <div style="background: #ffffff; border-radius: 20px; width: 100%; max-width: 420px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #b45309 0%, #f59e0b 100%); padding: 16px 20px; color: white; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <h5 style="margin: 0; font-size: 16px; font-weight: 800;">🚗 Solicitar registro en campo</h5>
+                    <div style="font-size: 11px; opacity: 0.9;">Lo aprueba un supervisor administrador</div>
+                </div>
+                <button type="button" onclick="document.getElementById('modalSolicitudCampo').remove()" style="background: none; border: none; color: white; font-size: 22px; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <div style="padding: 18px 20px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+                    <div><label style="${etiqueta}">Desde</label><input type="date" id="solCampoDesde" value="${hoy}" min="${hoy}" style="${campo}"></div>
+                    <div><label style="${etiqueta}">Hasta</label><input type="date" id="solCampoHasta" value="${hoy}" min="${hoy}" style="${campo}"></div>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="${etiqueta}">Proyecto / motivo *</label>
+                    <textarea id="solCampoMotivo" rows="2" maxlength="300" placeholder="Ej: Montaje en planta del cliente CPP" style="${campo} resize: none; font-size: 13px;"></textarea>
+                </div>
+                <div id="solCampoDias" style="font-size: 11.5px; color: #64748b; margin-bottom: 14px;"></div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" onclick="document.getElementById('modalSolicitudCampo').remove()" style="padding: 10px 16px; border-radius: 10px; background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 700; font-size: 13px;">Cancelar</button>
+                    <button type="button" id="btnEnviarSolCampo" onclick="enviarSolicitudCampo()" style="padding: 10px 18px; border-radius: 10px; background: #b45309; border: none; color: white; font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-paper-plane"></i> Enviar solicitud</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    const desde = document.getElementById('solCampoDesde'), hasta = document.getElementById('solCampoHasta');
+    const pintarDias = () => {
+        if (hasta.value < desde.value) hasta.value = desde.value;
+        hasta.min = desde.value || hoy;
+        const n = Math.round((new Date(hasta.value + 'T12:00:00') - new Date(desde.value + 'T12:00:00')) / 86400000) + 1;
+        document.getElementById('solCampoDias').textContent = n > 0 ? `${n} día(s) en campo. Al terminar el período tendrás que volver a solicitarlo.` : '';
+    };
+    desde.addEventListener('change', pintarDias);
+    hasta.addEventListener('change', pintarDias);
+    pintarDias();
+};
+
+window.enviarSolicitudCampo = async function () {
+    const desde = document.getElementById('solCampoDesde')?.value || '';
+    const hasta = document.getElementById('solCampoHasta')?.value || '';
+    const motivo = (document.getElementById('solCampoMotivo')?.value || '').trim();
+    if (!motivo) { mostrarToast('Indica el proyecto o motivo', 'warning'); return; }
+    const btn = document.getElementById('btnEnviarSolCampo');
+    if (btn) btn.disabled = true;
+    showLoading(true);
+    try {
+        const res = await window.FirebaseBackend.solicitarCampo({ empleadoId: empleado.id, desde, hasta, motivo });
+        if (!res || res.error) throw new Error((res && res.error) || 'No se pudo enviar');
+        empleado.campoSolicitud = res.solicitud;
+        let aviso = null;
+        if (window.OpenWAService && typeof window.OpenWAService.notificarSupAdminsSolicitudCampo === 'function') {
+            aviso = await window.OpenWAService.notificarSupAdminsSolicitudCampo({
+                empleadoId: empleado.id, empleadoNombre: empleado.nombre, empleadoArea: empleado.area, desde, hasta, motivo
+            }).catch(() => null);
+        }
+        document.getElementById('modalSolicitudCampo')?.remove();
+        mostrarToast(aviso && aviso.ok
+            ? '✅ Solicitud enviada. Supervisión fue notificada por WhatsApp'
+            : '✅ Solicitud registrada. Supervisión la verá en el panel', 'success');
+        renderHomePage();
+    } catch (e) {
+        mostrarToast('❌ ' + (e.message || e), 'error');
+        if (btn) btn.disabled = false;
+    } finally {
+        showLoading(false);
+    }
+};
 
 // Tarjeta de pasos que indica al colaborador qué le falta para registrar en campo.
 function guiaCampoHtml() {
@@ -1017,7 +1133,7 @@ function verificarDistanciaEmpresa(silencioso = false) {
 
     if (currentMode === 'CAMPO') {
         if (!esCampoAutorizado()) {
-            if (!silencioso) mostrarToast('No estás autorizado para registrar en campo. Consulta con tu supervisor.', 'error');
+            if (!silencioso) mostrarToast('No tienes un permiso de campo vigente. Solicítalo desde el inicio de la app.', 'error');
             return false;
         }
         const distEmpresa = calcularDistancia(lat, lng, LAT_EMPRESA, LNG_EMPRESA);
@@ -1542,7 +1658,7 @@ window.cambiarModo = function (modo) {
             return;
         }
         if (!esCampoAutorizado()) {
-            mostrarToast('No estás autorizado para registrar en campo. Consulta con tu supervisor.', 'error');
+            mostrarToast('No tienes un permiso de campo vigente. Solicítalo desde el inicio de la app.', 'error');
             return;
         }
         // CAMPO solo se habilita fuera de la geocerca de la empresa (RADIO_METROS, 250 m)
@@ -2589,6 +2705,9 @@ async function verificarPIN() {
                 baseLat: res.empleado.baseLat || null,
                 baseLng: res.empleado.baseLng || null,
                 campoAutorizado: res.empleado.campoAutorizado === true,
+                campoDesde: res.empleado.campoDesde || '',
+                campoHasta: res.empleado.campoHasta || '',
+                campoSolicitud: res.empleado.campoSolicitud || null,
                 pagos_url: estadoRes.pagos_url || '',
                 cultura_habilitada: (res.empleado.cultura_habilitada !== undefined) ? res.empleado.cultura_habilitada : estadoRes.cultura_habilitada,
                 cultura_activa: (res.empleado.cultura_activa !== undefined) ? res.empleado.cultura_activa : estadoRes.cultura_activa,
@@ -2826,6 +2945,9 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
                 baseLat: estadoRes.baseLat || null,
                 baseLng: estadoRes.baseLng || null,
                 campoAutorizado: estadoRes.campoAutorizado === true,
+                campoDesde: estadoRes.campoDesde || '',
+                campoHasta: estadoRes.campoHasta || '',
+                campoSolicitud: estadoRes.campoSolicitud || null,
                 tipoRegistro: '',
                 almuerzo: ''
             };
@@ -3057,6 +3179,9 @@ async function confirmarRegistroInicial() {
                     baseLat: estadoRes.baseLat || null,
                     baseLng: estadoRes.baseLng || null,
                     campoAutorizado: estadoRes.campoAutorizado === true,
+                    campoDesde: estadoRes.campoDesde || '',
+                    campoHasta: estadoRes.campoHasta || '',
+                    campoSolicitud: estadoRes.campoSolicitud || null,
                     cultura_habilitada: estadoRes.cultura_habilitada,
                     cultura_activa: estadoRes.cultura_activa,
                     tipoRegistro: '',
@@ -4098,6 +4223,7 @@ function renderHomePage() {
                             </div>
                         </div>
                         ` : ''}
+                        ${campoPermisoHtml()}
 
                         ${currentMode === 'CAMPO' ? `
                             <div id="guiaCampo" style="margin-top: 12px; animation: fadeIn 0.3s ease;">${guiaCampoHtml()}</div>
@@ -7598,6 +7724,9 @@ async function verificarEstadoInicial() {
                         baseLat: estadoRes.baseLat || null,
                         baseLng: estadoRes.baseLng || null,
                         campoAutorizado: estadoRes.campoAutorizado === true,
+                        campoDesde: estadoRes.campoDesde || '',
+                        campoHasta: estadoRes.campoHasta || '',
+                        campoSolicitud: estadoRes.campoSolicitud || null,
                         authExtras: estadoRes.authExtras || 'NO',
                         pagos_url: estadoRes.pagos_url || '',
                         cultura_habilitada: estadoRes.cultura_habilitada,

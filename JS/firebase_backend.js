@@ -403,7 +403,10 @@ window.FirebaseBackend = {
                 telefono: empData.telefono || empData.celular || "",
                 baseLat: empData.baseLat,
                 baseLng: empData.baseLng,
-                campoAutorizado: empData.campo_autorizado === true || String(empData.campo_autorizado || '').toUpperCase() === 'SI',
+                campoAutorizado: window.FirebaseBackend._campoVigente(empData),
+                campoDesde: empData.campo_desde || '',
+                campoHasta: empData.campo_hasta || '',
+                campoSolicitud: empData.campo_solicitud || null,
                 cultura_habilitada: empData.cultura_habilitada !== false && empData.cultura_activa !== false,
                 cultura_activa: empData.cultura_habilitada !== false && empData.cultura_activa !== false
             }
@@ -525,7 +528,10 @@ window.FirebaseBackend = {
                 fechaNacimiento: empData.fechaNacimiento,
                 baseLat: empData.baseLat,
                 baseLng: empData.baseLng,
-                campoAutorizado: empData.campo_autorizado === true || String(empData.campo_autorizado || '').toUpperCase() === 'SI',
+                campoAutorizado: window.FirebaseBackend._campoVigente(empData),
+                campoDesde: empData.campo_desde || '',
+                campoHasta: empData.campo_hasta || '',
+                campoSolicitud: empData.campo_solicitud || null,
                 supervisor: empData.supervisor || (esSupervisor ? 'SI' : 'NO'),
                 esSupervisor: esSupervisor,
                 pagos_url: empData.id_dispositivo || "",
@@ -844,7 +850,10 @@ window.FirebaseBackend = {
             fechaNacimiento: empData.fechaNacimiento,
             baseLat: empData.baseLat,
             baseLng: empData.baseLng,
-            campoAutorizado: empData.campo_autorizado === true || String(empData.campo_autorizado || '').toUpperCase() === 'SI',
+            campoAutorizado: window.FirebaseBackend._campoVigente(empData),
+            campoDesde: empData.campo_desde || '',
+            campoHasta: empData.campo_hasta || '',
+            campoSolicitud: empData.campo_solicitud || null,
             authExtras: empData.authExtras || 'NO',
             esSupervisor: empData.supervisor === 'SI' || empData.esSupervisor === true || empData.cargo?.toUpperCase().includes("SUPERVISOR"),
             tieneEntrada: tieneEntrada,
@@ -1060,10 +1069,10 @@ window.FirebaseBackend = {
         if (infoEmpleado.activo && infoEmpleado.activo !== 'SI') return { error: "Empleado inactivo" };
 
         // Desde la app del colaborador, el modo CAMPO solo lo usan los autorizados por el supervisor
-        const campoAutorizado = infoEmpleado.campo_autorizado === true || String(infoEmpleado.campo_autorizado || '').toUpperCase() === 'SI';
+        const campoAutorizado = window.FirebaseBackend._campoVigente(infoEmpleado);
         const pideCampo = String(data.modo || '').toUpperCase() === 'CAMPO' || String(data.tipo || '').toUpperCase() === 'TRABAJO_DE_CAMPO';
         if (data.origen_app === 'COLABORADOR' && pideCampo && !campoAutorizado) {
-            return { error: "No estás autorizado para registrar en campo. Consulta con tu supervisor." };
+            return { error: "No tienes un permiso de campo vigente. Solicítalo desde la app." };
         }
 
         // Fechas
@@ -1303,6 +1312,72 @@ window.FirebaseBackend = {
         // se borraba el mismo día, la fila de la hoja quedaba huérfana.
 
         return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
+    },
+
+    // ---------------------------------------------------------------- permiso de campo
+    // empleados/{id}: campo_autorizado + campo_desde/campo_hasta (período aprobado) y
+    // campo_solicitud {desde, hasta, motivo, estado PENDIENTE|APROBADA|RECHAZADA, ...}.
+    // Fuera del período el colaborador debe volver a solicitar.
+    _campoVigente(e) {
+        if (!e) return false;
+        const aut = e.campo_autorizado === true || String(e.campo_autorizado || '').toUpperCase() === 'SI';
+        const desde = String(e.campo_desde || ''), hasta = String(e.campo_hasta || '');
+        if (!aut || !desde || !hasta) return false;
+        const hoy = this._hoyStr();
+        return desde <= hoy && hoy <= hasta;
+    },
+
+    _validarPeriodoCampo(desde, hasta, permitirPasado = false) {
+        const re = /^\d{4}-\d{2}-\d{2}$/;
+        if (!re.test(desde || '') || !re.test(hasta || '')) return 'Selecciona la fecha de inicio y la de fin';
+        if (hasta < desde) return 'La fecha final no puede ser anterior a la inicial';
+        if (!permitirPasado && hasta < this._hoyStr()) return 'El período ya terminó';
+        const dias = (new Date(hasta + 'T12:00:00') - new Date(desde + 'T12:00:00')) / 86400000 + 1;
+        if (dias > 62) return 'El período no puede superar 2 meses';
+        return '';
+    },
+
+    async solicitarCampo(params) {
+        const id = String(params.empleadoId || '').trim();
+        const desde = String(params.desde || ''), hasta = String(params.hasta || '');
+        const motivo = String(params.motivo || '').trim().slice(0, 300);
+        if (!id) return { error: 'ID faltante' };
+        if (desde < this._hoyStr()) return { error: 'La fecha de inicio no puede ser anterior a hoy' };
+        const err = this._validarPeriodoCampo(desde, hasta);
+        if (err) return { error: err };
+        if (!motivo) return { error: 'Indica el proyecto o motivo' };
+        const solicitud = { desde, hasta, motivo, estado: 'PENDIENTE', creada: new Date().toISOString() };
+        await db.collection('empleados').doc(id).set({ campo_solicitud: solicitud }, { merge: true });
+        return { ok: true, solicitud };
+    },
+
+    // Aprobar (con el período que fije el supervisor), rechazar o revocar el permiso de campo
+    async resolverPermisoCampo(params) {
+        const id = String(params.empleadoId || '').trim();
+        const accion = String(params.accion || '').toUpperCase();
+        const quien = String(params.supervisor || 'Supervisor');
+        const ahora = new Date().toISOString();
+        if (!id) return { error: 'ID faltante' };
+        const ref = db.collection('empleados').doc(id);
+        if (accion === 'APROBAR') {
+            const desde = String(params.desde || ''), hasta = String(params.hasta || '');
+            const err = this._validarPeriodoCampo(desde, hasta);
+            if (err) return { error: err };
+            const motivo = String(params.motivo || '').trim().slice(0, 300);
+            await ref.set({
+                campo_autorizado: true, campo_desde: desde, campo_hasta: hasta, campo_motivo: motivo,
+                campo_solicitud: { desde, hasta, motivo, estado: 'APROBADA', resuelta_por: quien, resuelta_en: ahora }
+            }, { merge: true });
+        } else if (accion === 'RECHAZAR') {
+            await ref.set({
+                campo_solicitud: { estado: 'RECHAZADA', resuelta_por: quien, resuelta_en: ahora, comentario: String(params.comentario || '').slice(0, 300) }
+            }, { merge: true });
+        } else if (accion === 'REVOCAR') {
+            await ref.set({ campo_autorizado: false, campo_hasta: this._hoyStr(new Date(Date.now() - 86400000)) }, { merge: true });
+        } else {
+            return { error: 'Acción no válida' };
+        }
+        return { ok: true };
     },
 
     async actualizarBaseCampo(params) {

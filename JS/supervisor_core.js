@@ -9030,40 +9030,180 @@ function cargarPanelDesempeno() {
 }
 window.cargarPanelDesempeno = cargarPanelDesempeno;
 
-// Autorización para registrar entrada/salida en modo CAMPO desde la app (campo empleados.campo_autorizado)
-function esCampoAutorizadoEmp(emp) {
-  return Boolean(emp) && (emp.campo_autorizado === true || String(emp.campo_autorizado || '').toUpperCase() === 'SI');
+// Permiso para registrar entrada/salida en modo CAMPO desde la app. El colaborador lo solicita con un
+// período (empleados.campo_solicitud); un supervisor admin lo aprueba, ajusta, rechaza o revoca.
+// Vigente solo entre campo_desde y campo_hasta: después debe volver a solicitarlo.
+function campoVigenteEmp(emp) {
+  return Boolean(emp && window.FirebaseBackend && window.FirebaseBackend._campoVigente(emp));
+}
+
+function fechaCampoCorta(f) {
+  const p = String(f || '').split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}` : String(f || '');
 }
 
 function botonCampoAutorizadoHtml(emp) {
-  const si = esCampoAutorizadoEmp(emp);
-  return `<button class="btn" id="btnCampoAut_${emp.id}" onclick="window.toggleCampoAutorizado('${emp.id}')"
-    title="${si ? 'Puede registrar entrada y salida en CAMPO desde la app. Clic para quitar.' : 'Clic para permitirle registrar entrada y salida en CAMPO desde la app.'}"
-    style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border:1.5px solid ${si ? '#059669' : '#cbd5e1'}; background:${si ? '#ecfdf5' : 'white'}; color:${si ? '#047857' : '#64748b'};">
-    <i class="fas ${si ? 'fa-toggle-on' : 'fa-toggle-off'}"></i> Campo: ${si ? 'autorizado' : 'no autorizado'}
+  const sol = emp.campo_solicitud || null;
+  let estilo = ['#cbd5e1', 'white', '#64748b'], icono = 'fa-toggle-off', texto = 'Campo: no autorizado';
+  if (campoVigenteEmp(emp)) {
+    estilo = ['#059669', '#ecfdf5', '#047857']; icono = 'fa-toggle-on'; texto = `Campo: hasta ${fechaCampoCorta(emp.campo_hasta)}`;
+  } else if (sol && sol.estado === 'PENDIENTE') {
+    estilo = ['#2563eb', '#eff6ff', '#1d4ed8']; icono = 'fa-hourglass-half'; texto = 'Campo: solicitud pendiente';
+  } else if (sol && sol.estado === 'APROBADA' && emp.campo_desde > window.FirebaseBackend._hoyStr()) {
+    estilo = ['#059669', '#ecfdf5', '#047857']; icono = 'fa-calendar-check'; texto = `Campo: desde ${fechaCampoCorta(emp.campo_desde)}`;
+  }
+  return `<button class="btn" id="btnCampoAut_${emp.id}" onclick="window.abrirPermisoCampo('${emp.id}')"
+    title="Permiso para registrar entrada y salida en CAMPO desde la app"
+    style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border:1.5px solid ${estilo[0]}; background:${estilo[1]}; color:${estilo[2]};">
+    <i class="fas ${icono}"></i> ${texto}
   </button>`;
 }
 
-window.toggleCampoAutorizado = async function (empId) {
+function refrescarBotonCampo(emp) {
+  const btn = document.getElementById('btnCampoAut_' + emp.id);
+  if (btn) btn.outerHTML = botonCampoAutorizadoHtml(emp);
+}
+
+window.abrirPermisoCampo = function (empId) {
+  if (!tienePermisoAdmin()) {
+    mostrarToast('Solo un supervisor administrador puede aprobar el registro en campo', 'warning');
+    return;
+  }
   const emp = (empCache || []).find(x => String(x.id) === String(empId));
   if (!emp) return;
-  const nuevo = !esCampoAutorizadoEmp(emp);
-  const pregunta = nuevo
-    ? `¿Autorizar a ${emp.nombre} a registrar entrada y salida en CAMPO desde la app?`
-    : `¿Quitar a ${emp.nombre} la opción de registrar en CAMPO?`;
-  if (!confirm(pregunta)) return;
+  document.getElementById('modalPermisoCampo')?.remove();
+  const hoy = window.FirebaseBackend._hoyStr();
+  const sol = emp.campo_solicitud || null;
+  const pendiente = sol && sol.estado === 'PENDIENTE';
+  const vigente = campoVigenteEmp(emp);
+  const desde = pendiente ? sol.desde : (vigente ? emp.campo_desde : hoy);
+  const hasta = pendiente ? sol.hasta : (vigente ? emp.campo_hasta : hoy);
+  const motivo = pendiente ? (sol.motivo || '') : (emp.campo_motivo || '');
+  const estado = vigente
+    ? `<span style="color:#047857; font-weight:700;">Autorizado del ${fechaCampoCorta(emp.campo_desde)} al ${fechaCampoCorta(emp.campo_hasta)}</span>`
+    : (pendiente ? `<span style="color:#1d4ed8; font-weight:700;">Solicitud pendiente (enviada ${String(sol.creada || '').slice(0, 10)})</span>`
+      : '<span style="color:#64748b;">Sin permiso vigente</span>');
+  const campo = 'width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #cbd5e1; font-size:13px; box-sizing:border-box;';
+  const etiqueta = 'display:block; font-size:11px; font-weight:700; color:#334155; margin-bottom:4px; text-transform:uppercase;';
+
+  const modal = document.createElement('div');
+  modal.id = 'modalPermisoCampo';
+  modal.style.cssText = 'position:fixed; inset:0; z-index:100001; background:rgba(15,23,42,0.6); display:flex; align-items:center; justify-content:center; padding:16px;';
+  modal.innerHTML = `
+    <div style="background:white; border-radius:14px; width:100%; max-width:440px; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
+      <div style="background:linear-gradient(135deg,#b45309,#f59e0b); color:white; padding:14px 18px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:800; font-size:15px;">🚗 Registro en campo</div>
+          <div style="font-size:11.5px; opacity:.9;">${escapeHtml(emp.nombre || '')} (${emp.id}) · ${escapeHtml(emp.area || '')}</div>
+        </div>
+        <button onclick="document.getElementById('modalPermisoCampo').remove()" style="background:none; border:none; color:white; font-size:22px; cursor:pointer;">&times;</button>
+      </div>
+      <div style="padding:16px 18px; font-size:12.5px; color:#334155;">
+        <div style="margin-bottom:12px;">${estado}</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+          <div><label style="${etiqueta}">Desde</label><input type="date" id="permCampoDesde" value="${desde}" style="${campo}"></div>
+          <div><label style="${etiqueta}">Hasta</label><input type="date" id="permCampoHasta" value="${hasta}" min="${hoy}" style="${campo}"></div>
+        </div>
+        <div style="margin-bottom:10px;"><label style="${etiqueta}">Proyecto / motivo</label>
+          <input type="text" id="permCampoMotivo" value="${escapeHtml(motivo)}" maxlength="300" style="${campo}"></div>
+        ${pendiente ? `<div style="margin-bottom:10px;"><label style="${etiqueta}">Comentario si se rechaza</label>
+          <input type="text" id="permCampoComentario" maxlength="300" placeholder="Opcional" style="${campo}"></div>` : ''}
+        <div style="font-size:11px; color:#64748b; margin-bottom:12px;">Al vencer la fecha final, el colaborador deberá volver a solicitarlo. Se le avisa por WhatsApp.</div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+          ${vigente ? `<button onclick="window.resolverPermisoCampoUI('${emp.id}','REVOCAR')" style="padding:8px 12px; border-radius:8px; border:1.5px solid #fecaca; background:#fef2f2; color:#b91c1c; font-weight:700; font-size:12px;">Revocar</button>` : ''}
+          ${pendiente ? `<button onclick="window.resolverPermisoCampoUI('${emp.id}','RECHAZAR')" style="padding:8px 12px; border-radius:8px; border:1.5px solid #fecaca; background:#fef2f2; color:#b91c1c; font-weight:700; font-size:12px;">Rechazar</button>` : ''}
+          <button onclick="window.resolverPermisoCampoUI('${emp.id}','APROBAR')" style="padding:8px 14px; border-radius:8px; border:none; background:#059669; color:white; font-weight:800; font-size:12px;">
+            <i class="fas fa-check"></i> ${vigente ? 'Guardar período' : 'Aprobar'}
+          </button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+};
+
+window.resolverPermisoCampoUI = async function (empId, accion) {
+  const emp = (empCache || []).find(x => String(x.id) === String(empId));
+  if (!emp) return;
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const params = {
+    empleadoId: String(empId), accion,
+    desde: val('permCampoDesde'), hasta: val('permCampoHasta'), motivo: val('permCampoMotivo'), comentario: val('permCampoComentario')
+  };
+  let quien = 'Supervisor';
+  try { quien = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').nombre || quien; } catch (e) { }
+  params.supervisor = quien;
+  if (accion === 'REVOCAR' && !confirm(`¿Quitar a ${emp.nombre} el permiso de registrar en campo desde hoy?`)) return;
+  mostrarLoader(true);
   try {
-    if (!(window.FirebaseBackend && window.USE_FIREBASE)) throw new Error('Firestore no disponible');
-    const res = await window.FirebaseBackend.actualizarEmpleado({ empleadoId: String(empId), datos: { campo_autorizado: nuevo } });
-    if (res && res.error) throw new Error(res.error);
-    emp.campo_autorizado = nuevo;
-    const btn = document.getElementById('btnCampoAut_' + empId);
-    if (btn) btn.outerHTML = botonCampoAutorizadoHtml(emp);
-    mostrarToast(nuevo ? 'Autorizado para registrar en campo' : 'Ya no puede registrar en campo', 'success');
+    const res = await window.FirebaseBackend.resolverPermisoCampo(params);
+    if (!res || res.error) throw new Error((res && res.error) || 'No se pudo guardar');
+    const ahora = new Date().toISOString();
+    if (accion === 'APROBAR') {
+      Object.assign(emp, { campo_autorizado: true, campo_desde: params.desde, campo_hasta: params.hasta, campo_motivo: params.motivo });
+      emp.campo_solicitud = { ...(emp.campo_solicitud || {}), desde: params.desde, hasta: params.hasta, motivo: params.motivo, estado: 'APROBADA', resuelta_por: quien, resuelta_en: ahora };
+    } else if (accion === 'RECHAZAR') {
+      emp.campo_solicitud = { ...(emp.campo_solicitud || {}), estado: 'RECHAZADA', resuelta_por: quien, resuelta_en: ahora, comentario: params.comentario };
+    } else {
+      emp.campo_autorizado = false;
+    }
+    document.getElementById('modalPermisoCampo')?.remove();
+    refrescarBotonCampo(emp);
+
+    // Respuesta al colaborador por WhatsApp
+    let wa = '';
+    const nombre = String(emp.nombre || '').split(/\s+/);
+    const pila = nombre.length >= 3 ? nombre[2] : (nombre[0] || '');
+    const saludo = `Hola *${pila.charAt(0) + pila.slice(1).toLowerCase()}*, te escribimos de TCONTROL.\n\n`;
+    let texto = '';
+    if (accion === 'APROBAR') {
+      texto = saludo + `Tu permiso para registrar en campo fue *aprobado* del *${fechaCampoCorta(params.desde)}* al *${fechaCampoCorta(params.hasta)}*.\n\n` +
+        'En la app de asistencia elige *CAMPO* y registra tu entrada y salida como siempre. Al terminar el período deberás solicitarlo de nuevo.';
+    } else if (accion === 'RECHAZAR') {
+      texto = saludo + 'Tu solicitud para registrar en campo *no fue aprobada*.' + (params.comentario ? `\nMotivo: ${params.comentario}` : '') +
+        '\n\nSi necesitas aclararlo, consulta con supervisión.';
+    }
+    if (texto && emp.telefono && window.OpenWAService && typeof window.OpenWAService.enviarMensajeTexto === 'function') {
+      const r = await window.OpenWAService.enviarMensajeTexto(emp.telefono, texto).catch(e => ({ ok: false, error: e.message }));
+      wa = r && r.ok !== false ? ' y se le avisó por WhatsApp' : ' (no se pudo enviar el WhatsApp)';
+    }
+    const msj = { APROBAR: 'Permiso de campo aprobado', RECHAZAR: 'Solicitud rechazada', REVOCAR: 'Permiso de campo revocado' }[accion];
+    mostrarToast(msj + wa, 'success');
   } catch (err) {
     mostrarToast('No se pudo guardar: ' + (err.message || err), 'error');
+  } finally {
+    mostrarLoader(false);
   }
 };
+
+// Aviso en Control Diario con las solicitudes de campo pendientes (solo supervisor admin), en tiempo real
+let _desuscribirSolicitudesCampo = null;
+function iniciarAvisoSolicitudesCampo() {
+  if (_desuscribirSolicitudesCampo || !tienePermisoAdmin() || typeof firebase === 'undefined') return;
+  const host = $('bannerSolicitudesCampo');
+  if (!host) return;
+  try {
+    _desuscribirSolicitudesCampo = firebase.firestore().collection('empleados')
+      .where('campo_solicitud.estado', '==', 'PENDIENTE')
+      .onSnapshot(snap => {
+        const lista = [];
+        snap.forEach(doc => {
+          const d = doc.data() || {};
+          if (String(d.activo || 'SI').toUpperCase() === 'NO') return;
+          const emp = (empCache || []).find(x => String(x.id) === doc.id);
+          if (emp) emp.campo_solicitud = d.campo_solicitud;
+          lista.push({ id: doc.id, nombre: d.nombre || doc.id, sol: d.campo_solicitud || {} });
+        });
+        if (!lista.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+        host.style.display = 'block';
+        host.innerHTML = `
+          <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:10px; padding:8px 12px; margin-bottom:10px; font-size:12px; color:#92400e; display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+            <strong><i class="fas fa-car"></i> Solicitudes de campo pendientes (${lista.length}):</strong>
+            ${lista.map(x => `<button onclick="window.abrirPermisoCampo('${x.id}')" style="border:1px solid #fcd34d; background:white; border-radius:999px; padding:3px 10px; font-size:11.5px; color:#92400e; cursor:pointer;">
+              ${escapeHtml(String(x.nombre).split(' ').slice(0, 3).join(' '))} · ${fechaCampoCorta(x.sol.desde)}–${fechaCampoCorta(x.sol.hasta)} <b>Revisar</b></button>`).join('')}
+          </div>`;
+      }, err => console.warn('Solicitudes de campo:', err));
+  } catch (e) { console.warn('Solicitudes de campo:', e); }
+}
 
 // Campana de notificaciones (JS/notificaciones.js); RR.HH. también ve los avisos 'rol:rrhh'
 function montarCampanaPanel(session) {
@@ -9083,6 +9223,7 @@ function montarCampanaPanel(session) {
 
 function mostrarInformacionSupervisor(session) {
   try { montarCampanaPanel(session); } catch (e) { console.warn('Campana de notificaciones:', e); }
+  try { iniciarAvisoSolicitudesCampo(); } catch (e) { console.warn('Solicitudes de campo:', e); }
   if (!session) return;
 
   const id = session.id || "";
