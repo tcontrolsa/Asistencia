@@ -15,7 +15,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20261002_06"></script>
+  <script src="./JS/firebase_backend.js?v=20261005_01"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -777,6 +777,49 @@
       .rep2-kpi span { font-size: 11px; letter-spacing: -0.2px; }
       .rep2-kpi strong { font-size: 15px; }
     }
+    /* ========================================================
+       LIMPIEZA DE DISEÑO (2026-10): indicador único, Volver, pie del menú, tarjetas
+       ======================================================== */
+    .live-chip {
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid #fecaca; background: #fef2f2;
+      color: #b91c1c; font-family: inherit; font-size: 12px; font-weight: 700; padding: 5px 12px;
+      border-radius: 999px; cursor: pointer; white-space: nowrap;
+    }
+    .live-chip:hover { background: #fee2e2; }
+    .live-chip:disabled { opacity: .7; cursor: progress; }
+    .live-chip .live-dot { font-size: 7px; animation: blink 1s infinite; }
+    .live-chip .live-hora { color: #475569; font-weight: 600; padding-left: 6px; border-left: 1px solid #fecaca; font-variant-numeric: tabular-nums; }
+    .live-chip #bgSyncIndicator { color: #0369a1; font-size: 11px; }
+    .top-bar .btn-breadcrumb-back { margin-right: 4px; }
+    .btn-aviso-legal {
+      width: 100%; background: transparent; border: none; color: #94a3b8; font-family: inherit; font-size: 11px;
+      font-weight: 600; padding: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn-aviso-legal:hover { color: #0284c7; }
+    .sidebar.collapsed .btn-aviso-legal span { display: none; }
+    .wa-avanzado { border: 1px dashed #cbd5e1; border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; background: #f8fafc; }
+    .wa-avanzado summary { cursor: pointer; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 4px; }
+    .wa-avanzado[open] summary { margin-bottom: 10px; }
+    /* Control Diario: las mismas tarjetas originales, compactas (una línea: icono · etiqueta · número) */
+    #subpanel-asistencia-control .cards-agrupadas { display: flex !important; flex-wrap: wrap; gap: 8px; margin-bottom: 0; }
+    .kpi-grupo { flex: var(--n) 1 calc(var(--n) * 138px + 14px); min-width: 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 5px 6px 6px; }
+    .kpi-grupo-titulo { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; padding: 0 2px 4px; }
+    .kpi-grupo-cards { display: flex; flex-wrap: wrap; gap: 6px; }
+    .kpi-grupo-cards .kpi-card { flex: 1 1 130px; min-width: 0; }
+    #subpanel-asistencia-control .kpi-card { flex-direction: row; align-items: center; gap: 6px; padding: 5px 8px; min-height: 0; }
+    #subpanel-asistencia-control .kpi-card .kpi-header { margin: 0; flex: 1; min-width: 0; gap: 6px; }
+    #subpanel-asistencia-control .kpi-card .kpi-icon { width: 22px; height: 22px; flex: 0 0 22px; font-size: 10.5px; border-radius: 6px; }
+    #subpanel-asistencia-control .kpi-card .kpi-label { font-size: 11px; letter-spacing: -0.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #subpanel-asistencia-control .kpi-card .kpi-value { font-size: 15px; flex: 0 0 auto; }
+    #subpanel-asistencia-control .kpi-card .kpi-badge-alert { top: 4px; right: 4px; }
+    .btn-link-reportes { background: none; border: none; color: #2563eb; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 0; }
+    .btn-link-reportes:hover { text-decoration: underline; }
+    .resumen-compacto { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+    .resumen-compacto .reporte-period strong { color: #0f172a; }
+    @media (max-width: 768px) {
+      .live-chip .live-txt { display: none; }
+      .resumen-compacto { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    }
     /* ESTILOS PREMIUM PARA LA PESTAÑA ASISTENCIA */
     .asistencia-table-card {
       background: #ffffff;
@@ -1188,7 +1231,6 @@
           <i class="fas fa-chevron-left"></i>
         </button>
       </div>
-      <div id="sidebarSupervisorInfo" style="padding: 10px 16px; border-bottom: 1px dashed var(--g200); margin-bottom: 12px;"></div>
       <nav class="sidebar-nav">
         <div class="nav-item active" data-panel="asistencia"><i class="fas fa-calendar-day" style="color:var(--green);"></i><span>Asistencia</span></div>
         <div class="nav-item" data-panel="dashboard"><i class="fas fa-chart-pie" style="color:var(--blue);"></i><span>Dashboard</span></div>
@@ -1202,14 +1244,12 @@
         <div class="nav-item" data-panel="whatsapp" id="navItemWhatsApp" style="display:none"><i class="fab fa-whatsapp" style="color:#22c55e;"></i><span>Notificaciones WhatsApp</span></div>
         <div class="nav-item" data-panel="opciones" id="navItemOpciones" style="display:none"><i
             class="fas fa-sliders-h" style="color:#64748b;"></i><span>Opciones adicionales</span></div>
-        <a class="nav-item" href="visor_empleado.html" target="_blank" style="text-decoration: none;"><i class="fas fa-mobile-alt" style="color:#8b5cf6;"></i><span>Simulador de Vista</span></a>
+        <a class="nav-item" id="navItemSimulador" href="visor_empleado.html" target="_blank" style="text-decoration: none; display:none;"><i class="fas fa-mobile-alt" style="color:#8b5cf6;"></i><span>Simulador de Vista</span></a>
       </nav>
       <div class="sidebar-footer">
-        <button class="btn-extra-lunch" onclick="window.mostrarModalManual()" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; border: none; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(37,99,235,0.3); font-weight: 750;"><i class="fas fa-plus-circle"></i> Registro Manual</button>
         <button class="btn-extra-lunch" id="btnExtraLunch"><i class="fas fa-utensils"></i> Almuerzo Extra</button>
-        <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i> Actualizar</button>
-        <button type="button" onclick="window.abrirModalAvisoPrivacidad()" style="width:100%; margin-top:8px; background:transparent; border:1px solid #e2e8f0; color:#64748b; font-size:11px; font-weight:700; padding:6px 10px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:all 0.15s;" title="Aviso Legal y Protección de Datos Personales (LOPDP Ecuador)">
-          <i class="fas fa-shield-halved" style="color:#0284c7;"></i> Aviso Legal LOPDP
+        <button type="button" class="btn-aviso-legal" onclick="window.abrirModalAvisoPrivacidad()" title="Aviso Legal y Protección de Datos Personales (LOPDP Ecuador)">
+          <i class="fas fa-shield-halved"></i> <span>Aviso Legal LOPDP</span>
         </button>
       </div>
     </aside>
@@ -1219,29 +1259,21 @@
         <button id="btnMobileMenu" class="mobile-menu-btn" title="Menú">
           <i class="fas fa-bars"></i>
         </button>
-        <h1 class="page-title" id="pageTitle">Dashboard Ejecutivo</h1>
+        <button id="btnBreadcrumbBack" class="btn-breadcrumb-back" onclick="volverPanelAnterior()" style="display:none;" title="Volver a la vista anterior">
+          <i class="fas fa-arrow-left"></i> <span>Volver</span>
+        </button>
+        <h1 class="page-title" id="pageTitle">Control de Asistencia</h1>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap;">
-          <div class="bg-sync-indicator hidden" id="bgSyncIndicator" style="display:flex; align-items:center; gap:6px; background:#e0f2fe; color:#0369a1; padding:4px 8px; border-radius:10px; font-size:11px; font-weight:700;">
-            <i class="fas fa-sync fa-spin"></i> <span>Sincronizando...</span>
-          </div>
-          <div class="live-badge" id="liveBadge"><i class="fas fa-circle"></i> <span>En vivo</span></div>
-          <div class="update-chip"><i class="fas fa-clock"></i> <span id="lastUpdate">--:--:--</span></div>
+          <button type="button" class="live-chip" id="btnRefresh" title="Datos en vivo · última sincronización. Clic para actualizar todo ahora">
+            <i class="fas fa-circle live-dot"></i> <span class="live-txt">En vivo</span>
+            <span class="live-hora" id="lastUpdate">--:--</span>
+            <i class="fas fa-sync fa-spin hidden" id="bgSyncIndicator"></i>
+          </button>
           <div id="notifHostPanel"></div>
           <div id="topbarSupervisorProfile"></div>
         </div>
       </div>
 
-      <!-- BREADCRUMBS BAR (MIGAJAS DE PAN) -->
-      <div class="breadcrumb-nav-bar" id="breadcrumbNavBar">
-        <div class="breadcrumb-trail" id="breadcrumbTrail">
-          <span class="breadcrumb-link" onclick="cambiarPanel('asistencia')"><i class="fas fa-home"></i> Inicio</span>
-          <span class="breadcrumb-sep"><i class="fas fa-chevron-right"></i></span>
-          <span class="breadcrumb-current" id="breadcrumbCurrentItem">Control de Asistencia</span>
-        </div>
-        <button id="btnBreadcrumbBack" class="btn-breadcrumb-back" onclick="volverPanelAnterior()" style="display:none;" title="Volver a la vista anterior">
-          <i class="fas fa-arrow-left"></i> <span>Volver</span>
-        </button>
-      </div>
 
       <!-- BANNER ALERTA SUP. ADMIN: SOLICITUDES DE INVITADOS PENDIENTES -->
       <div id="bannerAlertaSupAdminInvitados" style="display:none; margin: 10px 0 16px 0; background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border: 1.5px solid #fb923c; border-left: 6px solid #ea580c; border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 12px rgba(234,88,12,0.10); align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;">
@@ -1293,7 +1325,7 @@
           <div id="kpisDashboardSection" style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.8); border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
               <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: var(--g800);"><i class="fas fa-chart-pie" style="color: var(--indigo); margin-right: 8px;"></i> Indicadores de Rendimiento (KPIs)</h3>
-              <div style="display: flex; gap: 8px;">
+              <div style="display: none; gap: 8px;">
                 <button class="btn btn-primary" onclick="exportarKPIsExcel()" style="padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; background:var(--green); border:none; box-shadow:0 2px 4px rgba(22,163,74,0.2);"><i class="fas fa-file-excel"></i> Excel</button>
                 <button class="btn btn-primary" onclick="exportarKPIsPDF()" style="padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; background:var(--rose); border:none; box-shadow:0 2px 4px rgba(225,29,72,0.2);"><i class="fas fa-file-pdf"></i> PDF</button>
               </div>
@@ -1322,6 +1354,8 @@
                   <div><span style="color:var(--g400);">Asist. Esperadas:</span> <strong id="kpiAsistenciaDetalle2">--</strong></div>
                   <div><span style="color:var(--g400);">Vacaciones:</span> <strong id="kpiAsistenciaDetalleVacaciones" style="color:#0284c7;">--</strong></div>
                   <div><span style="color:var(--g400);">Días Extras:</span> <strong id="kpiAsistenciaDetalleExtras" style="color:#4f46e5;">--</strong></div>
+                  <div><span style="color:var(--g400);">Inasistencias:</span> <strong id="lblKpiPeriodoInasistencias" style="color: var(--red);">--</strong></div>
+                  <div><span style="color:var(--g400);">Días Laborables:</span> <strong id="lblKpiPeriodoDiasLab">--</strong></div>
                   <div style="grid-column: span 2;"><span style="color:var(--g400);">Colaboradores Evaluados:</span> <strong id="kpiAsistenciaDetalleColabs">--</strong></div>
                 </div>
                 <div style="margin-top: 10px; display: flex; gap: 6px;">
@@ -1370,7 +1404,7 @@
                     <p style="margin: 2px 0 0; font-size: 12px; color: var(--g500);">Desglose por período (26 al 25) • <em>Haz clic en cualquier colaborador para ver su reporte detallado</em></p>
                   </div>
                   <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 6px; background: #ffffff; padding: 4px 10px; border-radius: 10px; border: 1px solid var(--g300); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                    <div style="display: none; align-items: center; gap: 6px; background: #ffffff; padding: 4px 10px; border-radius: 10px; border: 1px solid var(--g300); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                       <span style="font-size: 11.5px; font-weight: 700; color: var(--g600);"><i class="fas fa-calendar-alt" style="color: var(--red);"></i> Período:</span>
                       <select id="kpiDetallePeriodo" onchange="syncPeriodo('kpi')" class="filter-select" style="border: none; outline: none; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 600; color: var(--g700); cursor: pointer; padding: 2px; background: transparent;"></select>
                     </div>
@@ -1380,7 +1414,7 @@
                 </div>
 
                 <!-- Resumen Global del Período Seleccionado -->
-                <div id="kpiPeriodoResumenBar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 16px; margin-bottom: 12px;">
+                <div id="kpiPeriodoResumenBar" style="display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 16px; margin-bottom: 12px;">
                   <div style="display: flex; align-items: center; gap: 10px;">
                     <div style="width: 34px; height: 34px; border-radius: 8px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 16px;">
                       <i class="fas fa-calendar-check"></i>
@@ -1397,10 +1431,8 @@
                     <div><span style="color: var(--g400);">Asist. Ordinarias:</span> <strong id="lblKpiPeriodoEfectivas" style="color: var(--g800);">--</strong></div>
                     <div><span style="color: var(--g400);">Asist. Esperadas:</span> <strong id="lblKpiPeriodoEsperadas" style="color: var(--g800);">--</strong></div>
                     <div><span style="color: var(--g400);">Vacaciones:</span> <strong id="lblKpiPeriodoVacaciones" style="color: #0284c7;">--</strong></div>
-                    <div><span style="color: var(--g400);">Inasistencias:</span> <strong id="lblKpiPeriodoInasistencias" style="color: var(--red);">--</strong></div>
                     <div><span style="color: var(--g400);">Días Extras:</span> <strong id="lblKpiPeriodoExtras" style="color: #4f46e5;">--</strong></div>
                     <div><span style="color: var(--g400);">Colaboradores:</span> <strong id="lblKpiPeriodoColabs" style="color: var(--g800);">--</strong></div>
-                    <div><span style="color: var(--g400);">Días Laborables:</span> <strong id="lblKpiPeriodoDiasLab" style="color: var(--g800);">--</strong></div>
                   </div>
                 </div>
 
@@ -1493,147 +1525,31 @@
         </div>
 
         <div class="metric-card" style="margin-bottom:var(--gap)">
-          <div class="metric-title"><i class="fas fa-calendar-alt"></i> Resumen Mensual</div>
-
-          <!-- KPI Cards de Marcaciones (Entradas y Salidas) -->
-          <div class="reportes-grid" style="margin-bottom:var(--gap); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));">
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('entradasReg')" style="cursor:pointer;" title="Clic para ver detalle de Entradas Registradas">
-              <div class="reporte-icon green" style="background: rgba(16, 185, 129, 0.1); color: #059669;"><i class="fas fa-sign-in-alt"></i></div>
-              <div class="reporte-value" id="repEntradasReg" style="color: #059669;">--</div>
-              <div class="reporte-label">Entradas Registradas</div>
-              <div class="reporte-period">marcaciones directas</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('entradasAuto')" style="cursor:pointer;" title="Clic para ver detalle de Entradas Autocompletadas">
-              <div class="reporte-icon amber" style="background: rgba(245, 158, 11, 0.1); color: #d97706;"><i class="fas fa-robot"></i></div>
-              <div class="reporte-value" id="repEntradasAuto" style="color: #d97706;">--</div>
-              <div class="reporte-label">Entradas Auto.</div>
-              <div class="reporte-period">sistema / regularizadas</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('salidasReg')" style="cursor:pointer;" title="Clic para ver detalle de Salidas Registradas">
-              <div class="reporte-icon blue" style="background: rgba(2, 132, 199, 0.1); color: #0284c7;"><i class="fas fa-sign-out-alt"></i></div>
-              <div class="reporte-value" id="repSalidasReg" style="color: #0284c7;">--</div>
-              <div class="reporte-label">Salidas Registradas</div>
-              <div class="reporte-period">marcaciones directas</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('salidasAuto')" style="cursor:pointer;" title="Clic para ver detalle de Salidas Autocompletadas">
-              <div class="reporte-icon purple" style="background: rgba(124, 58, 237, 0.1); color: #7c3aed;"><i class="fas fa-magic"></i></div>
-              <div class="reporte-value" id="repSalidasAuto" style="color: #7c3aed;">--</div>
-              <div class="reporte-label">Salidas Auto.</div>
-              <div class="reporte-period">autocompletadas / sistema</div>
-            </div>
+          <div class="metric-title" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <span><i class="fas fa-calendar-alt"></i> Resumen del período</span>
+            <button type="button" class="btn-link-reportes" onclick="cambiarPanel('reportes')">Ver todo en Reportes <i class="fas fa-arrow-right"></i></button>
           </div>
-
-          <!-- KPI Cards de Reportes -->
-          <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('faltas')" style="cursor:pointer;" title="Clic para ver detalle de cálculo de Faltas">
+          <div class="reportes-grid resumen-compacto">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('faltas')" style="cursor:pointer;" title="Clic para ver el detalle de Faltas">
               <div class="reporte-icon red"><i class="fas fa-calendar-times"></i></div>
               <div class="reporte-value" id="repFaltas">--</div>
-              <div class="reporte-label">FALTAS</div>
-              <div class="reporte-period">días sin asistencia</div>
+              <div class="reporte-label">Faltas</div>
             </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('permisoMedico')" style="cursor:pointer;" title="Clic para ver detalle de Permiso Médico">
-              <div class="reporte-icon blue"><i class="fas fa-notes-medical"></i></div>
-              <div class="reporte-value" id="repPermisoMedico">--</div>
-              <div class="reporte-label">Permiso Médico</div>
-              <div class="reporte-period">con justificativo</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('permisoPersonal')" style="cursor:pointer;" title="Clic para ver detalle de Permiso Personal">
-              <div class="reporte-icon purple"><i class="fas fa-user-clock"></i></div>
-              <div class="reporte-value" id="repPermisoPersonal">--</div>
-              <div class="reporte-label">Permiso Personal</div>
-              <div class="reporte-period">sin justificativo</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('atrasos')" style="cursor:pointer;" title="Clic para ver detalle de Atrasos">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('atrasos')" style="cursor:pointer;" title="Clic para ver el detalle de Atrasos">
               <div class="reporte-icon amber"><i class="fas fa-clock"></i></div>
               <div class="reporte-value" id="repAtrasos">--</div>
               <div class="reporte-label">Atrasos</div>
-              <div class="reporte-period">número de atrasos</div>
             </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('tiempoPorJustificar')" style="cursor:pointer;" title="Clic para ver detalle de Tiempo Por Justificar">
-              <div class="reporte-icon red"><i class="fas fa-exclamation-circle"></i></div>
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('tiempoPorJustificar')" style="cursor:pointer;" title="Clic para ver el detalle del tiempo por justificar">
+              <div class="reporte-icon purple"><i class="fas fa-question-circle"></i></div>
               <div class="reporte-value" id="repTiempoPorJustificar">--</div>
-              <div class="reporte-label">Por Justificar</div>
-              <div class="reporte-period">tiempo por justificar</div>
+              <div class="reporte-label">Por justificar</div>
             </div>
-          </div>
-
-          <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almPlanta')" style="cursor:pointer;" title="Clic para ver detalle de Almuerzos Empleados">
-              <div class="reporte-icon green"><i class="fas fa-utensils"></i></div>
-              <div class="reporte-value" id="repAlmuerzosEmp">--</div>
-              <div class="reporte-label">Almuerzos Empleados</div>
-              <div class="reporte-period">en planta</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almExtras')" style="cursor:pointer;" title="Clic para ver detalle de Almuerzos Extras">
-              <div class="reporte-icon blue"><i class="fas fa-plus-circle"></i></div>
-              <div class="reporte-value" id="repAlmuerzosExt">--</div>
-              <div class="reporte-label">Almuerzos Extras</div>
-              <div class="reporte-period">de visitantes/varios</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almTotal')" style="cursor:pointer; border-color: var(--green);" title="Clic para ver detalle de Total Almuerzos">
-              <div class="reporte-icon green" style="background: rgba(16, 185, 129, 0.1); color: var(--green);"><i class="fas fa-calculator"></i></div>
-              <div class="reporte-value" id="repAlmuerzosTotal">--</div>
-              <div class="reporte-label">TOTAL ALMUERZOS</div>
-              <div class="reporte-period">empleados + extras</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('almFuera')" style="cursor:pointer;" title="Clic para ver detalle de Almuerzos Fuera">
-              <div class="reporte-icon pink"><i class="fas fa-home"></i></div>
-              <div class="reporte-value" id="repAlmuerzosFuera">--</div>
-              <div class="reporte-label">Almuerzos Fuera</div>
-              <div class="reporte-period">fuera de planta</div>
-            </div>
-          </div>
-
-          <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasExtra50')" style="cursor:pointer;" title="Clic para ver detalle de Horas Extras 50%">
-              <div class="reporte-icon green"><i class="fas fa-charging-station"></i></div>
-              <div class="reporte-value" id="repHorasExtra50">--</div>
-              <div class="reporte-label">Horas Extras 50% (A)</div>
-              <div class="reporte-period">después de 16:15</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasExtra100')" style="cursor:pointer;" title="Clic para ver detalle de Horas Extras 100%">
-              <div class="reporte-icon teal"><i class="fas fa-calendar-week"></i></div>
-              <div class="reporte-value" id="repHorasExtra100">--</div>
-              <div class="reporte-label">Horas Extras 100% (B)</div>
-              <div class="reporte-period">fines de semana/feriados</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasCampoNormales')" style="cursor:pointer;" title="Clic para ver detalle de Horas en Campo Normales">
-              <div class="reporte-icon blue"><i class="fas fa-map-marker-alt"></i></div>
-              <div class="reporte-value" id="repHorasCampoNormales">--</div>
-              <div class="reporte-label">Horas en campo normales</div>
-              <div class="reporte-period">fuera de ubicación</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasCampo50')" style="cursor:pointer;" title="Clic para ver detalle de Horas en Campo 50%">
-              <div class="reporte-icon purple"><i class="fas fa-charging-station"></i></div>
-              <div class="reporte-value" id="repHorasCampo50">--</div>
-              <div class="reporte-label">Horas en campo 50% (C)</div>
-              <div class="reporte-period">en campo horario laboral</div>
-            </div>
-          </div>
-          <div class="reportes-grid" style="margin-bottom:var(--gap)">
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('horasCampo100')" style="cursor:pointer;" title="Clic para ver detalle de Horas en Campo 100%">
-              <div class="reporte-icon pink"><i class="fas fa-charging-station"></i></div>
-              <div class="reporte-value" id="repHorasCampo100">--</div>
-              <div class="reporte-label">Horas en campo 100% (D)</div>
-              <div class="reporte-period">fines de semana/feriados</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('totalExtras50')" style="cursor:pointer;" title="Clic para ver detalle de TOTAL Extras 50%">
-              <div class="reporte-icon amber"><i class="fas fa-calculator"></i></div>
-              <div class="reporte-value" id="repTotalExtras50">--</div>
-              <div class="reporte-label">TOTAL Extras 50% (A+C)</div>
-              <div class="reporte-period">A + C</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('totalExtras100')" style="cursor:pointer;" title="Clic para ver detalle de TOTAL Extras 100%">
-              <div class="reporte-icon teal"><i class="fas fa-calculator"></i></div>
-              <div class="reporte-value" id="repTotalExtras100">--</div>
-              <div class="reporte-label">TOTAL Extras 100% (B+D)</div>
-              <div class="reporte-period">B + D</div>
-            </div>
-            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('totalHorasExtra')" style="cursor:pointer;" title="Clic para ver detalle de TOTAL HORAS EXTRA">
+            <div class="reporte-card" onclick="mostrarDetalleCalculoCard('totalHorasExtra')" style="cursor:pointer;" title="Clic para ver el detalle de horas extra">
               <div class="reporte-icon green"><i class="fas fa-chart-line"></i></div>
               <div class="reporte-value" id="repTotalHorasExtra">--</div>
-              <div class="reporte-label">TOTAL HORAS EXTRA</div>
-              <div class="reporte-period">(A+B+C+D)</div>
+              <div class="reporte-label">Horas extra</div>
+              <div class="reporte-period">50 %: <strong id="repTotalExtras50">--</strong> · 100 %: <strong id="repTotalExtras100">--</strong></div>
             </div>
           </div>
         </div>
@@ -1791,7 +1707,10 @@
         <!-- SUBPANEL 1: CONTROL DIARIO -->
         <div id="subpanel-asistencia-control" class="subpanel active">
           <div class="asistencia-header-row" style="background:#ffffff; border:1px solid var(--g200); border-radius:12px; padding:10px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-            <div class="cards-grid">
+            <div class="cards-grid cards-agrupadas">
+              <div class="kpi-grupo" style="--n:4">
+                <div class="kpi-grupo-titulo">Asistencia de hoy</div>
+                <div class="kpi-grupo-cards">
               <div class="kpi-card active" data-filter="todos" onclick="setFiltroAsistencia('todos')" style="--card-color: var(--blue); --active-bg: #eff6ff; --active-text: #1e40af; --shadow-color: rgba(37, 99, 235, 0.12);">
                 <div class="kpi-header">
                   <div class="kpi-icon" style="background: var(--blu-lt); color: var(--blue);"><i class="fas fa-users"></i></div>
@@ -1799,7 +1718,6 @@
                 </div>
                 <div class="kpi-value" id="asisTotal">--</div>
               </div>
-
               <div class="kpi-card" data-filter="presente" onclick="setFiltroAsistencia('presente')" style="--card-color: var(--green); --active-bg: #f0fdf4; --active-text: #15803d; --shadow-color: rgba(22, 163, 74, 0.12);">
                 <div class="kpi-header">
                   <div class="kpi-icon" style="background: var(--grn-lt); color: var(--green);"><i class="fas fa-user-check"></i></div>
@@ -1807,8 +1725,6 @@
                 </div>
                 <div class="kpi-value" id="asisPresentes">--</div>
               </div>
-
-              <!-- CARD DE NOTIFICACIÓN / ALERTA: SIN MARCAR (SIN REGISTRO NI JUSTIFICACIÓN) -->
               <div class="kpi-card" data-filter="sin_marcar" onclick="setFiltroAsistencia('sin_marcar')" style="--card-color: #ef4444; --active-bg: #fef2f2; --active-text: #b91c1c; --shadow-color: rgba(239, 68, 68, 0.2);">
                 <span class="kpi-badge-alert" id="asisSinMarcarDot" style="display:none;"></span>
                 <div class="kpi-header">
@@ -1817,62 +1733,6 @@
                 </div>
                 <div class="kpi-value" id="asisSinMarcar">--</div>
               </div>
-
-              <!-- CARD: EN CAMPO -->
-              <div class="kpi-card" data-filter="en_campo" onclick="setFiltroAsistencia('en_campo')" style="--card-color: #f59e0b; --active-bg: #fffbeb; --active-text: #b45309; --shadow-color: rgba(245, 158, 11, 0.15);">
-                <div class="kpi-header">
-                  <div class="kpi-icon" style="background: #fef3c7; color: #d97706;"><i class="fas fa-route"></i></div>
-                  <span class="kpi-label">En Campo</span>
-                </div>
-                <div class="kpi-value" id="asisCampo">--</div>
-              </div>
-
-              <!-- CARD: VACACIONES -->
-              <div class="kpi-card" data-filter="vacaciones" onclick="setFiltroAsistencia('vacaciones')" style="--card-color: #06b6d4; --active-bg: #ecfeff; --active-text: #0e7490; --shadow-color: rgba(6, 182, 212, 0.15);">
-                <div class="kpi-header">
-                  <div class="kpi-icon" style="background: #cffafe; color: #0891b2;"><i class="fas fa-umbrella-beach"></i></div>
-                  <span class="kpi-label">Vacaciones</span>
-                </div>
-                <div class="kpi-value" id="asisVacaciones">--</div>
-              </div>
-
-              <!-- CARD: CON PERMISOS / JUSTIFICADOS -->
-              <div class="kpi-card" data-filter="permisos" onclick="setFiltroAsistencia('permisos')" style="--card-color: #a855f7; --active-bg: #faf5ff; --active-text: #7e22ce; --shadow-color: rgba(168, 85, 247, 0.15);">
-                <div class="kpi-header">
-                  <div class="kpi-icon" style="background: #f3e8ff; color: #9333ea;"><i class="fas fa-file-medical"></i></div>
-                  <span class="kpi-label">Permisos</span>
-                </div>
-                <div class="kpi-value" id="asisPermisos">--</div>
-              </div>
-
-              <!-- CARD: TARDANZAS -->
-              <div class="kpi-card" data-filter="tardanza" onclick="setFiltroAsistencia('tardanza')" style="--card-color: var(--amber); --active-bg: #fffbeb; --active-text: #b45309; --shadow-color: rgba(217, 119, 6, 0.12);">
-                <div class="kpi-header">
-                  <div class="kpi-icon" style="background: var(--amb-lt); color: var(--amber);"><i class="fas fa-exclamation-triangle"></i></div>
-                  <span class="kpi-label">Tardanzas</span>
-                </div>
-                <div class="kpi-value" id="asisTardanzas">--</div>
-              </div>
-
-              <!-- CARD: ALM. PLANTA -->
-              <div class="kpi-card" data-filter="almuerzo_si" onclick="setFiltroAsistencia('almuerzo_si')" style="--card-color: var(--indigo); --active-bg: #eef2ff; --active-text: #4338ca; --shadow-color: rgba(99, 102, 241, 0.12);">
-                <div class="kpi-header">
-                  <div class="kpi-icon" style="background: var(--ind-lt); color: var(--indigo);"><i class="fas fa-utensils"></i></div>
-                  <span class="kpi-label">Alm. Planta</span>
-                </div>
-                <div class="kpi-value" id="asisAlmuerzoPlanta">--</div>
-              </div>
-
-              <!-- CARD: ALM. FUERA -->
-              <div class="kpi-card" data-filter="almuerzo_no" onclick="setFiltroAsistencia('almuerzo_no')" style="--card-color: var(--g500); --active-bg: #f8fafc; --active-text: #334155; --shadow-color: rgba(100, 116, 139, 0.12);">
-                <div class="kpi-header">
-                  <div class="kpi-icon" style="background: var(--g100); color: var(--g500);"><i class="fas fa-home"></i></div>
-                  <span class="kpi-label">Alm. Fuera</span>
-                </div>
-                <div class="kpi-value" id="asisAlmuerzoFuera">--</div>
-              </div>
-
-              <!-- CARD: YA SALIERON -->
               <div class="kpi-card" data-filter="salieron" onclick="setFiltroAsistencia('salieron')" style="--card-color: var(--teal); --active-bg: #f0fdf4; --active-text: #0f766e; --shadow-color: rgba(13, 148, 136, 0.12);">
                 <div class="kpi-header">
                   <div class="kpi-icon" style="background: var(--tel-lt); color: var(--teal);"><i class="fas fa-door-open"></i></div>
@@ -1880,8 +1740,44 @@
                 </div>
                 <div class="kpi-value" id="asisSalieron">--</div>
               </div>
-
-              <!-- CARD: POR REGULARIZAR -->
+                </div>
+              </div>
+              <div class="kpi-grupo" style="--n:3">
+                <div class="kpi-grupo-titulo">Ausencias y campo</div>
+                <div class="kpi-grupo-cards">
+              <div class="kpi-card" data-filter="en_campo" onclick="setFiltroAsistencia('en_campo')" style="--card-color: #f59e0b; --active-bg: #fffbeb; --active-text: #b45309; --shadow-color: rgba(245, 158, 11, 0.15);">
+                <div class="kpi-header">
+                  <div class="kpi-icon" style="background: #fef3c7; color: #d97706;"><i class="fas fa-route"></i></div>
+                  <span class="kpi-label">En Campo</span>
+                </div>
+                <div class="kpi-value" id="asisCampo">--</div>
+              </div>
+              <div class="kpi-card" data-filter="vacaciones" onclick="setFiltroAsistencia('vacaciones')" style="--card-color: #06b6d4; --active-bg: #ecfeff; --active-text: #0e7490; --shadow-color: rgba(6, 182, 212, 0.15);">
+                <div class="kpi-header">
+                  <div class="kpi-icon" style="background: #cffafe; color: #0891b2;"><i class="fas fa-umbrella-beach"></i></div>
+                  <span class="kpi-label">Vacaciones</span>
+                </div>
+                <div class="kpi-value" id="asisVacaciones">--</div>
+              </div>
+              <div class="kpi-card" data-filter="permisos" onclick="setFiltroAsistencia('permisos')" style="--card-color: #a855f7; --active-bg: #faf5ff; --active-text: #7e22ce; --shadow-color: rgba(168, 85, 247, 0.15);">
+                <div class="kpi-header">
+                  <div class="kpi-icon" style="background: #f3e8ff; color: #9333ea;"><i class="fas fa-file-medical"></i></div>
+                  <span class="kpi-label">Permisos</span>
+                </div>
+                <div class="kpi-value" id="asisPermisos">--</div>
+              </div>
+                </div>
+              </div>
+              <div class="kpi-grupo" style="--n:2">
+                <div class="kpi-grupo-titulo">Incidencias</div>
+                <div class="kpi-grupo-cards">
+              <div class="kpi-card" data-filter="tardanza" onclick="setFiltroAsistencia('tardanza')" style="--card-color: var(--amber); --active-bg: #fffbeb; --active-text: #b45309; --shadow-color: rgba(217, 119, 6, 0.12);">
+                <div class="kpi-header">
+                  <div class="kpi-icon" style="background: var(--amb-lt); color: var(--amber);"><i class="fas fa-exclamation-triangle"></i></div>
+                  <span class="kpi-label">Tardanzas</span>
+                </div>
+                <div class="kpi-value" id="asisTardanzas">--</div>
+              </div>
               <div class="kpi-card" data-filter="por_regularizar" onclick="setFiltroAsistencia('por_regularizar')" style="--card-color: #ea580c; --active-bg: #fff7ed; --active-text: #c2410c; --shadow-color: rgba(234, 88, 12, 0.15);">
                 <span class="kpi-badge-alert" id="asisPorRegularizarDot" style="display:none; background:#ea580c;"></span>
                 <div class="kpi-header">
@@ -1889,6 +1785,27 @@
                   <span class="kpi-label">Por Regularizar</span>
                 </div>
                 <div class="kpi-value" id="asisPorRegularizar">--</div>
+              </div>
+                </div>
+              </div>
+              <div class="kpi-grupo" style="--n:2">
+                <div class="kpi-grupo-titulo">Almuerzo</div>
+                <div class="kpi-grupo-cards">
+              <div class="kpi-card" data-filter="almuerzo_si" onclick="setFiltroAsistencia('almuerzo_si')" style="--card-color: var(--indigo); --active-bg: #eef2ff; --active-text: #4338ca; --shadow-color: rgba(99, 102, 241, 0.12);">
+                <div class="kpi-header">
+                  <div class="kpi-icon" style="background: var(--ind-lt); color: var(--indigo);"><i class="fas fa-utensils"></i></div>
+                  <span class="kpi-label">Alm. Planta</span>
+                </div>
+                <div class="kpi-value" id="asisAlmuerzoPlanta">--</div>
+              </div>
+              <div class="kpi-card" data-filter="almuerzo_no" onclick="setFiltroAsistencia('almuerzo_no')" style="--card-color: var(--g500); --active-bg: #f8fafc; --active-text: #334155; --shadow-color: rgba(100, 116, 139, 0.12);">
+                <div class="kpi-header">
+                  <div class="kpi-icon" style="background: var(--g100); color: var(--g500);"><i class="fas fa-home"></i></div>
+                  <span class="kpi-label">Alm. Fuera</span>
+                </div>
+                <div class="kpi-value" id="asisAlmuerzoFuera">--</div>
+              </div>
+                </div>
               </div>
             </div>
 
@@ -3328,6 +3245,9 @@
                     </span>
                   </div>
 
+                  <!-- Configuración técnica: el túnel publica la URL solo y la clave vive en el servidor. Solo para el 1058 -->
+                  <details id="waAvanzado" class="wa-avanzado" style="display:none;">
+                    <summary>Avanzado (configuración técnica)</summary>
                   <div class="form-group" style="margin-bottom:12px;">
                     <label class="form-label" style="font-size:11.5px; font-weight:700;">URL del Servidor WhatsApp *</label>
                     <input type="text" id="txtWhatsAppServidorUrl" class="form-input" placeholder="http://192.168.10.129:2785 o https://...trycloudflare.com" style="font-family:monospace; font-size:12.5px;">
@@ -3348,6 +3268,7 @@
                       <span id="lblWhatsAppNombreEmisor" style="font-size:11px; background:#dcfce7; color:#15803d; padding:2px 8px; border-radius:6px; font-weight:700;">--</span>
                     </div>
                   </div>
+                  </details>
 
                   <!-- Toggle Habilitar Servicio -->
                   <label for="chkWhatsAppActivo" style="display:flex; align-items:center; justify-content:space-between; background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:10px 12px; cursor:pointer; user-select:none;">
@@ -5249,7 +5170,7 @@
 
   <script src="./JS/openwa_service.js?v=20261003_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261002_09"></script>
+  <script src="./JS/supervisor_core.js?v=20261005_02"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261003_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20260925_02"></script>

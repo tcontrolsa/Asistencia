@@ -1524,8 +1524,10 @@ window.FirebaseBackend = {
         const hoyStrLocal = this._hoyStr();
         const targetFecha = params.fecha || hoyStrLocal;
 
-        // 1. Sincronizar con Google Sheets (hoja REGISTROS)
+        // 1. Sincronizar con Google Sheets (hoja REGISTROS). El día de hoy vive en Firestore y llega a la
+        //    hoja al archivar: no se envía (antes Apps Script creaba una fila SOLO_ALMUERZO duplicada).
         let sheetsPromise = (async () => {
+            if (targetFecha >= hoyStrLocal) return { ok: true, omitido: 'día actual: solo Firestore' };
             try {
                 return await this._jsonp({
                     accion: 'actualizarAlmuerzoSupervisor',
@@ -1635,7 +1637,11 @@ window.FirebaseBackend = {
 
         // 1. Sincronización con Google Sheets (timeout de 35s con reintentos)
         let sheetsRes = null;
+        // El día de hoy vive en Firestore y llega a la hoja al archivar; enviarlo creaba filas
+        // duplicadas en REGISTROS cuando la fila aún no existía.
+        const esDelArchivo = (docId && String(docId).startsWith('arch_')) || esFechaPasada;
         const sheetsPromise = (async () => {
+            if (!esDelArchivo) return { ok: true, omitido: 'día actual: solo Firestore' };
             try {
                 let sheetsCampo = campo;
                 let sheetsValor = valor;

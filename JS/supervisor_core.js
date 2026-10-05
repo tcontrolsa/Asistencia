@@ -604,6 +604,12 @@ function formatearMinutos(min) {
   return h ? h + 'h ' + m + 'm' : m + 'm';
 }
 
+// Minutos → "h:mm" (mismo formato que Reportes)
+function formatearHorasHM(minutos) {
+  const t = Math.round(Number(minutos) || 0);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
+
 function formatearHorasDecimal(minutos) {
   if (!minutos) return '0.00';
   return (minutos / 60).toFixed(2);
@@ -655,6 +661,11 @@ function calcularNetWorkedOrdinario(periodosDia, esFestivo) {
   return Math.max(0, ordNeto);
 }
 window.calcularNetWorkedOrdinario = calcularNetWorkedOrdinario;
+
+// Sábado, domingo o feriado: nadie queda "sin marcar" ni se le avisa por no registrar entrada
+function esDiaNoLaborable(fechaStr) {
+  return esFeriadoODomingo(fechaStr) || new Date(fechaStr + 'T12:00:00').getDay() === 6;
+}
 
 function esFeriadoODomingo(fechaStr) {
   if (!fechaStr) return false;
@@ -2755,7 +2766,7 @@ function cargarAsistencia() {
         countPermisos++;
       } else if (infoAus.esCampo) {
         countCampo++;
-      } else if (!e.entradaHoy) {
+      } else if (!e.entradaHoy && !esFestivoHoy) {
         countSinMarcar++;
       }
     } else {
@@ -2810,7 +2821,8 @@ function cargarAsistencia() {
   // Actualizar botón unificado de notificación WhatsApp en barra de Asistencia
   const totalAlertasWhatsApp = countSinMarcar;
   if ($('lblCountTotalPendientesWhatsApp')) $('lblCountTotalPendientesWhatsApp').textContent = totalAlertasWhatsApp;
-  if ($('btnNotificarWhatsAppUnificado')) $('btnNotificarWhatsAppUnificado').style.display = 'inline-flex';
+  // Fin de semana o feriado: no se ofrece el aviso masivo de "no registró entrada"
+  if ($('btnNotificarWhatsAppUnificado')) $('btnNotificarWhatsAppUnificado').style.display = esFestivoHoy ? 'none' : 'inline-flex';
 
   if ($('lblCountSinMarcarWhatsApp')) $('lblCountSinMarcarWhatsApp').textContent = countSinMarcar;
   if ($('lblCountAusentesWhatsApp')) $('lblCountAusentesWhatsApp').textContent = ausentes;
@@ -2884,6 +2896,8 @@ function cargarAsistencia() {
     } else if (infoAus.esCampo) {
       let clickModo = canEditAttendance ? `onclick="event.stopPropagation();editarValorRegistro('${e.id}', 'ENTRADA', '${eReg?.id || ''}', 'modo', '${modo || 'CAMPO'}', '${hoy}')"` : '';
       estHtml = `<span class="rep-badge-pill rep-badge-campo" ${clickModo} title="${canEditAttendance ? 'Clic para editar modo' : 'En Campo'}"><i class="fas fa-truck-pickup" style="font-size:9.5px;"></i> Campo</span>`;
+    } else if (!e.entradaHoy && esDiaNoLaborable(hoy)) {
+      estHtml = '<span class="rep-badge-pill" style="background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;" title="Sábado, domingo o feriado"><i class="fas fa-mug-hot"></i> Descanso</span>';
     } else if (!e.entradaHoy) {
       let badgeAusente = '<span class="rep-badge-pill rep-badge-falta-alert"><i class="fas fa-times-circle"></i> Ausente</span>';
 
@@ -2954,7 +2968,7 @@ function cargarAsistencia() {
     let puedeEditar = e.entradaHoy || canEditAttendance || isSinAsistencia;
 
     if (!e.entradaHoy && !isSinAsistencia) {
-      toggle = `<span class="rep-asis-empty" style="font-size:11px; opacity:0.6;">Ausente</span>`;
+      toggle = `<span class="rep-asis-empty" style="font-size:11px; opacity:0.6;">${esDiaNoLaborable(hoy) ? '—' : 'Ausente'}</span>`;
     } else {
       const isSi = (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA');
       const isNo = (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA');
@@ -3043,6 +3057,7 @@ function filtrarAsistenciaTabla() {
 
     if (filtroAsistenciaActual === 'presente' && (!e._entradaHoy || e._salidaHoy)) return false;
     if (filtroAsistenciaActual === 'sin_marcar') {
+      if (esDiaNoLaborable(hoy)) return false;
       if (e._entradaHoy || e.isVisitante || e.isSinAsistencia) return false;
       if (infoAus.esVacaciones || infoAus.esCampo || infoAus.esPermiso) return false;
       return true;
@@ -3092,6 +3107,10 @@ function filtrarAsistenciaTabla() {
   }
   if ($('searchTotalCount')) {
     $('searchTotalCount').textContent = (window._asisData || []).length;
+  }
+  // El contador solo aporta cuando la búsqueda o el filtro dejan menos que el total ("Todos" ya muestra el total)
+  if ($('searchCounterBadge')) {
+    $('searchCounterBadge').style.display = data.length < (window._asisData || []).length ? '' : 'none';
   }
 
   // Mantener orden alfabético respetando dirección de ordenamiento
@@ -4206,7 +4225,7 @@ function cargarReportes() {
   if ($('repPermisoPersonal')) $('repPermisoPersonal').textContent = formatearMinutos(totalPermisoPersonal);
   if ($('repAtrasos')) $('repAtrasos').textContent = totalAtrasos;
   if ($('repTiempoPorJustificar')) {
-    $('repTiempoPorJustificar').textContent = formatearMinutos(totalTiempoPorJustificar);
+    $('repTiempoPorJustificar').textContent = formatearHorasHM(totalTiempoPorJustificar);
   }
   if ($('repTiempoADescontar')) {
     $('repTiempoADescontar').textContent = formatearMinutos(totalTiempoADescontar);
@@ -4216,9 +4235,9 @@ function cargarReportes() {
   if ($('repHorasCampoNormales')) $('repHorasCampoNormales').textContent = formatearHorasDecimal(totalHorasCampoNormales);
   if ($('repHorasCampo50')) $('repHorasCampo50').textContent = formatearHorasDecimal(totalHorasCampo50);
   if ($('repHorasCampo100')) $('repHorasCampo100').textContent = formatearHorasDecimal(totalHorasCampo100);
-  if ($('repTotalExtras50')) $('repTotalExtras50').textContent = formatearHorasDecimal(totalExtras50);
-  if ($('repTotalExtras100')) $('repTotalExtras100').textContent = formatearHorasDecimal(totalExtras100);
-  if ($('repTotalHorasExtra')) $('repTotalHorasExtra').textContent = formatearHorasDecimal(totalHorasExtra);
+  if ($('repTotalExtras50')) $('repTotalExtras50').textContent = formatearHorasHM(totalExtras50);
+  if ($('repTotalExtras100')) $('repTotalExtras100').textContent = formatearHorasHM(totalExtras100);
+  if ($('repTotalHorasExtra')) $('repTotalHorasExtra').textContent = formatearHorasHM(totalHorasExtra);
 
   // Almuerzos reporte
   let totalAlmPlanta = stats.reduce((s, r) => s + r.almPlanta, 0);
@@ -6392,7 +6411,6 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
               <i class="fas fa-hammer"></i> Trabajo en Campo
             </button>
           </div>
-          <span style="color:var(--indigo);font-weight:600;font-size:13px;background:#e0e7ff;padding:4px 10px;border-radius:12px;">${periodoSeleccionado ? periodoSeleccionado.label : ''}</span>
         </div>
         
         <!-- BANNER FECHAS POR REGULARIZAR -->
@@ -7018,8 +7036,7 @@ window.cambiarSubtabAsistencia = function (subtab) {
 
   // 3. Títulos y Breadcrumbs
   let title = 'Control de Asistencia';
-  if (subtab === 'directorio') title = 'Asistencia — Directorio de Colaboradores';
-  else if (subtab === 'mapa') title = 'Asistencia — Mapa y Disponibilidad';
+
 
   if ($('pageTitle')) $('pageTitle').textContent = title;
   if ($('breadcrumbCurrentItem')) $('breadcrumbCurrentItem').textContent = title;
@@ -7060,10 +7077,7 @@ window.cambiarSubtabServicios = function (subtab) {
 
   // 3. Títulos y Breadcrumbs
   let title = 'Gestión & Servicios';
-  if (subtab === 'emergencias') title = 'Gestión & Servicios — Simulacros y Emergencias';
-  else if (subtab === 'menu') title = 'Gestión & Servicios — Menú Semanal';
-  else if (subtab === 'cultura') title = 'Gestión & Servicios — Cultura Tcontrol';
-  else if (subtab === 'invitados') title = 'Gestión & Servicios — Invitados & Catering';
+
 
   if ($('pageTitle')) $('pageTitle').textContent = title;
   if ($('breadcrumbCurrentItem')) $('breadcrumbCurrentItem').textContent = title;
@@ -8806,6 +8820,8 @@ async function cargarDatosCompletos(force = false, silencioso = false, forceShee
 
         if ($('navItemReportes')) $('navItemReportes').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
         if ($('navItemOpciones')) $('navItemOpciones').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
+        if ($('navItemSimulador')) $('navItemSimulador').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
+        if ($('waAvanzado')) $('waAvanzado').style.display = (rol === 'ADMIN_MASTER') ? 'block' : 'none';
         if ($('navItemWhatsApp')) $('navItemWhatsApp').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
 
         mostrarInformacionSupervisor(session);
@@ -8942,6 +8958,8 @@ async function intentarLoginSupervisor() {
 
         if ($('navItemReportes')) $('navItemReportes').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
         if ($('navItemOpciones')) $('navItemOpciones').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
+        if ($('navItemSimulador')) $('navItemSimulador').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
+        if ($('waAvanzado')) $('waAvanzado').style.display = (rol === 'ADMIN_MASTER') ? 'block' : 'none';
         if ($('navItemWhatsApp')) $('navItemWhatsApp').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
 
         mostrarInformacionSupervisor(sessionData);
@@ -9147,6 +9165,8 @@ function verificarEstadoSupervisor() {
 
       if ($('navItemReportes')) $('navItemReportes').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
       if ($('navItemOpciones')) $('navItemOpciones').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
+      if ($('navItemSimulador')) $('navItemSimulador').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
+      if ($('waAvanzado')) $('waAvanzado').style.display = (rol === 'ADMIN_MASTER') ? 'block' : 'none';
       if ($('navItemWhatsApp')) $('navItemWhatsApp').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
     } catch (e) { }
     $('login-supervisor').classList.add('hidden');
@@ -9230,10 +9250,12 @@ setInterval(() => {
   });
 }, 120000);
 
-$('btnRefresh').addEventListener('click', async () => {
+if ($('btnRefresh')) $('btnRefresh').addEventListener('click', async () => {
   const btn = $('btnRefresh');
-  const icon = btn ? btn.querySelector('i') : null;
-  if (icon) icon.classList.add('fa-spin');
+  if (btn && btn.disabled) return;
+  if (btn) btn.disabled = true;
+  const icon = $('bgSyncIndicator');
+  if (icon) icon.classList.remove('hidden');
   limpiarCachesLocales();
   mostrarToast('Sincronizando datos frescos en segundo plano...', 'info');
   try {
@@ -9242,7 +9264,8 @@ $('btnRefresh').addEventListener('click', async () => {
   } catch (err) {
     mostrarToast('Error al sincronizar: ' + err.message, 'error');
   } finally {
-    if (icon) icon.classList.remove('fa-spin');
+    if (icon) icon.classList.add('hidden');
+    if (btn) btn.disabled = false;
   }
 });
 $('btnExtraLunch').addEventListener('click', mostrarModalExtraLunch);
