@@ -1812,10 +1812,10 @@ window.FirebaseBackend = {
         const modalidad = String(params.modalidad || params.modo || '').trim().toUpperCase();
         const supervisorId = String(params.supervisorId || '').trim();
 
-        // 1. Google Sheets primero
+        // 1. Google Sheets primero (solo días archivados: hoy vive en Firestore y llega a la hoja al archivar)
         let sheetsRes = null;
         try {
-            sheetsRes = await this._enviarCambioArchivado({
+            if (fecha && fecha < this._hoyStr()) sheetsRes = await this._enviarCambioArchivado({
                 accion: 'actualizarRegistroArchivado',
                 empleadoId: empleadoId,
                 fecha: fecha,
@@ -4304,9 +4304,12 @@ window.FirebaseBackend = {
                 : (tipo === 'medico' ? 'permiso_medico_mins' : 'tiempo_justificado_mins');
 
             // 1. PRIMERO: Buscar y actualizar en la hoja REGISTROS de Google Sheets
+            //    (solo días archivados: hoy vive en Firestore y llega a la hoja al archivar)
             const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
             try {
-                const resSheets = await this._enviarCambioArchivado(sheetsParams, 1, 35000);
+                const resSheets = fecha < this._hoyStr()
+                    ? await this._enviarCambioArchivado(sheetsParams, 1, 35000)
+                    : { ok: true, msg: 'día actual: solo Firestore' };
                 if (resSheets && resSheets.ok) {
                     console.log("✅ Permiso actualizado en Google Sheets (Hoja REGISTROS):", resSheets.msg || 'OK');
                 } else if (resSheets && resSheets.error) {
