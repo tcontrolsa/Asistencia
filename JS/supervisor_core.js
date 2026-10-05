@@ -6410,6 +6410,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             <button class="btn btn-primary" onclick="window.mostrarModalCampoSupervisor('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:#059669; border-color:#059669; color:white; cursor:pointer;">
               <i class="fas fa-hammer"></i> Trabajo en Campo
             </button>
+            ${botonCampoAutorizadoHtml(e)}
           </div>
         </div>
         
@@ -9028,6 +9029,41 @@ function cargarPanelDesempeno() {
   });
 }
 window.cargarPanelDesempeno = cargarPanelDesempeno;
+
+// Autorización para registrar entrada/salida en modo CAMPO desde la app (campo empleados.campo_autorizado)
+function esCampoAutorizadoEmp(emp) {
+  return Boolean(emp) && (emp.campo_autorizado === true || String(emp.campo_autorizado || '').toUpperCase() === 'SI');
+}
+
+function botonCampoAutorizadoHtml(emp) {
+  const si = esCampoAutorizadoEmp(emp);
+  return `<button class="btn" id="btnCampoAut_${emp.id}" onclick="window.toggleCampoAutorizado('${emp.id}')"
+    title="${si ? 'Puede registrar entrada y salida en CAMPO desde la app. Clic para quitar.' : 'Clic para permitirle registrar entrada y salida en CAMPO desde la app.'}"
+    style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border:1.5px solid ${si ? '#059669' : '#cbd5e1'}; background:${si ? '#ecfdf5' : 'white'}; color:${si ? '#047857' : '#64748b'};">
+    <i class="fas ${si ? 'fa-toggle-on' : 'fa-toggle-off'}"></i> Campo: ${si ? 'autorizado' : 'no autorizado'}
+  </button>`;
+}
+
+window.toggleCampoAutorizado = async function (empId) {
+  const emp = (empCache || []).find(x => String(x.id) === String(empId));
+  if (!emp) return;
+  const nuevo = !esCampoAutorizadoEmp(emp);
+  const pregunta = nuevo
+    ? `¿Autorizar a ${emp.nombre} a registrar entrada y salida en CAMPO desde la app?`
+    : `¿Quitar a ${emp.nombre} la opción de registrar en CAMPO?`;
+  if (!confirm(pregunta)) return;
+  try {
+    if (!(window.FirebaseBackend && window.USE_FIREBASE)) throw new Error('Firestore no disponible');
+    const res = await window.FirebaseBackend.actualizarEmpleado({ empleadoId: String(empId), datos: { campo_autorizado: nuevo } });
+    if (res && res.error) throw new Error(res.error);
+    emp.campo_autorizado = nuevo;
+    const btn = document.getElementById('btnCampoAut_' + empId);
+    if (btn) btn.outerHTML = botonCampoAutorizadoHtml(emp);
+    mostrarToast(nuevo ? 'Autorizado para registrar en campo' : 'Ya no puede registrar en campo', 'success');
+  } catch (err) {
+    mostrarToast('No se pudo guardar: ' + (err.message || err), 'error');
+  }
+};
 
 // Campana de notificaciones (JS/notificaciones.js); RR.HH. también ve los avisos 'rol:rrhh'
 function montarCampanaPanel(session) {

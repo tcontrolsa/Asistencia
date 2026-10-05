@@ -933,39 +933,31 @@ function abrirPanelAdmin() {
 }
 
 // ========== GUÍA DEL MODO CAMPO ==========
-const RADIO_PROYECTO_CAMPO = 300;
+// Solo los colaboradores con campo_autorizado (lo activa el supervisor) ven el selector OFICINA/CAMPO.
+// En CAMPO registran entrada y salida fuera de la geocerca de la empresa; se guarda su ubicación GPS.
+function esCampoAutorizado() {
+    return Boolean(typeof empleado !== 'undefined' && empleado && empleado.campoAutorizado === true);
+}
 
-// Tarjeta de 3 pasos que indica al colaborador qué le falta para registrar en campo.
+// Tarjeta de pasos que indica al colaborador qué le falta para registrar en campo.
 function guiaCampoHtml() {
     const hayGps = Boolean(posicion.lat && posicion.lng);
-    const tieneProyecto = Boolean(empleado.baseLat && empleado.baseLng);
     const distEmpresa = hayGps ? calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA) : null;
-    const distProyecto = hayGps && tieneProyecto
-        ? calcularDistancia(posicion.lat, posicion.lng, parseFloat(empleado.baseLat), parseFloat(empleado.baseLng))
-        : null;
     const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
 
     const pasos = [
         {
+            ok: hayGps,
+            titulo: 'Ubicación GPS activa',
+            detalle: hayGps ? 'Se guardará tu ubicación con cada marcación'
+                : 'Activa el GPS y el permiso de ubicación; luego pulsa "Actualizar GPS"'
+        },
+        {
             ok: distEmpresa !== null && distEmpresa > RADIO_METROS,
             titulo: 'Estar fuera de la empresa',
-            detalle: !hayGps ? 'Esperando tu ubicación (GPS)…'
+            detalle: !hayGps ? 'Esperando tu ubicación…'
                 : distEmpresa > RADIO_METROS ? `Estás a ${m(distEmpresa)} de la empresa`
-                : `Estás dentro de la empresa (${m(distEmpresa)}): usa OFICINA`
-        },
-        {
-            ok: tieneProyecto,
-            titulo: 'Fijar la ubicación del proyecto',
-            detalle: tieneProyecto ? 'Ubicación guardada. Si cambiaste de obra, actualízala'
-                : 'Ya en el lugar de trabajo, pulsa el botón de abajo'
-        },
-        {
-            ok: distProyecto !== null && distProyecto <= RADIO_PROYECTO_CAMPO,
-            titulo: `Estar a menos de ${RADIO_PROYECTO_CAMPO} m del proyecto`,
-            detalle: !tieneProyecto ? 'Primero fija la ubicación del proyecto'
-                : distProyecto === null ? 'Esperando tu ubicación (GPS)…'
-                : distProyecto <= RADIO_PROYECTO_CAMPO ? `Estás a ${m(distProyecto)} del proyecto`
-                : `Estás a ${m(distProyecto)} del proyecto: acércate o actualiza la ubicación`
+                : `Estás dentro de la empresa (${m(distEmpresa)}): cambia a OFICINA`
         }
     ];
     const listo = pasos.every(p => p.ok);
@@ -973,7 +965,7 @@ function guiaCampoHtml() {
     return `
         <div style="text-align: left; background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: 14px; padding: 12px 14px; max-width: 340px; margin: 0 auto;">
             <div style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px;">
-                <i class="fas fa-route"></i> Para registrar en campo
+                <i class="fas fa-route"></i> Registro en campo
             </div>
             ${pasos.map((p, i) => `
                 <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px;">
@@ -986,18 +978,13 @@ function guiaCampoHtml() {
                     </div>
                 </div>
             `).join('')}
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
-                <button onclick="fijarBaseCampo()" style="flex: 1; padding: 8px 12px; border-radius: 10px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
-                    <i class="fas fa-location-arrow"></i> ${tieneProyecto ? 'ACTUALIZAR PROYECTO' : 'FIJAR UBICACIÓN PROYECTO'}
-                </button>
-                <button onclick="solicitarPermisoGPS()" title="Volver a leer el GPS" style="padding: 8px 12px; border-radius: 10px; background: white; color: #0369a1; border: 1.5px solid #bae6fd; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
-                    <i class="fas fa-sync-alt"></i> GPS
-                </button>
-            </div>
             ${listo ? `
-                <div style="margin-top: 10px; font-size: 12px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 8px; padding: 6px 10px;">
-                    <i class="fas fa-check-circle"></i> Listo: ya puedes registrar en campo
-                </div>` : ''}
+                <div style="font-size: 12px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 8px; padding: 6px 10px;">
+                    <i class="fas fa-check-circle"></i> Listo: registra tu entrada o salida de campo con el botón principal
+                </div>` : `
+                <button onclick="solicitarPermisoGPS()" style="width: 100%; padding: 8px 12px; border-radius: 10px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                    <i class="fas fa-sync-alt"></i> ACTUALIZAR GPS
+                </button>`}
         </div>
     `;
 }
@@ -1029,14 +1016,18 @@ function verificarDistanciaEmpresa(silencioso = false) {
     let msgError = 'Fuera del área de la empresa';
 
     if (currentMode === 'CAMPO') {
-        if (!empleado.baseLat || !empleado.baseLng) {
-            if (!silencioso) mostrarToast('❌ Debes registrar la ubicación del proyecto primero', 'error');
+        if (!esCampoAutorizado()) {
+            if (!silencioso) mostrarToast('No estás autorizado para registrar en campo. Consulta con tu supervisor.', 'error');
             return false;
         }
-        targetLat = parseFloat(empleado.baseLat);
-        targetLng = parseFloat(empleado.baseLng);
-        radio = RADIO_PROYECTO_CAMPO;
-        msgError = 'Fuera del área del proyecto';
+        const distEmpresa = calcularDistancia(lat, lng, LAT_EMPRESA, LNG_EMPRESA);
+        if (distEmpresa <= RADIO_METROS) {
+            if (!silencioso) mostrarToast(`Estás dentro de la empresa (${Math.round(distEmpresa)} m): registra en modo OFICINA`, 'error');
+            return false;
+        }
+        window._estaFueraArea = true;
+        window._distanciaFuera = Math.round(distEmpresa);
+        return true;
     }
 
     const distancia = calcularDistancia(lat, lng, targetLat, targetLng);
@@ -1144,7 +1135,7 @@ window.abrirModalReporteFueraArea = function () {
                             <option value="PERMISO_MEDICO" ${tipoPrevio === 'PERMISO_MEDICO' ? 'selected' : ''}>🩺 Permiso Médico</option>
                             <option value="FALTA_JUSTIFICADA" ${tipoPrevio === 'FALTA_JUSTIFICADA' ? 'selected' : ''}>📋 Falta Justificada</option>
                         </optgroup>
-                        <option value="TRABAJO_DE_CAMPO" ${tipoPrevio === 'TRABAJO_DE_CAMPO' ? 'selected' : ''}>🚗 CAMPO (Trabajo en Campo / Cliente)</option>
+                        ${esCampoAutorizado() ? `<option value="TRABAJO_DE_CAMPO" ${tipoPrevio === 'TRABAJO_DE_CAMPO' ? 'selected' : ''}>🚗 CAMPO (Trabajo en Campo / Cliente)</option>` : ''}
                     </select>
                 </div>
 
@@ -1193,7 +1184,8 @@ window.guardarReporteFueraArea = async function () {
             razon_justificac: obs || textoEstado,
             justificado: 'SI',
             quien_justifica: 'Colaborador (Reporte Fuera de Área)',
-            dispositivo: 'APP_COLABORADOR_EXTERNO'
+            dispositivo: 'APP_COLABORADOR_EXTERNO',
+            origen_app: 'COLABORADOR'
         };
 
         let res = null;
@@ -1549,14 +1541,15 @@ window.cambiarModo = function (modo) {
             solicitarPermisoGPS();
             return;
         }
+        if (!esCampoAutorizado()) {
+            mostrarToast('No estás autorizado para registrar en campo. Consulta con tu supervisor.', 'error');
+            return;
+        }
         // CAMPO solo se habilita fuera de la geocerca de la empresa (RADIO_METROS, 250 m)
         const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
         if (dist <= RADIO_METROS) {
             mostrarToast(`Estás dentro de la empresa (${Math.round(dist)} m): registra en modo OFICINA`, 'error');
             return;
-        }
-        if (!empleado.baseLat || !empleado.baseLng) {
-            mostrarToast('Pulsa "FIJAR UBICACIÓN PROYECTO" antes de registrar en campo', 'info');
         }
     }
     currentMode = modo;
@@ -1948,6 +1941,7 @@ async function procederConRegistro() {
         quien_justifica_entrada: detalleRazonEntrada?.quien_justifica || '',
         tipo_salida: empleado.tipo_salida || '',
         modo: currentMode,
+        origen_app: 'COLABORADOR',
         razon_permiso: empleado.razon_permiso || ''
     };
 
@@ -2055,7 +2049,13 @@ function horaLimiteAlmuerzoPasada() {
 }
 
 function iniciarRegistro(tipo) {
-    if (!verificarDistanciaEmpresa(false)) {
+    if (!verificarDistanciaEmpresa(true)) {
+        // Autorizado para campo y fuera de la empresa: indicarle que use CAMPO
+        if (currentMode === 'OFICINA' && esCampoAutorizado() && window._estaFueraArea) {
+            mostrarToast('Estás fuera de la empresa: selecciona CAMPO arriba para registrar', 'info');
+            return;
+        }
+        verificarDistanciaEmpresa(false);
         if (tipo === 'ENTRADA' && typeof window.abrirModalReporteFueraArea === 'function') {
             window.abrirModalReporteFueraArea();
         }
@@ -2588,6 +2588,7 @@ async function verificarPIN() {
                 telefono: res.empleado.telefono || '',
                 baseLat: res.empleado.baseLat || null,
                 baseLng: res.empleado.baseLng || null,
+                campoAutorizado: res.empleado.campoAutorizado === true,
                 pagos_url: estadoRes.pagos_url || '',
                 cultura_habilitada: (res.empleado.cultura_habilitada !== undefined) ? res.empleado.cultura_habilitada : estadoRes.cultura_habilitada,
                 cultura_activa: (res.empleado.cultura_activa !== undefined) ? res.empleado.cultura_activa : estadoRes.cultura_activa,
@@ -2824,6 +2825,7 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
                 fechaNacimiento: estadoRes.fechaNacimiento || '',
                 baseLat: estadoRes.baseLat || null,
                 baseLng: estadoRes.baseLng || null,
+                campoAutorizado: estadoRes.campoAutorizado === true,
                 tipoRegistro: '',
                 almuerzo: ''
             };
@@ -3054,6 +3056,7 @@ async function confirmarRegistroInicial() {
                     fechaNacimiento: estadoRes.fechaNacimiento || '',
                     baseLat: estadoRes.baseLat || null,
                     baseLng: estadoRes.baseLng || null,
+                    campoAutorizado: estadoRes.campoAutorizado === true,
                     cultura_habilitada: estadoRes.cultura_habilitada,
                     cultura_activa: estadoRes.cultura_activa,
                     tipoRegistro: '',
@@ -3824,6 +3827,7 @@ function calcularStatusActual() {
 
 // ========== RENDER HOME (CREDENCIAL) ==========
 function renderHomePage() {
+    if (currentMode === 'CAMPO' && !esCampoAutorizado()) currentMode = 'OFICINA';
     currentPage = 'home';
     const bottomNav = document.querySelector('.bottom-nav');
     if (bottomNav) bottomNav.style.display = 'flex';
@@ -4083,7 +4087,8 @@ function renderHomePage() {
                         </div>
                         <div style="margin-top: 6px; color: #64748b; font-size: clamp(11px, 3vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${empleado.area || 'General'}</div>
 
-                        <!-- Selector de Modo de Trabajo Compacto -->
+                        <!-- Selector de Modo de Trabajo Compacto (solo autorizados para campo) -->
+                        ${esCampoAutorizado() ? `
                         <div class="mode-selector-premium" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
                             <div onclick="cambiarModo('OFICINA')" style="cursor: pointer; padding: 8px 16px; border-radius: 100px; border: 2px solid ${currentMode === 'OFICINA' ? '#10b981' : '#f1f5f9'}; background: ${currentMode === 'OFICINA' ? '#f0fdf4' : 'white'}; color: ${currentMode === 'OFICINA' ? '#166534' : '#94a3b8'}; font-size: 11px; font-weight: 800; transition: all 0.3s; display: flex; align-items: center; gap: 6px; box-shadow: ${currentMode === 'OFICINA' ? '0 4px 10px rgba(16,185,129,0.15)' : 'none'};">
                                 <i class="fas fa-building" style="font-size: 12px;"></i> OFICINA
@@ -4092,6 +4097,7 @@ function renderHomePage() {
                                 <i class="fas fa-map-marker-alt" style="font-size: 12px;"></i> CAMPO
                             </div>
                         </div>
+                        ` : ''}
 
                         ${currentMode === 'CAMPO' ? `
                             <div id="guiaCampo" style="margin-top: 12px; animation: fadeIn 0.3s ease;">${guiaCampoHtml()}</div>
@@ -7591,6 +7597,7 @@ async function verificarEstadoInicial() {
                         telefono: estadoRes.telefono || '',
                         baseLat: estadoRes.baseLat || null,
                         baseLng: estadoRes.baseLng || null,
+                        campoAutorizado: estadoRes.campoAutorizado === true,
                         authExtras: estadoRes.authExtras || 'NO',
                         pagos_url: estadoRes.pagos_url || '',
                         cultura_habilitada: estadoRes.cultura_habilitada,

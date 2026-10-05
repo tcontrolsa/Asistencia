@@ -403,6 +403,7 @@ window.FirebaseBackend = {
                 telefono: empData.telefono || empData.celular || "",
                 baseLat: empData.baseLat,
                 baseLng: empData.baseLng,
+                campoAutorizado: empData.campo_autorizado === true || String(empData.campo_autorizado || '').toUpperCase() === 'SI',
                 cultura_habilitada: empData.cultura_habilitada !== false && empData.cultura_activa !== false,
                 cultura_activa: empData.cultura_habilitada !== false && empData.cultura_activa !== false
             }
@@ -524,6 +525,7 @@ window.FirebaseBackend = {
                 fechaNacimiento: empData.fechaNacimiento,
                 baseLat: empData.baseLat,
                 baseLng: empData.baseLng,
+                campoAutorizado: empData.campo_autorizado === true || String(empData.campo_autorizado || '').toUpperCase() === 'SI',
                 supervisor: empData.supervisor || (esSupervisor ? 'SI' : 'NO'),
                 esSupervisor: esSupervisor,
                 pagos_url: empData.id_dispositivo || "",
@@ -842,6 +844,7 @@ window.FirebaseBackend = {
             fechaNacimiento: empData.fechaNacimiento,
             baseLat: empData.baseLat,
             baseLng: empData.baseLng,
+            campoAutorizado: empData.campo_autorizado === true || String(empData.campo_autorizado || '').toUpperCase() === 'SI',
             authExtras: empData.authExtras || 'NO',
             esSupervisor: empData.supervisor === 'SI' || empData.esSupervisor === true || empData.cargo?.toUpperCase().includes("SUPERVISOR"),
             tieneEntrada: tieneEntrada,
@@ -1055,6 +1058,13 @@ window.FirebaseBackend = {
         if (!empDoc || !empDoc.exists) return { error: "Empleado no encontrado" };
         const infoEmpleado = empDoc.data();
         if (infoEmpleado.activo && infoEmpleado.activo !== 'SI') return { error: "Empleado inactivo" };
+
+        // Desde la app del colaborador, el modo CAMPO solo lo usan los autorizados por el supervisor
+        const campoAutorizado = infoEmpleado.campo_autorizado === true || String(infoEmpleado.campo_autorizado || '').toUpperCase() === 'SI';
+        const pideCampo = String(data.modo || '').toUpperCase() === 'CAMPO' || String(data.tipo || '').toUpperCase() === 'TRABAJO_DE_CAMPO';
+        if (data.origen_app === 'COLABORADOR' && pideCampo && !campoAutorizado) {
+            return { error: "No estás autorizado para registrar en campo. Consulta con tu supervisor." };
+        }
 
         // Fechas
         let ahora = new Date();
