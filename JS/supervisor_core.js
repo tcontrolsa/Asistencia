@@ -9109,7 +9109,8 @@ window.abrirPermisoCampo = function (empId) {
         ${pendiente ? `<div style="margin-bottom:10px;"><label style="${etiqueta}">Comentario si se rechaza</label>
           <input type="text" id="permCampoComentario" maxlength="300" placeholder="Opcional" style="${campo}"></div>` : ''}
         <div style="font-size:11px; color:#64748b; margin-bottom:12px;">Al vencer la fecha final, el colaborador deberá volver a solicitarlo. Se le avisa por WhatsApp.</div>
-        <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+        <div id="permCampoMensaje" role="alert" style="display:none; margin-bottom:10px; padding:8px 10px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:12px; font-weight:600;"></div>
+        <div id="permCampoBotones" style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
           ${vigente ? `<button onclick="window.resolverPermisoCampoUI('${emp.id}','REVOCAR')" style="padding:8px 12px; border-radius:8px; border:1.5px solid #fecaca; background:#fef2f2; color:#b91c1c; font-weight:700; font-size:12px;">Revocar</button>` : ''}
           ${pendiente ? `<button onclick="window.resolverPermisoCampoUI('${emp.id}','RECHAZAR')" style="padding:8px 12px; border-radius:8px; border:1.5px solid #fecaca; background:#fef2f2; color:#b91c1c; font-weight:700; font-size:12px;">Rechazar</button>` : ''}
           <button onclick="window.resolverPermisoCampoUI('${emp.id}','APROBAR')" style="padding:8px 14px; border-radius:8px; border:none; background:#059669; color:white; font-weight:800; font-size:12px;">
@@ -9133,7 +9134,11 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
   try { quien = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').nombre || quien; } catch (e) { }
   params.supervisor = quien;
   if (accion === 'REVOCAR' && !confirm(`¿Quitar a ${emp.nombre} el permiso de registrar en campo desde hoy?`)) return;
-  mostrarLoader(true);
+  // Mensajes y estado dentro de la ventana: está por encima de los toasts y del loader del panel
+  const caja = document.getElementById('permCampoMensaje');
+  const botones = [...document.querySelectorAll('#permCampoBotones button')];
+  if (caja) caja.style.display = 'none';
+  botones.forEach(b => { b.disabled = true; b.style.opacity = '0.6'; });
   try {
     const res = await window.FirebaseBackend.resolverPermisoCampo(params);
     if (!res || res.error) throw new Error((res && res.error) || 'No se pudo guardar');
@@ -9148,6 +9153,8 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
     }
     document.getElementById('modalPermisoCampo')?.remove();
     refrescarBotonCampo(emp);
+    const msj = { APROBAR: 'Permiso de campo aprobado', RECHAZAR: 'Solicitud rechazada', REVOCAR: 'Permiso de campo revocado' }[accion];
+    mostrarToast(msj, 'success');
 
     // Respuesta al colaborador por WhatsApp
     let wa = '';
@@ -9164,14 +9171,13 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
     }
     if (texto && emp.telefono && window.OpenWAService && typeof window.OpenWAService.enviarMensajeTexto === 'function') {
       const r = await window.OpenWAService.enviarMensajeTexto(emp.telefono, texto).catch(e => ({ ok: false, error: e.message }));
-      wa = r && r.ok !== false ? ' y se le avisó por WhatsApp' : ' (no se pudo enviar el WhatsApp)';
+      wa = r && r.ok !== false ? `${msj}: se le avisó por WhatsApp` : `${msj}, pero no se pudo enviar el WhatsApp`;
+      mostrarToast(wa, r && r.ok !== false ? 'success' : 'warning');
     }
-    const msj = { APROBAR: 'Permiso de campo aprobado', RECHAZAR: 'Solicitud rechazada', REVOCAR: 'Permiso de campo revocado' }[accion];
-    mostrarToast(msj + wa, 'success');
   } catch (err) {
-    mostrarToast('No se pudo guardar: ' + (err.message || err), 'error');
-  } finally {
-    mostrarLoader(false);
+    if (caja) { caja.textContent = 'No se pudo guardar: ' + (err.message || err); caja.style.display = 'block'; }
+    else mostrarToast('No se pudo guardar: ' + (err.message || err), 'error');
+    botones.forEach(b => { b.disabled = false; b.style.opacity = ''; });
   }
 };
 

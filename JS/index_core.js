@@ -953,11 +953,7 @@ function campoPermisoHtml() {
     const caja = (bg, borde, color, html) => `<div style="margin: 12px auto 0; max-width: 340px; text-align: left; background: ${bg}; border: 1.5px solid ${borde}; border-radius: 12px; padding: 10px 12px; font-size: 12px; color: ${color}; line-height: 1.4;">${html}</div>`;
     const boton = (txt) => `<button onclick="abrirSolicitudCampo()" style="margin-top: 8px; width: 100%; padding: 8px 12px; border-radius: 10px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11.5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><i class="fas fa-calendar-plus"></i> ${txt}</button>`;
 
-    if (esCampoAutorizado()) {
-        return `<div style="margin-top: 8px; font-size: 11px; font-weight: 700; color: #92400e;">
-            <i class="fas fa-calendar-check"></i> Campo autorizado hasta el ${fechaCortaCampo(empleado.campoHasta)}
-        </div>`;
-    }
+    if (esCampoAutorizado()) return '';
     if (sol && sol.estado === 'PENDIENTE' && String(sol.hasta || '') >= hoy) {
         return caja('#eff6ff', '#bfdbfe', '#1e3a8a', `
             <strong><i class="fas fa-hourglass-half"></i> Solicitud de campo enviada</strong><br>
@@ -969,6 +965,10 @@ function campoPermisoHtml() {
             <strong><i class="fas fa-calendar-check"></i> Permiso de campo aprobado</strong><br>
             Podrás registrar en campo del ${fechaCortaCampo(sol.desde)} al ${fechaCortaCampo(sol.hasta)}.`);
     }
+    // La invitación a solicitar solo aparece fuera de la empresa (GPS a más de RADIO_METROS)
+    const fuera = Boolean(posicion.lat && posicion.lng) &&
+        calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA) > RADIO_METROS;
+    if (!fuera) return '';
     let previo = '';
     if (sol && sol.estado === 'RECHAZADA') {
         previo = `<strong style="color:#b91c1c;"><i class="fas fa-circle-xmark"></i> Tu última solicitud no fue aprobada</strong>${sol.comentario ? '<br>' + escapeHtml(sol.comentario) : ''}<br>`;
@@ -1004,7 +1004,8 @@ window.abrirSolicitudCampo = function () {
                     <label style="${etiqueta}">Proyecto / motivo *</label>
                     <textarea id="solCampoMotivo" rows="2" maxlength="300" placeholder="Ej: Montaje en planta del cliente CPP" style="${campo} resize: none; font-size: 13px;"></textarea>
                 </div>
-                <div id="solCampoDias" style="font-size: 11.5px; color: #64748b; margin-bottom: 14px;"></div>
+                <div id="solCampoDias" style="font-size: 11.5px; color: #64748b; margin-bottom: 10px;"></div>
+                <div id="solCampoMensaje" role="alert" style="display: none; margin-bottom: 12px; padding: 8px 12px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-size: 12.5px; font-weight: 600;"></div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
                     <button type="button" onclick="document.getElementById('modalSolicitudCampo').remove()" style="padding: 10px 16px; border-radius: 10px; background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 700; font-size: 13px;">Cancelar</button>
                     <button type="button" id="btnEnviarSolCampo" onclick="enviarSolicitudCampo()" style="padding: 10px 18px; border-radius: 10px; background: #b45309; border: none; color: white; font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-paper-plane"></i> Enviar solicitud</button>
@@ -1024,90 +1025,93 @@ window.abrirSolicitudCampo = function () {
     pintarDias();
 };
 
+// Los avisos se muestran dentro del formulario: la ventana está por encima de los toasts y del loader
+function mensajeSolicitudCampo(texto) {
+    const box = document.getElementById('solCampoMensaje');
+    if (!box) return;
+    box.style.display = texto ? 'block' : 'none';
+    box.textContent = texto || '';
+}
+
 window.enviarSolicitudCampo = async function () {
     const desde = document.getElementById('solCampoDesde')?.value || '';
     const hasta = document.getElementById('solCampoHasta')?.value || '';
-    const motivo = (document.getElementById('solCampoMotivo')?.value || '').trim();
-    if (!motivo) { mostrarToast('Indica el proyecto o motivo', 'warning'); return; }
+    const motivoEl = document.getElementById('solCampoMotivo');
+    const motivo = (motivoEl?.value || '').trim();
+    mensajeSolicitudCampo('');
+    if (!motivo) {
+        mensajeSolicitudCampo('Escribe el proyecto o motivo para enviar la solicitud.');
+        motivoEl?.focus();
+        return;
+    }
     const btn = document.getElementById('btnEnviarSolCampo');
-    if (btn) btn.disabled = true;
-    showLoading(true);
+    const textoBtn = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando…'; }
     try {
         const res = await window.FirebaseBackend.solicitarCampo({ empleadoId: empleado.id, desde, hasta, motivo });
-        if (!res || res.error) throw new Error((res && res.error) || 'No se pudo enviar');
+        if (!res || res.error) throw new Error((res && res.error) || 'No se pudo enviar la solicitud');
         empleado.campoSolicitud = res.solicitud;
-        let aviso = null;
-        if (window.OpenWAService && typeof window.OpenWAService.notificarSupAdminsSolicitudCampo === 'function') {
-            aviso = await window.OpenWAService.notificarSupAdminsSolicitudCampo({
-                empleadoId: empleado.id, empleadoNombre: empleado.nombre, empleadoArea: empleado.area, desde, hasta, motivo
-            }).catch(() => null);
-        }
+
+        // Guardada: se cierra la ventana; el WhatsApp a supervisión sale en segundo plano
         document.getElementById('modalSolicitudCampo')?.remove();
-        mostrarToast(aviso && aviso.ok
-            ? '✅ Solicitud enviada. Supervisión fue notificada por WhatsApp'
-            : '✅ Solicitud registrada. Supervisión la verá en el panel', 'success');
         renderHomePage();
+        mostrarToast('Solicitud enviada. Te avisaremos cuando la revisen', 'success');
+        if (window.OpenWAService && typeof window.OpenWAService.notificarSupAdminsSolicitudCampo === 'function') {
+            window.OpenWAService.notificarSupAdminsSolicitudCampo({
+                empleadoId: empleado.id, empleadoNombre: empleado.nombre, empleadoArea: empleado.area, desde, hasta, motivo
+            }).then(aviso => {
+                if (!aviso || !aviso.ok) console.warn('Solicitud de campo: WhatsApp a supervisión no enviado', aviso);
+            }).catch(e => console.warn('Solicitud de campo: WhatsApp a supervisión no enviado', e));
+        }
     } catch (e) {
-        mostrarToast('❌ ' + (e.message || e), 'error');
-        if (btn) btn.disabled = false;
-    } finally {
-        showLoading(false);
+        mensajeSolicitudCampo(e.message || String(e));
+        if (btn) { btn.disabled = false; btn.innerHTML = textoBtn; }
     }
 };
 
-// Tarjeta de pasos que indica al colaborador qué le falta para registrar en campo.
-function guiaCampoHtml() {
-    const hayGps = Boolean(posicion.lat && posicion.lng);
-    const distEmpresa = hayGps ? calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA) : null;
-    const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
-
-    const pasos = [
-        {
-            ok: hayGps,
-            titulo: 'Ubicación GPS activa',
-            detalle: hayGps ? 'Se guardará tu ubicación con cada marcación'
-                : 'Activa el GPS y el permiso de ubicación; luego pulsa "Actualizar GPS"'
-        },
-        {
-            ok: distEmpresa !== null && distEmpresa > RADIO_METROS,
-            titulo: 'Estar fuera de la empresa',
-            detalle: !hayGps ? 'Esperando tu ubicación…'
-                : distEmpresa > RADIO_METROS ? `Estás a ${m(distEmpresa)} de la empresa`
-                : `Estás dentro de la empresa (${m(distEmpresa)}): cambia a OFICINA`
-        }
-    ];
-    const listo = pasos.every(p => p.ok);
-
-    return `
-        <div style="text-align: left; background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: 14px; padding: 12px 14px; max-width: 340px; margin: 0 auto;">
-            <div style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px;">
-                <i class="fas fa-route"></i> Registro en campo
-            </div>
-            ${pasos.map((p, i) => `
-                <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px;">
-                    <div style="flex: 0 0 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: ${p.ok ? '#10b981' : '#e2e8f0'}; color: ${p.ok ? 'white' : '#475569'};">
-                        ${p.ok ? '<i class="fas fa-check"></i>' : i + 1}
-                    </div>
-                    <div style="line-height: 1.3;">
-                        <div style="font-size: 12.5px; font-weight: 700; color: ${p.ok ? '#166534' : '#0f172a'};">${p.titulo}</div>
-                        <div style="font-size: 11.5px; color: #64748b;">${p.detalle}</div>
-                    </div>
-                </div>
-            `).join('')}
-            ${listo ? `
-                <div style="font-size: 12px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 8px; padding: 6px 10px;">
-                    <i class="fas fa-check-circle"></i> Listo: registra tu entrada o salida de campo con el botón principal
-                </div>` : `
-                <button onclick="solicitarPermisoGPS()" style="width: 100%; padding: 8px 12px; border-radius: 10px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
-                    <i class="fas fa-sync-alt"></i> ACTUALIZAR GPS
-                </button>`}
-        </div>
-    `;
+// Modo de trabajo automático: con permiso de campo vigente y GPS a más de RADIO_METROS de la
+// empresa se registra en CAMPO; en cualquier otro caso, en OFICINA. El colaborador no elige.
+function modoAutomatico() {
+    if (!esCampoAutorizado() || !posicion.lat || !posicion.lng) return 'OFICINA';
+    return calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA) > RADIO_METROS ? 'CAMPO' : 'OFICINA';
 }
 
+// Indicador (solo para quien tiene permiso de campo): en qué modo se registrará y por qué
+function modoTrabajoHtml() {
+    if (!esCampoAutorizado()) return '';
+    const hayGps = Boolean(posicion.lat && posicion.lng);
+    const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+    const hasta = `Permiso de campo hasta el ${fechaCortaCampo(empleado.campoHasta)}`;
+    const chip = (bg, borde, color, icono, titulo, detalle) => `
+        <div style="margin: 12px auto 0; max-width: 340px; display: flex; gap: 10px; align-items: center; text-align: left; background: ${bg}; border: 1.5px solid ${borde}; border-radius: 12px; padding: 8px 12px; color: ${color};">
+            <i class="fas ${icono}" style="font-size: 18px;"></i>
+            <div style="line-height: 1.3;">
+                <div style="font-size: 12.5px; font-weight: 800;">${titulo}</div>
+                <div style="font-size: 11px; opacity: .85;">${detalle}</div>
+            </div>
+        </div>`;
+    if (!hayGps) {
+        return chip('#f8fafc', '#e2e8f0', '#475569', 'fa-location-crosshairs', 'Buscando tu ubicación…',
+            `El modo OFICINA o CAMPO se elige solo según dónde estés. ${hasta}`);
+    }
+    const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+    return currentMode === 'CAMPO'
+        ? chip('#fffbeb', '#fcd34d', '#92400e', 'fa-map-marker-alt', 'Registrarás en CAMPO',
+            `Estás a ${m(dist)} de la empresa. ${hasta}`)
+        : chip('#f0fdf4', '#bbf7d0', '#166534', 'fa-building', 'Registrarás en OFICINA',
+            `Estás en la empresa. Al salir de ella cambiará solo a CAMPO. ${hasta}`);
+}
+
+// Se llama con cada lectura de GPS: fija el modo y repinta lo que depende de la ubicación
 function actualizarGuiaCampo() {
-    const cont = document.getElementById('guiaCampo');
-    if (cont && currentMode === 'CAMPO') cont.innerHTML = guiaCampoHtml();
+    currentMode = modoAutomatico();
+    if (typeof empleado === 'undefined' || !empleado) return;
+    [['modoTrabajo', modoTrabajoHtml], ['campoPermiso', campoPermisoHtml]].forEach(([id, fn]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const html = fn();
+        if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    });
 }
 
 // ========== FUNCIONES DE DISTANCIA ==========
@@ -1650,29 +1654,6 @@ async function registrar() {
     procederConRegistro();
 }
 
-window.cambiarModo = function (modo) {
-    if (modo === 'CAMPO') {
-        if (!posicion.lat || !posicion.lng) {
-            mostrarToast('Ubicación no detectada. Esperando GPS...', 'warning');
-            solicitarPermisoGPS();
-            return;
-        }
-        if (!esCampoAutorizado()) {
-            mostrarToast('No tienes un permiso de campo vigente. Solicítalo desde el inicio de la app.', 'error');
-            return;
-        }
-        // CAMPO solo se habilita fuera de la geocerca de la empresa (RADIO_METROS, 250 m)
-        const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
-        if (dist <= RADIO_METROS) {
-            mostrarToast(`Estás dentro de la empresa (${Math.round(dist)} m): registra en modo OFICINA`, 'error');
-            return;
-        }
-    }
-    currentMode = modo;
-    renderHomePage();
-    ajustarLayout();
-};
-
 window.fijarBaseCampo = async function () {
     if (!posicion.lat || !posicion.lng) {
         mostrarToast('Obteniendo ubicación actual...', 'info');
@@ -2166,11 +2147,6 @@ function horaLimiteAlmuerzoPasada() {
 
 function iniciarRegistro(tipo) {
     if (!verificarDistanciaEmpresa(true)) {
-        // Autorizado para campo y fuera de la empresa: indicarle que use CAMPO
-        if (currentMode === 'OFICINA' && esCampoAutorizado() && window._estaFueraArea) {
-            mostrarToast('Estás fuera de la empresa: selecciona CAMPO arriba para registrar', 'info');
-            return;
-        }
         verificarDistanciaEmpresa(false);
         if (tipo === 'ENTRADA' && typeof window.abrirModalReporteFueraArea === 'function') {
             window.abrirModalReporteFueraArea();
@@ -4076,7 +4052,7 @@ function calcularStatusActual() {
 
 // ========== RENDER HOME (CREDENCIAL) ==========
 function renderHomePage() {
-    if (currentMode === 'CAMPO' && !esCampoAutorizado()) currentMode = 'OFICINA';
+    currentMode = modoAutomatico();
     currentPage = 'home';
     const bottomNav = document.querySelector('.bottom-nav');
     if (bottomNav) bottomNav.style.display = 'flex';
@@ -4336,22 +4312,10 @@ function renderHomePage() {
                         </div>
                         <div style="margin-top: 6px; color: #64748b; font-size: clamp(11px, 3vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${empleado.area || 'General'}</div>
 
-                        <!-- Selector de Modo de Trabajo Compacto (solo autorizados para campo) -->
-                        ${esCampoAutorizado() ? `
-                        <div class="mode-selector-premium" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
-                            <div onclick="cambiarModo('OFICINA')" style="cursor: pointer; padding: 8px 16px; border-radius: 100px; border: 2px solid ${currentMode === 'OFICINA' ? '#10b981' : '#f1f5f9'}; background: ${currentMode === 'OFICINA' ? '#f0fdf4' : 'white'}; color: ${currentMode === 'OFICINA' ? '#166534' : '#94a3b8'}; font-size: 11px; font-weight: 800; transition: all 0.3s; display: flex; align-items: center; gap: 6px; box-shadow: ${currentMode === 'OFICINA' ? '0 4px 10px rgba(16,185,129,0.15)' : 'none'};">
-                                <i class="fas fa-building" style="font-size: 12px;"></i> OFICINA
-                            </div>
-                            <div onclick="cambiarModo('CAMPO')" style="cursor: pointer; padding: 8px 16px; border-radius: 100px; border: 2px solid ${currentMode === 'CAMPO' ? '#f59e0b' : '#f1f5f9'}; background: ${currentMode === 'CAMPO' ? '#fffbeb' : 'white'}; color: ${currentMode === 'CAMPO' ? '#92400e' : '#94a3b8'}; font-size: 11px; font-weight: 800; transition: all 0.3s; display: flex; align-items: center; gap: 6px; box-shadow: ${currentMode === 'CAMPO' ? '0 4px 10px rgba(245,158,11,0.15)' : 'none'};">
-                                <i class="fas fa-map-marker-alt" style="font-size: 12px;"></i> CAMPO
-                            </div>
-                        </div>
-                        ` : ''}
-                        ${campoPermisoHtml()}
+                        <!-- Modo de trabajo automático (OFICINA / CAMPO según el GPS) -->
+                        <div id="modoTrabajo">${modoTrabajoHtml()}</div>
 
-                        ${currentMode === 'CAMPO' ? `
-                            <div id="guiaCampo" style="margin-top: 12px; animation: fadeIn 0.3s ease;">${guiaCampoHtml()}</div>
-                        ` : ''}
+                        <div id="campoPermiso">${campoPermisoHtml()}</div>
                     </div>
                     
 
