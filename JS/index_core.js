@@ -2650,14 +2650,7 @@ async function verificarPIN() {
             mostrarToast(res.error, 'error');
 
             if (res.debeRegistrarPin) {
-                setTimeout(() => {
-                    mostrarRegistroInicial();
-                    const regInput = document.getElementById('registroEmployeeId');
-                    if (regInput && empleadoId) {
-                        regInput.value = empleadoId;
-                        verificarEstadoCuentaEmpleado();
-                    }
-                }, 1400);
+                setTimeout(() => mostrarRegistroInicial(), 1400);
             }
             return;
         }
@@ -3458,6 +3451,13 @@ async function confirmarMigracionPassword() {
 window.confirmarMigracionPassword = confirmarMigracionPassword;
 
 // ========== RENDERIZADO DE PÁGINAS ==========
+// Acceso en un solo camino:
+//   1. ID  →  2a. contraseña (si ya tiene)  |  2b. crear contraseña (primera vez)
+//   ¿Olvidaste tu contraseña? → código por WhatsApp (Apps Script, acceso_seguro.gs) → nueva contraseña.
+// Al ingresar, este teléfono queda vinculado (verificarPIN / registrarDispositivoConPIN).
+let _authEmpleado = null;      // { id, nombre, foto, tienePin }
+let _recTimer = null;
+
 function renderAuthScreen() {
     const bottomNav = document.querySelector('.bottom-nav');
     if (bottomNav) bottomNav.style.display = 'none';
@@ -3466,114 +3466,112 @@ function renderAuthScreen() {
     const fabEmergencia = document.getElementById('fabEmergencia');
     if (fabEmergencia) fabEmergencia.style.display = 'none';
 
+    const ojo = (id) => `<button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('${id}', this)" aria-label="Mostrar u ocultar"><i class="fas fa-eye"></i></button>`;
     const mainContent = document.getElementById('mainContent');
     mainContent.innerHTML = `
             <div class="page">
-                <div id="verifyingScreen">
-                    <div class="glass-card text-center py-5">
-                        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
-                        <h5 class="fw-bold">Verificando sesión...</h5>
-                        <p class="text-muted">Por favor espera un momento</p>
+                <div class="glass-card auth-card" style="max-width: 420px; margin: 0 auto;">
+                    <div class="text-center mb-3">
+                        <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" style="width: clamp(130px, 42vw, 175px); max-height: 64px; object-fit: contain; margin: 0 auto 10px; display: block;" onerror="this.style.display='none'">
                     </div>
-                </div>
-                
-                <div id="pinScreen" class="hidden">
-                    <div class="glass-card">
-                        <div class="text-center mb-4">
-                            <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" style="width: clamp(140px, 45vw, 190px); max-height: 72px; object-fit: contain; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
-                            <h3 class="h5 fw-bold" style="color: #0f172a;">Acceso Seguro al Sistema</h3>
-                            <p class="text-muted small">Ingresa tus credenciales para continuar</p>
-                        </div>
-                        
-                        <div class="mb-3 text-start">
-                            <label class="form-label small fw-bold text-secondary mb-1">ID / Cédula de Empleado</label>
-                            <input type="text" id="loginEmployeeId" class="form-control form-control-lg" placeholder="Ej: 1058" autocomplete="username" onkeydown="if(event.key==='Enter') document.getElementById('pinInput')?.focus()">
-                        </div>
 
-                        <div class="mb-4 text-start">
-                            <label class="form-label small fw-bold text-secondary mb-1">Contraseña</label>
-                            <div class="input-group">
-                                <input type="password" id="pinInput" class="form-control form-control-lg" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter') verificarPIN()">
-                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('pinInput', this)">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="alert alert-info py-2 small mb-4" style="border-radius: 10px; font-size: 11.5px;">
-                            <i class="fas fa-shield-halved me-1"></i> Si es tu primera vez o vinculas un nuevo dispositivo, haz clic en "Vincular Dispositivo".
-                        </div>
-                        
-                        <button class="btn btn-primary btn-lg w-100 mb-2" onclick="verificarPIN()" style="border-radius: 12px; font-weight: 700;">
-                            <i class="fas fa-arrow-right me-1"></i> Ingresar
-                        </button>
-                        
-                        <button class="btn btn-outline-primary w-100" onclick="mostrarRegistroInicial()" style="border-radius: 12px; font-weight: 600;">
-                            <i class="fas fa-user-plus me-1"></i> Vincular Dispositivo
-                        </button>
-                        
-                        <div class="text-center mt-3" style="font-size: 11px; color: #64748b; line-height: 1.4;">
-                            <i class="fas fa-shield-alt text-primary me-1"></i> Tratamiento de datos protegido por la <strong>LOPDP Ecuador</strong>.<br>
-                            <a href="javascript:void(0)" onclick="window.abrirModalAvisoPrivacidad()" style="color: #0284c7; text-decoration: underline; font-weight: 600;">Ver Descargo Legal y Derechos</a>
-                        </div>
-                        
-                        <div id="pinResult" class="hidden alert alert-danger mt-3" style="border-radius: 10px; font-size: 12px;"></div>
+                    <!-- Cargando -->
+                    <div id="authPasoCargando" class="text-center py-4">
+                        <div class="spinner-border text-primary mb-3" style="width: 2.5rem; height: 2.5rem;" role="status"></div>
+                        <div class="fw-bold">Verificando…</div>
                     </div>
-                </div>
-                
-                <div id="registroInicialScreen" class="hidden">
-                    <div class="glass-card">
-                        <div class="text-center mb-3">
-                            <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" style="width: clamp(130px, 42vw, 175px); max-height: 64px; object-fit: contain; margin-bottom: 14px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
-                            <h3 class="h5 fw-bold" id="registroTitle" style="color: #0f172a;">Vincular Dispositivo</h3>
-                            <p class="text-muted small" id="registroSubtitle">Ingresa tu ID de empleado para continuar</p>
-                        </div>
-                        
-                        <div class="mb-3 text-start">
-                            <label class="form-label small fw-bold text-secondary mb-1">ID (Número de usuario)</label>
-                            <input type="text" id="registroEmployeeId" class="form-control form-control-lg" placeholder="Ej: 1 o 1058" oninput="verificarEstadoCuentaEmpleadoDebounced()" onblur="verificarEstadoCuentaEmpleado()" onchange="verificarEstadoCuentaEmpleado()" onkeydown="if(event.key==='Enter') { verificarEstadoCuentaEmpleado(); document.getElementById('registroPasswordInput')?.focus(); }">
-                        </div>
 
-                        <div id="registroStatusAlert" class="alert alert-info py-2 small mb-3 hidden" style="border-radius: 10px; font-size: 11.5px;"></div>
-
-                        <div class="mb-3 text-start">
-                            <label class="form-label small fw-bold text-secondary mb-1" id="lblRegistroPassword">Contraseña</label>
-                            <div class="input-group">
-                                <input type="password" id="registroPasswordInput" class="form-control form-control-lg" placeholder="Ingresa tu contraseña" onkeydown="if(event.key==='Enter') { if (_esVinculacionDispositivoExistente) { confirmarRegistroInicial(); } else { document.getElementById('registroPasswordConfirm')?.focus(); } }">
-                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('registroPasswordInput', this)">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="mb-4 text-start" id="containerPasswordConfirm">
-                            <label class="form-label small fw-bold text-secondary mb-1">Confirmar Contraseña</label>
-                            <div class="input-group">
-                                <input type="password" id="registroPasswordConfirm" class="form-control form-control-lg" placeholder="Repite la contraseña" onkeydown="if(event.key==='Enter') confirmarRegistroInicial()">
-                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('registroPasswordConfirm', this)">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <p class="text-muted small text-center mb-3" id="registroHelpText" style="font-size: 11.5px;">
-                            🔑 Recuerda esta contraseña, la usarás cada vez que ingreses.
-                        </p>
-                        
-                        <button class="btn btn-primary btn-lg w-100 mb-2" id="btnConfirmarRegistro" onclick="confirmarRegistroInicial()" style="border-radius: 12px; font-weight: 700;">
-                            <i class="fas fa-mobile-alt me-1"></i> Vincular Dispositivo
+                    <!-- Paso 1: ID -->
+                    <div id="authPasoId" class="hidden">
+                        <h3 class="h5 fw-bold text-center mb-1" style="color:#0f172a;">Ingresa a tu asistencia</h3>
+                        <p class="text-muted small text-center mb-3">Escribe tu número de usuario (ID)</p>
+                        <label class="form-label small fw-bold text-secondary mb-1" for="authId">Número de usuario (ID)</label>
+                        <input type="text" id="authId" class="form-control form-control-lg mb-3" inputmode="numeric" placeholder="Ej: 1058" autocomplete="username"
+                            onkeydown="if(event.key==='Enter') authContinuarId()">
+                        <button class="btn btn-primary btn-lg w-100" id="btnAuthContinuar" onclick="authContinuarId()" style="border-radius: 12px; font-weight: 700;">
+                            Continuar <i class="fas fa-arrow-right ms-1"></i>
                         </button>
-                        
-                        <button class="btn btn-outline-secondary w-100" onclick="volverAPIN()" style="border-radius: 12px; font-weight: 600;">
+                        <p class="text-muted text-center mt-3 mb-0" style="font-size: 11.5px;">¿No sabes tu ID? Pregúntale a tu supervisor o a RR.HH.</p>
+                    </div>
+
+                    <!-- Paso 2: tarjeta del usuario (común a 2a, 2b y recuperar) -->
+                    <div id="authUsuario" class="hidden text-center mb-3"></div>
+
+                    <!-- Paso 2a: contraseña -->
+                    <div id="authPasoPass" class="hidden">
+                        <input type="hidden" id="loginEmployeeId">
+                        <label class="form-label small fw-bold text-secondary mb-1" for="pinInput">Contraseña</label>
+                        <div class="input-group mb-2">
+                            <input type="password" id="pinInput" class="form-control form-control-lg" placeholder="Tu contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter') authIngresar()">
+                            ${ojo('pinInput')}
+                        </div>
+                        <div class="text-end mb-3">
+                            <a href="javascript:void(0)" onclick="authMostrarRecuperar()" style="font-size: 12.5px; font-weight: 700; color: #0284c7;">¿Olvidaste tu contraseña?</a>
+                        </div>
+                        <div id="pinResult" class="hidden alert alert-danger py-2" style="border-radius: 10px; font-size: 12px;"></div>
+                        <button class="btn btn-primary btn-lg w-100" id="btnAuthIngresar" onclick="authIngresar()" style="border-radius: 12px; font-weight: 700;">
+                            <i class="fas fa-right-to-bracket me-1"></i> Ingresar
+                        </button>
+                    </div>
+
+                    <!-- Paso 2b: primera vez, crear contraseña -->
+                    <div id="authPasoCrear" class="hidden">
+                        <input type="hidden" id="registroEmployeeId">
+                        <div class="alert alert-info py-2 small" style="border-radius: 10px; font-size: 12px;">
+                            <i class="fas fa-circle-info me-1"></i> Es tu primer ingreso: crea una contraseña. La usarás cada vez que entres.
+                        </div>
+                        <label class="form-label small fw-bold text-secondary mb-1" for="registroPasswordInput">Nueva contraseña</label>
+                        <div class="input-group mb-2">
+                            <input type="password" id="registroPasswordInput" class="form-control form-control-lg" placeholder="Mínimo 4 caracteres" autocomplete="new-password" onkeydown="if(event.key==='Enter') document.getElementById('registroPasswordConfirm')?.focus()">
+                            ${ojo('registroPasswordInput')}
+                        </div>
+                        <label class="form-label small fw-bold text-secondary mb-1" for="registroPasswordConfirm">Repite la contraseña</label>
+                        <div class="input-group mb-3">
+                            <input type="password" id="registroPasswordConfirm" class="form-control form-control-lg" placeholder="Repite la contraseña" autocomplete="new-password" onkeydown="if(event.key==='Enter') authCrear()">
+                            ${ojo('registroPasswordConfirm')}
+                        </div>
+                        <button class="btn btn-primary btn-lg w-100" onclick="authCrear()" style="border-radius: 12px; font-weight: 700;">
+                            <i class="fas fa-check me-1"></i> Crear contraseña e ingresar
+                        </button>
+                    </div>
+
+                    <!-- Recuperar: 1) enviar código  2) código + nueva contraseña -->
+                    <div id="authPasoRecuperar" class="hidden">
+                        <h4 class="h6 fw-bold mb-1" style="color:#0f172a;"><i class="fas fa-key me-1 text-primary"></i> Recuperar contraseña</h4>
+                        <div id="recPaso1">
+                            <p class="small text-muted mb-3">Te enviaremos un código de 6 dígitos al WhatsApp registrado por RR.HH. para que crees una contraseña nueva.</p>
+                            <button class="btn btn-primary btn-lg w-100" id="btnRecEnviar" onclick="authEnviarCodigo()" style="border-radius: 12px; font-weight: 700;">
+                                <i class="fab fa-whatsapp me-1"></i> Enviarme el código
+                            </button>
+                        </div>
+                        <div id="recPaso2" class="hidden">
+                            <p class="small mb-2" id="recDestino"></p>
+                            <label class="form-label small fw-bold text-secondary mb-1" for="recCodigo">Código de 6 dígitos</label>
+                            <input type="text" id="recCodigo" class="form-control form-control-lg mb-2 text-center" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" style="letter-spacing: 6px; font-weight: 800;">
+                            <label class="form-label small fw-bold text-secondary mb-1" for="recNueva">Nueva contraseña</label>
+                            <div class="input-group mb-2">
+                                <input type="password" id="recNueva" class="form-control form-control-lg" placeholder="Mínimo 4 caracteres" autocomplete="new-password">
+                                ${ojo('recNueva')}
+                            </div>
+                            <label class="form-label small fw-bold text-secondary mb-1" for="recConfirma">Repite la contraseña</label>
+                            <div class="input-group mb-3">
+                                <input type="password" id="recConfirma" class="form-control form-control-lg" placeholder="Repite la contraseña" autocomplete="new-password" onkeydown="if(event.key==='Enter') authRestablecer()">
+                                ${ojo('recConfirma')}
+                            </div>
+                            <button class="btn btn-primary btn-lg w-100 mb-2" id="btnRecGuardar" onclick="authRestablecer()" style="border-radius: 12px; font-weight: 700;">
+                                <i class="fas fa-lock me-1"></i> Guardar e ingresar
+                            </button>
+                            <button class="btn btn-link w-100 p-0" id="btnRecReenviar" onclick="authEnviarCodigo()" style="font-size: 12.5px;" disabled>Reenviar código</button>
+                        </div>
+                        <div id="recResultado" class="hidden alert py-2 mt-2" style="border-radius: 10px; font-size: 12px;"></div>
+                        <button class="btn btn-outline-secondary w-100 mt-2" onclick="authMostrarPaso('pass')" style="border-radius: 12px; font-weight: 600;">
                             <i class="fas fa-arrow-left me-1"></i> Volver
                         </button>
-                        
-                        <div class="text-center mt-3" style="font-size: 11px; color: #64748b; line-height: 1.4;">
-                            <i class="fas fa-shield-alt text-primary me-1"></i> Datos tratados bajo la <strong>LOPDP</strong> para fines de control laboral.<br>
-                            <a href="javascript:void(0)" onclick="window.abrirModalAvisoPrivacidad()" style="color: #0284c7; text-decoration: underline; font-weight: 600;">Aviso de Privacidad y Derechos ARCO</a>
-                        </div>
-                        
-                        <div id="registroResult" class="hidden alert alert-danger mt-3" style="border-radius: 10px; font-size: 12px;"></div>
+                    </div>
+
+                    <div class="text-center mt-3" style="font-size: 11px; color: #64748b; line-height: 1.4;">
+                        <i class="fas fa-shield-alt text-primary me-1"></i> Datos protegidos por la <strong>LOPDP Ecuador</strong> ·
+                        <a href="javascript:void(0)" onclick="window.abrirModalAvisoPrivacidad()" style="color: #0284c7; text-decoration: underline; font-weight: 600;">Aviso de privacidad</a>
                     </div>
                 </div>
             </div>
@@ -3583,61 +3581,187 @@ function renderAuthScreen() {
     ajustarLayout();
 }
 
+function authMostrarPaso(paso) {
+    const pasos = { cargando: 'authPasoCargando', id: 'authPasoId', pass: 'authPasoPass', crear: 'authPasoCrear', recuperar: 'authPasoRecuperar' };
+    Object.entries(pasos).forEach(([k, id]) => document.getElementById(id)?.classList.toggle('hidden', k !== paso));
+    // La tarjeta del usuario acompaña a los pasos posteriores al ID
+    document.getElementById('authUsuario')?.classList.toggle('hidden', !['pass', 'crear', 'recuperar'].includes(paso));
+    if (paso === 'recuperar') {
+        document.getElementById('recPaso1')?.classList.remove('hidden');
+        document.getElementById('recPaso2')?.classList.add('hidden');
+        document.getElementById('recResultado')?.classList.add('hidden');
+    }
+    const foco = { id: 'authId', pass: 'pinInput', crear: 'registroPasswordInput' }[paso];
+    if (foco) setTimeout(() => document.getElementById(foco)?.focus(), 50);
+    ajustarLayout();
+}
+window.authMostrarPaso = authMostrarPaso;
+
+function authPintarUsuario() {
+    const box = document.getElementById('authUsuario');
+    if (!box || !_authEmpleado) return;
+    const e = _authEmpleado;
+    const nombre = extraerPrimerNombre(e.nombre);
+    const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(nombre || 'U')}&background=0284c7&color=fff&bold=true`;
+    const foto = (typeof fixFotoUrl === 'function' ? fixFotoUrl(e.foto || '') : e.foto) || avatar;
+    box.innerHTML = `
+        <img src="${foto}" alt="" style="width:72px; height:72px; border-radius:50%; object-fit:cover; border:3px solid #e2e8f0; background:#f1f5f9;" onerror="this.onerror=null; this.src='${avatar}';">
+        <div style="font-size:18px; font-weight:800; color:#0f172a; margin-top:6px;">¡Hola, ${escapeHtml(nombre)}!</div>
+        <div style="font-size:11.5px; color:#64748b;">ID ${escapeHtml(e.id)} · <a href="javascript:void(0)" onclick="authCambiarUsuario()" style="color:#0284c7; font-weight:700;">No soy yo</a></div>`;
+    ['loginEmployeeId', 'registroEmployeeId'].forEach(id => { const el = document.getElementById(id); if (el) el.value = e.id; });
+}
+
+window.authCambiarUsuario = function () {
+    _authEmpleado = null;
+    const input = document.getElementById('authId');
+    if (input) input.value = '';
+    authMostrarPaso('id');
+};
+
+window.authContinuarId = async function () {
+    const id = (document.getElementById('authId')?.value || '').trim();
+    if (!id) { mostrarToast('Escribe tu número de usuario (ID)', 'warning'); return; }
+    const btn = document.getElementById('btnAuthContinuar');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando…'; }
+    try {
+        const res = await jsonpRequest({ accion: 'verificarEmpleadoTienePin', empleadoId: id });
+        if (!res || !res.ok) {
+            mostrarToast((res && res.error) || 'No encontramos ese ID. Revisa el número.', 'error');
+            return;
+        }
+        _authEmpleado = { id: String(res.id || id), nombre: res.nombre || '', foto: res.foto_url || res.foto || '', tienePin: !!res.tienePin };
+        _esVinculacionDispositivoExistente = _authEmpleado.tienePin;
+        authPintarUsuario();
+        authMostrarPaso(_authEmpleado.tienePin ? 'pass' : 'crear');
+    } catch (e) {
+        mostrarToast('Sin conexión. Intenta de nuevo.', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = 'Continuar <i class="fas fa-arrow-right ms-1"></i>'; }
+    }
+};
+
+window.authIngresar = async function () {
+    const btn = document.getElementById('btnAuthIngresar');
+    if (btn) btn.disabled = true;
+    try { await verificarPIN(); } finally { if (btn) btn.disabled = false; }
+};
+
+window.authCrear = function () {
+    _esVinculacionDispositivoExistente = false;
+    confirmarRegistroInicial();
+};
+
+window.authMostrarRecuperar = function () {
+    if (!_authEmpleado) { authMostrarPaso('id'); return; }
+    authMostrarPaso('recuperar');
+};
+
+function authRecMensaje(texto, tipo) {
+    const box = document.getElementById('recResultado');
+    if (!box) return;
+    box.className = `alert alert-${tipo === 'ok' ? 'success' : 'danger'} py-2 mt-2`;
+    box.style.borderRadius = '10px';
+    box.style.fontSize = '12px';
+    box.textContent = texto;
+}
+
+window.authEnviarCodigo = async function () {
+    if (!_authEmpleado) return;
+    const btn = document.getElementById('btnRecEnviar');
+    const reenviar = document.getElementById('btnRecReenviar');
+    [btn, reenviar].forEach(b => { if (b) b.disabled = true; });
+    if (btn) btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Enviando…';
+    try {
+        // Sin reintentos automáticos: cada intento enviaría otro código
+        const res = await window.FirebaseBackend._post({ accion: 'recuperarCodigo', empleadoId: _authEmpleado.id }, 3);
+        if (!res || !res.ok) {
+            const err = (res && res.error) || 'No se pudo enviar el código.';
+            authRecMensaje(/API Key|no reconocida/i.test(err) ? 'La recuperación aún no está habilitada en el servidor. Pide ayuda a RR.HH.' : err, 'error');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        document.getElementById('recPaso1')?.classList.add('hidden');
+        document.getElementById('recPaso2')?.classList.remove('hidden');
+        document.getElementById('recResultado')?.classList.add('hidden');
+        const destino = document.getElementById('recDestino');
+        if (destino) destino.innerHTML = `<i class="fab fa-whatsapp text-success me-1"></i> Enviamos un código a <strong>${escapeHtml(res.telefono || 'tu WhatsApp')}</strong>. Vence en ${res.vence_min || 10} minutos.`;
+        setTimeout(() => document.getElementById('recCodigo')?.focus(), 50);
+        // Reenviar habilitado tras 60 s
+        let s = 60;
+        clearInterval(_recTimer);
+        if (reenviar) reenviar.textContent = `Reenviar código (${s} s)`;
+        _recTimer = setInterval(() => {
+            s--;
+            if (!reenviar) return clearInterval(_recTimer);
+            if (s <= 0) { clearInterval(_recTimer); reenviar.disabled = false; reenviar.textContent = 'Reenviar código'; }
+            else reenviar.textContent = `Reenviar código (${s} s)`;
+        }, 1000);
+    } catch (e) {
+        authRecMensaje('Sin conexión. Intenta de nuevo.', 'error');
+        if (btn) btn.disabled = false;
+    } finally {
+        if (btn) btn.innerHTML = '<i class="fab fa-whatsapp me-1"></i> Enviarme el código';
+    }
+};
+
+window.authRestablecer = async function () {
+    if (!_authEmpleado) return;
+    const codigo = (document.getElementById('recCodigo')?.value || '').replace(/\D/g, '');
+    const nueva = (document.getElementById('recNueva')?.value || '').trim();
+    const confirma = (document.getElementById('recConfirma')?.value || '').trim();
+    if (codigo.length !== 6) { authRecMensaje('Escribe el código de 6 dígitos que te llegó por WhatsApp.', 'error'); return; }
+    if (nueva.length < 4) { authRecMensaje('La contraseña debe tener al menos 4 caracteres.', 'error'); return; }
+    if (nueva !== confirma) { authRecMensaje('Las contraseñas no coinciden.', 'error'); return; }
+    const btn = document.getElementById('btnRecGuardar');
+    if (btn) btn.disabled = true;
+    try {
+        const hashNuevo = await hashPassword(nueva);
+        const res = await window.FirebaseBackend._post({ accion: 'recuperarPassword', empleadoId: _authEmpleado.id, codigo, hashNuevo }, 3);
+        if (!res || !res.ok) { authRecMensaje((res && res.error) || 'No se pudo cambiar la contraseña.', 'error'); return; }
+        clearInterval(_recTimer);
+        mostrarToast('✅ Contraseña actualizada', 'success');
+        // Ingresar con la nueva contraseña (vincula este teléfono)
+        _authEmpleado.tienePin = true;
+        authMostrarPaso('pass');
+        const pin = document.getElementById('pinInput');
+        if (pin) pin.value = nueva;
+        await authIngresar();
+    } catch (e) {
+        authRecMensaje('Sin conexión. Intenta de nuevo.', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+};
+
 async function verificarDispositivoConPIN() {
     try {
         const res = await verificarDispositivoTienePIN(deviceToken);
-        const verifyingScreen = document.getElementById('verifyingScreen');
-        const pinScreen = document.getElementById('pinScreen');
-        const registroScreen = document.getElementById('registroInicialScreen');
-
-        if (verifyingScreen) verifyingScreen.classList.add('hidden');
-
-        if (res && res.registrado && res.tienePin) {
-            if (pinScreen) pinScreen.classList.remove('hidden');
-            if (res.empleado && res.empleado.id) {
-                const empIdInput = document.getElementById('loginEmployeeId');
-                if (empIdInput && !empIdInput.value) {
-                    empIdInput.value = res.empleado.id;
-                }
-            }
-            document.getElementById('pinInput')?.focus();
+        // Teléfono ya vinculado: se salta el paso del ID
+        if (res && res.registrado && res.empleado && res.empleado.id) {
+            _authEmpleado = {
+                id: String(res.empleado.id), nombre: res.empleado.nombre || '',
+                foto: res.empleado.foto_url || '', tienePin: res.tienePin !== false
+            };
+            _esVinculacionDispositivoExistente = _authEmpleado.tienePin;
+            authPintarUsuario();
+            authMostrarPaso(_authEmpleado.tienePin ? 'pass' : 'crear');
         } else {
-            if (pinScreen) pinScreen.classList.add('hidden');
-            if (registroScreen) registroScreen.classList.remove('hidden');
-            document.getElementById('registroEmployeeId')?.focus();
+            authMostrarPaso('id');
         }
     } catch (error) {
-        const verifyingScreen = document.getElementById('verifyingScreen');
-        const pinScreen = document.getElementById('pinScreen');
-        const registroScreen = document.getElementById('registroInicialScreen');
-        if (verifyingScreen) verifyingScreen.classList.add('hidden');
-        if (registroScreen) registroScreen.classList.add('hidden');
-        if (pinScreen) pinScreen.classList.remove('hidden');
+        authMostrarPaso('id');
         mostrarToast('Error de conexión con el servidor', 'error');
     }
-    ajustarLayout();
 }
 
+// Compatibilidad con llamadas existentes (verificarPIN redirige aquí si la cuenta no tiene contraseña)
 function mostrarRegistroInicial() {
-    const pinScreen = document.getElementById('pinScreen');
-    const registroScreen = document.getElementById('registroInicialScreen');
-    const verifyingScreen = document.getElementById('verifyingScreen');
-
-    if (verifyingScreen) verifyingScreen.classList.add('hidden');
-    if (pinScreen) pinScreen.classList.add('hidden');
-    if (registroScreen) registroScreen.classList.remove('hidden');
-
-    document.getElementById('registroEmployeeId')?.focus();
-    ajustarLayout();
+    if (_authEmpleado) { _authEmpleado.tienePin = false; authMostrarPaso('crear'); }
+    else authMostrarPaso('id');
 }
 
 function volverAPIN() {
-    const registroScreen = document.getElementById('registroInicialScreen');
-    const pinScreen = document.getElementById('pinScreen');
-
-    if (registroScreen) registroScreen.classList.add('hidden');
-    if (pinScreen) pinScreen.classList.remove('hidden');
-    ajustarLayout();
+    authMostrarPaso(_authEmpleado ? 'pass' : 'id');
 }
 
 function esFeriado(fechaStr) {
