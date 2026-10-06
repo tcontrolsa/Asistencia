@@ -632,6 +632,9 @@ function procesarAccion(params) {
       
     case 'obtenerAlmuerzosExtra':
       return obtenerAlmuerzosExtra();
+
+    case 'exportarHojaHistorico':
+      return exportarHojaHistorico_(params);
       
     case 'eliminarAlmuerzoExtra':
       return eliminarAlmuerzoExtra(params);
@@ -5175,4 +5178,52 @@ function obtenerDescargoLegalDatosPersonales() {
       derechosARCO: "El colaborador puede ejercer sus derechos de Acceso, Rectificación, Actualización, Eliminación y Oposición contemplados en la LOPDP ante el área de Talento Humano de TCONTROL S.A."
     }
   };
+}
+
+/**
+ * Exporta ALMUERZOS_EXTRA o DESVINCULADOS completas para la base histórica (sync-historico).
+ * Las fechas van como texto ISO (yyyy-MM-dd o yyyy-MM-dd HH:mm:ss). En DESVINCULADOS, las filas que
+ * vinieron de EMPLEADOS nunca incluyen PIN ni token de dispositivo (columnas G y H de esa hoja).
+ */
+function exportarHojaHistorico_(params) {
+  var permitidas = [HOJA_ALMUERZOS_EXTRA, HOJA_DESVINCULADOS];
+  var nombre = String(params.hoja || '').toUpperCase();
+  if (permitidas.indexOf(nombre) === -1) return { ok: false, error: 'Hoja no permitida' };
+  var hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nombre);
+  if (!hoja) return { ok: true, hoja: nombre, encabezados: [], filas: [] };
+  var datos = hoja.getDataRange().getValues();
+  var tz = Session.getScriptTimeZone() || 'America/Guayaquil';
+  var texto = function (v) {
+    if (v instanceof Date && !isNaN(v.getTime())) {
+      var conHora = v.getHours() || v.getMinutes() || v.getSeconds();
+      return Utilities.formatDate(v, tz, conHora ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd');
+    }
+    return v === null || v === undefined ? '' : v;
+  };
+  var encabezados = (datos[0] || []).map(function (h) { return String(h || '').trim(); });
+  var iOrigen = encabezados.indexOf('HOJA_ORIGEN');
+  var iJson = encabezados.indexOf('DATOS_JSON');
+  var iColG = encabezados.indexOf('COL_G');
+  var iColH = encabezados.indexOf('COL_H');
+  var filas = [];
+  for (var i = 1; i < datos.length; i++) {
+    var fila = datos[i].map(texto);
+    if (!fila.some(function (c) { return c !== ''; })) continue;
+    if (nombre === HOJA_DESVINCULADOS && iOrigen !== -1 && String(fila[iOrigen]).toUpperCase() === HOJA_EMPLEADOS) {
+      if (iColG !== -1) fila[iColG] = '';
+      if (iColH !== -1) fila[iColH] = '';
+      if (iJson !== -1 && fila[iJson]) {
+        try {
+          var arr = JSON.parse(fila[iJson]);
+          if (Array.isArray(arr)) {
+            arr[COLUMNAS_EMPLEADOS.PIN] = '';
+            arr[COLUMNAS_EMPLEADOS.DEVICE_TOKEN] = '';
+            fila[iJson] = JSON.stringify(arr);
+          }
+        } catch (e) { fila[iJson] = ''; }
+      }
+    }
+    filas.push({ n: i + 1, v: fila });
+  }
+  return { ok: true, hoja: nombre, encabezados: encabezados, filas: filas };
 }
