@@ -694,8 +694,10 @@ function procesarAccion(params) {
       return guardarConfiguracionWhatsApp(params);
       
     case 'obtenerRegistrosArchivados':
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
-      if (!sheet) return { ok: true, registros: [] };
+      // hoja=VACACIONES la usa la sincronización con la base histórica (mismas 25 columnas que REGISTROS)
+      var nombreHojaArch = String(params.hoja || '').toUpperCase() === 'VACACIONES' ? 'VACACIONES' : 'REGISTROS';
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nombreHojaArch);
+      if (!sheet) return { ok: true, registros: [], hoja: nombreHojaArch };
       var dataRange = sheet.getDataRange().getValues();
       if (dataRange.length <= 1) return { ok: true, registros: [] };
       var registros = [];
@@ -765,7 +767,7 @@ function procesarAccion(params) {
           tiempo_justificado_mins: (valTJ !== undefined && valTJ !== '' && !isNaN(Number(valTJ))) ? Number(valTJ) : 0
         });
       }
-      return { ok: true, registros: registros };
+      return { ok: true, registros: registros, hoja: nombreHojaArch };
 
     case 'justificarDia':
     case 'actualizarRegistroArchivado':
