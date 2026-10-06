@@ -183,3 +183,47 @@ function leerEmpleadosFirestoreNomina_() {
   } while (token);
   return out;
 }
+
+// ---------------------------------------------------------------- duplicados en VACACIONES
+// CALCULAR_vacaciones cuenta filas: un día registrado dos veces descuenta dos días.
+// Duplicado = mismo ID (B), misma fecha (A) y mismo tipo (D). Se conserva la primera fila.
+
+/** Solo informa en el registro qué filas sobran (no borra). */
+function revisarDuplicadosVacaciones() {
+  duplicadosVacaciones_(false);
+}
+
+/** Borra las filas repetidas de VACACIONES (de abajo hacia arriba) y deja la primera de cada día. */
+function eliminarDuplicadosVacaciones() {
+  duplicadosVacaciones_(true);
+}
+
+function duplicadosVacaciones_(aplicar) {
+  var hoja = SpreadsheetApp.getActive().getSheetByName('VACACIONES');
+  if (!hoja) throw new Error('No existe la hoja VACACIONES');
+  var tz = Session.getScriptTimeZone();
+  var datos = hoja.getDataRange().getValues();
+  var fechaDe = function (v) {
+    if (v instanceof Date && !isNaN(v.getTime())) return Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+    var s = String(v || '').trim();
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + '-' + m[2] + '-' + m[3];
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : s;
+  };
+  var vistos = {}, sobrantes = [];
+  for (var i = 1; i < datos.length; i++) {
+    var id = String(datos[i][1] || '').trim();
+    var tipo = String(datos[i][3] || '').trim().toUpperCase();
+    var fecha = fechaDe(datos[i][0]);
+    if (!id || !tipo || !fecha) continue;
+    var clave = id + '|' + fecha + '|' + tipo;
+    if (vistos[clave]) sobrantes.push({ fila: i + 1, texto: id + ' ' + String(datos[i][2] || '') + ' ' + fecha + ' (repite la fila ' + vistos[clave] + ')' });
+    else vistos[clave] = i + 1;
+  }
+  if (aplicar) {
+    sobrantes.slice().sort(function (a, b) { return b.fila - a.fila; }).forEach(function (s) { hoja.deleteRow(s.fila); });
+  }
+  Logger.log((aplicar ? 'APLICADO · filas borradas: ' : 'REVISIÓN (sin cambios) · filas sobrantes: ') + sobrantes.length +
+    (sobrantes.length ? '\n  ' + sobrantes.map(function (s) { return 'fila ' + s.fila + ': ' + s.texto; }).join('\n  ') : ''));
+}

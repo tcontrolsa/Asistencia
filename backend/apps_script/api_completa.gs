@@ -182,6 +182,13 @@ function doPost(e) {
       }
       
       if (data.accion === 'archivarRegistros') {
+        // Un archivado a la vez: con dos paneles abiertos o con los reintentos del panel, dos ejecuciones
+        // simultáneas leían las claves antes de que la otra escribiera y duplicaban filas (VACACIONES ×4).
+        var lockArchivo = LockService.getDocumentLock();
+        if (!lockArchivo.tryLock(30000)) {
+          return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Otro archivado en curso (lock): reintenta en unos segundos' })).setMimeType(ContentService.MimeType.JSON);
+        }
+        try {
         var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || "GMT-5";
         var normDate = function(v) {
           if (!v) return '';
@@ -420,6 +427,9 @@ function doPost(e) {
           omitidosDuplicadosRegs: omitidosRegs,
           omitidosDuplicadosAlm: omitidosAlm
         })).setMimeType(ContentService.MimeType.JSON);
+        } finally {
+          lockArchivo.releaseLock();
+        }
       }
       
       if (data.accion === 'obtenerRegistrosArchivados') {
