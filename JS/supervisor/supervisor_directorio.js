@@ -227,6 +227,13 @@ window.cargarDirectorio = function () {
   if (dlCargos) {
     dlCargos.innerHTML = cargosSorted.map(c => `<option value="${escapeHtml(c)}">`).join('');
   }
+  [['listaUnidadesNominaDatalist', 'unidad'], ['listaAreasNominaDatalist', 'area_nomina'],
+   ['listaCargosNominaDatalist', 'cargo_nomina'], ['listaCargosContratoDatalist', 'cargo_contrato']].forEach(([id, campo]) => {
+    const dl = $(id);
+    if (!dl) return;
+    const valores = [...new Set((empCache || []).map(e => String(e[campo] || '').trim()).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'es'));
+    dl.innerHTML = valores.map(v => `<option value="${escapeHtml(v)}">`).join('');
+  });
 
   // 3. Restaurar vista preferida (grid vs tabla)
   cambiarVistaDirectorio(window.directorioVista || 'grid');
@@ -264,7 +271,8 @@ window.filtrarDirectorio = function () {
       const matchNom = String(emp.nombre || '').toLowerCase().includes(term);
       const matchArea = String(emp.area || '').toLowerCase().includes(term);
       const matchCargo = String(emp.cargo || '').toLowerCase().includes(term);
-      const matchTel = String(emp.telefono || '').toLowerCase().includes(term);
+      const matchTel = String(emp.telefono || '').toLowerCase().includes(term)
+        || [emp.unidad, emp.area_nomina, emp.cargo_nomina, emp.cargo_contrato, emp.jefe_inmediato].some(v => String(v || '').toLowerCase().includes(term));
       const rawNac = (typeof obtenerFechaNacimientoEmpleado === 'function')
         ? obtenerFechaNacimientoEmpleado(emp)
         : (emp.fechaNacimiento || emp.fecha_nacimiento || '');
@@ -769,6 +777,13 @@ window.renderDirectorioTabla = function (lista) {
               <div style="font-size:10.5px; color:#64748b;">${escapeHtml(emp.cargo || '—')}</div>
             </td>
 
+            <!-- Unidad & Jefe (nómina) -->
+            <td style="padding:10px 12px; font-size:11.5px;">
+              <div style="font-weight:700; color:#1e293b;">${escapeHtml(emp.unidad || '—')}</div>
+              <div style="font-size:10.5px; color:#64748b;">${escapeHtml([emp.area_nomina, emp.cargo_contrato].filter(Boolean).join(' · ') || '—')}</div>
+              ${emp.jefe_inmediato ? `<div style="font-size:10.5px; color:#475569; margin-top:2px;"><i class="fas fa-user-tie" style="color:#94a3b8;"></i> ${escapeHtml(obtenerPrimerNombreYPrimerApellido(emp.jefe_inmediato))}</div>` : ''}
+            </td>
+
             <!-- F. Nacimiento -->
             <td style="padding:10px 12px; font-size:11.5px; white-space:nowrap;">
               ${(() => {
@@ -956,6 +971,12 @@ window.exportarDirectorioExcel = async function () {
       "Nombre Completo",
       "Área / Departamento",
       "Cargo",
+      "Unidad (nómina)",
+      "Área (nómina)",
+      "Cargo (nómina)",
+      "Cargo de contrato",
+      "Jefe inmediato",
+      "Fecha de ingreso",
       "WhatsApp / Teléfono",
       "Fecha de Nacimiento",
       "Edad",
@@ -984,6 +1005,12 @@ window.exportarDirectorioExcel = async function () {
         emp.nombre || '',
         emp.area || 'SIN ASIGNAR',
         emp.cargo || 'SIN ASIGNAR',
+        emp.unidad || '',
+        emp.area_nomina || '',
+        emp.cargo_nomina || '',
+        emp.cargo_contrato || '',
+        emp.jefe_inmediato || '',
+        emp.fecha_ingreso || '',
         emp.telefono || '',
         fNacTexto || '',
         edadCalc !== null ? edadCalc : '',
@@ -1005,6 +1032,12 @@ window.exportarDirectorioExcel = async function () {
       { wch: 32 }, // Nombre
       { wch: 22 }, // Área
       { wch: 22 }, // Cargo
+      { wch: 20 }, // Unidad
+      { wch: 22 }, // Área nómina
+      { wch: 18 }, // Cargo nómina
+      { wch: 16 }, // Cargo contrato
+      { wch: 32 }, // Jefe inmediato
+      { wch: 14 }, // Fecha de ingreso
       { wch: 18 }, // WhatsApp
       { wch: 18 }, // Fecha de Nacimiento
       { wch: 8 },  // Edad
@@ -1086,6 +1119,21 @@ window.abrirModalEditarEmpleado = function (empleadoId) {
     actualizarSelectEvaluadorDirectorio('editDir', emp.id, emp.evaluador_id || '');
   }
 
+  // Nómina y jerarquía
+  if ($('editDirUnidad')) $('editDirUnidad').value = emp.unidad || '';
+  if ($('editDirAreaNomina')) $('editDirAreaNomina').value = emp.area_nomina || '';
+  if ($('editDirCargoNomina')) $('editDirCargoNomina').value = emp.cargo_nomina || '';
+  if ($('editDirCargoContrato')) $('editDirCargoContrato').value = emp.cargo_contrato || '';
+  if ($('editDirFechaIngreso')) $('editDirFechaIngreso').value = normalizarFechaParaInput(emp.fecha_ingreso || emp.fechaIngreso || '');
+  if ($('editDirJefe')) {
+    const jefes = (empCache || [])
+      .filter(e => String(e.id) !== String(emp.id) && String(e.activo || 'SI').toUpperCase() !== 'NO')
+      .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+    $('editDirJefe').innerHTML = '<option value="">— Sin jefe inmediato —</option>' + jefes
+      .map(e => `<option value="${escapeHtml(String(e.id))}">${escapeHtml(e.nombre || e.id)}${e.unidad ? ' · ' + escapeHtml(e.unidad) : ''}</option>`).join('');
+    $('editDirJefe').value = jefes.some(e => String(e.id) === String(emp.jefe_inmediato_id || '')) ? String(emp.jefe_inmediato_id) : '';
+  }
+
   const imgPreview = $('editDirFotoPreview');
   if (imgPreview) {
     imgPreview.src = emp.foto_url || './assets/images/Logotipo T Control.png';
@@ -1141,6 +1189,22 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
   if ($('editDirEvalRol')) {
     datos.evaluacion_rol = $('editDirEvalRol').value;
     datos.evaluador_id = datos.evaluacion_rol.includes('EVALUADO') && $('editDirEvaluador') ? $('editDirEvaluador').value : '';
+  }
+  // Nómina y jerarquía
+  if ($('editDirUnidad')) {
+    const val = id => ($(id) ? $(id).value.trim() : '');
+    datos.unidad = val('editDirUnidad').toUpperCase();
+    datos.area_nomina = val('editDirAreaNomina').toUpperCase();
+    datos.cargo_nomina = val('editDirCargoNomina').toUpperCase();
+    datos.cargo_contrato = val('editDirCargoContrato');
+    datos.fecha_ingreso = val('editDirFechaIngreso');
+    datos.jefe_inmediato_id = val('editDirJefe');
+    const jefe = (empCache || []).find(e => String(e.id) === datos.jefe_inmediato_id);
+    datos.jefe_inmediato = jefe ? (jefe.nombre || '') : '';
+    // Sin evaluador elegido, el jefe inmediato es el evaluador por defecto
+    if (datos.evaluacion_rol && datos.evaluacion_rol.includes('EVALUADO') && !datos.evaluador_id && datos.jefe_inmediato_id) {
+      datos.evaluador_id = datos.jefe_inmediato_id;
+    }
   }
 
   mostrarLoader(true);

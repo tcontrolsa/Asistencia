@@ -14,6 +14,13 @@
 (function () {
   'use strict';
 
+  // Datos de nómina (NOMINA_CARGO_JEFE): unidad y área de nómina; si faltan, el área de asistencia
+  const unidadDe = e => String((e && e.unidad) || '').trim();
+  const areaDe = e => String((e && (e.area_nomina || e.area)) || '').trim();
+  const subtituloEmp = e => [unidadDe(e), areaDe(e), String((e && (e.cargo_contrato || e.cargo)) || '').trim()].filter(Boolean).join(' · ');
+  const opcionesSelect = (lista, actual, todos) => `<option value="">${todos}</option>` +
+    lista.map(a => `<option ${a === actual ? 'selected' : ''}>${String(a).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))}</option>`).join('');
+
   // ---------------------------------------------------------------- catálogo
   const DIMENSIONES = [
     { k: 'tecnico', t: 'Dominio técnico y funcional del cargo', corto: 'Técnico' },
@@ -820,7 +827,7 @@
     st.todas = [];
     st.empleados = opts.empleados;
     st.rVista = 'dashboard';
-    st.filtro = { periodo: mesPorDefecto(), q: '', area: '', estado: '' };
+    st.filtro = { periodo: mesPorDefecto(), q: '', unidad: '', area: '', estado: '' };
     st.alIniciar = async () => {
       if (!st.ses.rrhh) { st.vista = 'sin-permiso'; return pintarResultados(st, opts); }
       await cargarTodas(st, opts);
@@ -836,6 +843,7 @@
     };
     st.onChange = (a, el) => {
       if (a === 'r-periodo') { st.filtro.periodo = el.value; pintarResultados(st, opts); }
+      if (a === 'r-unidad') { st.filtro.unidad = el.value; st.filtro.area = ''; pintarResultados(st, opts); }
       if (a === 'r-area') { st.filtro.area = el.value; pintarResultados(st, opts); }
       if (a === 'r-estado') { st.filtro.estado = el.value; pintarResultados(st, opts); }
     };
@@ -885,7 +893,8 @@
       filas.set(id, { emp: porId.get(id) || { id, nombre: ev.empleadoNombre, area: ev.area, cargo: ev.cargo }, ev });
     });
     const evaluadorNombre = id => { const x = porId.get(String(id || '')); return x ? x.nombre : ''; };
-    return Array.from(filas.values()).map(f => ({
+    const unidad = st.filtro && st.filtro.unidad;
+    return Array.from(filas.values()).filter(f => !unidad || unidadDe(f.emp) === unidad).map(f => ({
       ...f,
       evaluador: f.ev ? (f.ev.evaluadorNombre || evaluadorNombre(f.ev.evaluadorId)) : evaluadorNombre(f.emp.evaluador_id),
       sinEvaluador: !f.ev && !f.emp.evaluador_id,
@@ -907,19 +916,21 @@
     const f = st.filtro;
     const q = f.q.trim().toLowerCase();
     const filas = todas.filter(x =>
-      (!f.area || String(x.emp.area || '') === f.area) &&
+      (!f.area || areaDe(x.emp) === f.area) &&
       (!f.estado || x.estado === f.estado) &&
-      (!q || `${x.emp.nombre} ${x.emp.id} ${x.emp.area} ${x.evaluador}`.toLowerCase().includes(q)));
+      (!q || `${x.emp.nombre} ${x.emp.id} ${unidadDe(x.emp)} ${areaDe(x.emp)} ${x.evaluador}`.toLowerCase().includes(q)));
     const conEval = todas.filter(x => x.ev);
     const prom = conEval.length ? conEval.reduce((s, x) => s + Number(x.ev.porcentaje), 0) / conEval.length : null;
     const cuenta = k => todas.filter(x => x.estado === k).length;
-    const areas = [...new Set(todas.map(x => String(x.emp.area || '')).filter(Boolean))].sort();
+    const areas = [...new Set(todas.map(x => areaDe(x.emp)).filter(Boolean))].sort();
+    const unidades = [...new Set((opts.empleados() || []).map(unidadDe).filter(Boolean))].sort();
     const promDim = k => conEval.length ? conEval.reduce((s, x) => s + Number((x.ev.dimensiones[k] || {}).porcentaje || 0), 0) / conEval.length : 0;
     const opcionesPer = mesesDisponibles(12).map(m => `<option value="${m}" ${m === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')
       + `<option value="DIA75" ${f.periodo === 'DIA75' ? 'selected' : ''}>Seguimiento Día 75 (nuevos ingresos)</option>`;
     const etiquetaEstado = { 'pendiente': '<span class="ev-chip ev-chip-pend">Pendiente</span>', 'sin-evaluador': '<span class="ev-chip ev-chip-warn">Sin evaluador</span>' };
     const barra = `<div class="ev-card ev-barra-r">
         <select class="ev-select" data-ev="r-periodo">${opcionesPer}</select>
+        ${unidades.length ? `<select class="ev-select" data-ev="r-unidad">${opcionesSelect(unidades, f.unidad, 'Todas las unidades')}</select>` : ''}
         <div class="ev-seg" role="tablist">
           <button class="${st.rVista === 'dashboard' ? 'ev-seg-on' : ''}" data-ev="r-vista" data-v="dashboard"><i class="fas fa-chart-pie"></i> Dashboard</button>
           <button class="${st.rVista === 'tabla' ? 'ev-seg-on' : ''}" data-ev="r-vista" data-v="tabla"><i class="fas fa-list"></i> Colaboradores</button>
@@ -951,7 +962,7 @@
       <div class="ev-card">
         <div class="ev-filtros">
           <input type="search" data-ev="r-q" placeholder="Buscar colaborador o evaluador" value="${esc(f.q)}">
-          <select class="ev-select" data-ev="r-area"><option value="">Todas las áreas</option>${areas.map(a => `<option ${a === f.area ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
+          <select class="ev-select" data-ev="r-area">${opcionesSelect(areas, f.area, 'Todas las áreas')}</select>
           <select class="ev-select" data-ev="r-estado">
             <option value="">Todos los estados</option>
             ${[['pendiente', 'Pendientes'], ['enviada', 'Enviadas'], ['confirmada', 'Confirmadas'], ['sin-evaluador', 'Sin evaluador']].map(([v, t]) => `<option value="${v}" ${v === f.estado ? 'selected' : ''}>${t}</option>`).join('')}
@@ -960,7 +971,7 @@
         <div class="ev-tabla-wrap"><table class="ev-tabla">
           <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th>Resultado</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
           <tbody>${filas.map(x => `<tr ${evalsDe(st, x.emp.id).length ? `data-ev="persona" data-emp="${esc(x.emp.id)}" class="ev-fila-click" title="Ver dashboard del colaborador"` : ''}>
-            <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong><div class="ev-muted ev-small">${esc(x.emp.area || '')}${x.emp.cargo ? ' · ' + esc(x.emp.cargo) : ''}</div></td>
+            <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong><div class="ev-muted ev-small">${esc(subtituloEmp(x.emp))}</div></td>
             <td>${esc(x.evaluador || '—')}</td>
             <td>${x.ev ? chipEstado(x.ev) : etiquetaEstado[x.estado]}</td>
             <td>${x.ev ? chipNivel(x.ev) : '<span class="ev-muted">—</span>'}</td>
@@ -1111,9 +1122,10 @@
          <div class="ev-leyenda">${dist.map(d => `<span><i class="${claseNivel(d.n)}"></i>${d.n} <strong>${d.c}</strong></span>`).join('')}</div>`
       : '<p class="ev-muted">Sin evaluaciones en este período.</p>';
 
-    // Por área
+    // Por unidad (o por área si ya se filtró una unidad)
     const porArea = {};
-    conEval.forEach(x => { const a = x.emp.area || x.ev.area || 'Sin área'; (porArea[a] = porArea[a] || []).push(Number(x.ev.porcentaje)); });
+    const agrupar = x => (f.unidad ? areaDe(x.emp) : (unidadDe(x.emp) || areaDe(x.emp))) || x.ev.area || 'Sin área';
+    conEval.forEach(x => { const a = agrupar(x); (porArea[a] = porArea[a] || []).push(Number(x.ev.porcentaje)); });
     const areas = Object.entries(porArea).map(([a, v]) => ({ a, p: promedio(v), n: v.length })).sort((x, y) => x.p - y.p);
 
     // Competencias del período (promedio 1–5)
@@ -1145,7 +1157,7 @@
       <div class="ev-grid2">
         <div class="ev-card"><h4 class="ev-h4">Distribución por nivel · ${esc(etiquetaPeriodo(f.periodo))}</h4>${distHtml}</div>
         <div class="ev-card"><h4 class="ev-h4">Promedio por dimensión</h4>${conEval.length ? `<div class="ev-dims">${DIMENSIONES.map(d => barraH(d.t, promedio(conEval.map(x => Number((x.ev.dimensiones[d.k] || {}).porcentaje || 0))))).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
-        <div class="ev-card"><h4 class="ev-h4">Promedio por área</h4>${areas.length ? `<div class="ev-dims">${areas.map(a => barraH(`${esc(a.a)} <span class="ev-muted ev-small">(${a.n})</span>`, a.p)).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
+        <div class="ev-card"><h4 class="ev-h4">Promedio por ${f.unidad ? 'área' : 'unidad'}</h4>${areas.length ? `<div class="ev-dims">${areas.map(a => barraH(`${esc(a.a)} <span class="ev-muted ev-small">(${a.n})</span>`, a.p)).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
         <div class="ev-card"><h4 class="ev-h4">Competencias más bajas</h4>${conEval.length ? `<ol class="ev-ranking">${bajas.map(b => `<li><span>${esc(b.it.c)}</span><strong class="ev-c${Math.round(b.p)}">${(Math.round(b.p * 10) / 10).toString()}</strong></li>`).join('')}</ol>
           <p class="ev-muted ev-small">Promedio de 1 a 5 del período: dónde enfocar la capacitación.</p>` : '<p class="ev-muted">Sin datos.</p>'}</div>
       </div>
@@ -1241,7 +1253,7 @@
 
   // Asignación de status y jefe inmediato (Firestore, documento del empleado)
   function montarAsignaciones(cont, opts) {
-    const st = { cambios: new Map(), q: '', area: '', soloSin: false, guardando: false };
+    const st = { cambios: new Map(), q: '', unidad: '', area: '', soloSin: false, guardando: false };
     const lista = () => (opts.empleados() || []).filter(e => String(e.activo || 'SI').toUpperCase() !== 'NO' && !e.esEliminado)
       .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
     const valor = (emp, k) => {
@@ -1264,10 +1276,12 @@
       const emps = lista();
       const evaluadores = emps.filter(e => valor(e, 'evaluacion_rol').includes('EVALUADOR'));
       const q = st.q.trim().toLowerCase();
-      const areas = [...new Set(emps.map(e => String(e.area || '')).filter(Boolean))].sort();
+      const unidades = [...new Set(emps.map(unidadDe).filter(Boolean))].sort();
+      const areas = [...new Set(emps.filter(e => !st.unidad || unidadDe(e) === st.unidad).map(areaDe).filter(Boolean))].sort();
+      const porIdA = new Map(emps.map(e => [String(e.id), e]));
       const sinStatus = emps.filter(e => !e.evaluacion_rol && !(st.cambios.get(String(e.id)) || {}).evaluacion_rol).length;
-      const visibles = emps.filter(e => (!st.area || e.area === st.area)
-        && (!q || `${e.nombre} ${e.id} ${e.cargo}`.toLowerCase().includes(q))
+      const visibles = emps.filter(e => (!st.unidad || unidadDe(e) === st.unidad) && (!st.area || areaDe(e) === st.area)
+        && (!q || `${e.nombre} ${e.id} ${e.cargo} ${unidadDe(e)} ${areaDe(e)} ${e.jefe_inmediato || ''}`.toLowerCase().includes(q))
         && (!st.soloSin || (valor(e, 'evaluacion_rol').includes('EVALUADO') && !valor(e, 'evaluador_id'))));
       const nCambios = st.cambios.size;
       const sinEval = emps.filter(e => valor(e, 'evaluacion_rol').includes('EVALUADO') && !valor(e, 'evaluador_id')).length;
@@ -1276,7 +1290,8 @@
         ${sinStatus ? `<div class="ev-aviso"><i class="fas fa-info-circle"></i> ${sinStatus} colaborador(es) aún no tienen status guardado; se muestra el sugerido (supervisores: EVALUADOR Y EVALUADO, resto: EVALUADO). <button class="ev-btn ev-btn-sm" data-a="defaults">Aplicar a todos</button></div>` : ''}
         <div class="ev-filtros">
           <input type="search" data-a="q" placeholder="Buscar colaborador" value="${esc(st.q)}">
-          <select class="ev-select" data-a="area"><option value="">Todas las áreas</option>${areas.map(a => `<option ${a === st.area ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
+          ${unidades.length ? `<select class="ev-select" data-a="unidad">${opcionesSelect(unidades, st.unidad, 'Todas las unidades')}</select>` : ''}
+          <select class="ev-select" data-a="area">${opcionesSelect(areas, st.area, 'Todas las áreas')}</select>
           <label class="ev-check"><input type="checkbox" data-a="solosin" ${st.soloSin ? 'checked' : ''}> Sin evaluador (${sinEval})</label>
           <button class="ev-btn ev-btn-primary ev-ml-auto" data-a="guardar" ${!nCambios || st.guardando ? 'disabled' : ''}>${st.guardando ? '<i class="fas fa-spinner fa-spin"></i> Guardando…' : `<i class="fas fa-save"></i> Guardar cambios${nCambios ? ` (${nCambios})` : ''}`}</button>
         </div>
@@ -1293,11 +1308,13 @@
               .map(x => `<option value="${esc(x.id)}" ${String(x.id) === String(evid) ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('');
             const evInvalido = evid && !evaluadores.some(x => String(x.id) === String(evid));
             return `<tr class="${Object.keys(ch).length ? 'ev-fila-cambio' : ''}">
-              <td><strong>${esc(e.nombre || id)}</strong><div class="ev-muted ev-small">${esc(id)} · ${esc(e.area || '')}${e.cargo ? ' · ' + esc(e.cargo) : ''}</div></td>
+              <td><strong>${esc(e.nombre || id)}</strong><div class="ev-muted ev-small">${esc(id)} · ${esc(subtituloEmp(e))}</div></td>
               <td><select class="ev-select ev-select-sm ${'evaluacion_rol' in ch || !e.evaluacion_rol ? 'ev-sel-cambio' : ''}" data-a="rol" data-id="${esc(id)}">${ROLES.map(r => `<option ${r === rol ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
               <td>${rol.includes('EVALUADO')
                 ? `<select class="ev-select ev-select-sm ${'evaluador_id' in ch ? 'ev-sel-cambio' : ''} ${!evid ? 'ev-sel-falta' : ''}" data-a="evaluador" data-id="${esc(id)}"><option value="">— Sin asignar —</option>${evInvalido ? `<option value="${esc(evid)}" selected>(${esc(evid)}: ya no es evaluador)</option>` : ''}${opcionesEv}</select>`
-                : '<span class="ev-muted">No aplica</span>'}</td>
+                : '<span class="ev-muted">No aplica</span>'}
+                ${rol.includes('EVALUADO') && e.jefe_inmediato_id && String(e.jefe_inmediato_id) !== String(evid)
+                  ? `<div class="ev-small ev-warn">Jefe en nómina: ${esc((porIdA.get(String(e.jefe_inmediato_id)) || {}).nombre || e.jefe_inmediato || e.jefe_inmediato_id)}</div>` : ''}</td>
               <td><input type="date" class="ev-select-sm ${'fecha_ingreso' in ch ? 'ev-sel-cambio' : ''}" data-a="ingreso" data-id="${esc(id)}" value="${esc(fi)}" max="${hoyLocal()}">
                 ${et.dias !== null && et.dias < 90 ? `<div class="ev-small ev-warn">Período de prueba · día ${et.dias}</div>` : ''}</td>
             </tr>`;
@@ -1313,6 +1330,7 @@
         if (!el.value.includes('EVALUADO')) cambiar(el.dataset.id, 'evaluador_id', '');
       } else if (a === 'evaluador') cambiar(el.dataset.id, 'evaluador_id', el.value);
       else if (a === 'ingreso') cambiar(el.dataset.id, 'fecha_ingreso', el.value);
+      else if (a === 'unidad') { st.unidad = el.value; st.area = ''; }
       else if (a === 'area') st.area = el.value;
       else if (a === 'solosin') st.soloSin = el.checked;
       else return;
