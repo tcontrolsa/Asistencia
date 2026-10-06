@@ -2889,7 +2889,8 @@ function cargarAsistencia() {
       estHtml = '<span class="rep-asis-empty">—</span>';
     }
 
-    let extrasVal = autorizacionExtrasDia(e, (e.registros || []).filter(r => r.fecha === hoy)) ? 'SI' : 'NO';
+    const tipoAutExtras = autorizacionExtrasDia(e, (e.registros || []).filter(r => r.fecha === hoy));
+    let extrasVal = tipoAutExtras ? 'SI' : 'NO';
 
     let modoBadge = '';
     if (modo === 'CAMPO') {
@@ -2901,7 +2902,8 @@ function cargarAsistencia() {
     }
 
     let extrasBadge = '';
-    if ((eReg?.autoriza || '').includes('CAMPO')) {
+    // Campo: la entrada o el registro de jornada en campo del día (aunque no haya entrada)
+    if (tipoAutExtras === 'campo') {
       extrasBadge = '<span class="rep-badge-pill rep-badge-campo" title="Auto-autorizado por Campo"><i class="fas fa-check-double" style="font-size:9.5px;"></i> CAMPO</span>';
     } else if (extrasVal === 'SI') {
       extrasBadge = '<span class="rep-badge-pill rep-badge-ex50" title="Horas Extras Autorizadas"><i class="fas fa-bolt" style="font-size:9.5px;"></i> AUTORIZADO</span>';

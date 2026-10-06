@@ -1154,7 +1154,8 @@ window.FirebaseBackend = {
             horaStr = `${h}:${m}:${s}`;
         }
 
-        const modo = data.modo || "OFICINA";
+        // La jornada en campo (p. ej. "Campo" desde Control Diario) es modo CAMPO aunque no se indique
+        const modo = data.modo || (String(data.tipo || '').toUpperCase() === 'TRABAJO_DE_CAMPO' ? "CAMPO" : "OFICINA");
         let horasExtra = modo === "CAMPO" ? "SI" : "NO";
         let autoriza = data.autoriza || (modo === "CAMPO" ? "SISTEMA (CAMPO)" : "");
 
