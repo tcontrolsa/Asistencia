@@ -12485,7 +12485,7 @@ window.renderFilasVacaciones = function (lista) {
 
     if (item.excluido) {
       colorPct = '#94a3b8';
-      badgeEstado = `<span style="background: #f8fafc; color: #64748b; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; border: 1px dashed #cbd5e1;" title="No interviene en los cálculos de la auditoría"><i class="fas fa-ban"></i> No aplica · ${escapeHtml(item.excluido)}</span>`;
+      badgeEstado = `<span style="background: #f8fafc; color: #64748b; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; border: 1px dashed #cbd5e1; white-space: nowrap; cursor: help;" title="No interviene en los cálculos de la auditoría: ${escapeHtml(item.excluido)}"><i class="fas fa-ban"></i> No aplica</span>`;
     } else if (!item.tieneDatosVac) {
       colorPct = '#94a3b8';
       badgeEstado = `<span style="background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; border: 1px solid #e2e8f0;"><i class="fas fa-minus"></i> Sin Asignar</span>`;
