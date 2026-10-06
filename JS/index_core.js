@@ -1147,6 +1147,9 @@ function verificarDistanciaEmpresa(silencioso = false) {
         }
         window._estaFueraArea = true;
         window._distanciaFuera = Math.round(distEmpresa);
+        // En CAMPO se registra con Entrada/Salida: el reporte de "fuera de área" no aplica
+        const cardFueraCampo = document.getElementById('contenedorBotonFueraArea');
+        if (cardFueraCampo) cardFueraCampo.style.display = 'none';
         return true;
     }
 
@@ -1183,6 +1186,10 @@ function verificarDistanciaEmpresa(silencioso = false) {
 }
 
 window.abrirModalReporteFueraArea = function () {
+    if (currentMode === 'CAMPO') {
+        mostrarToast('Estás registrando en CAMPO: usa el botón de Entrada o Salida.', 'info');
+        return;
+    }
     // Si el colaborador ya tiene registrada su jornada (Entrada o Salida), no aplica reporte de ausencia
     if (typeof estado !== 'undefined' && estado && (estado.tieneEntrada || estado.tieneSalida)) {
         mostrarToast('Ya registraste tu jornada de asistencia el día de hoy.', 'info');
@@ -1255,7 +1262,6 @@ window.abrirModalReporteFueraArea = function () {
                             <option value="PERMISO_MEDICO" ${tipoPrevio === 'PERMISO_MEDICO' ? 'selected' : ''}>🩺 Permiso Médico</option>
                             <option value="FALTA_JUSTIFICADA" ${tipoPrevio === 'FALTA_JUSTIFICADA' ? 'selected' : ''}>📋 Falta Justificada</option>
                         </optgroup>
-                        ${esCampoAutorizado() ? `<option value="TRABAJO_DE_CAMPO" ${tipoPrevio === 'TRABAJO_DE_CAMPO' ? 'selected' : ''}>🚗 CAMPO (Trabajo en Campo / Cliente)</option>` : ''}
                     </select>
                 </div>
 
@@ -4381,7 +4387,7 @@ function renderHomePage() {
                         </div>
                     </div>
                 ` : (!tieneEntrada && !tieneSalida ? `
-                    <div id="contenedorBotonFueraArea" data-reportado="false" style="display: ${Boolean(window._estaFueraArea) ? 'block' : 'none'}; margin-top: 12px; margin-bottom: 8px;">
+                    <div id="contenedorBotonFueraArea" data-reportado="false" style="display: ${Boolean(window._estaFueraArea) && currentMode !== 'CAMPO' ? 'block' : 'none'}; margin-top: 12px; margin-bottom: 8px;">
                         <div onclick="window.abrirModalReporteFueraArea()" style="background: #ffffff; border: 1.5px dashed #3b82f6; border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(59,130,246,0.06);">
                             <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
                                 <div style="background: #eff6ff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #2563eb; flex-shrink: 0;">
