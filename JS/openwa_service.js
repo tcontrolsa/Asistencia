@@ -341,6 +341,18 @@
         },
 
         // Detectar si una petición causaría bloqueo de Contenido Mixto (HTTPS -> HTTP) en el navegador
+        // OpenWA directo (http://192.168.10.129:2785) exige la clave, que el navegador ya no tiene:
+        // solo se intenta si hay una clave configurada.
+        _respaldoLocalPermitido() {
+            return Boolean((this.config && this.config.apiKey) || DEFAULT_CONFIG_WHATSAPP.apiKey);
+        },
+
+        // El recordatorio automático solo corre desde el sitio publicado: desde una copia local
+        // (localhost) el túnel rechaza la conexión (CORS) y tomaría el candado del día sin enviar nada.
+        _esSitioProduccion() {
+            return typeof window !== 'undefined' && window.location && window.location.hostname === 'asistencia.tcontrolsa.com';
+        },
+
         _esInseguroEnHttps(url) {
             return (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && (url || '').trim().startsWith('http://'));
         },
@@ -407,7 +419,7 @@
                 if (!esServidorVivo) {
                     if (timeoutId) clearTimeout(timeoutId);
                     const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
-                    if (urlBase !== urlLocal && (!servidorUrl)) {
+                    if (urlBase !== urlLocal && (!servidorUrl) && this._respaldoLocalPermitido()) {
                         try {
                             const probeLocal = await fetch(`${urlLocal}/api/health`, { method: 'GET', mode: 'no-cors' });
                             if (probeLocal) {
@@ -537,7 +549,7 @@
                 } catch(e) {
                     // Si falla por DNS o red, y no estábamos usando la IP local, intentar fallback local si estamos en HTTP/LAN
                     const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
-                    if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
+                    if (urlBase !== urlLocal && !servidorUrl && this._respaldoLocalPermitido() && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
                         try {
                             this.config.servidorUrl = urlLocal;
                             const checkResLoc = await fetch(`${urlLocal}/api/sessions/${sessId}/contacts/check/${cleanDigits}`, {
@@ -645,7 +657,7 @@
             } catch (e) {
                 console.error("[OpenWA] Error enviando mensaje:", e);
                 const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
-                if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
+                if (urlBase !== urlLocal && !servidorUrl && this._respaldoLocalPermitido() && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
                     console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Cambiando servidor activo a servidor local (${urlLocal})...`);
                     this.config.servidorUrl = urlLocal;
                     return this.enviarMensajeTexto(numeroDestino, mensajeTexto, urlLocal);
@@ -854,7 +866,7 @@
             } catch (e) {
                 console.error("[OpenWA] Error enviando imagen:", e);
                 const urlLocal = (this.config.servidorUrlLocal || DEFAULT_CONFIG_WHATSAPP.servidorUrlLocal || 'http://192.168.10.129:2785').replace(/\/+$/, '');
-                if (urlBase !== urlLocal && !servidorUrl && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
+                if (urlBase !== urlLocal && !servidorUrl && this._respaldoLocalPermitido() && (typeof window === 'undefined' || !window.location || window.location.protocol !== 'https:')) {
                     console.warn(`[OpenWA] Fallo de conexión con ${urlBase}. Cambiando servidor activo a servidor local (${urlLocal})...`);
                     this.config.servidorUrl = urlLocal;
                     return this.enviarMensajeImagen(numeroDestino, mensajeTexto, base64Imagen, urlLocal);
@@ -1222,6 +1234,9 @@
             if (!this.config.activo || !this.config.autoEnvioNoRegistro) {
                 return { ok: false, motivo: 'Envío automático desactivado' };
             }
+            if (!this._esSitioProduccion()) {
+                return { ok: false, motivo: 'El recordatorio automático solo se envía desde asistencia.tcontrolsa.com' };
+            }
             const ahora = new Date();
             const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
             const diaActual = diasSemana[ahora.getDay()];
@@ -1276,12 +1291,17 @@
                     const ref = db.collection('configuracion').doc('whatsapp_autocheck');
                     ganado = await db.runTransaction(async tx => {
                         const snap = await tx.get(ref);
-                        if (snap.exists && snap.data().fecha === reglas.fechaHoyStr) return false;
+                        const previo = snap.exists ? snap.data() : {};
+                        if (previo.fecha === reglas.fechaHoyStr) return false;
+                        const fallidosHoy = previo.fallidoFecha === reglas.fechaHoyStr ? Number(previo.intentosFallidos || 0) : 0;
+                        if (fallidosHoy >= 3) return false;
                         tx.set(ref, {
                             fecha: reglas.fechaHoyStr,
                             inicio: firebase.firestore.FieldValue.serverTimestamp(),
                             por: quien,
-                            destinatarios: listaEmpleadosSinMarcar.length
+                            destinatarios: listaEmpleadosSinMarcar.length,
+                            fallidoFecha: previo.fallidoFecha || '',
+                            intentosFallidos: fallidosHoy
                         });
                         return true;
                     });
@@ -1294,7 +1314,28 @@
             }
             this._ultimoCheckAuto = new Date();
 
-            return await this.enviarNotificacionesMasivas(listaEmpleadosSinMarcar, null, 'no_registro');
+            const resultado = await this.enviarNotificacionesMasivas(listaEmpleadosSinMarcar, null, 'no_registro');
+            // Nada salió (servicio caído, túnel inaccesible…): se libera el candado del día para reintentar
+            if (!forzar && resultado && resultado.total > 0 && !resultado.enviados) {
+                const reglas = this._reglasChequeoHoy();
+                try {
+                    const ref = db.collection('configuracion').doc('whatsapp_autocheck');
+                    await db.runTransaction(async tx => {
+                        const snap = await tx.get(ref);
+                        const d = snap.exists ? snap.data() : {};
+                        if (d.fecha !== reglas.fechaHoyStr) return;
+                        tx.set(ref, {
+                            ...d, fecha: '', fallidoFecha: reglas.fechaHoyStr,
+                            intentosFallidos: (d.fallidoFecha === reglas.fechaHoyStr ? Number(d.intentosFallidos || 0) : 0) + 1
+                        });
+                    });
+                    localStorage.removeItem(reglas.checkKey);
+                    console.warn('[OpenWA] Recordatorio automático sin envíos: candado liberado para reintentar');
+                } catch (e) {
+                    console.warn('[OpenWA] No se pudo liberar el candado del recordatorio:', e);
+                }
+            }
+            return resultado;
         },
 
         // Notificar a los Supervisores Administradores sobre una nueva solicitud de almuerzo o refrigerio
