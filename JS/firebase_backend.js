@@ -201,8 +201,9 @@ window.FirebaseBackend = {
                             if (storedVac) {
                                 const parsedVac = JSON.parse(storedVac);
                                 const ageMs = parsedVac.lastSync ? (Date.now() - new Date(parsedVac.lastSync).getTime()) : Infinity;
-                                // formato 3: "adjudicadas" es el total (año anterior + año actual) y la lista es la de todos
-                                if (parsedVac.formato === 3 && ageMs < 6 * 3600 * 1000 && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
+                                // formato 4: "adjudicadas" es el total (año anterior + año actual), la lista es la de todos
+                                // y cada colaborador trae su fecha de ingreso (exclusión de la auditoría)
+                                if (parsedVac.formato === 4 && ageMs < 6 * 3600 * 1000 && parsedVac.kpiVacacionesIndividual && Object.keys(parsedVac.kpiVacacionesIndividual).length > 0) {
                                     window.kpiVacaciones = parsedVac.kpiVacaciones;
                                     window._kpiVacacionesCache = parsedVac.kpiVacaciones;
                                     window.kpiVacacionesIndividual = parsedVac.kpiVacacionesIndividual;
@@ -265,6 +266,11 @@ window.FirebaseBackend = {
                                         kpiIndivLimpio[k].anioAnterior = parseFloat(v.anioAnterior) || 0;
                                         kpiIndivLimpio[k].delAnio = parseFloat(v.delAnio) || 0;
                                     }
+                                    // Para excluir de la auditoría a quien tiene menos de 1 año de servicio
+                                    if (v.fechaIngreso !== undefined) {
+                                        kpiIndivLimpio[k].fechaIngreso = v.fechaIngreso || '';
+                                        kpiIndivLimpio[k].aniosServicio = v.aniosServicio;
+                                    }
                                     sA += a;
                                     sT += t;
                                     sR += r;
@@ -287,7 +293,7 @@ window.FirebaseBackend = {
                                         vacaciones: raw.vacaciones || [],
                                         kpiVacaciones: raw.kpiVacaciones,
                                         kpiVacacionesIndividual: kpiIndivLimpio,
-                                        formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1,
+                                        formato: Object.values(rawIndiv).some(v => v && v.fechaIngreso !== undefined) ? 4 : (Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1),
                                         lastSync: new Date().toISOString()
                                     });
                                     localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);

@@ -4886,7 +4886,17 @@ function obtenerVacacionesEmpleado(params) {
           var tom = parseFloat(row[8]) || 0;
           var res = parseFloat(row[9]) || 0;
 
-          var infoVac = { adjudicadas: adj, tomadas: tom, restantes: res, anioAnterior: anterior, delAnio: delAnio };
+          // D fecha de ingreso, E años de servicio: el panel excluye de la auditoría a quien tiene menos de 1 año
+          var ingreso = row[3];
+          var fechaIngreso = '';
+          if (ingreso instanceof Date && !isNaN(ingreso.getTime())) {
+            fechaIngreso = Utilities.formatDate(ingreso, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+          } else if (ingreso) {
+            var mIng = String(ingreso).trim().match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+            if (mIng) fechaIngreso = mIng[3] + '-' + ('0' + mIng[2]).slice(-2) + '-' + ('0' + mIng[1]).slice(-2);
+          }
+          var aniosServicio = (row[4] !== '' && row[4] !== null && !isNaN(parseFloat(row[4]))) ? parseFloat(row[4]) : null;
+          var infoVac = { adjudicadas: adj, tomadas: tom, restantes: res, anioAnterior: anterior, delAnio: delAnio, fechaIngreso: fechaIngreso, aniosServicio: aniosServicio };
           if (idColA) vacacionesPorEmpleado[idColA] = infoVac;
           if (idColB) vacacionesPorEmpleado[idColB] = infoVac;
 

@@ -1588,60 +1588,15 @@ function cargarDashboard() {
 
     // Vacaciones KPI Card - Cumplimiento de Goce Anual (Tomadas / Adjudicadas)
     const renderizarCardKpiVacaciones = () => {
-      const kpiVac = window.kpiVacaciones || window._kpiVacacionesCache;
-      const kpiVacIndiv = window.kpiVacacionesIndividual || {};
-
-      let sumaAdjIndiv = 0;
-      let sumaTomIndiv = 0;
-      let sumaResIndiv = 0;
-      let countIndiv = 0;
-
-      for (const [k, v] of Object.entries(kpiVacIndiv)) {
-        const kLower = String(k).toLowerCase().trim();
-        if (!k || kLower.includes('sumatoria') || kLower.includes('total') || kLower.includes('promedio') || kLower.includes('resumen')) continue;
-        sumaAdjIndiv += parseFloat(v.adjudicadas) || 0;
-        sumaTomIndiv += parseFloat(v.tomadas) || 0;
-        sumaResIndiv += parseFloat(v.restantes) || 0;
-        countIndiv++;
-      }
-
-      let adjudicadas = 0;
-      let tomadas = 0;
-      let restantes = 0;
-
-      if (countIndiv > 0) {
-        adjudicadas = sumaAdjIndiv;
-        tomadas = sumaTomIndiv;
-        restantes = sumaResIndiv;
-      } else if (kpiVac) {
-        adjudicadas = parseFloat(kpiVac.adjudicadas) || 0;
-        tomadas = parseFloat(kpiVac.tomadas) || 0;
-        restantes = parseFloat(kpiVac.restantes) || 0;
-      }
-
+      // Mismos totales que el desglose: activos, sin pasantes ni personas con menos de 1 año de servicio
+      const resumen = resumenVacaciones();
+      const adjudicadas = resumen.adjudicadas;
+      const tomadas = resumen.tomadas;
+      const restantes = resumen.restantes;
       window.kpiVacaciones = { adjudicadas, tomadas, restantes };
       window._kpiVacacionesCache = window.kpiVacaciones;
-
-      // Tasa Global Acumulada de la Empresa (Tomadas / Adjudicadas)
-      let kpiVacPct = adjudicadas > 0 ? ((tomadas / adjudicadas) * 100).toFixed(1) : '100.0';
-      if (parseFloat(kpiVacPct) > 100) kpiVacPct = '100.0';
-
-      // Promedio del KPI de Goce individual de los colaboradores evaluados
-      let sumaKpiVacIndiv = 0;
-      let colabsConVac = 0;
-
-      empAsistencia.forEach(e => {
-        const empKey = String(e.id).trim();
-        const vInfo = kpiVacIndiv[empKey] || (e.cedula && kpiVacIndiv[String(e.cedula).trim()]) || kpiVacIndiv[e.id];
-        if (vInfo && (parseFloat(vInfo.adjudicadas) > 0 || parseFloat(vInfo.tomadas) > 0)) {
-          const a = parseFloat(vInfo.adjudicadas) || 0;
-          const t = parseFloat(vInfo.tomadas) || 0;
-          const p = a > 0 ? ((t / a) * 100) : 100;
-          sumaKpiVacIndiv += Math.min(100, p);
-          colabsConVac++;
-        }
-      });
-      const promedioVacIndivPct = colabsConVac > 0 ? (sumaKpiVacIndiv / colabsConVac).toFixed(1) : kpiVacPct;
+      const kpiVacPct = resumen.tasaGlobal;
+      const promedioVacIndivPct = resumen.promedioIndiv;
 
       const formatDias = (n) => (n % 1 === 0 ? n : n.toFixed(1));
 
@@ -1708,7 +1663,7 @@ function cargarDashboard() {
             const a = parseFloat(v.adjudicadas) || 0;
             const t = parseFloat(v.tomadas) || 0;
             const r = parseFloat(v.restantes) || 0;
-            limpio[k] = { adjudicadas: a, tomadas: t, restantes: r };
+            limpio[k] = { ...v, adjudicadas: a, tomadas: t, restantes: r };
             sumA += a;
             sumT += t;
             sumR += r;
@@ -1728,7 +1683,7 @@ function cargarDashboard() {
                 vacaciones: vacRes.vacaciones || [],
                 kpiVacaciones: window.kpiVacaciones,
                 kpiVacacionesIndividual: limpio,
-                formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1,
+                formato: Object.values(rawIndiv).some(v => v && v.fechaIngreso !== undefined) ? 4 : (Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1),
                 lastSync: new Date().toISOString()
               }));
             } catch(e) {}
@@ -12235,68 +12190,85 @@ window.forzarSincronizacionHistorica = async function () {
 // ==========================================
 // MODAL DESGLOSE DE VACACIONES (GOCE ANUAL)
 // ==========================================
+// Pasantes y quien tiene menos de 1 año de servicio (fecha de ingreso de CALCULAR_vacaciones)
+// no intervienen en la auditoría: se listan como "No aplica" y no suman en los totales.
+function motivoExclusionVacaciones(emp, vInfo) {
+  if (emp && typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(emp)) return 'Pasante';
+  const ingreso = vInfo && vInfo.fechaIngreso ? String(vInfo.fechaIngreso) : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ingreso)) {
+    const aniversario = new Date(ingreso + 'T12:00:00');
+    aniversario.setFullYear(aniversario.getFullYear() + 1);
+    if (aniversario > new Date()) return 'Menos de 1 año';
+  } else if (vInfo && vInfo.aniosServicio !== null && vInfo.aniosServicio !== undefined && parseFloat(vInfo.aniosServicio) < 1) {
+    return 'Menos de 1 año';
+  }
+  return '';
+}
+
+// Totales de vacaciones de los colaboradores activos que sí aplican (tarjeta del dashboard y desglose)
+function resumenVacaciones() {
+  const kpiVacIndiv = window.kpiVacacionesIndividual || {};
+  const activos = (empCache || []).filter(e => {
+    const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
+    const excluido = (typeof esEmpleadoExcluidoAsistencia === 'function') ? esEmpleadoExcluidoAsistencia(e) : false;
+    return act && !excluido;
+  });
+  const r = { filas: [], adjudicadas: 0, tomadas: 0, restantes: 0, sumaKpis: 0, colabsConVac: 0, excluidos: 0 };
+  activos.forEach(e => {
+    const empKey = String(e.id).trim();
+    const vInfo = kpiVacIndiv[empKey] || (e.cedula && kpiVacIndiv[String(e.cedula).trim()]) || kpiVacIndiv[e.id] || { adjudicadas: 0, tomadas: 0, restantes: 0 };
+    const adj = parseFloat(vInfo.adjudicadas) || 0;
+    const tom = parseFloat(vInfo.tomadas) || 0;
+    const res = parseFloat(vInfo.restantes) || 0;
+    const motivo = motivoExclusionVacaciones(e, vInfo);
+    const tieneDatosVac = (adj > 0 || tom > 0 || res !== 0);
+    let pct = 0;
+    if (adj > 0) pct = Math.min(100, (tom / adj) * 100);
+    else if (tom > 0) pct = 100;
+    if (motivo) {
+      r.excluidos++;
+    } else {
+      if (adj > 0 || tom > 0) { r.sumaKpis += pct; r.colabsConVac++; }
+      r.adjudicadas += adj;
+      r.tomadas += tom;
+      r.restantes += res;
+    }
+    r.filas.push({
+      id: e.id,
+      nombre: e.nombre || 'Desconocido',
+      cargo: e.cargo || e.area || 'Sin cargo',
+      area: e.area || e.departamento || '',
+      adjudicadas: adj,
+      tomadas: tom,
+      restantes: res,
+      pct: pct,
+      tieneDatosVac: tieneDatosVac,
+      excluido: motivo
+    });
+  });
+  r.tasaGlobal = r.adjudicadas > 0 ? Math.min(100, (r.tomadas / r.adjudicadas) * 100).toFixed(1) : '100.0';
+  r.promedioIndiv = r.colabsConVac > 0 ? (r.sumaKpis / r.colabsConVac).toFixed(1) : r.tasaGlobal;
+  return r;
+}
+
 window.renderizarTablaDesgloseVacaciones = function () {
   try {
-    const tbody = document.getElementById('tbodyModalVacaciones');
-    const kpiVacIndiv = window.kpiVacacionesIndividual || {};
-    const empAsistencia = (empCache || []).filter(e => {
-      const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
-      const excluido = (typeof esEmpleadoExcluidoAsistencia === 'function') ? esEmpleadoExcluidoAsistencia(e) : false;
-      return act && !excluido;
-    });
+    const resumen = resumenVacaciones();
+    const datosTabla = resumen.filas;
+    const totalAdjudicadas = resumen.adjudicadas;
+    const totalTomadas = resumen.tomadas;
+    const totalRestantes = resumen.restantes;
 
-    let totalAdjudicadas = 0;
-    let totalTomadas = 0;
-    let totalRestantes = 0;
-    let sumaKpis = 0;
-    let colabsConVac = 0;
-    let datosTabla = [];
-
-    empAsistencia.forEach(e => {
-      const empKey = String(e.id).trim();
-      const vInfo = kpiVacIndiv[empKey] || (e.cedula && kpiVacIndiv[String(e.cedula).trim()]) || kpiVacIndiv[e.id] || { adjudicadas: 0, tomadas: 0, restantes: 0 };
-      const adj = parseFloat(vInfo.adjudicadas) || 0;
-      const tom = parseFloat(vInfo.tomadas) || 0;
-      const res = parseFloat(vInfo.restantes) || 0;
-
-      const tieneDatosVac = (adj > 0 || tom > 0 || res !== 0);
-      let pct = 0;
-      if (adj > 0) {
-        pct = Math.min(100, (tom / adj) * 100);
-        sumaKpis += pct;
-        colabsConVac++;
-      } else if (tom > 0) {
-        pct = 100;
-        sumaKpis += 100;
-        colabsConVac++;
-      }
-
-      totalAdjudicadas += adj;
-      totalTomadas += tom;
-      totalRestantes += res;
-
-      datosTabla.push({
-        id: e.id,
-        nombre: e.nombre || 'Desconocido',
-        cargo: e.cargo || e.area || 'Sin cargo',
-        area: e.area || e.departamento || '',
-        adjudicadas: adj,
-        tomadas: tom,
-        restantes: res,
-        pct: pct,
-        tieneDatosVac: tieneDatosVac
-      });
-    });
-
-    // Ordenar: primero colaboradores con vacaciones (de menor % de goce a mayor), luego sin asignar
+    // Ordenar: los que aplican con vacaciones (de menor % de goce a mayor), luego sin asignar, al final "No aplica"
     datosTabla.sort((a, b) => {
+      if (!!a.excluido !== !!b.excluido) return a.excluido ? 1 : -1;
       if (a.tieneDatosVac !== b.tieneDatosVac) return a.tieneDatosVac ? -1 : 1;
       if (a.pct !== b.pct) return a.pct - b.pct;
       return b.restantes - a.restantes;
     });
 
-    const tasaGlobal = totalAdjudicadas > 0 ? ((totalTomadas / totalAdjudicadas) * 100).toFixed(1) : '100.0';
-    const promedioIndiv = colabsConVac > 0 ? (sumaKpis / colabsConVac).toFixed(1) : tasaGlobal;
+    const tasaGlobal = resumen.tasaGlobal;
+    const promedioIndiv = resumen.promedioIndiv;
     const formatDias = (n) => (n % 1 === 0 ? n : n.toFixed(1));
 
     if (document.getElementById('lblModalVacAdjudicadas')) document.getElementById('lblModalVacAdjudicadas').textContent = `${formatDias(totalAdjudicadas)} d`;
@@ -12406,7 +12378,7 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
         const a = parseFloat(v.adjudicadas) || 0;
         const t = parseFloat(v.tomadas) || 0;
         const r = parseFloat(v.restantes) || 0;
-        limpio[k] = { adjudicadas: a, tomadas: t, restantes: r };
+        limpio[k] = { ...v, adjudicadas: a, tomadas: t, restantes: r };
         sumA += a;
         sumT += t;
         sumR += r;
@@ -12426,7 +12398,7 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
           vacaciones: vacRes.vacaciones || [],
           kpiVacaciones: window.kpiVacaciones,
           kpiVacacionesIndividual: limpio,
-          formato: Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1,
+          formato: Object.values(rawIndiv).some(v => v && v.fechaIngreso !== undefined) ? 4 : (Object.values(rawIndiv).some(v => v && v.anioAnterior !== undefined) ? 3 : 1),
           lastSync: new Date().toISOString()
         });
         localStorage.setItem('tcontrol_vacaciones_cache_v3', cacheData);
@@ -12511,7 +12483,10 @@ window.renderFilasVacaciones = function (lista) {
     let colorPct = '#0284c7';
     let badgeEstado = '';
 
-    if (!item.tieneDatosVac) {
+    if (item.excluido) {
+      colorPct = '#94a3b8';
+      badgeEstado = `<span style="background: #f8fafc; color: #64748b; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; border: 1px dashed #cbd5e1;" title="No interviene en los cálculos de la auditoría"><i class="fas fa-ban"></i> No aplica · ${escapeHtml(item.excluido)}</span>`;
+    } else if (!item.tieneDatosVac) {
       colorPct = '#94a3b8';
       badgeEstado = `<span style="background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; border: 1px solid #e2e8f0;"><i class="fas fa-minus"></i> Sin Asignar</span>`;
     } else if (item.pct >= 100) {
@@ -12533,7 +12508,7 @@ window.renderFilasVacaciones = function (lista) {
     const cargoEsc = escapeHtml(item.cargo || '');
 
     html += `
-          <tr style="border-bottom: 1px solid #f1f5f9; background: #ffffff; transition: background 0.15s ease;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='#ffffff'">
+          <tr style="border-bottom: 1px solid #f1f5f9; background: #ffffff; transition: background 0.15s ease;${item.excluido ? ' opacity: 0.6;' : ''}" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='#ffffff'">
             <td style="padding: 10px 12px; text-align: center; color: var(--g500); font-weight: 700;">${idx + 1}</td>
             <td style="padding: 10px 12px;">
               <div style="display: flex; align-items: center; gap: 8px;">
@@ -12554,7 +12529,7 @@ window.renderFilasVacaciones = function (lista) {
                 <div style="background: #e2e8f0; border-radius: 6px; height: 8px; width: 70px; overflow: hidden;">
                   <div style="background: ${colorPct}; width: ${item.pct}%; height: 100%;"></div>
                 </div>
-                <strong style="color: ${colorPct}; font-size: 12px;">${item.pct.toFixed(1)}%</strong>
+                <strong style="color: ${colorPct}; font-size: 12px;">${item.excluido ? '—' : item.pct.toFixed(1) + '%'}</strong>
               </div>
             </td>
             <td style="padding: 10px 12px; text-align: center;">${badgeEstado}</td>
