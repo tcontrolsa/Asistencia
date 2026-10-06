@@ -206,8 +206,24 @@
     return r;
   }
 
-  // Respaldo para redes o equipos que bloquean *.trycloudflare.com: Apps Script reenvía la llamada
+  // Respaldo para redes o equipos que bloquean *.trycloudflare.com: Apps Script reenvía la llamada.
+  // Directo ≈ 0,4 s por consulta; por Apps Script ≈ 3 s. Si la conexión directa falla, el respaldo se
+  // recuerda 30 min en el navegador (todas las pestañas) y después se vuelve a probar la directa.
   const KEY_PROXY = 'tcontrol_eval_via_apps_script';
+  const PROXY_VIGENCIA_MS = 30 * 60 * 1000;
+  function usarProxy() {
+    try {
+      const t = Number(localStorage.getItem(KEY_PROXY) || 0);
+      if (t && Date.now() - t < PROXY_VIGENCIA_MS) return true;
+      localStorage.removeItem(KEY_PROXY);
+    } catch (e) { }
+    return false;
+  }
+  function marcarProxy(si) {
+    try { if (si) localStorage.setItem(KEY_PROXY, String(Date.now())); else localStorage.removeItem(KEY_PROXY); } catch (e) { }
+  }
+  // Ruta y duración de la última carga (se muestran al pie del módulo)
+  const medicion = { ruta: '', ms: 0 };
   async function rpcPorAppsScript(ses, fn, p) {
     const res = await window.FirebaseBackend._post({ accion: 'evalRpc', token: ses.token, fn, p: JSON.stringify(p) });
     if (!res || typeof res.status !== 'number') {
@@ -225,7 +241,8 @@
       if (!base && intento === 0) base = await fb._urlHistorico(true);
       if (!base) { causa = 'sin dirección del servidor'; continue; }
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 20000);
+      // Normalmente responde en menos de 1 s: si no, mejor pasar pronto al respaldo
+      const t = setTimeout(() => ctrl.abort(), intento === 0 ? 8000 : 12000);
       try {
         const resp = await fetch(`${base}/rpc/${fn}`, {
           method: 'POST',
@@ -246,17 +263,18 @@
   }
 
   async function rpc(ses, fn, p) {
-    let viaProxy = false;
-    try { viaProxy = sessionStorage.getItem(KEY_PROXY) === '1'; } catch (e) { }
+    const t0 = performance.now();
+    const medir = (ruta, r) => { medicion.ruta = ruta; medicion.ms = Math.round(performance.now() - t0); return r; };
+    const viaProxy = usarProxy();
     if (!viaProxy) {
       try {
-        return await rpcDirecto(ses, fn, p);
+        return medir('directa', await rpcDirecto(ses, fn, p));
       } catch (e) {
         if (!e.red) throw e;
         console.warn('Evaluaciones: se usa Apps Script como respaldo');
-        try { sessionStorage.setItem(KEY_PROXY, '1'); } catch (x) { }
+        marcarProxy(true);
         try {
-          return await rpcPorAppsScript(ses, fn, p);
+          return medir('respaldo', await rpcPorAppsScript(ses, fn, p));
         } catch (e2) {
           if (e2.sesion || e2.servidor) throw e2;
           throw new Error(`La base de evaluaciones no está disponible en este momento (${e.message}; respaldo: ${e2.message}). Intenta en unos minutos.`);
@@ -264,13 +282,13 @@
       }
     }
     try {
-      return await rpcPorAppsScript(ses, fn, p);
+      return medir('respaldo', await rpcPorAppsScript(ses, fn, p));
     } catch (e) {
       if (e.sesion || e.servidor) throw e;
       // El respaldo falló: probar de nuevo la conexión directa
-      try { sessionStorage.removeItem(KEY_PROXY); } catch (x) { }
+      marcarProxy(false);
       try {
-        return await rpcDirecto(ses, fn, p);
+        return medir('directa', await rpcDirecto(ses, fn, p));
       } catch (e2) {
         if (e2.sesion || e2.servidor) throw e2;
         throw new Error(`La base de evaluaciones no está disponible en este momento (${e2.message}; respaldo: ${e.message}). Intenta en unos minutos.`);
@@ -387,15 +405,48 @@
     return st;
   }
 
+  // El equipo viaja en la sesión (token de 8 h). Si en Firestore alguien cambió de evaluador desde
+  // entonces, la sesión se cierra para que el PIN emita un equipo nuevo (y permisos acordes).
+  async function equipoVigente(ses) {
+    try {
+      if (typeof firebase === 'undefined' || !firebase.firestore) return true;
+      const snap = await firebase.firestore().collection('empleados').where('evaluador_id', '==', String(ses.empleadoId)).get();
+      const actual = new Set();
+      snap.forEach(d => {
+        const e = d.data() || {};
+        const id = String(e.id || d.id).trim();
+        if (!id || id === String(ses.empleadoId)) return;
+        if (String(e.activo || 'SI').toUpperCase() === 'NO' || e.activo === false) return;
+        if (!String(e.evaluacion_rol || 'EVALUADO').toUpperCase().includes('EVALUADO')) return;
+        actual.add(id);
+      });
+      const enSesion = new Set((ses.equipo || []).map(m => String(m.id)));
+      return actual.size === enSesion.size && [...actual].every(id => enSesion.has(id));
+    } catch (e) {
+      console.warn('Evaluaciones: no se pudo verificar el equipo', e);
+      return true; // sin conexión con Firestore no se bloquea al evaluador
+    }
+  }
+  const AVISO_EQUIPO = 'Tu equipo de evaluación cambió. Ingresa tu PIN de nuevo para actualizarlo.';
+
   async function cargar(st) {
     st.cargando = true; st.error = '';
     pintar(st);
     try {
       const desde = mesAnterior(mesPorDefecto(), 12);
-      const [mias, equipo] = await Promise.all([
+      const resultados = await Promise.allSettled([
+        equipoVigente(st.ses),
         rpc(st.ses, 'eval_listar', { modo: 'mias' }),
         st.ses.equipo.length ? rpc(st.ses, 'eval_listar', { modo: 'equipo', desde }) : Promise.resolve({ ok: true, evaluaciones: [] })
       ]);
+      // El aviso de equipo cambiado tiene prioridad sobre cualquier error de la base
+      if (resultados[0].status === 'fulfilled' && resultados[0].value === false) {
+        cerrarSesion();
+        throw Object.assign(new Error(AVISO_EQUIPO), { sesion: true });
+      }
+      const fallo = resultados.find(r => r.status === 'rejected');
+      if (fallo) throw fallo.reason;
+      const mias = resultados[1].value, equipo = resultados[2].value;
       if (!mias.ok) throw new Error(mias.error);
       if (!equipo.ok) throw new Error(equipo.error);
       st.mias = mias.evaluaciones || [];
@@ -422,6 +473,13 @@
     else pintar(st);
   }
 
+  function pieMedicion() {
+    if (!medicion.ruta) return '';
+    const s = (medicion.ms / 1000).toFixed(1);
+    return `<p class="ev-muted ev-small" style="text-align:right;margin:6px 4px 0;">Cargado en ${s} s · ${medicion.ruta === 'directa'
+      ? 'conexión directa' : 'por Apps Script (la red bloquea la conexión directa)'}</p>`;
+  }
+
   function pintar(st) {
     const c = st.cont;
     if (!st.ses) { c.innerHTML = `<div class="ev-root">${st.embebido ? '' : heroHtml()}${pinHtml(st.error)}</div>`; return; }
@@ -429,7 +487,7 @@
     if (st.vista === 'form') { c.innerHTML = `<div class="ev-root">${formHtml(st)}</div>`; return; }
     if (st.vista === 'detalle') { c.innerHTML = `<div class="ev-root">${vistaDetalle(st)}</div>`; arriba(st); return; }
     if (st.vista === 'persona') { c.innerHTML = `<div class="ev-root">${personaHtml(st)}</div>`; arriba(st); return; }
-    c.innerHTML = `<div class="ev-root">${st.embebido ? '' : heroHtml()}${st.error ? `<div class="ev-card ev-error-card"><i class="fas fa-exclamation-triangle"></i> ${esc(st.error)} <button class="ev-link" data-ev="recargar">Reintentar</button></div>` : ''}${equipoHtml(st)}${miasHtml(st)}</div>`;
+    c.innerHTML = `<div class="ev-root">${st.embebido ? '' : heroHtml()}${st.error ? `<div class="ev-card ev-error-card"><i class="fas fa-exclamation-triangle"></i> ${esc(st.error)} <button class="ev-link" data-ev="recargar">Reintentar</button></div>` : ''}${equipoHtml(st)}${miasHtml(st)}${pieMedicion()}</div>`;
   }
 
   function equipoHtml(st) {
@@ -942,7 +1000,7 @@
       </div>`;
     const errorHtml = st.error ? `<div class="ev-card ev-error-card"><i class="fas fa-exclamation-triangle"></i> ${esc(st.error)}</div>` : '';
     if (st.rVista === 'dashboard') {
-      c.innerHTML = `<div class="ev-root">${errorHtml}${barra}${dashboardHtml(st, opts)}</div>`;
+      c.innerHTML = `<div class="ev-root">${errorHtml}${barra}${dashboardHtml(st, opts)}${pieMedicion()}</div>`;
       return;
     }
     c.innerHTML = `<div class="ev-root">
@@ -980,6 +1038,7 @@
         </table></div>
         <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'superaron los 90 días de prueba (o no tienen fecha de ingreso)'}.</p>
       </div>
+      ${pieMedicion()}
     </div>`;
   }
 
