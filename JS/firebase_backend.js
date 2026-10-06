@@ -229,6 +229,13 @@ window.FirebaseBackend = {
                                         }
                                     }
 
+                                    // Copia con más de 10 min: se renueva en segundo plano y se avisa a quien la muestra
+                                    // (antes la copia se usaba hasta 6 h sin volver a consultar la hoja)
+                                    if (ageMs > 10 * 60 * 1000 && !this._pendingVacacionesPromise) {
+                                        this.procesarAccion({ accion: 'obtenerVacacionesEmpleado', force: true })
+                                            .then(r => { if (r && r.ok && !r.desdeCache) window.dispatchEvent(new CustomEvent('vacacionesActualizadas')); })
+                                            .catch(() => { });
+                                    }
                                     return {
                                         ok: true,
                                         vacaciones: filteredVacs,

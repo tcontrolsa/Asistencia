@@ -4756,7 +4756,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     accion: 'obtenerVacacionesEmpleado',
     empleadoId: id,
     cedula: e.cedula || '',
-    nombre: e.nombre || ''
+    nombre: e.nombre || '',
+    force: true // ya se pintó con la copia local: aquí se trae lo vigente de la hoja
   };
   const promVac = (window.FirebaseBackend && typeof window.FirebaseBackend.ejecutar === 'function')
     ? window.FirebaseBackend.ejecutar('obtenerVacacionesEmpleado', paramsVac)
@@ -12365,9 +12366,10 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
 
   const tbody = document.getElementById('tbodyModalVacaciones');
 
+  // Con el botón Actualizar (btn) se consulta la hoja aunque haya copia local
   const reqVac = (window.USE_FIREBASE && window.FirebaseBackend && typeof window.FirebaseBackend.procesarAccion === 'function')
-    ? window.FirebaseBackend.procesarAccion({ accion: 'obtenerVacacionesEmpleado' })
-    : jsonpRequest({ accion: 'obtenerVacacionesEmpleado' });
+    ? window.FirebaseBackend.procesarAccion({ accion: 'obtenerVacacionesEmpleado', force: !!btn })
+    : jsonpRequest({ accion: 'obtenerVacacionesEmpleado', force: !!btn });
 
   window._sincronizandoVacacionesPromise = reqVac.then(vacRes => {
     if (vacRes && vacRes.ok && vacRes.kpiVacacionesIndividual && Object.keys(vacRes.kpiVacacionesIndividual).length > 0) {
@@ -12457,6 +12459,15 @@ window.sincronizarDatosVacaciones = function (abrirModalDespues = false, btn = n
 
   return window._sincronizandoVacacionesPromise;
 };
+
+// La copia local de vacaciones se renovó en segundo plano: repintar tarjeta del dashboard y desglose abierto
+window.addEventListener('vacacionesActualizadas', () => {
+  try {
+    if (typeof window.renderDetailedKPIs === 'function') window.renderDetailedKPIs();
+    const modal = document.getElementById('modalDesgloseVacaciones');
+    if (modal && modal.style.display !== 'none' && !modal.classList.contains('hidden')) window.renderizarTablaDesgloseVacaciones();
+  } catch (e) { console.warn('Vacaciones actualizadas:', e); }
+});
 
 window.recargarDesgloseVacaciones = function (btn) {
   window.sincronizarDatosVacaciones(true, btn);
