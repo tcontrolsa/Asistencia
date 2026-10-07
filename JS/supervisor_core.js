@@ -5207,13 +5207,6 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
 
       let tiempoPersonal = 0, tiempoMedico = 0, tiempoJustificado = 0;
-      const hasCumpleanos = regsDia.some(r => {
-        const raz = String(r.razon_ausencia || '').toLowerCase();
-        const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
-      });
-      if (hasCumpleanos) tiempoJustificado += 240;
-
       const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
       const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
       const medMins = regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
@@ -5221,6 +5214,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       tiempoPersonal += persMins;
       tiempoMedico += medMins;
       tiempoJustificado += justMins;
+      // Cumpleaños: media jornada (4 h) — por registro marcado o por fecha de nacimiento si trabajó ese día
+      const esCumpleDia = beneficioCumpleanosDia(e, f, regsDia, tieneAsistencia);
+      if (esCumpleDia) tiempoJustificado = Math.max(tiempoJustificado, 240);
 
       let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : 0;
       let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
@@ -5686,13 +5682,6 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
 
       let tiempoJustificado = 0;
-      const hasCumpleanos = regsDia.some(r => {
-        const raz = String(r.razon_ausencia || '').toLowerCase();
-        const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        return raz.includes('cumplea') || raz.includes('cumplean') || tip.includes('CUMPLE');
-      });
-      if (hasCumpleanos) tiempoJustificado += 240;
-
       const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
       const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
       const medMins = regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
@@ -5700,6 +5689,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       tiempoPersonal += persMins;
       tiempoMedico += medMins;
       tiempoJustificado += justMins;
+      const esCumpleDia = beneficioCumpleanosDia(e, f, regsDia, tieneAsistencia);
+      if (esCumpleDia) tiempoJustificado = Math.max(tiempoJustificado, 240);
 
       const esPrevioAlRegistro = Boolean(d.previoAlRegistro);
       const esHoyOFuturo = f >= getLocalHoyStr();
@@ -5973,7 +5964,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (minsSalidaTemprana > 0) {
         badgesNovedades.push(`<span class="badge-tiempo badge-salida-temp" title="Salida anticipada: ${minutosAHHMMSS(minsSalidaTemprana)}"><i class="fas fa-door-open" style="font-size:9px;"></i> Ant: ${minutosAHHMMSS(minsSalidaTemprana)}</span>`);
       }
-      if (tiempoJustificado > 0) {
+      if (esCumpleDia) {
+        badgesNovedades.push(`<span class="badge-tiempo badge-just" title="Beneficio institucional por cumpleaños: media jornada (4 h) justificada">🎂 Cumpleaños 4h</span>`);
+      } else if (tiempoJustificado > 0) {
         badgesNovedades.push(`<span class="badge-tiempo badge-just" title="Tiempo Justificado: ${minutosAHHMMSS(tiempoJustificado)}"><i class="fas fa-check-circle" style="font-size:9px;"></i> TJ: ${minutosAHHMMSS(tiempoJustificado)}</span>`);
       }
       if (tiempoPersonal > 0) {
@@ -5982,9 +5975,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (tiempoMedico > 0) {
         badgesNovedades.push(`<span class="badge-tiempo badge-med" title="Permiso Médico: ${minutosAHHMMSS(tiempoMedico)}"><i class="fas fa-briefcase-medical" style="font-size:9px;"></i> TM: ${minutosAHHMMSS(tiempoMedico)}</span>`);
       }
-      if (tiempoPorJustificar > 0) {
-        badgesNovedades.push(`<span class="badge-tiempo badge-falt" title="Tiempo por Justificar / Faltante (fuera de las 4h): ${minutosAHHMMSS(tiempoPorJustificar)}"><i class="fas fa-exclamation-triangle" style="font-size:9px;"></i> Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
-      }
+      // El faltante no se repite aquí: es lo que muestra la columna T. Descontar
       if (badgePenalizacionHtml) badgesNovedades.push(badgePenalizacionHtml);
       if (razonTextoFinal && !['vacación', 'vacacion', 'vacaciones', 'laboral'].includes(razonTextoFinal.toLowerCase())) {
         badgesNovedades.push(razonDisplayHtml);
@@ -6021,7 +6012,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       <td style="font-size:11px; padding:6px 8px; text-align:center;">${aBadge}</td>
       <td style="text-align:center; font-size:10.5px; padding:6px 8px;">${celdaNovedadesHtml}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;">
-        ${descuentoDiaVis > 0 ? `<span style="color:#dc2626; font-weight:800; background:#fee2e2; padding:2px 7px; border-radius:6px; border:1px solid #fca5a5;">${minutosAHHMMSS(descuentoDiaVis)}</span>` : '<span style="color:#94a3b8;">—</span>'}
+        ${descuentoDiaVis > 0 ? `<span style="color:#dc2626; font-weight:800; background:#fee2e2; padding:2px 7px; border-radius:6px; border:1px solid #fca5a5;" title="Tiempo por justificar (después de permisos y de la bolsa de 4 h del período)">${minutosAHHMMSS(descuentoDiaVis)}</span>` : '<span style="color:#94a3b8;">—</span>'}
       </td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}">${celdaH50Html}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}">${celdaH100Html}</td>
@@ -6074,6 +6065,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     if (wrapBanner) {
       wrapBanner.innerHTML = generarBannerRegularizarHTML(fechasARegularizar);
     }
+
+    // La tarjeta "Jornada y Tiempos" se dibuja una vez: actualizarla con los totales recalculados
+    const kpiHoras = document.getElementById('kpiDetTotalHoras');
+    if (kpiHoras) kpiHoras.textContent = `${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}`;
+    const kpiAtr = document.getElementById('kpiDetAtrasos');
+    if (kpiAtr) { kpiAtr.textContent = minutosAHHMMSS(totAtrasos); kpiAtr.style.color = totAtrasos > 0 ? '#dc2626' : '#0f172a'; }
+    const kpiPJ = document.getElementById('kpiDetPorJustificar');
+    if (kpiPJ) { kpiPJ.textContent = minutosAHHMMSS(totTJ); kpiPJ.style.color = totTJ > 0 ? '#dc2626' : '#10b981'; }
 
     return { filas, tfootRow, fechasARegularizar };
   }
@@ -6297,15 +6296,15 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           <div class="kpi-card-stats-grid">
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Total Horas</span>
-              <div class="kpi-stat-val-hero" style="color:#10b981;">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
+              <div class="kpi-stat-val-hero" id="kpiDetTotalHoras" style="color:#10b981;">${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}</div>
             </div>
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Atrasos Acum.</span>
-              <div class="kpi-stat-val-hero" style="color:${totAtrasos > 0 ? '#dc2626' : '#0f172a'};">${minutosAHHMMSS(totAtrasos)}</div>
+              <div class="kpi-stat-val-hero" id="kpiDetAtrasos" style="color:${totAtrasos > 0 ? '#dc2626' : '#0f172a'};">${minutosAHHMMSS(totAtrasos)}</div>
             </div>
             <div class="kpi-subrow-split">
               <span class="kpi-stat-label" style="margin:0;">T. por Justificar:</span>
-              <span style="font-size:12px; font-weight:800; color:${totTJ > 0 ? '#dc2626' : '#10b981'};">${minutosAHHMMSS(totTJ)}</span>
+              <span id="kpiDetPorJustificar" style="font-size:12px; font-weight:800; color:${totTJ > 0 ? '#dc2626' : '#10b981'};">${minutosAHHMMSS(totTJ)}</span>
             </div>
           </div>
         </div>
@@ -12837,6 +12836,18 @@ window.exportarKPIsDetalladosPDF = async function () {
 // ============================================================
 
 window._modalJornadaContexto = null;
+
+// Beneficio institucional de cumpleaños (media jornada, 240 min): registro marcado como cumpleaños o,
+// si trabajó ese día, la fecha de nacimiento. Antes solo la ventana de gestión lo detectaba por fecha.
+function beneficioCumpleanosDia(emp, fecha, regsDia, tieneAsistencia) {
+  const marcado = (regsDia || []).some(r => {
+    const raz = String(r.razon_ausencia || r.razon_permiso || '').toLowerCase();
+    const tip = String(r.tipo || r.tipo_salida || '').toUpperCase();
+    return raz.includes('cumplea') || tip.includes('CUMPLE');
+  });
+  if (marcado) return true;
+  return Boolean(tieneAsistencia && typeof window.esCumpleanosEmpleadoEnFecha === 'function' && window.esCumpleanosEmpleadoEnFecha(emp, fecha));
+}
 
 window.esCumpleanosEmpleadoEnFecha = function (emp, fechaStr) {
   if (!emp || !fechaStr) return false;
