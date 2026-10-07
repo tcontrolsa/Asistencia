@@ -4962,6 +4962,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   let pS = cS ? Math.round(sS / cS) : null;
 
   let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0;
+  let totDescontarTarjeta = 0; // la tarjeta muestra lo mismo que el total de la columna T. Descontar
   let thH = 0, thM = 0;
 
   // Banner del detalle: aviso del historial archivado (verificando / no verificado) + fechas por regularizar
@@ -6085,6 +6086,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     thM = totHoras % 60 || 0;
 
     const totDescontarFinal = totDescuentoNeto;
+    totDescontarTarjeta = totDescontarFinal;
 
     let celdaTotalDescuentoHtml = '—';
     if (totDescontarFinal > 0) {
@@ -6134,7 +6136,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     const kpiAtr = document.getElementById('kpiDetAtrasos');
     if (kpiAtr) { kpiAtr.textContent = minutosAHHMMSS(totAtrasos); kpiAtr.style.color = totAtrasos > 0 ? '#dc2626' : '#0f172a'; }
     const kpiPJ = document.getElementById('kpiDetPorJustificar');
-    if (kpiPJ) { kpiPJ.textContent = minutosAHHMMSS(totTJ); kpiPJ.style.color = totTJ > 0 ? '#dc2626' : '#10b981'; }
+    if (kpiPJ) { kpiPJ.textContent = minutosAHHMMSS(totDescontarTarjeta); kpiPJ.style.color = totDescontarTarjeta > 0 ? '#dc2626' : '#10b981'; }
 
     return { filas, tfootRow, fechasARegularizar };
   }
@@ -6372,8 +6374,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
               <div class="kpi-stat-val-hero" id="kpiDetAtrasos" style="color:${totAtrasos > 0 ? '#dc2626' : '#0f172a'};">${minutosAHHMMSS(totAtrasos)}</div>
             </div>
             <div class="kpi-subrow-split">
-              <span class="kpi-stat-label" style="margin:0;">T. por Justificar:</span>
-              <span id="kpiDetPorJustificar" style="font-size:12px; font-weight:800; color:${totTJ > 0 ? '#dc2626' : '#10b981'};">${minutosAHHMMSS(totTJ)}</span>
+              <span class="kpi-stat-label" style="margin:0;" title="Igual al total de la columna T. Descontar (atrasos y faltantes después de permisos y de la bolsa de 4 h)">T. a Descontar:</span>
+              <span id="kpiDetPorJustificar" style="font-size:12px; font-weight:800; color:${totDescontarTarjeta > 0 ? '#dc2626' : '#10b981'};">${minutosAHHMMSS(totDescontarTarjeta)}</span>
             </div>
           </div>
         </div>
