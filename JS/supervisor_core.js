@@ -6044,7 +6044,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             ${totTJustificado > 0 ? `<span style="background:#fef9c3; color:#854d0e; padding:2px 6px; border-radius:5px; border:1px solid #fde047;" title="Total Tiempo Justificado">TJ: <strong>${minutosAHHMMSS(totTJustificado)}</strong></span>` : ''}
             ${totTP > 0 ? `<span style="background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:5px; border:1px solid #c7d2fe;" title="Total Tiempo Personal">TP: <strong>${minutosAHHMMSS(totTP)}</strong></span>` : ''}
             ${totTM > 0 ? `<span style="background:#ccfbf1; color:#0f766e; padding:2px 6px; border-radius:5px; border:1px solid #99f6e4;" title="Total Tiempo Médico">TM: <strong>${minutosAHHMMSS(totTM)}</strong></span>` : ''}
-            ${totTJ > 0 ? `<span style="background:#ffe4e6; color:#be123c; padding:2px 6px; border-radius:5px; border:1px solid #fecdd3;" title="Total Faltante">Falt: <strong>${minutosAHHMMSS(totTJ)}</strong></span>` : ''}
+            ${'' /* El total por justificar no se repite: lo muestra la columna T. Descontar */}
             ${(totAtrasos === 0 && totTJustificado === 0 && totTP === 0 && totTM === 0 && totTJ === 0) ? '<span style="color:#94a3b8;">Normal</span>' : ''}
           </div>
         </td>
