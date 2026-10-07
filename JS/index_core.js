@@ -5277,7 +5277,7 @@ function calcularEstadisticas() {
             if (mEntrada !== null) {
                 const refEntrada = esFestivo ? 420 : H_INI_REF;
                 const esPasanteLocal = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(empleado);
-                if (mEntrada > refEntrada + 5 && !esPasanteLocal) {
+                if (mEntrada > refEntrada + 5 && !esPasanteLocal && !esFestivo) { // fin de semana y feriado: sin atraso
                     atrasos++;
                     minutosAtrasoTotal += (mEntrada - refEntrada);
                 }

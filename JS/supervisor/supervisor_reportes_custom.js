@@ -797,7 +797,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
 
     let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
     let atrasoMins = 0;
-    if (primerReg) {
+    if (primerReg && !esFestivo) { // sábado, domingo y feriado: sin atraso
       let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
       let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
       if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
@@ -959,8 +959,8 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoJustificado + tiempoPorJustificar;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
       tiempoPorJustificar += unaccountedMissing;
-      // Penalización por registro sin salida
-      tiempoPorJustificar += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
+      // Penalización por registro sin salida (no en sábado, domingo ni feriado)
+      if (!esFestivo) tiempoPorJustificar += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
     }
 
     // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso

@@ -360,23 +360,34 @@ function tomadasDelAnio_(aplicar) {
     (errores.length ? '\n⚠ ' + errores.length + ' celdas de I con error (' + errores[0] + '): revisar la hoja' : ''));
 }
 
-// ---------------------------------------------------------------- FALTA sobre días de vacación
-// Días que ya estaban en VACACIONES y a los que después un supervisor les registró una FALTA en
-// REGISTROS (tipo FALTA, justificado SI, quién justifica "Supervisor", razón "FALTA"). La ficha
-// los mostraba como falta aunque descuentan del saldo de vacaciones. Se borra solo esa fila FALTA;
-// la vacación queda intacta.
+// ---------------------------------------------------------------- FALTA de supervisor que sobra
+// Un supervisor registró una FALTA en REGISTROS (tipo FALTA, justificado SI, quién justifica
+// "Supervisor", razón "FALTA") sobre un día que no era falta. La ficha los mostraba como falta.
+// Se borra solo esa fila FALTA; lo demás del día queda intacto.
+//  - vacaciones: el día ya estaba en VACACIONES (descuenta del saldo de vacaciones).
+//  - asistencia: ese día el colaborador marcó ENTRADA y SALIDA.
 
-/** Solo informa qué filas FALTA se borrarían (no toca la hoja). */
+/** Solo informa qué filas FALTA sobre vacaciones se borrarían (no toca la hoja). */
 function revisarFaltasSobreVacaciones() {
-  faltasSobreVacaciones_(false);
+  faltasSobrantes_(false, 'vacaciones');
 }
 
 /** Copia las filas a la hoja RESPALDO_FALTAS_VACACIONES y las borra de REGISTROS. */
 function eliminarFaltasSobreVacaciones() {
-  faltasSobreVacaciones_(true);
+  faltasSobrantes_(true, 'vacaciones');
 }
 
-function faltasSobreVacaciones_(aplicar) {
+/** Solo informa qué filas FALTA sobre días con entrada y salida se borrarían (no toca la hoja). */
+function revisarFaltasSobreAsistencia() {
+  faltasSobrantes_(false, 'asistencia');
+}
+
+/** Copia las filas a la hoja RESPALDO_FALTAS_ASISTENCIA y las borra de REGISTROS. */
+function eliminarFaltasSobreAsistencia() {
+  faltasSobrantes_(true, 'asistencia');
+}
+
+function faltasSobrantes_(aplicar, motivo) {
   var ss = SpreadsheetApp.getActive();
   var hojaReg = ss.getSheetByName(HOJA_REGISTROS);
   var hojaVac = ss.getSheetByName(HOJA_VACACIONES);
@@ -391,16 +402,28 @@ function faltasSobreVacaciones_(aplicar) {
     return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : s;
   };
   var txt = function (v) { return String(v || '').trim().toUpperCase(); };
+  var datos = hojaReg.getDataRange().getValues();
 
-  // Días de vacación por ID
-  var vac = hojaVac.getDataRange().getValues();
-  var enVacacion = {};
-  for (var j = 1; j < vac.length; j++) {
-    if (txt(vac[j][3]) !== 'VACACIONES') continue;
-    enVacacion[String(vac[j][1] || '').trim() + '|' + fechaDe(vac[j][0])] = true;
+  // Días que justifican quitar la FALTA, por "ID|fecha"
+  var cubierto = {};
+  if (motivo === 'vacaciones') {
+    var vac = hojaVac.getDataRange().getValues();
+    for (var j = 1; j < vac.length; j++) {
+      if (txt(vac[j][3]) !== 'VACACIONES') continue;
+      cubierto[String(vac[j][1] || '').trim() + '|' + fechaDe(vac[j][0])] = true;
+    }
+  } else {
+    var marcas = {};
+    for (var k = 1; k < datos.length; k++) {
+      var t = txt(datos[k][COLUMNAS.TIPO]);
+      if (t !== 'ENTRADA' && t !== 'SALIDA') continue;
+      var c = String(datos[k][COLUMNAS.ID] || '').trim() + '|' + fechaDe(datos[k][COLUMNAS.FECHA]);
+      marcas[c] = marcas[c] || {};
+      marcas[c][t] = true;
+    }
+    Object.keys(marcas).forEach(function (c) { if (marcas[c].ENTRADA && marcas[c].SALIDA) cubierto[c] = true; });
   }
 
-  var datos = hojaReg.getDataRange().getValues();
   var filas = [];
   for (var i = 1; i < datos.length; i++) {
     var r = datos[i];
@@ -408,36 +431,37 @@ function faltasSobreVacaciones_(aplicar) {
     if (txt(r[COLUMNAS.JUSTIFICADO]) !== 'SI' || txt(r[COLUMNAS.QUIEN_JUSTIFICA]) !== 'SUPERVISOR' || txt(r[COLUMNAS.RAZON_JUSTIFICAC]) !== 'FALTA') continue;
     var id = String(r[COLUMNAS.ID] || '').trim();
     var fecha = fechaDe(r[COLUMNAS.FECHA]);
-    if (!enVacacion[id + '|' + fecha]) continue;
+    if (!cubierto[id + '|' + fecha]) continue;
     filas.push({ fila: i + 1, valores: r, texto: id + ' ' + String(r[COLUMNAS.NOMBRE] || '') + ' · ' + fecha });
   }
 
+  var nombreResp = motivo === 'vacaciones' ? 'RESPALDO_FALTAS_VACACIONES' : 'RESPALDO_FALTAS_ASISTENCIA';
   if (aplicar && filas.length) {
     // Mismo candado que archivarRegistros: no borrar mientras se archiva
     var lock = LockService.getDocumentLock();
     if (!lock.tryLock(30000)) throw new Error('Hay un archivado en curso: vuelve a ejecutar en un minuto');
     try {
-    // Con el candado tomado, confirmar que cada fila sigue siendo la misma (ID, fecha y tipo)
-    var ancho = datos[0].length;
-    filas = filas.filter(function (f) {
-      var actual = hojaReg.getRange(f.fila, 1, 1, ancho).getValues()[0];
-      return String(actual[COLUMNAS.ID] || '').trim() === String(f.valores[COLUMNAS.ID] || '').trim() &&
-        fechaDe(actual[COLUMNAS.FECHA]) === fechaDe(f.valores[COLUMNAS.FECHA]) && txt(actual[COLUMNAS.TIPO]) === 'FALTA';
-    });
-    var nombreResp = 'RESPALDO_FALTAS_VACACIONES';
-    var resp = ss.getSheetByName(nombreResp);
-    if (!resp) {
-      resp = ss.insertSheet(nombreResp);
-      resp.appendRow(['FILA_ORIGEN', 'RESPALDADO_EN'].concat(datos[0]));
-    }
-    var ahora = new Date();
-    filas.forEach(function (f) { resp.appendRow([f.fila, ahora].concat(f.valores)); });
-    SpreadsheetApp.flush();
-    filas.slice().sort(function (a, b) { return b.fila - a.fila; }).forEach(function (f) { hojaReg.deleteRow(f.fila); });
+      // Con el candado tomado, confirmar que cada fila sigue siendo la misma (ID, fecha y tipo)
+      var ancho = datos[0].length;
+      filas = filas.filter(function (f) {
+        var actual = hojaReg.getRange(f.fila, 1, 1, ancho).getValues()[0];
+        return String(actual[COLUMNAS.ID] || '').trim() === String(f.valores[COLUMNAS.ID] || '').trim() &&
+          fechaDe(actual[COLUMNAS.FECHA]) === fechaDe(f.valores[COLUMNAS.FECHA]) && txt(actual[COLUMNAS.TIPO]) === 'FALTA';
+      });
+      var resp = ss.getSheetByName(nombreResp);
+      if (!resp) {
+        resp = ss.insertSheet(nombreResp);
+        resp.appendRow(['FILA_ORIGEN', 'RESPALDADO_EN'].concat(datos[0]));
+      }
+      var ahora = new Date();
+      filas.forEach(function (f) { resp.appendRow([f.fila, ahora].concat(f.valores)); });
+      SpreadsheetApp.flush();
+      filas.slice().sort(function (a, b) { return b.fila - a.fila; }).forEach(function (f) { hojaReg.deleteRow(f.fila); });
     } finally {
       lock.releaseLock();
     }
   }
-  Logger.log((aplicar ? 'APLICADO · respaldadas en RESPALDO_FALTAS_VACACIONES y borradas: ' : 'REVISIÓN (sin cambios) · filas FALTA sobre días de vacación: ') +
+  var que = motivo === 'vacaciones' ? 'días de vacación' : 'días con entrada y salida';
+  Logger.log((aplicar ? 'APLICADO · respaldadas en ' + nombreResp + ' y borradas: ' : 'REVISIÓN (sin cambios) · filas FALTA sobre ' + que + ': ') +
     filas.length + (filas.length ? '\n  ' + filas.map(function (f) { return 'fila ' + f.fila + ': ' + f.texto; }).join('\n  ') : ''));
 }

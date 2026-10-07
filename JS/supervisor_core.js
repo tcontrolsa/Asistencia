@@ -745,6 +745,7 @@ window.esEmpleadoPasante = esEmpleadoPasante;
 // - Autorización automática de extras solo para las áreas TALLER y BODEGA; el resto, solo si un
 //   supervisor la autoriza (no cuenta "SISTEMA (>45 MIN)"). Campo se mantiene automático.
 // - Registro sin salida (salida autocompletada o sin marcar): 15 min de tiempo por justificar.
+// - Sábado, domingo y feriado: sin atraso ni descuento (ni la penalización por no marcar salida).
 // ============================================================
 const JORNADA_FIN_SEMANA = { entrada: 420, salida: 915 }; // 07:00 – 15:15
 const ALMUERZO_MIN = 45;
@@ -1986,7 +1987,7 @@ function cargarDashboard() {
           let missingMinutes = Math.max(0, expectedNet - netWorked);
           let totalPermisosHoy = dayPersonal + dayMedico + dayJustificar;
           let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
-          const penalSinSalida = PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
+          const penalSinSalida = esFestivo ? 0 : PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
 
           minsFaltantes = dayJustificar + unaccountedMissing + penalSinSalida;
 
@@ -3909,7 +3910,7 @@ function cargarReportes() {
 
       let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO' || String(r.tipo || '').toUpperCase() === 'ENTRADA_CAMPO');
       let atrasoMinsHoy = 0;
-      if (primerReg && !esPasanteEmp) {
+      if (primerReg && !esPasanteEmp && !esFestivo) {
         let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
         let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
         if (mE !== null && mE > refEntrada + 5) {
@@ -4061,8 +4062,8 @@ function cargarReportes() {
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         tiempoJustificarHoy += unaccountedMissing;
         tiempoJustificarHoy = Math.max(0, tiempoJustificarHoy - tiempoJustificadoHoy);
-        // Penalización por registro sin salida
-        tiempoJustificarHoy += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
+        // Penalización por registro sin salida (no en sábado, domingo ni feriado)
+        if (!esFestivo) tiempoJustificarHoy += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
       }
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
@@ -4971,7 +4972,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       cE++;
       const esFestivo = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
       const refEnt = esFestivo ? 420 : HORA_ENTRADA_REF;
-      if (m > refEnt + 5) tardT++;
+      if (!esFestivo && m > refEnt + 5) tardT++;
     }
     else { sS += m; cS++; }
   });
@@ -5255,7 +5256,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
       let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
       let atrasoMins = 0;
-      if (primerReg && !esPasanteDet) {
+      if (primerReg && !esPasanteDet && !esFestivo) { // sábado, domingo y feriado: sin atraso
         let mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
         let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
         if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
@@ -5329,8 +5330,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         let totalPermisosHoy = tiempoPersonal + tiempoMedico;
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         rawTJ = Math.max(0, unaccountedMissing - tiempoJustificado);
-        // Penalización por registro sin salida (no la compensan permisos ni justificaciones)
-        rawTJ += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
+        // Penalización por registro sin salida (no la compensan permisos ni justificaciones; no en fin de semana ni feriado)
+        if (!esFestivo) rawTJ += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
       }
 
       let rawDescuento = tiempoPersonal + (rawTJ > 0 ? Math.max(rawTJ, atrasoMinsDia) : atrasoMinsDia);
@@ -5479,7 +5480,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
       let atrasoMins = 0;
       const esPasanteDet = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
-      if (primerReg && !esPasanteDet) {
+      if (primerReg && !esPasanteDet && !esFestivo) { // sábado, domingo y feriado: sin atraso
         let mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
         let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
         if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
@@ -5787,7 +5788,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
         tiempoPorJustificar += unaccountedMissing;
         tiempoPorJustificar = Math.max(0, tiempoPorJustificar - tiempoJustificado);
-        tiempoPorJustificar += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
+        if (!esFestivo) tiempoPorJustificar += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
       }
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
@@ -5861,7 +5862,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (tiempoPorJustificar > 0) {
         badgesTiemposHtml.push(`<span class="badge-tiempo badge-falt" title="Tiempo Por Justificar: ${minutosAHHMMSS(tiempoPorJustificar)}">Falt: ${minutosAHHMMSS(tiempoPorJustificar)}</span>`);
       }
-      const registrosInconclusos = (!esHoyOFuturo && !esPrevioAlRegistro && !esPasanteDet && !(isJustificado && !tieneAsistencia))
+      const registrosInconclusos = (!esFestivo && !esHoyOFuturo && !esPrevioAlRegistro && !esPasanteDet && !(isJustificado && !tieneAsistencia))
         ? contarRegistrosInconclusos(periodosDia) : 0;
       let badgePenalizacionHtml = '';
       if (registrosInconclusos > 0) {
@@ -13083,7 +13084,7 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   // Atraso detectado
   let atrasoMins = 0;
   const primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
-  if (primerReg) {
+  if (primerReg && !esFestivo) { // sábado, domingo y feriado: sin atraso
     let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
     let refEntrada = esFestivo ? 420 : 450; // 07:00 o 07:30
     if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
