@@ -4826,18 +4826,32 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
   // Cargar historial completo de registros archivados si es necesario (ej: periodos anteriores o rango personalizado)
   const esPeriodoActual = (indexPeriodo === 0 && !customInicio);
+  // Copia local del historial archivado (Sheets) con más de 10 min: puede no tener los días que se
+  // archivaron después (salían como inasistencia hasta recargar la página). Se vuelve a consultar y,
+  // mientras llega, esos días se muestran como "verificando".
+  let verificandoHistorial = false;
+  let historialNoVerificado = false;
+  if (!e._historialCompletoCargado && window.FirebaseBackend && window.USE_FIREBASE) {
+    let lastSyncArch = null;
+    try { lastSyncArch = (JSON.parse(localStorage.getItem(`tcontrol_archivados_cache_${id}_v2`) || '{}') || {}).lastSync || null; } catch (eLs) { }
+    verificandoHistorial = !lastSyncArch || (Date.now() - new Date(lastSyncArch).getTime()) > 10 * 60 * 1000;
+  }
   if (!e._historialCompletoCargado && (window.FirebaseBackend || typeof jsonpRequest === 'function')) {
     e._historialCompletoCargado = true;
     (async () => {
+      // 1.ª pasada: copia local (rápida); 2.ª, solo si hay que verificar: historial archivado actualizado
+      const pasadas = verificandoHistorial ? [false, true] : [false];
+      for (const forzar of pasadas) {
       try {
         let fullRegs = null;
         if (window.FirebaseBackend && window.USE_FIREBASE) {
           fullRegs = await window.FirebaseBackend.obtenerRegistros({
             empleadoId: id,
-            force: false,
+            force: forzar,
             incluirArchivados: true,
-            asyncSync: true
+            asyncSync: !forzar
           });
+          if (forzar) historialNoVerificado = Boolean(window._historialArchivadoIncompleto);
         } else if (typeof jsonpRequest === 'function') {
           fullRegs = await jsonpRequest({
             accion: 'obtenerRegistros',
@@ -4914,6 +4928,12 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         }
       } catch (err) {
         console.warn("Aviso cargando registros históricos en segundo plano:", err);
+        if (forzar) historialNoVerificado = true;
+      }
+      }
+      if (verificandoHistorial) {
+        verificandoHistorial = false;
+        if (window.idDetalleActual === id) rebuildTable();
       }
     })();
   }
@@ -4943,6 +4963,17 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
   let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0;
   let thH = 0, thM = 0;
+
+  // Banner del detalle: aviso del historial archivado (verificando / no verificado) + fechas por regularizar
+  function bannerDetalleHTML(listaFechas) {
+    if (verificandoHistorial) {
+      return '<div style="font-size:11px; color:#475569; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; margin-bottom:6px;"><i class="fas fa-spinner fa-spin"></i> Verificando el historial archivado: las inasistencias se muestran cuando termine.</div>';
+    }
+    const aviso = historialNoVerificado
+      ? '<div style="font-size:11px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:6px 10px; margin-bottom:6px;"><i class="fas fa-exclamation-triangle"></i> No se pudo consultar el historial archivado: confirma las inasistencias antes de gestionarlas.</div>'
+      : '';
+    return aviso + generarBannerRegularizarHTML(listaFechas);
+  }
 
   function generarBannerRegularizarHTML(listaFechas) {
     if (!listaFechas || listaFechas.length === 0) {
@@ -5105,7 +5136,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const diasHabilesRango = (typeof obtenerDiasHabiles === 'function') ? obtenerDiasHabiles(inicioEvalEmp, limiteFinLocal) : [];
       diasHabilesRango.forEach(fHab => {
         if (!porDia[fHab]) {
-          porDia[fHab] = { registros: [], almuerzo: null, faltaInasistencia: true };
+          porDia[fHab] = verificandoHistorial
+            ? { registros: [], almuerzo: null, verificandoHistorial: true }
+            : { registros: [], almuerzo: null, faltaInasistencia: true };
         }
       });
     }
@@ -5137,6 +5170,10 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
     fechasCronologicas.forEach(f => {
       let d = porDia[f];
+      if (d.verificandoHistorial) {
+        mapBeneficioPorDia[f] = { consumo4h: 0, tjNeto: 0, descuentoNeto: 0, rawTJ: 0, rawDescuento: 0, atrasoMinsDia: 0, salidaTempMinsDia: 0 };
+        return;
+      }
       let regsDia = [...d.registros].sort((a, b) => {
         if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
         return String(a.hora || '').localeCompare(String(b.hora || ''));
@@ -5304,6 +5341,16 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
     let filas = fechasOrdenadas.map(f => {
       let d = porDia[f];
+      if (d.verificandoHistorial) {
+        const fP = f.split('-');
+        const diaSem = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][new Date(f + 'T12:00:00').getDay()];
+        return `<tr id="fila-fecha-${f}" class="fila-verificando">
+        <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px;">${diaSem} ${fP[2]}/${fP[1]}</td>
+        <td colspan="8" style="font-size:10.5px; padding:6px 12px; color:#64748b; background:#f8fafc; border-left:3px solid #cbd5e1;">
+          <i class="fas fa-spinner fa-spin" style="font-size:10px;"></i> Verificando historial archivado… <span style="color:#94a3b8;">(sin marcaciones en la copia local)</span>
+        </td>
+      </tr>`;
+      }
       let regsDia = [...d.registros].sort((a, b) => {
         if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
         return String(a.hora || '').localeCompare(String(b.hora || ''));
@@ -6078,7 +6125,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
     const wrapBanner = document.getElementById('contenedorBannerRegularizarDetalle');
     if (wrapBanner) {
-      wrapBanner.innerHTML = generarBannerRegularizarHTML(fechasARegularizar);
+      wrapBanner.innerHTML = bannerDetalleHTML(fechasARegularizar);
     }
 
     // La tarjeta "Jornada y Tiempos" se dibuja una vez: actualizarla con los totales recalculados
@@ -6395,7 +6442,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         
         <!-- BANNER FECHAS POR REGULARIZAR -->
         <div id="contenedorBannerRegularizarDetalle">
-          ${generarBannerRegularizarHTML(fechasARegularizar)}
+          ${bannerDetalleHTML(fechasARegularizar)}
         </div>
 
         <div class="table-wrapper">
