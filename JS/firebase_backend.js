@@ -3756,6 +3756,24 @@ window.FirebaseBackend = {
         return res.token;
     },
 
+    // Pide a sync-historico que copie Sheets a la base histórica ya (lo atiende en ~10 s, sin esperar
+    // su ciclo de 30 min). Se usa al archivar: si no, la ficha muestra esos días como inasistencia.
+    async pedirSincronizacionHistorico(motivo = '') {
+        try {
+            const base = await this._urlHistorico();
+            if (!base) return { ok: false, error: 'sin dirección de la base' };
+            const token = await this._tokenHistorico();
+            const resp = await fetch(`${base}/rpc/pedir_sincronizacion`, {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ p: { motivo: String(motivo).slice(0, 60) } })
+            });
+            return resp.ok ? await resp.json() : { ok: false, error: 'HTTP ' + resp.status };
+        } catch (e) {
+            return { ok: false, error: e.message || String(e) };
+        }
+    },
+
     // URL de PostgREST: constante fija o la publicada en Firestore por el túnel (cambia al reiniciarlo).
     async _urlHistorico(refrescar = false) {
         const fija = window.TCONTROL_HISTORICO_URL || HISTORICO_API_URL;

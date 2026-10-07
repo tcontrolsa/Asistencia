@@ -7792,6 +7792,13 @@ async function iniciarArchivadoFirebase() {
     mostrarLoader(false);
     mostrarToast(`Archivado exitoso: ${registrosToArchive.length} asistencias en REGISTROS y ${almuerzosToArchive.length} pedidos en ALMUERZOS_EXTRA.`, 'success');
 
+    // La base histórica se pone al día enseguida (sync-historico atiende el pedido en segundos)
+    if (window.FirebaseBackend && typeof window.FirebaseBackend.pedirSincronizacionHistorico === 'function') {
+      window.FirebaseBackend.pedirSincronizacionHistorico('archivado').then(r => {
+        if (!r || !r.ok) console.warn('No se pudo pedir la sincronización inmediata:', r && r.error);
+      });
+    }
+
     // Limpiar todas las cachés locales (incluyendo tcontrol_archivados_cache)
     // Esto evita que aparezca la ventana de "Justificar Asistencias"
     const keysToRemove = [];
