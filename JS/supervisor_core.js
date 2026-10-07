@@ -742,7 +742,7 @@ window.esEmpleadoPasante = esEmpleadoPasante;
 //   (se descuentan 45 min de almuerzo si trabajó más de 4 h).
 // - Extra al 50 %: solo si supera 45 min en el día; se cuenta completa con tope de 120 min
 //   para lo de oficina. Lo trabajado en campo no tiene tope.
-// - Autorización automática de extras solo para el área TALLER; el resto, solo si un
+// - Autorización automática de extras solo para las áreas TALLER y BODEGA; el resto, solo si un
 //   supervisor la autoriza (no cuenta "SISTEMA (>45 MIN)"). Campo se mantiene automático.
 // - Registro sin salida (salida autocompletada o sin marcar): 15 min de tiempo por justificar.
 // ============================================================
@@ -756,6 +756,13 @@ function esAreaTaller(e) {
   return String((e && (e.area || e.departamento)) || '').trim().toUpperCase() === 'TALLER';
 }
 window.esAreaTaller = esAreaTaller;
+
+// Áreas con horas extra autorizadas automáticamente (más de 45 min después de la salida)
+const AREAS_EXTRAS_AUTOMATICAS = ['TALLER', 'BODEGA'];
+function tieneExtrasAutomaticas(e) {
+  return AREAS_EXTRAS_AUTOMATICAS.includes(String((e && (e.area || e.departamento)) || '').trim().toUpperCase());
+}
+window.tieneExtrasAutomaticas = tieneExtrasAutomaticas;
 
 // Extra al 50 % del día: 0 si no supera el umbral; si lo supera, completa hasta el tope
 function aplicarReglaExtra50(minutos) {
@@ -775,7 +782,7 @@ window.repartirExtra50 = repartirExtra50;
 // - campo: "SISTEMA (CAMPO)".
 // - supervisor (vale para cualquier área): autorizado desde el panel, "SUPERVISOR: nombre"
 //   o, en registros antiguos, "Horas extra: SÍ" sin nombre.
-// - taller: automáticas para el área TALLER (incluye lo que autorizan los coordinadores).
+// - taller: automáticas para las áreas TALLER y BODEGA (incluye lo que autorizan los coordinadores).
 // Lo que autoriza un coordinador desde la pestaña Extras (su nombre en "autoriza") y
 // "SISTEMA (>45 MIN)" no valen fuera de TALLER.
 function autorizacionExtrasDia(e, regsDia) {
@@ -783,7 +790,7 @@ function autorizacionExtrasDia(e, regsDia) {
   const autDe = r => String(r.autoriza || '').trim().toUpperCase();
   if (regs.some(r => autDe(r).includes('(CAMPO)'))) return 'campo';
   if (regs.some(r => r.horasExtra === 'SI' && (autDe(r) === '' || autDe(r).startsWith('SUPERVISOR:')))) return 'supervisor';
-  if (esAreaTaller(e)) return 'taller';
+  if (tieneExtrasAutomaticas(e)) return 'taller';
   return null;
 }
 window.autorizacionExtrasDia = autorizacionExtrasDia;
@@ -1866,7 +1873,7 @@ function cargarDashboard() {
     if ($('diasExcelente')) $('diasExcelente').textContent = diasExc;
 
     // Horas extra del período con las reglas vigentes (45/120 min al 50 %, fin de semana al 100 %,
-    // automáticas solo para TALLER): misma lógica que el detalle y los reportes
+    // automáticas solo para TALLER y BODEGA): misma lógica que el detalle y los reportes
     let extraTotal = 0;
     empCache.forEach(e => {
       const porFecha = {};
@@ -5623,7 +5630,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
 
       // Horas extras independientes (no compensan faltantes).
-      // Automáticas solo para TALLER (y campo); el resto requiere autorización del supervisor.
+      // Automáticas solo para TALLER y BODEGA (y campo); el resto requiere autorización del supervisor.
       const origenAutorizacion = autorizacionExtrasDia(e, regsDia);
       let autorizadoGlobal = Boolean(origenAutorizacion);
 
@@ -5632,7 +5639,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (origenAutorizacion === 'campo') {
         extBadge = '<span class="pill ok" title="Auto-autorizado por Campo">CAMPO</span>';
       } else if (origenAutorizacion === 'taller') {
-        extBadge = '<span class="pill ok" title="Automático para el área TALLER (más de 45 min; tope 120 min en oficina, sin tope en campo)">AUTO</span>';
+        extBadge = '<span class="pill ok" title="Automático para las áreas TALLER y BODEGA (más de 45 min; tope 120 min en oficina, sin tope en campo)">AUTO</span>';
       }
       let extBadgeHtml = extBadge;
       if (esMaster && regsDia.length > 0 && !esFalta && origenAutorizacion !== 'taller' && origenAutorizacion !== 'campo') {

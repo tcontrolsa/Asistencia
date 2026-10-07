@@ -1819,8 +1819,8 @@ function guardarRegistro(data) {
     if (modo === "CAMPO") {
       horasExtra = "SI";
       if (!autoriza) autoriza = "SISTEMA (CAMPO)";
-    } else if (data.tipo === 'SALIDA' && String(infoEmpleado.area || '').trim().toUpperCase() === 'TALLER') {
-      // Autorización automática de extras (>45 min después de la salida): solo área TALLER
+    } else if (data.tipo === 'SALIDA' && ['TALLER', 'BODEGA'].indexOf(String(infoEmpleado.area || '').trim().toUpperCase()) >= 0) {
+      // Autorización automática de extras (>45 min después de la salida): solo áreas TALLER y BODEGA
       const hVal = data.hora || Utilities.formatDate(ahora, Session.getScriptTimeZone(), "HH:mm:ss");
       const hPartes = String(hVal).trim().split(':');
       if (hPartes.length >= 2) {

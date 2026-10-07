@@ -5340,10 +5340,10 @@ function calcularEstadisticas() {
         if (netWorked > 240) netWorked -= 45; // Restar almuerzo (también sábado, domingo y feriado)
 
         // Autorización de horas extras (mismas reglas que el panel de supervisor):
-        // automática solo para el área TALLER (y trabajo de campo); el resto, solo si un supervisor
+        // automática solo para las áreas TALLER y BODEGA (y trabajo de campo); el resto, solo si un supervisor
         // la autorizó ("SISTEMA (>45 MIN)" no cuenta para otras áreas)
         const autorizaDe = r => String(getVal(r, 'autoriza', 13) || r.autoriza || '').trim().toUpperCase();
-        const esTallerEmp = String((empleado && empleado.area) || '').trim().toUpperCase() === 'TALLER';
+        const esTallerEmp = ['TALLER', 'BODEGA'].includes(String((empleado && empleado.area) || '').trim().toUpperCase());
         // Lo que autoriza un coordinador desde la pestaña Extras (su nombre) solo vale para TALLER;
         // el supervisor autoriza desde el panel ("SUPERVISOR: nombre", o sin nombre en registros antiguos)
         let autorizado = registrosDia.some(r => autorizaDe(r).includes('(CAMPO)'))

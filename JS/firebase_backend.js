@@ -1166,9 +1166,9 @@ window.FirebaseBackend = {
         let horasExtra = modo === "CAMPO" ? "SI" : "NO";
         let autoriza = data.autoriza || (modo === "CAMPO" ? "SISTEMA (CAMPO)" : "");
 
-        // Autorización automática de extras (>45 min después de la salida): solo área TALLER.
+        // Autorización automática de extras (>45 min después de la salida): solo áreas TALLER y BODEGA.
         // El resto necesita que un supervisor las autorice.
-        const esTaller = String(infoEmpleado.area || '').trim().toUpperCase() === 'TALLER';
+        const esTaller = ['TALLER', 'BODEGA'].includes(String(infoEmpleado.area || '').trim().toUpperCase());
         if (data.tipo === 'SALIDA' && esTaller) {
             const hPartes = String(horaStr).trim().split(':');
             if (hPartes.length >= 2) {
