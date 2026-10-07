@@ -5,6 +5,7 @@
  * Avisos: Firestore `notificaciones` {para, tipo, titulo, texto, enlace, creada, leidaPor[], clave}.
  * Los crea Apps Script (notificaciones.gs) a partir de eventos y recordatorios; aquí solo se leen
  * en vivo y se marcan como leídos. `para` es el ID del colaborador o 'rol:rrhh'.
+ * Al leerse, un aviso sale de la lista (queda en "Ver leídas" hasta que se borra a los 60 días).
  *
  * Uso: Notificaciones.montar(contenedor, { empleadoId, rrhh, onAbrir(enlace, aviso) })
  */
@@ -19,6 +20,10 @@
     evaluacion_por_confirmar: ['fa-bell', 'nt-ambar'],
     dia75: ['fa-seedling', 'nt-verde'],
     alerta_desempeno: ['fa-exclamation-triangle', 'nt-rojo'],
+    plazo_por_vencer: ['fa-hourglass-end', 'nt-rojo'],
+    vigencia_por_vencer: ['fa-calendar-times', 'nt-ambar'],
+    reunion_solicitada: ['fa-comments', 'nt-azul'],
+    reunion_agendada: ['fa-calendar-check', 'nt-verde'],
     general: ['fa-info-circle', 'nt-gris']
   };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,7 +49,7 @@
     }
     const yo = String(opts.empleadoId);
     const destinos = [yo].concat(opts.rrhh ? ['rol:rrhh'] : []);
-    const st = { lista: [], abierto: false, error: '' };
+    const st = { lista: [], abierto: false, error: '', verLeidas: false };
 
     host.classList.add('nt-host');
     host.innerHTML = `
@@ -54,11 +59,13 @@
       <div class="nt-panel" hidden role="dialog" aria-label="Notificaciones">
         <div class="nt-cab"><strong>Notificaciones</strong><button type="button" class="nt-link" data-nt="todas">Marcar todo como leído</button></div>
         <div class="nt-lista"></div>
+        <div class="nt-pie"><button type="button" class="nt-link nt-link-gris" data-nt="leidas" hidden></button></div>
       </div>`;
     const btn = host.querySelector('.nt-btn');
     const panel = host.querySelector('.nt-panel');
     const badge = host.querySelector('.nt-badge');
     const listaEl = host.querySelector('.nt-lista');
+    const btnLeidas = host.querySelector('[data-nt="leidas"]');
 
     const leida = n => (n.leidaPor || []).includes(yo);
 
@@ -67,9 +74,14 @@
       badge.hidden = !sinLeer;
       badge.textContent = sinLeer > 9 ? '9+' : String(sinLeer);
       btn.classList.toggle('nt-btn-activo', sinLeer > 0);
+      const nLeidas = st.lista.length - sinLeer;
+      // Las leídas salen de la lista; se pueden consultar con "Ver leídas"
+      btnLeidas.hidden = !nLeidas;
+      btnLeidas.textContent = st.verLeidas ? 'Ocultar leídas' : `Ver leídas (${nLeidas})`;
+      const visibles = st.verLeidas ? st.lista : st.lista.filter(n => !leida(n));
       if (st.error) { listaEl.innerHTML = `<div class="nt-vacio">${esc(st.error)}</div>`; return; }
-      if (!st.lista.length) { listaEl.innerHTML = '<div class="nt-vacio"><i class="far fa-bell"></i>No tienes notificaciones.</div>'; return; }
-      listaEl.innerHTML = st.lista.map(n => {
+      if (!visibles.length) { listaEl.innerHTML = '<div class="nt-vacio"><i class="far fa-bell"></i>No tienes notificaciones nuevas.</div>'; return; }
+      listaEl.innerHTML = visibles.map(n => {
         const [ico, color] = ICONOS[n.tipo] || ICONOS.general;
         return `<button type="button" class="nt-item ${leida(n) ? '' : 'nt-nueva'}" data-id="${esc(n.id)}">
           <span class="nt-ico ${color}"><i class="fas ${ico}"></i></span>
@@ -98,6 +110,11 @@
       ev.stopPropagation();
       if (ev.target.closest('[data-nt="todas"]')) {
         marcar(st.lista.filter(n => !leida(n)).map(n => n.id));
+        return;
+      }
+      if (ev.target.closest('[data-nt="leidas"]')) {
+        st.verLeidas = !st.verLeidas;
+        pintar();
         return;
       }
       const item = ev.target.closest('.nt-item');

@@ -7,15 +7,20 @@
  *
  * Origen de los avisos de desempeño:
  *   - Eventos (guardarEvaluacionEnHoja → notificarEvaluacion_): evaluación enviada, corregida,
- *     confirmada y alerta para RR.HH. Vienen de la cola de Postgres con params.evento.
- *   - Recordatorios diarios (recordatoriosDiarios, activador de las 08:30): pendientes del mes
- *     para los jefes (días 25, último del mes y 3 del siguiente), evaluaciones sin confirmar
- *     (a los 3 y 6 días) y Día 75 de nuevos ingresos (desde el día 60). También borra avisos de
- *     más de 60 días.
+ *     confirmada, alerta para RR.HH. (bajo la meta o caída de 10 pts), reunión solicitada o
+ *     agendada y plazo reabierto. Vienen de la cola de Postgres con params.evento.
+ *   - Recordatorios diarios (recordatoriosDiarios, activador de las 08:30), con los plazos del
+ *     cuestionario (api.eval_config): evaluaciones del mes por registrar (desde el día 25 hasta el
+ *     día límite del mes siguiente), evaluaciones por confirmar que están por vencer, las que
+ *     vencieron sin confirmar (aviso a RR.HH.), resultados que pierden vigencia y Día 75 de nuevos
+ *     ingresos (desde el día 60). También borra avisos de más de 60 días.
+ *
+ * Los recordatorios que se repiten (pendientes, por confirmar) usan la misma clave y se reemplazan:
+ * hay un solo aviso por tema, que vuelve a aparecer como no leído. Al confirmar una evaluación se
+ * borran sus avisos de "por confirmar".
  *
  * Fines de semana: no hay recordatorios ni WhatsApp (los avisos de eventos quedan solo en la
- * campana). Si el día 25, el último del mes o el 3 caen en sábado o domingo, el recordatorio
- * sale el lunes.
+ * campana).
  *
  * WhatsApp: usa enviarWhatsAppAcceso_ (acceso_seguro.gs) por el túnel del servidor. Solo de lunes a
  * viernes, de 07:00 a 20:00 y como máximo NOTIF_MAX_WHATSAPP por ejecución. Se apaga con la propiedad del script
@@ -51,9 +56,15 @@ function valorFirestore_(v) {
   return { stringValue: String(v) };
 }
 
+function idNotificacion_(clave) {
+  return String(clave).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+}
+
 /**
  * Crea un aviso en la campana. Con `clave`, el documento usa esa clave como ID y no se repite.
- * Devuelve true si se creó (false si ya existía o falló).
+ * Con `reemplazar` (y clave), si ya existía se sobrescribe y vuelve a quedar como no leído:
+ * así los recordatorios diarios no se acumulan.
+ * Devuelve true si se creó o reemplazó (false si ya existía o falló).
  */
 function crearNotificacion_(n) {
   var campos = {};
@@ -63,15 +74,31 @@ function crearNotificacion_(n) {
   };
   Object.keys(datos).forEach(function (k) { campos[k] = valorFirestore_(datos[k]); });
   var url = notifBaseFirestore_() + '/' + NOTIF_COLECCION + '?key=' + EVAL_API_KEY_FIREBASE;
-  if (n.clave) url += '&documentId=' + encodeURIComponent(String(n.clave).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140));
+  var metodo = 'post';
+  if (n.clave && n.reemplazar) {
+    url = notifBaseFirestore_() + '/' + NOTIF_COLECCION + '/' + idNotificacion_(n.clave) + '?key=' + EVAL_API_KEY_FIREBASE;
+    metodo = 'patch';
+  } else if (n.clave) {
+    url += '&documentId=' + encodeURIComponent(idNotificacion_(n.clave));
+  }
   var res = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    method: metodo, contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({ fields: campos })
   });
   var codigo = res.getResponseCode();
   if (codigo === 409) return false; // ya existía (misma clave)
   if (codigo !== 200) { Logger.log('Notificación no creada (' + codigo + '): ' + res.getContentText().slice(0, 200)); return false; }
   return true;
+}
+
+// Borra avisos por su clave (los que ya no aplican: p. ej. "por confirmar" de una evaluación confirmada)
+function borrarNotificaciones_(claves) {
+  if (!claves || !claves.length) return;
+  var nombreBase = 'projects/' + EVAL_PROYECTO_FIRESTORE + '/databases/(default)/documents/' + NOTIF_COLECCION + '/';
+  UrlFetchApp.fetch(notifBaseFirestore_().replace(/\/documents$/, '/documents:commit') + '?key=' + EVAL_API_KEY_FIREBASE, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ writes: claves.map(function (c) { return { delete: nombreBase + idNotificacion_(c) }; }) })
+  });
 }
 
 // 6 = sábado, 7 = domingo (zona horaria de Ecuador)
@@ -134,14 +161,47 @@ function notificarEvaluacion_(p) {
       para: p.evaluadorId, tipo: 'evaluacion_confirmada', clave: 'conf_ok_' + id, enlace: enlace,
       titulo: 'Evaluación confirmada', texto: (p.empleadoNombre || p.empleadoId) + ' confirmó su evaluación de ' + mes + '.'
     });
+    // Ya no aplican: el aviso de evaluación recibida y los de "por confirmar"
+    borrarNotificaciones_(['env_' + id, 'porconf_' + id, 'porconf_' + id + '_1', 'porconf_' + id + '_2']);
+  } else if (p.evento === 'reunion_solicitada') {
+    var sol = crearNotificacion_({
+      para: p.evaluadorId, tipo: 'reunion_solicitada', clave: 'reu_sol_' + id, reemplazar: true, enlace: enlace,
+      titulo: 'Piden una reunión', texto: (p.empleadoNombre || p.empleadoId) + ' quiere conversar su evaluación de ' + mes +
+        (p.reunionMotivo ? ': ' + p.reunionMotivo : '.') + ' Agéndala desde la evaluación.'
+    });
+    if (sol) {
+      whatsappA_(p.evaluadorId, 'Hola, ' + (p.empleadoNombre || p.empleadoId) + ' pidió una reunión para conversar su evaluación de desempeño de ' +
+        mes + '. Agéndala en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
+    }
+  } else if (p.evento === 'reunion_agendada') {
+    borrarNotificaciones_(['reu_sol_' + id]);
+    var cuando = fechaTexto_(p.reunionFecha) + (p.reunionHora ? ' a las ' + p.reunionHora : '');
+    var ag = crearNotificacion_({
+      para: p.empleadoId, tipo: 'reunion_agendada', clave: 'reu_ag_' + id, reemplazar: true, enlace: enlace,
+      titulo: 'Reunión agendada', texto: 'Conversarán tu evaluación de ' + mes + ' el ' + cuando + (p.reunionLugar ? ' · ' + p.reunionLugar : '') + '.'
+    });
+    if (ag) {
+      whatsappA_(p.empleadoId, 'Hola ' + primerNombre_(p.empleadoNombre) + ', ' + (p.evaluadorNombre || 'tu jefe inmediato') +
+        ' agendó la reunión para conversar tu evaluación de desempeño de ' + mes + ': ' + cuando + (p.reunionLugar ? ', ' + p.reunionLugar : '') + '.');
+    }
+  } else if (p.evento === 'plazo_reabierto') {
+    crearNotificacion_({
+      para: p.empleadoId, tipo: 'evaluacion_por_confirmar', clave: 'porconf_' + id, reemplazar: true, enlace: enlace,
+      titulo: 'Plazo para confirmar reabierto', texto: 'Puedes confirmar tu evaluación de ' + mes + ' hasta el ' + fechaTexto_(p.venceConfirmar) + '.'
+    });
   }
-  if (String(p.alerta).toLowerCase() === 'true' && p.evento !== 'confirmada') {
+  if (String(p.alerta).toLowerCase() === 'true' && (p.evento === 'enviada' || p.evento === 'corregida')) {
     crearNotificacion_({
       para: 'rol:rrhh', tipo: 'alerta_desempeno', clave: 'alerta_' + id,
       enlace: { modulo: 'desempeno', vista: 'resultados', periodo: p.periodo || '' },
-      titulo: 'Alerta de desempeño', texto: 'Una evaluación de ' + mes + ' requiere atención. Revisa las alertas en Resultados.'
+      titulo: 'Alerta de desempeño', texto: 'Una evaluación de ' + mes + ' quedó bajo la meta de ' + (p.meta || 80) + ' % o bajó 10 puntos. Revisa las alertas en Resultados.'
     });
   }
+}
+
+function fechaTexto_(f) {
+  var m = String(f || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? Number(m[3]) + ' de ' + NOTIF_MESES[Number(m[2]) - 1] : String(f || '');
 }
 
 // ---------------------------------------------------------------- recordatorios diarios
@@ -164,20 +224,27 @@ function recordatoriosDiarios() {
     var porId = {};
     activos.forEach(function (e) { porId[e.id] = e; });
 
-    // Evaluaciones de los últimos meses (PostgREST, token de sistema con permiso de RR.HH.)
+    // Evaluaciones de los últimos meses y cuestionario vigente (PostgREST, token de sistema)
     var desde = mesDesplazado_(partes[0], partes[1], -3);
     var evals = listarEvaluacionesSistema_(desde);
     if (evals === null) { Logger.log('Sin acceso a la base de evaluaciones: se omiten los recordatorios'); return resumen; }
+    var cfg = configEvaluacionSistema_() || {};
+    var plazos = cfg.plazos || {};
+    var diaLimite = Number(plazos.evaluarDia) || 10;
+    var aviso = plazos.avisoDias === undefined ? 3 : Number(plazos.avisoDias);
 
-    // 1. Jefes con evaluaciones mensuales pendientes: días 25, último del mes y 3 del siguiente
-    //    (si caen en fin de semana, el lunes)
-    var mesObjetivo = null;
-    diasCubiertosHoy_().forEach(function (d) {
-      var ultimo = new Date(d.anio, d.mes, 0).getDate();
-      if (d.dia === 25 || d.dia === ultimo) mesObjetivo = mesDesplazado_(d.anio, d.mes, 0);
-      else if (d.dia === 3) mesObjetivo = mesDesplazado_(d.anio, d.mes, -1);
-    });
-    if (mesObjetivo) {
+    // 1. Jefes con evaluaciones mensuales pendientes: desde el día 25 del mes hasta su día límite
+    //    (el día diaLimite del mes siguiente). Un solo aviso por jefe y mes, que se renueva cada día.
+    [mesDesplazado_(partes[0], partes[1], 0), mesDesplazado_(partes[0], partes[1], -1)].forEach(function (mesObjetivo) {
+      var pm = mesObjetivo.split('-').map(Number);
+      var limite = mesDesplazado_(pm[0], pm[1], 1) + '-' + ('0' + diaLimite).slice(-2);
+      var faltan = diasEntre_(hoy, limite);
+      var desdeAviso = mesObjetivo + '-25';
+      var evaluadores = {};
+      activos.forEach(function (e) { if (e.evaluador_id) evaluadores[e.evaluador_id] = true; });
+      // Al día siguiente del vencimiento se retiran los avisos de pendientes de ese mes
+      if (faltan === -1) borrarNotificaciones_(Object.keys(evaluadores).map(function (j) { return 'pend_' + j + '_' + mesObjetivo; }));
+      if (faltan === null || faltan < 0 || hoy < desdeAviso) return;
       var hechas = {};
       evals.forEach(function (e) { if (e.tipo === 'MENSUAL' && e.periodo === mesObjetivo) hechas[e.empleadoId] = true; });
       var pendientesPorJefe = {};
@@ -193,38 +260,70 @@ function recordatoriosDiarios() {
         var lista = pendientesPorJefe[jefe];
         var mes = mesTexto_(mesObjetivo);
         var creada = crearNotificacion_({
-          para: jefe, tipo: 'evaluaciones_pendientes', clave: 'pend_' + jefe + '_' + hoy,
+          para: jefe, tipo: faltan <= aviso ? 'plazo_por_vencer' : 'evaluaciones_pendientes',
+          clave: 'pend_' + jefe + '_' + mesObjetivo, reemplazar: true,
           enlace: { modulo: 'desempeno', vista: 'equipo', periodo: mesObjetivo },
-          titulo: 'Evaluaciones pendientes',
-          texto: 'Tienes ' + lista.length + ' evaluación(es) de ' + mes + ' por registrar.'
+          titulo: faltan <= aviso ? 'Evaluaciones por vencer' : 'Evaluaciones pendientes',
+          texto: 'Tienes ' + lista.length + ' evaluación(es) de ' + mes + ' por registrar. ' +
+            (faltan === 0 ? 'El plazo vence hoy.' : 'El plazo vence el ' + fechaTexto_(limite) + ' (' + faltan + ' día' + (faltan === 1 ? '' : 's') + ').')
         });
         if (creada) {
           resumen.pendientes++;
-          whatsappA_(jefe, 'Hola ' + primerNombre_(porId[jefe].nombre) + ', tienes ' + lista.length +
-            ' evaluación(es) de desempeño de ' + mes + ' por registrar en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
+          // WhatsApp solo al empezar, al entrar en los días de aviso y el último día
+          if (hoy === desdeAviso || faltan === aviso || faltan === 0) {
+            whatsappA_(jefe, 'Hola ' + primerNombre_(porId[jefe].nombre) + ', tienes ' + lista.length +
+              ' evaluación(es) de desempeño de ' + mes + ' por registrar. El plazo vence el ' + fechaTexto_(limite) +
+              '. App TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
+          }
         }
       });
-    }
+      // Jefes que ya completaron el mes: se retira su aviso de pendientes
+      var completos = Object.keys(evaluadores).filter(function (j) { return !pendientesPorJefe[j]; });
+      if (completos.length) borrarNotificaciones_(completos.map(function (j) { return 'pend_' + j + '_' + mesObjetivo; }));
+    });
 
-    // 2. Evaluaciones enviadas sin confirmar (recordatorio a los 3 y 6 días)
+    // 2. Evaluaciones enviadas sin confirmar: avisos desde que faltan `aviso` días; al vencer, a RR.HH.
     evals.forEach(function (e) {
-      if (e.estado !== 'enviada' || !porId[e.empleadoId]) return;
-      var dias = diasEntre_(String(e.actualizadoEn || '').slice(0, 10), hoy);
-      if (dias === null || dias < 3) return;
-      var n = Math.min(2, Math.floor(dias / 3));
+      if (e.estado !== 'enviada' || !porId[e.empleadoId] || !e.venceConfirmar) return;
+      var faltan = diasEntre_(hoy, e.venceConfirmar);
+      if (faltan === null) return;
+      if (faltan < 0) {
+        if (crearNotificacion_({
+          para: 'rol:rrhh', tipo: 'alerta_desempeno', clave: 'noconf_' + e.id,
+          enlace: { modulo: 'desempeno', vista: 'resultados', periodo: e.periodo },
+          titulo: 'Evaluación no confirmada', texto: (e.empleadoNombre || e.empleadoId) + ' no confirmó su evaluación de ' +
+            mesTexto_(e.periodo) + ' (venció el ' + fechaTexto_(e.venceConfirmar) + ').'
+        })) resumen.noConfirmadas = (resumen.noConfirmadas || 0) + 1;
+        return;
+      }
+      if (faltan > aviso) return;
       var creada = crearNotificacion_({
-        para: e.empleadoId, tipo: 'evaluacion_por_confirmar', clave: 'porconf_' + e.id + '_' + n,
+        para: e.empleadoId, tipo: 'evaluacion_por_confirmar', clave: 'porconf_' + e.id, reemplazar: true,
         enlace: { modulo: 'desempeno', vista: 'detalle', id: String(e.id), periodo: e.periodo },
         titulo: 'Evaluación por confirmar',
-        texto: 'Tu evaluación de ' + mesTexto_(e.periodo) + ' sigue pendiente de confirmación.'
+        texto: 'Confirma tu evaluación de ' + mesTexto_(e.periodo) + (faltan === 0 ? ': el plazo vence hoy.' : ' antes del ' + fechaTexto_(e.venceConfirmar) + '.')
       });
       if (creada) {
         resumen.porConfirmar++;
-        if (n === 1) {
+        if (faltan === aviso || faltan === 0) {
           whatsappA_(e.empleadoId, 'Hola ' + primerNombre_(porId[e.empleadoId].nombre) + ', tu evaluación de desempeño de ' +
-            mesTexto_(e.periodo) + ' sigue pendiente de confirmación. Revísala en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
+            mesTexto_(e.periodo) + ' está pendiente de confirmación; el plazo vence el ' + fechaTexto_(e.venceConfirmar) +
+            '. Revísala en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
         }
       }
+    });
+
+    // 2b. Resultados que pierden vigencia: aviso único al evaluador
+    evals.forEach(function (e) {
+      if (!e.vigenteHasta || !porId[e.evaluadorId]) return;
+      var faltan = diasEntre_(hoy, e.vigenteHasta);
+      if (faltan === null || faltan < 0 || faltan > aviso) return;
+      if (crearNotificacion_({
+        para: e.evaluadorId, tipo: 'vigencia_por_vencer', clave: 'vig_' + e.id,
+        enlace: { modulo: 'desempeno', vista: 'equipo' },
+        titulo: 'Evaluación por vencer', texto: 'El resultado de ' + (e.empleadoNombre || e.empleadoId) + ' (' + mesTexto_(e.periodo) +
+          ') deja de estar vigente el ' + fechaTexto_(e.vigenteHasta) + '.'
+      })) resumen.vigencia = (resumen.vigencia || 0) + 1;
     });
 
     // 3. Día 75: nuevos ingresos entre los días 60 y 75 sin seguimiento
@@ -321,6 +420,28 @@ function listarEvaluacionesSistema_(desde) {
   if (res.getResponseCode() !== 200) return null;
   var r = JSON.parse(res.getContentText());
   return r.ok ? (r.evaluaciones || []) : null;
+}
+
+// Cuestionario vigente (plazos, meta) con el mismo token de sistema; null si no está disponible
+function configEvaluacionSistema_() {
+  var secreto = PropertiesService.getScriptProperties().getProperty('PGRST_JWT_SECRET');
+  var base = urlHistorico_();
+  if (!secreto || !base) return null;
+  var b64url = function (x) { return Utilities.base64EncodeWebSafe(x).replace(/=+$/, ''); };
+  var header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  var payload = b64url(Utilities.newBlob(JSON.stringify({
+    role: 'tcontrol_lector', eval: true, empleado_id: 'SISTEMA', equipo: [], rrhh: true,
+    exp: Math.floor(Date.now() / 1000) + 300
+  })).getBytes());
+  var token = header + '.' + payload + '.' + b64url(Utilities.computeHmacSha256Signature(header + '.' + payload, secreto));
+  var res = UrlFetchApp.fetch(base + '/rpc/eval_config', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify({ p: { modo: 'obtener' } })
+  });
+  if (res.getResponseCode() !== 200) return null;
+  var r = JSON.parse(res.getContentText());
+  return r.ok ? r.config : null;
 }
 
 function borrarNotificacionesViejas_() {

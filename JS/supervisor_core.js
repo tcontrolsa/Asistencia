@@ -9104,6 +9104,7 @@ function cargarPanelDesempeno() {
     empleado: { id: String(ses.id || ''), nombre: ses.nombre || yo.nombre || '', area: yo.area, cargo: ses.cargo || yo.cargo, supervisor: ses.supervisor || yo.supervisor, evaluacion_rol: yo.evaluacion_rol },
     empleados: () => empCache || [],
     puedeAsignar: tienePermisoAdmin(),
+    esMaster: esAdminMaster(),   // pestaña Configuración del cuestionario
     guardarEmpleado: (id, datos) => (window.FirebaseBackend && window.USE_FIREBASE)
       ? window.FirebaseBackend.actualizarEmpleado({ empleadoId: id, datos })
       : Promise.resolve({ error: 'Firestore no disponible' })

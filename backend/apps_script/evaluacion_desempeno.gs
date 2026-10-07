@@ -5,7 +5,8 @@
  * Este archivo:
  *   1. tokenEvaluacion (solo POST): verifica el PIN del colaborador contra Firestore y emite un
  *      JWT para PostgREST con quién es (empleado_id), a quién evalúa (equipo = colaboradores
- *      cuyo evaluador_id es él) y si ve todas (rrhh = supervisor admin). Vigencia: 8 horas.
+ *      cuyo evaluador_id es él), si ve todas (rrhh = supervisor admin) y si es el admin master
+ *      (master = 1058: edita el cuestionario, reabre plazos y elimina evaluaciones). Vigencia: 8 horas.
  *   2. guardarEvaluacion (lo llama sync-historico al replicar la cola): escribe o actualiza la
  *      fila de la evaluación en la hoja EVALUACIONES.
  *   3. evalRpc (solo POST): respaldo para equipos o redes que bloquean *.trycloudflare.com.
@@ -29,8 +30,11 @@ var COLS_EVALUACIONES = [
   'PUNTAJE', 'PORCENTAJE', 'NIVEL',
   'DOMINIO_TECNICO_%', 'GESTION_TRABAJO_%', 'APRENDIZAJE_%', 'INTEGRACION_%',
   'OBSERVACIONES', 'FORTALEZAS', 'OPORTUNIDADES_MEJORA', 'COMPROMISOS', 'PROXIMA_EVALUACION',
-  'ESTADO', 'CONFIRMADA_EN', 'COMENTARIO_COLABORADOR', 'ACTUALIZADO_EN'
+  'ESTADO', 'CONFIRMADA_EN', 'COMENTARIO_COLABORADOR', 'ACTUALIZADO_EN',
+  // Desde el cuestionario editable (006_evaluacion_config.sql)
+  'CUESTIONARIO_VERSION', 'META_%', 'CUMPLE_META', 'VENCE_CONFIRMAR', 'VIGENTE_HASTA', 'REUNION', 'CALIFICACIONES', 'DIMENSIONES'
 ];
+var EVAL_ADMIN_MASTER = '1058';
 
 // ---------------------------------------------------------------------
 // 1. Token de evaluaciones
@@ -65,16 +69,17 @@ function emitirTokenEvaluacion(p) {
 
   var equipo = equipoDeEvaluador_(id);
   var sup = String(emp.supervisor || emp.rol || '').toUpperCase();
-  var rrhh = id === '1058' || sup.indexOf('ADMIN') !== -1;
+  var master = id === EVAL_ADMIN_MASTER;
+  var rrhh = master || sup.indexOf('ADMIN') !== -1;
   var exp = Math.floor(Date.now() / 1000) + 8 * 3600;
   var b64url = function (x) { return Utilities.base64EncodeWebSafe(x).replace(/=+$/, ''); };
   var header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   var payload = b64url(Utilities.newBlob(JSON.stringify({
     role: 'tcontrol_lector', eval: true, empleado_id: id,
-    equipo: equipo.map(function (e) { return e.id; }), rrhh: rrhh, exp: exp
+    equipo: equipo.map(function (e) { return e.id; }), rrhh: rrhh, master: master, exp: exp
   })).getBytes());
   var firma = b64url(Utilities.computeHmacSha256Signature(header + '.' + payload, secreto));
-  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp, rrhh: rrhh, equipo: equipo };
+  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp, rrhh: rrhh, master: master, equipo: equipo };
 }
 
 function leerEmpleadoFirestore_(id) {
@@ -135,7 +140,8 @@ function sha256Hex_(texto) {
 // ---------------------------------------------------------------------
 // 3. Respaldo: la PWA llama a Apps Script y este reenvía a PostgREST
 // ---------------------------------------------------------------------
-var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar', 'eval_eliminar'];
+var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar', 'eval_eliminar',
+  'eval_config', 'eval_reabrir', 'eval_reunion'];
 
 function proxyEvaluacion(d) {
   var fn = String(d.fn || '');
@@ -201,7 +207,10 @@ function guardarEvaluacionEnHoja(p) {
       pctDim('tecnico'), pctDim('gestion'), pctDim('aprendizaje'), pctDim('relacional'),
       notas.join('\n'), p.fortalezas || '', p.mejoras || '', p.compromisos || '', p.proximaEvaluacion || '',
       p.estado === 'confirmada' ? 'Confirmada' : 'Enviada', p.confirmadaEn || '', p.comentarioColaborador || '',
-      p.actualizadoEn || '');
+      p.actualizadoEn || '',
+      p.configVersion || '', p.meta === undefined || p.meta === '' ? '' : Number(p.meta), p.cumpleMeta || '',
+      p.venceConfirmar || '', p.vigenteHasta || '', p.reunion || '', String(p.calificaciones || ''),
+      typeof p.dimensiones === 'string' ? p.dimensiones : JSON.stringify(p.dimensiones || {}));
 
     var n = hoja.getLastRow();
     var filaDestino = 0;
@@ -215,7 +224,9 @@ function guardarEvaluacionEnHoja(p) {
     // IDs, mes y fechas como texto plano (evita que Sheets convierta "2026-09" en fecha);
     // calificaciones, puntajes y porcentajes quedan numéricos
     hoja.getRange(filaDestino, 1, 1, 10).setNumberFormat('@');
-    hoja.getRange(filaDestino, 32, 1, fila.length - 31).setNumberFormat('@');
+    hoja.getRange(filaDestino, 32, 1, 10).setNumberFormat('@');
+    hoja.getRange(filaDestino, 41, 1, 1).setNumberFormat('@');                 // versión del cuestionario
+    hoja.getRange(filaDestino, 43, 1, fila.length - 42).setNumberFormat('@');  // textos y fechas
     hoja.getRange(filaDestino, 1, 1, fila.length).setValues([fila.map(function (v) { return v === null || v === undefined ? '' : v; })]);
     resultado = { ok: true, fila: filaDestino };
   } finally {
@@ -254,8 +265,13 @@ function hojaEvaluaciones_() {
   var hoja = libro.getSheetByName(HOJA_EVALUACIONES);
   if (!hoja) {
     hoja = libro.insertSheet(HOJA_EVALUACIONES);
-    hoja.getRange(1, 1, 1, COLS_EVALUACIONES.length).setValues([COLS_EVALUACIONES]).setFontWeight('bold');
     hoja.setFrozenRows(1);
+  }
+  // Encabezado (también agrega las columnas nuevas a una hoja creada antes)
+  if (hoja.getMaxColumns() < COLS_EVALUACIONES.length) hoja.insertColumnsAfter(hoja.getMaxColumns(), COLS_EVALUACIONES.length - hoja.getMaxColumns());
+  var actual = hoja.getRange(1, 1, 1, COLS_EVALUACIONES.length).getValues()[0];
+  if (actual.join('|') !== COLS_EVALUACIONES.join('|')) {
+    hoja.getRange(1, 1, 1, COLS_EVALUACIONES.length).setValues([COLS_EVALUACIONES]).setFontWeight('bold');
   }
   return hoja;
 }

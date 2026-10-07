@@ -294,3 +294,48 @@
   .ev-barra-r .ev-acciones-der { margin-left: 0; }
   .ev-grid2 { grid-template-columns: 1fr; }
 }
+
+/* Meta de cumplimiento, plazos y reuniones (cuestionario editable) */
+.ev-chip-meta { background: #fef2f2; color: #b91c1c; margin-left: 4px; }
+.ev-chip-reu { background: #eff6ff; color: #1d4ed8; }
+.ev-meta { margin-top: 6px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; }
+.ev-meta-ok { background: #ecfdf5; color: #047857; }
+.ev-meta-no { background: #fef2f2; color: #b91c1c; }
+.ev-plazos { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; color: var(--ev-tx2); }
+.ev-plazos i { margin-right: 3px; }
+.ev-aviso-card { display: flex; gap: 10px; align-items: flex-start; background: #fff7ed; border-color: #fed7aa; color: #9a3412; font-size: 13px; }
+.ev-reu-card { border-color: #bfdbfe; background: #f8fbff; }
+.ev-reu-alerta { border-color: #93c5fd; background: #eff6ff; }
+.ev-reu-datos { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13.5px; font-weight: 600; color: var(--ev-tx); }
+.ev-reu-datos i { color: #1d4ed8; margin-right: 5px; }
+.ev-reu-nota { flex-basis: 100%; font-weight: 400; }
+.ev-reu-pide { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 10px; font-size: 13px; color: #1e3a8a; }
+.ev-reu-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.ev-reu-form .ev-campo-ancho { grid-column: 1 / -1; }
+.ev-reu-form input, .ev-reu-form textarea, .ev-cfg-in { font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--ev-borde); border-radius: 8px; background: #fff; color: var(--ev-tx); width: 100%; box-sizing: border-box; }
+.ev-reabrir { flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start; margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--ev-borde); border-radius: 10px; }
+.ev-num-corto { width: 64px; }
+.ev-svg-meta { stroke: #dc2626; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.ev-svg-meta-txt { fill: #dc2626; font-weight: 700; }
+
+/* Configuración del cuestionario (admin master) */
+.ev-cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0 14px; }
+.ev-cfg-grid small { font-weight: 400; }
+.ev-cfg-lista { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.ev-cfg-fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ev-cfg-fila-top { align-items: flex-start; }
+.ev-cfg-fila-top .ev-cfg-grow { display: flex; flex-direction: column; gap: 6px; }
+.ev-cfg-grow { flex: 1 1 220px; min-width: 0; }
+.ev-cfg-corto { flex: 0 1 150px; }
+.ev-cfg-num { width: 78px; }
+.ev-cfg-peso { display: inline-flex; align-items: center; gap: 4px; }
+.ev-cfg-item { border: 1px solid var(--ev-borde); border-radius: 12px; padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; background: #fff; }
+.ev-cfg-item textarea { resize: vertical; }
+.ev-btn-ico { width: 30px; padding: 5px 0; justify-content: center; }
+.ev-btn-ico[disabled] { opacity: .35; cursor: default; }
+.ev-cfg-pie { position: sticky; bottom: 8px; z-index: 5; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; box-shadow: 0 8px 24px rgba(15, 23, 42, .12); }
+.ev-cfg-ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ev-tx2); line-height: 1.7; }
+@media (max-width: 600px) {
+  .ev-reu-form { grid-template-columns: 1fr; }
+  .ev-cfg-corto { flex-basis: 100%; }
+}

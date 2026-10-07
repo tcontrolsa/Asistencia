@@ -38,6 +38,10 @@
 .nt-punto { flex: 0 0 8px; height: 8px; border-radius: 50%; background: #dc2626; margin-top: 6px; }
 .nt-vacio { padding: 26px 14px; text-align: center; color: #94a3b8; font-size: 13px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .nt-vacio i { font-size: 20px; }
+.nt-pie { border-top: 1px solid #f1f5f9; padding: 8px 14px; text-align: center; }
+.nt-pie:has(.nt-link[hidden]) { display: none; }
+.nt-link-gris { color: #64748b; }
+.nt-link[hidden] { display: none; }
 
 /* App del colaborador: botón flotante arriba a la derecha */
 .nt-host-app { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); right: 12px; z-index: 1200; }
