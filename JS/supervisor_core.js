@@ -6089,10 +6089,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     if (container) {
       const kpiIndiv = window.kpiVacacionesIndividual || (JSON.parse(localStorage.getItem('tcontrol_vacaciones_cache_v3') || '{}').kpiVacacionesIndividual || {});
       const infoVac = (typeof window.buscarVacacionesEnKpiIndiv === 'function' ? window.buscarVacacionesEnKpiIndiv(e, kpiIndiv) : null) || vacEmpInicial;
+      // CALCULAR_vacaciones cuenta como tomadas solo los días del año en curso; los de años
+      // anteriores ya están descontados en "restantes del año anterior" y se muestran aparte
+      const anioVac = String(new Date().getFullYear());
+      const vacsDelAnio = vacacionesList.filter(v => String(v.fecha || '').slice(0, 4) >= anioVac);
 
       let totalVacsTomadas = (vacacionesTomadasHoy !== null && vacacionesTomadasHoy !== undefined && vacacionesTomadasHoy !== '')
         ? vacacionesTomadasHoy
-        : (infoVac && infoVac.tomadas !== undefined && infoVac.tomadas !== null ? infoVac.tomadas : vacacionesList.length);
+        : (infoVac && infoVac.tomadas !== undefined && infoVac.tomadas !== null ? infoVac.tomadas : vacsDelAnio.length);
 
       let totalVacsRestantes = (vacacionesRestantesHoy !== null && vacacionesRestantesHoy !== undefined && vacacionesRestantesHoy !== '' && vacacionesRestantesHoy !== '--')
         ? vacacionesRestantesHoy
@@ -6109,9 +6113,12 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (vacacionesList.length > 0) {
         const sortedVacs = [...vacacionesList].sort((a, b) => b.fecha.localeCompare(a.fecha));
         listaVacacionesHTML = sortedVacs.map(v => {
-          return `<div style="font-size:10px; padding:2px 4px; border-radius:4px; background:#f8fafc; border:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; color:#334155;">
-                <span><i class="fas fa-calendar-day" style="color:#d97706; font-size:9px;"></i> ${v.fecha}</span>
-                <span style="font-weight:700; color:#b45309; font-size:9px; background:#fef3c7; padding:1px 5px; border-radius:3px;">Tomada</span>
+          const anterior = String(v.fecha || '').slice(0, 4) < anioVac;
+          return `<div style="font-size:10px; padding:2px 4px; border-radius:4px; background:#f8fafc; border:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; color:${anterior ? '#94a3b8' : '#334155'};"${anterior ? ' title="Ya descontado en las vacaciones restantes del año anterior: no cuenta en las tomadas de este año"' : ''}>
+                <span><i class="fas fa-calendar-day" style="color:${anterior ? '#cbd5e1' : '#d97706'}; font-size:9px;"></i> ${v.fecha}</span>
+                ${anterior
+                  ? '<span style="font-weight:600; color:#64748b; font-size:9px; background:#f1f5f9; padding:1px 5px; border-radius:3px;">Año anterior</span>'
+                  : '<span style="font-weight:700; color:#b45309; font-size:9px; background:#fef3c7; padding:1px 5px; border-radius:3px;">Tomada</span>'}
               </div>`;
         }).join('');
       } else {
