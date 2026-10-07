@@ -5890,7 +5890,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         let badgeBg = '#e0e7ff';
         let badgeColor = '#312e81';
         let icon = '📋';
-        const rLower = razonMostrar.toLowerCase();
+        // Sin tildes: "PERMISO MÉDICO" también debe reconocerse como médico
+        const rLower = razonMostrar.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         
         if (rLower.includes('vacac')) {
           icon = '🏖️';
