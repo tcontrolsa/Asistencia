@@ -3886,6 +3886,22 @@ window.FirebaseBackend = {
         }
     },
 
+    // Vuelve a traer de PostgreSQL los archivados de un colaborador y reemplaza los suyos en todas
+    // las cachés locales (también la general del panel, que solo se renueva cada 24 h): así un
+    // registro corregido o borrado en la hoja no reaparece al recargar.
+    async refrescarArchivadosEmpleado(empleadoId) {
+        try {
+            const base = await this._urlHistorico(false);
+            if (!base) return false;
+            const token = await this._tokenHistorico();
+            await this._refrescarCacheArchivados(base, token, empleadoId);
+            return true;
+        } catch (e) {
+            console.warn('No se pudo refrescar los archivados del colaborador:', e.message || e);
+            return false;
+        }
+    },
+
     // Ediciones de registros archivados (actualizarRegistroArchivado, guardarPermisoSupervisor,
     // eliminarRegistroArchivado): se guardan en PostgreSQL al instante y el servidor las reenvía
     // a Google Sheets con los mismos parámetros. Sin base fría disponible, van directo a Apps Script.

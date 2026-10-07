@@ -4860,6 +4860,23 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             incluirArchivados: true
           });
         }
+        // Historial recién traído de la base: quitar de la ficha los archivados que ya no existen
+        // (corregidos o borrados en la hoja). La carga general del panel solo agrega, nunca quita.
+        let quitados = 0;
+        if (forzar && !historialNoVerificado && Array.isArray(fullRegs) && fullRegs.length > 0) {
+          // Por fecha y tipo: la hora de un mismo registro puede venir distinta según la fuente
+          const claveReg = r => `${normalizarFechaStr(r.fecha) || r.fecha}_${String(r.tipo || '').toUpperCase()}`;
+          const vigentes = new Set(fullRegs.map(claveReg));
+          const antes = (e.registros || []).length;
+          e.registros = (e.registros || []).filter(r => !String(r.id || '').startsWith('arch_') || vigentes.has(claveReg(r)));
+          quitados = antes - e.registros.length;
+          if (quitados > 0) {
+            console.log(`🧹 ${quitados} registro(s) archivado(s) que ya no existen, quitados de la ficha de ${id}`);
+            if (typeof window.FirebaseBackend.refrescarArchivadosEmpleado === 'function') {
+              window.FirebaseBackend.refrescarArchivadosEmpleado(id);
+            }
+          }
+        }
         if (Array.isArray(fullRegs) && fullRegs.length > 0) {
           const existingMap = new Map();
           (e.registros || []).forEach(r => {
@@ -4916,7 +4933,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
               }
             }
           });
-          if (hasChanges && window.idDetalleActual === id) {
+          if ((hasChanges || quitados > 0) && window.idDetalleActual === id) {
             todosRegs = (e.registros || []).map(r => {
               const fNorm = normalizarFechaStr(r.fecha);
               return fNorm ? { ...r, fecha: fNorm } : r;
