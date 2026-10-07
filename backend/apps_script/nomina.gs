@@ -227,3 +227,135 @@ function duplicadosVacaciones_(aplicar) {
   Logger.log((aplicar ? 'APLICADO · filas borradas: ' : 'REVISIÓN (sin cambios) · filas sobrantes: ') + sobrantes.length +
     (sobrantes.length ? '\n  ' + sobrantes.map(function (s) { return 'fila ' + s.fila + ': ' + s.texto; }).join('\n  ') : ''));
 }
+
+// ---------------------------------------------------------------- fórmulas de CALCULAR_vacaciones
+// Solo lectura: muestra encabezados, fórmulas y, para algunos IDs, los valores de cada columna y
+// cuántos días de VACACIONES tienen por año. Sirve para ver si la columna I (tomadas) cuenta
+// también los días de años anteriores que ya descuenta la columna F (año anterior).
+function revisarFormulasVacaciones() {
+  var IDS = ['5', '1099', '1056', '1057', '34'];
+  var ss = SpreadsheetApp.getActive();
+  var hoja = ss.getSheetByName('CALCULAR_vacaciones');
+  if (!hoja) throw new Error('No existe la hoja CALCULAR_vacaciones');
+  var tz = Session.getScriptTimeZone();
+  var rango = hoja.getDataRange();
+  var valores = rango.getDisplayValues();
+  var formulas = rango.getFormulas();
+  var letra = function (c) { return String.fromCharCode(65 + c); };
+  var lineas = ['ENCABEZADOS: ' + valores[0].map(function (v, c) { return letra(c) + '=' + v; }).join(' | ')];
+
+  // Fórmulas distintas por columna (normalmente se repiten fila a fila con otra referencia)
+  for (var c = 0; c < valores[0].length; c++) {
+    var vistas = {};
+    for (var i = 1; i < formulas.length; i++) {
+      var f = formulas[i][c];
+      if (!f) continue;
+      var patron = f.replace(/\d+/g, '#');
+      if (!vistas[patron]) vistas[patron] = { ejemplo: 'fila ' + (i + 1) + ': ' + f, veces: 0 };
+      vistas[patron].veces++;
+    }
+    Object.keys(vistas).forEach(function (p) {
+      lineas.push('FÓRMULA ' + letra(c) + ' (' + vistas[p].veces + ' filas) · ' + vistas[p].ejemplo);
+    });
+  }
+
+  // Días de VACACIONES por ID y año
+  var vac = ss.getSheetByName('VACACIONES').getDataRange().getValues();
+  var porAnio = {};
+  for (var j = 1; j < vac.length; j++) {
+    var id = String(vac[j][1] || '').trim();
+    if (IDS.indexOf(id) < 0) continue;
+    var v = vac[j][0];
+    var anio = (v instanceof Date && !isNaN(v.getTime())) ? Utilities.formatDate(v, tz, 'yyyy') : String(v).slice(0, 4);
+    var tipo = String(vac[j][3] || '').trim().toUpperCase();
+    porAnio[id] = porAnio[id] || {};
+    porAnio[id][anio + ' ' + tipo] = (porAnio[id][anio + ' ' + tipo] || 0) + 1;
+  }
+
+  for (var r = 1; r < valores.length; r++) {
+    var idFila = String(valores[r][0] || '').trim();
+    if (IDS.indexOf(idFila) < 0) continue;
+    lineas.push('ID ' + idFila + ' (fila ' + (r + 1) + '): ' + valores[r].map(function (v, c) {
+      return letra(c) + '=' + v + (formulas[r][c] ? ' [' + formulas[r][c] + ']' : '');
+    }).join(' | '));
+    lineas.push('   VACACIONES por año/tipo: ' + JSON.stringify(porAnio[idFila] || {}));
+  }
+  Logger.log('REVISIÓN (sin cambios)\n' + lineas.join('\n'));
+}
+
+// ---------------------------------------------------------------- tomadas solo del año en curso
+// La columna I contaba todos los días de VACACIONES hasta hoy, también los de años anteriores,
+// que ya están descontados en F (restantes del año anterior, valor manual de RR.HH.).
+// La nueva fórmula cuenta solo desde el 1 de enero del año de la columna G.
+var VAC_ANIO_ACTUAL = 2026;
+
+function formulaTomadasAnio_(fila) {
+  return '=COUNTIFS(VACACIONES!$B:$B;$A' + fila + ';VACACIONES!$D:$D;"VACACIONES";' +
+    'VACACIONES!$A:$A;">="&DATE(' + VAC_ANIO_ACTUAL + ';1;1);VACACIONES!$A:$A;"<="&TODAY())';
+}
+
+/** Solo informa a quién le cambia el saldo y cuánto (no toca la hoja). */
+function revisarTomadasDelAnio() {
+  tomadasDelAnio_(false);
+}
+
+/** Reemplaza la fórmula de la columna I por la que cuenta solo el año en curso. */
+function actualizarTomadasDelAnio() {
+  tomadasDelAnio_(true);
+}
+
+function tomadasDelAnio_(aplicar) {
+  var ss = SpreadsheetApp.getActive();
+  var hoja = ss.getSheetByName('CALCULAR_vacaciones');
+  if (!hoja) throw new Error('No existe la hoja CALCULAR_vacaciones');
+  var COL_I = 9;
+  var datos = hoja.getDataRange().getValues();
+  var inicio = new Date(VAC_ANIO_ACTUAL, 0, 1);
+
+  // Días de VACACIONES anteriores al año en curso (hasta hoy), por ID
+  var vac = ss.getSheetByName('VACACIONES').getDataRange().getValues();
+  var previos = {};
+  for (var j = 1; j < vac.length; j++) {
+    var f = vac[j][0];
+    if (!(f instanceof Date) || isNaN(f.getTime()) || f >= inicio) continue;
+    if (String(vac[j][3] || '').trim().toUpperCase() !== 'VACACIONES') continue;
+    var id = String(vac[j][1] || '').trim();
+    previos[id] = (previos[id] || 0) + 1;
+  }
+
+  var formulas = hoja.getDataRange().getFormulas();
+  var cambios = [], omitidas = [], filas = 0;
+  for (var i = 1; i < datos.length; i++) {
+    var idFila = String(datos[i][0] || '').trim();
+    if (!idFila) continue;
+    var n = previos[idFila] || 0;
+    if (n) {
+      var j0 = Number(datos[i][9]);
+      cambios.push(idFila + ' ' + String(datos[i][1] || '') + ': F (año anterior) = ' + datos[i][5] +
+        ' · días antes de ' + VAC_ANIO_ACTUAL + ' contados en I: ' + n +
+        ' · tomadas ' + datos[i][8] + ' → ' + (Number(datos[i][8]) - n) +
+        ' · restantes ' + j0 + ' → ' + (j0 + n));
+    }
+    if (!aplicar) continue;
+    // Se edita la fórmula existente (mismo separador que usa la hoja) agregando el límite de inicio de año
+    var actual = formulas[i][COL_I - 1];
+    if (actual.indexOf('DATE(' + VAC_ANIO_ACTUAL) >= 0) continue; // ya corregida
+    var sep = actual.indexOf(';') >= 0 ? ';' : ',';
+    var ancla = 'VACACIONES!$A:$A' + sep + '"<="&TODAY()';
+    if (actual.indexOf(ancla) < 0) { omitidas.push(idFila + ' (fórmula distinta: ' + actual + ')'); continue; }
+    hoja.getRange(i + 1, COL_I).setFormula(actual.replace(ancla,
+      'VACACIONES!$A:$A' + sep + '">="&DATE(' + VAC_ANIO_ACTUAL + sep + '1' + sep + '1)' + sep + ancla));
+    filas++;
+  }
+  var errores = [];
+  if (aplicar) {
+    SpreadsheetApp.flush();
+    errores = hoja.getRange(2, COL_I, datos.length - 1, 1).getDisplayValues()
+      .map(function (v) { return v[0]; }).filter(function (v) { return /^#/.test(v); });
+  }
+  Logger.log((aplicar ? 'APLICADO · fórmula de I corregida en ' + filas + ' filas' : 'REVISIÓN (sin cambios)') +
+    ' · nueva fórmula (fila 2): ' + formulaTomadasAnio_(2) +
+    '\nSaldos que cambian: ' + cambios.length + (cambios.length ? '\n  ' + cambios.join('\n  ') : '') +
+    (omitidas.length ? '\nNo modificadas: ' + omitidas.join('; ') : '') +
+    (errores.length ? '\n⚠ ' + errores.length + ' celdas de I con error (' + errores[0] + '): revisar la hoja' : ''));
+}
