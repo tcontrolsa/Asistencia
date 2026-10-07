@@ -5400,11 +5400,11 @@ function calcularEstadisticas() {
             horasExtra100 += extra100Dia;
             horasCampo100 += campo100Dia;
         } else {
-            // 50 %: solo si el día supera 45 min; completo con tope de 120 (oficina primero, luego campo)
-            const total50 = (extraMins50Acum + campo50Dia) > 45 ? Math.min(extraMins50Acum + campo50Dia, 120) : 0;
-            const oficina50 = Math.min(extraMins50Acum, total50);
-            horasExtra50 += oficina50;
-            horasCampo50 += total50 - oficina50;
+            // 50 %: solo si el día supera 45 min; oficina con tope de 120, campo sin tope
+            if (extraMins50Acum + campo50Dia > 45) {
+                horasExtra50 += Math.min(extraMins50Acum, 120);
+                horasCampo50 += campo50Dia;
+            }
         }
 
         // Acumular tiempo trabajado

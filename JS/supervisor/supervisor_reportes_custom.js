@@ -928,10 +928,10 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
         else hC100 = Math.max(0, hC100 - ALMUERZO_MIN);
       }
     } else {
-      // 50 %: solo si el día supera 45 min; completo con tope de 120 (oficina primero, luego campo)
-      const extra50Dia = aplicarReglaExtra50(h50 + hC50);
-      h50 = Math.min(h50, extra50Dia);
-      hC50 = extra50Dia - h50;
+      // 50 %: solo si el día supera 45 min; oficina con tope de 120, campo sin tope
+      const rep50 = repartirExtra50(h50, hC50);
+      h50 = rep50.oficina;
+      hC50 = rep50.campo;
     }
 
     let tiempoJustificado = 0;

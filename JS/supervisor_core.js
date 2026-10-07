@@ -740,7 +740,8 @@ window.esEmpleadoPasante = esEmpleadoPasante;
 // - Lunes a viernes: 07:30–16:15 con 45 min de almuerzo (480 min netos).
 // - Sábado, domingo y feriados: 07:00–15:15; todo lo trabajado es extra al 100 %
 //   (se descuentan 45 min de almuerzo si trabajó más de 4 h).
-// - Extra al 50 %: solo si supera 45 min en el día; se cuenta completa con tope de 120 min.
+// - Extra al 50 %: solo si supera 45 min en el día; se cuenta completa con tope de 120 min
+//   para lo de oficina. Lo trabajado en campo no tiene tope.
 // - Autorización automática de extras solo para el área TALLER; el resto, solo si un
 //   supervisor la autoriza (no cuenta "SISTEMA (>45 MIN)"). Campo se mantiene automático.
 // - Registro sin salida (salida autocompletada o sin marcar): 15 min de tiempo por justificar.
@@ -761,6 +762,14 @@ function aplicarReglaExtra50(minutos) {
   return minutos > EXTRA50_UMBRAL_MIN ? Math.min(minutos, EXTRA50_TOPE_MIN) : 0;
 }
 window.aplicarReglaExtra50 = aplicarReglaExtra50;
+
+// Reparto del 50 % del día: el umbral de 45 min se mide con todo (oficina + campo);
+// oficina con tope de 120 min y campo completo, sin tope.
+function repartirExtra50(oficina, campo) {
+  if (oficina + campo <= EXTRA50_UMBRAL_MIN) return { oficina: 0, campo: 0 };
+  return { oficina: Math.min(oficina, EXTRA50_TOPE_MIN), campo };
+}
+window.repartirExtra50 = repartirExtra50;
 
 // ¿Tiene autorización de horas extra ese día? Devuelve el origen o null.
 // - campo: "SISTEMA (CAMPO)".
@@ -837,9 +846,9 @@ function calcularExtrasDia(e, fecha, registrosDia) {
       else res.hC100 = Math.max(0, res.hC100 - ALMUERZO_MIN);
     }
   } else {
-    const total50 = aplicarReglaExtra50(oficina50 + campo50);
-    res.h50 = Math.min(oficina50, total50);
-    res.hC50 = total50 - res.h50;
+    const rep50 = repartirExtra50(oficina50, campo50);
+    res.h50 = rep50.oficina;
+    res.hC50 = rep50.campo;
   }
   return res;
 }
@@ -4021,11 +4030,10 @@ function cargarReportes() {
         horasExtra100 += extra100Dia;
         horasCampo100 += campo100Dia;
       } else {
-        // 50 %: solo si el día supera 45 min; completo con tope de 120 (oficina primero, luego campo)
-        const extra50Dia = aplicarReglaExtra50(extraMins50Acum + campo50Dia);
-        const oficina50 = Math.min(extraMins50Acum, extra50Dia);
-        horasExtra50 += oficina50;
-        horasCampo50 += extra50Dia - oficina50;
+        // 50 %: solo si el día supera 45 min; oficina con tope de 120, campo sin tope
+        const rep50 = repartirExtra50(extraMins50Acum, campo50Dia);
+        horasExtra50 += rep50.oficina;
+        horasCampo50 += rep50.campo;
       }
 
       // Sumar permisos asignados manualmente
@@ -5624,7 +5632,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       if (origenAutorizacion === 'campo') {
         extBadge = '<span class="pill ok" title="Auto-autorizado por Campo">CAMPO</span>';
       } else if (origenAutorizacion === 'taller') {
-        extBadge = '<span class="pill ok" title="Automático para el área TALLER (más de 45 min, tope 120 min)">AUTO</span>';
+        extBadge = '<span class="pill ok" title="Automático para el área TALLER (más de 45 min; tope 120 min en oficina, sin tope en campo)">AUTO</span>';
       }
       let extBadgeHtml = extBadge;
       if (esMaster && regsDia.length > 0 && !esFalta && origenAutorizacion !== 'taller' && origenAutorizacion !== 'campo') {
@@ -5674,11 +5682,10 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           else hC100 = Math.max(0, hC100 - ALMUERZO_MIN);
         }
       } else {
-        // 50 %: solo si el día supera 45 min de extra; se cuenta completo con tope de 120 min
-        // (primero lo de oficina, luego lo de campo)
-        const extra50Dia = aplicarReglaExtra50(extraMins50Acum + hC50);
-        h50 = Math.min(extraMins50Acum, extra50Dia);
-        hC50 = extra50Dia - h50;
+        // 50 %: solo si el día supera 45 min de extra; oficina con tope de 120 min, campo sin tope
+        const rep50 = repartirExtra50(extraMins50Acum, hC50);
+        h50 = rep50.oficina;
+        hC50 = rep50.campo;
       }
 
       let tiempoJustificado = 0;
