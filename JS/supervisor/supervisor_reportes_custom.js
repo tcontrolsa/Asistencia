@@ -893,6 +893,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       if (!p.entrada || !p.salida) return;
       let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
       let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+      if (mS !== null && typeof salidaParaExtras === 'function') mS = salidaParaExtras(mS, p.salida, regsDia, esFestivo); // salida sin registrar: extras por confirmar
       if (mE === null || mS === null || mS <= mE) return;
       let duracion = mS - mE;
       let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';

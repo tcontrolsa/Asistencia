@@ -746,6 +746,8 @@ window.esEmpleadoPasante = esEmpleadoPasante;
 //   supervisor la autoriza (no cuenta "SISTEMA (>45 MIN)"). Campo se mantiene automático.
 // - Registro sin salida (salida autocompletada o sin marcar): 15 min de tiempo por justificar.
 // - Sábado, domingo y feriado: sin atraso ni descuento (ni la penalización por no marcar salida).
+// - Salida que no registró (la completó el sistema): no genera horas extra hasta que un supervisor
+//   las autorice desde el panel ("SUPERVISOR: nombre"); si hace falta, antes corrige la hora en Gestionar.
 // ============================================================
 const JORNADA_FIN_SEMANA = { entrada: 420, salida: 915 }; // 07:00 – 15:15
 const ALMUERZO_MIN = 45;
@@ -804,6 +806,21 @@ function esSalidaSinRegistrar(r) {
   return disp === 'AUTO_COMPLETAR' || razon.includes('no registr');
 }
 
+// Salida completada por el sistema sin que un supervisor haya confirmado las extras del día
+function salidaExtrasPorConfirmar(salida, regsDia) {
+  if (!esSalidaSinRegistrar(salida)) return false;
+  return !(regsDia || []).some(r => String(r.autoriza || '').trim().toUpperCase().startsWith('SUPERVISOR:'));
+}
+window.salidaExtrasPorConfirmar = salidaExtrasPorConfirmar;
+
+// Minutos de salida que valen para horas extra: sin confirmar, ninguno (fin de semana) o hasta la
+// salida normal (día laborable). null = el tramo no suma extras.
+function salidaParaExtras(mS, salida, regsDia, festivo) {
+  if (!salidaExtrasPorConfirmar(salida, regsDia)) return mS;
+  return festivo ? null : Math.min(mS, HORA_SALIDA_REF);
+}
+window.salidaParaExtras = salidaParaExtras;
+
 // Registros inconclusos del día: tramos con entrada sin salida + salidas autocompletadas
 function contarRegistrosInconclusos(periodosDia) {
   return (periodosDia || []).filter(p => p.entrada && (!p.salida || esSalidaSinRegistrar(p.salida))).length;
@@ -836,7 +853,8 @@ function calcularExtrasDia(e, fecha, registrosDia) {
   let oficina50 = 0, campo50 = 0;
   periodos.forEach(p => {
     const mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
-    const mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+    const mSReg = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+    const mS = mSReg === null ? null : salidaParaExtras(mSReg, p.salida, regs, festivo);
     if (mE === null || mS === null || mS <= mE) return;
     const enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
     if (festivo) {
@@ -4000,6 +4018,7 @@ function cargarReportes() {
         if (!p.entrada || !p.salida) return;
         let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
         let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+        if (mS !== null) mS = salidaParaExtras(mS, p.salida, regsDia, esFestivo); // salida sin registrar: extras por confirmar
         if (mE === null || mS === null || mS <= mE) return;
         let duracion = mS - mE;
         let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
@@ -5708,7 +5727,15 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         extBadge = '<span class="pill ok" title="Automático para las áreas TALLER y BODEGA (más de 45 min; tope 120 min en oficina, sin tope en campo)">AUTO</span>';
       }
       let extBadgeHtml = extBadge;
-      if (esMaster && regsDia.length > 0 && !esFalta && origenAutorizacion !== 'taller' && origenAutorizacion !== 'campo') {
+      const extrasPorConfirmar = autorizadoGlobal && periodosDia.some(p => p.entrada && p.salida && salidaExtrasPorConfirmar(p.salida, regsDia)
+        && (esFestivo || obtenerMinutos(p.salida.hora || p.salida.timestamp) > HORA_SALIDA_REF));
+      if (extrasPorConfirmar) {
+        // Salida completada por el sistema: las extras quedan en espera hasta que el supervisor las autorice
+        extBadge = '<span class="pill" style="background:#fef3c7; color:#92400e;" title="No registró la salida (la completó el sistema): las horas extra no se cuentan hasta que un supervisor las autorice. Si la hora no es correcta, corrígela antes en Gestionar.">POR CONFIRMAR</span>';
+        extBadgeHtml = esMaster && regsDia.length > 0
+          ? `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', 'NO', '${f}')">${extBadge}</span>`
+          : extBadge;
+      } else if (esMaster && regsDia.length > 0 && !esFalta && origenAutorizacion !== 'taller' && origenAutorizacion !== 'campo') {
         extBadgeHtml = `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', '${extBadgeVal}', '${f}')">${extBadge}</span>`;
       }
 
@@ -5719,6 +5746,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         if (!p.entrada || !p.salida) return;
         let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
         let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+        if (mS !== null) mS = salidaParaExtras(mS, p.salida, regsDia, esFestivo); // salida sin registrar: extras por confirmar
         if (mE === null || mS === null || mS <= mE) return;
         let duracion = mS - mE;
         let enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
@@ -6073,14 +6101,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           <strong style="color:#1d4ed8; font-size:11.5px;">${minutosAHHMMSS(totalH50Dia)}</strong>
           ${extBadgeHtml}
         </div>
-      ` : '<span style="color:#94a3b8;">—</span>';
+      ` : (extrasPorConfirmar && !esFestivo ? extBadgeHtml : '<span style="color:#94a3b8;">—</span>');
 
       const celdaH100Html = totalH100Dia > 0 ? `
         <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
           <strong style="color:#4338ca; font-size:11.5px;">${minutosAHHMMSS(totalH100Dia)}</strong>
           ${extBadgeHtml}
         </div>
-      ` : '<span style="color:#94a3b8;">—</span>';
+      ` : (extrasPorConfirmar && esFestivo ? extBadgeHtml : '<span style="color:#94a3b8;">—</span>');
 
       return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
       <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>

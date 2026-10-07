@@ -5359,6 +5359,14 @@ function calcularEstadisticas() {
             let valS = getVal(p.salida, 'hora', 5) || getVal(p.salida, 'timestamp', 2) || p.salida.hora || p.salida.timestamp || p.salida[5];
             let mE = obtenerMinutos(valE);
             let mS = obtenerMinutos(valS);
+            // Salida completada por el sistema: las extras esperan la autorización del supervisor (mismas reglas que el panel)
+            const dispS = String(getVal(p.salida, 'dispositivo', 8) || p.salida.dispositivo || '').trim().toUpperCase();
+            const razS = String(p.salida.razon_salida || p.salida.razon_justificac || '').toLowerCase();
+            const supConfirmo = registrosDia.some(r => autorizaDe(r).startsWith('SUPERVISOR:'));
+            if (mS !== null && (dispS === 'AUTO_COMPLETAR' || razS.includes('no registr')) && !supConfirmo) {
+                if (esFestivo) return;
+                mS = Math.min(mS, H_FIN_REF);
+            }
             if (mE === null || mS === null || mS <= mE) return;
             let duracion = mS - mE;
 
