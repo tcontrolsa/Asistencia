@@ -1,5 +1,5 @@
 /**
- * Asistencia Tcontrol - Evaluación de desempeño (mensual y seguimiento Día 75)
+ * Asistencia Tcontrol - Evaluación de desempeño (mensual o trimestral, y seguimiento Día 75)
  * Formato de Psicología Organizacional: nuevo/EVALUACION DE DESEMPEÑO.xlsx
  *
  * Datos: PostgreSQL (api.eval_guardar / eval_confirmar / eval_listar / eval_config / eval_reunion /
@@ -174,16 +174,50 @@
     const [y, m, d] = n.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
   };
+  const ORDINAL_T = ['1.er', '2.º', '3.er', '4.º'];
   const etiquetaPeriodo = per => {
     if (per === 'DIA75') return 'Seguimiento Día 75';
+    const t = String(per || '').match(/^(\d{4})-T([1-4])$/);
+    if (t) return `${ORDINAL_T[Number(t[2]) - 1]} trimestre ${t[1]} (${MESES[(Number(t[2]) - 1) * 3].slice(0, 3).toLowerCase()}–${MESES[Number(t[2]) * 3 - 1].slice(0, 3).toLowerCase()})`;
     const m = String(per || '').match(/^(\d{4})-(\d{2})$/);
     return m ? `${MESES[Number(m[2]) - 1]} ${m[1]}` : per;
   };
-  // Mes a evaluar por defecto: desde el día 20 se califica el mes en curso; antes, el anterior
+  // Frecuencia del cuestionario: MENSUAL o TRIMESTRAL (trimestres calendario)
+  const TIPO_P = () => (CFG.frecuencia === 'TRIMESTRAL' ? 'TRIMESTRAL' : 'MENSUAL');
+  const trimestral = () => TIPO_P() === 'TRIMESTRAL';
+  const nombreFrecuencia = (tipo = TIPO_P()) => (tipo === 'TRIMESTRAL' ? 'Trimestral' : 'Mensual');
+  const textoPeriodo = () => (trimestral() ? 'trimestre' : 'mes');
+  const trimestreDe = (y, m) => `${y}-T${Math.ceil(m / 3)}`;
+  // ¿El período corresponde a la frecuencia vigente? (si no, se toma el período por defecto)
+  const periodoValido = per => (trimestral() ? /^\d{4}-T[1-4]$/ : /^\d{4}-\d{2}$/).test(String(per || ''));
+  // Mes base (para filtrar la historia): desde el día 20 se toma el mes en curso; antes, el anterior
   function mesPorDefecto() {
     const d = new Date();
     if (d.getDate() < 20) d.setMonth(d.getMonth() - 1, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  // Período a evaluar por defecto: el mes base o, en trimestral, el trimestre cuyo último mes ya llegó
+  function periodoPorDefecto() {
+    const mes = mesPorDefecto();
+    if (!trimestral()) return mes;
+    const [y, m] = mes.split('-').map(Number);
+    if (m % 3 === 0) return trimestreDe(y, m);
+    const q = Math.ceil(m / 3) - 1;
+    return q >= 1 ? `${y}-T${q}` : `${y - 1}-T4`;
+  }
+  function periodoAnterior(per) {
+    const t = String(per || '').match(/^(\d{4})-T([1-4])$/);
+    if (t) return Number(t[2]) > 1 ? `${t[1]}-T${Number(t[2]) - 1}` : `${Number(t[1]) - 1}-T4`;
+    return mesAnterior(per, 1);
+  }
+  // Períodos para elegir: los últimos n meses o trimestres (desde el actual)
+  function periodosDisponibles(n = 4) {
+    if (!trimestral()) return mesesDisponibles(n);
+    const d = new Date();
+    let per = trimestreDe(d.getFullYear(), d.getMonth() + 1);
+    const out = [];
+    for (let i = 0; i < n; i++) { out.push(per); per = periodoAnterior(per); }
+    return out;
   }
   function mesesDisponibles(n = 4) {
     const out = [];
@@ -200,9 +234,12 @@
     const d = new Date(y, m - 1 - n, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
+  // Próxima evaluación por defecto: fin del mes siguiente o, en trimestral, fin del trimestre siguiente
   function finDeMesSiguiente() {
     const d = new Date();
-    const f = new Date(d.getFullYear(), d.getMonth() + 2, 0);
+    const f = trimestral()
+      ? new Date(d.getFullYear(), (Math.ceil((d.getMonth() + 1) / 3) + 1) * 3, 0)
+      : new Date(d.getFullYear(), d.getMonth() + 2, 0);
     return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
   }
   // Período de prueba de 90 días: Día 75 entre los días 60 y 120; mensual desde el día 90
@@ -211,9 +248,11 @@
     return { dias, dia75: dias !== null && dias >= 60 && dias <= 120, mensual: dias === null || dias >= 90 };
   }
 
-  // Plazo para evaluar un mes: el día evaluarDia del mes siguiente (el servidor lo vuelve a validar)
+  // Plazo para evaluar un período (mes o trimestre): el día evaluarDia del mes siguiente a su cierre
+  // (el servidor lo vuelve a validar)
   function limiteEvaluar(per) {
-    const m = String(per || '').match(/^(\d{4})-(\d{2})$/);
+    const t = String(per || '').match(/^(\d{4})-T([1-4])$/);
+    const m = t ? [null, t[1], String(Number(t[2]) * 3)] : String(per || '').match(/^(\d{4})-(\d{2})$/);
     if (!m) return '';
     const d = new Date(Number(m[1]), Number(m[2]), Number((CFG.plazos || {}).evaluarDia) || 10);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -447,7 +486,7 @@
       <div class="ev-card">
         <div class="ev-det-head">
           <div>
-            <div class="ev-eyebrow">${esc(e.tipo === 'DIA75' ? 'Seguimiento nuevo ingreso' : 'Evaluación mensual')}</div>
+            <div class="ev-eyebrow">${esc(e.tipo === 'DIA75' ? 'Seguimiento nuevo ingreso' : `Evaluación ${nombreFrecuencia(e.tipo).toLowerCase()}`)}</div>
             <h3>${esc(etiquetaPeriodo(e.periodo))}</h3>
             <div class="ev-muted">${esc(e.empleadoNombre || e.empleadoId)} · Evaluó ${esc(e.evaluadorNombre || e.evaluadorId)} · ${fechaCorta(e.fechaAplicacion)}</div>
             <div class="ev-small ev-plazos">${e.estado === 'enviada' && e.venceConfirmar
@@ -462,7 +501,7 @@
       ${(e.fortalezas || e.mejoras || e.compromisos || e.proximaEvaluacion || e.comentarioColaborador) ? `<div class="ev-card">
         ${bloque('Fortalezas observadas', e.fortalezas)}
         ${bloque('Oportunidades de mejora', e.mejoras)}
-        ${bloque('Compromisos para el próximo mes', e.compromisos)}
+        ${bloque('Compromisos para el próximo período', e.compromisos)}
         ${e.proximaEvaluacion ? `<div class="ev-texto"><h4>Próxima evaluación</h4><p>${fechaCorta(e.proximaEvaluacion)}</p></div>` : ''}
         ${bloque('Comentario del colaborador', e.comentarioColaborador)}
       </div>` : ''}
@@ -474,7 +513,7 @@
   function montar(cont, opts) {
     const st = {
       cont, emp: opts.empleado || {}, ses: sesionGuardada((opts.empleado || {}).id), mias: [], hechas: [],
-      mes: mesPorDefecto(), vista: 'inicio', cargando: false, error: '', form: null, sel: null, embebido: !!opts.embebido,
+      mes: periodoPorDefecto(), vista: 'inicio', cargando: false, error: '', form: null, sel: null, embebido: !!opts.embebido,
       enlace: opts.enlace || null
     };
     cont._ev = st;
@@ -533,6 +572,7 @@
       if (!equipo.ok) throw new Error(equipo.error);
       st.mias = mias.evaluaciones || [];
       st.hechas = equipo.evaluaciones || [];
+      if (!periodoValido(st.mes)) st.mes = periodoPorDefecto();   // la frecuencia llega con el cuestionario
     } catch (e) {
       if (e.sesion) st.ses = null;
       st.error = e.message || String(e);
@@ -547,7 +587,7 @@
     const e = st.enlace;
     if (!e || !st.ses || st.cargando) return;
     st.enlace = null;
-    if (/^\d{4}-\d{2}$/.test(e.periodo || '')) { st.mes = e.periodo; if (st.filtro) st.filtro.periodo = e.periodo; }
+    if (/^\d{4}-(\d{2}|T[1-4])$/.test(e.periodo || '')) { st.mes = e.periodo; if (st.filtro) st.filtro.periodo = e.periodo; }
     else if (e.periodo === 'DIA75' && st.filtro) st.filtro.periodo = 'DIA75';
     const sel = e.id ? buscarEval(st, e.id) : null;
     if (sel) { st.pila = []; ir(st, 'detalle', { sel }); }
@@ -579,7 +619,7 @@
     }
     const filas = st.ses.equipo.map(m => {
       const et = etapa(m);
-      const men = st.hechas.find(e => e.empleadoId === m.id && e.tipo === 'MENSUAL' && e.periodo === st.mes);
+      const men = st.hechas.find(e => e.empleadoId === m.id && e.tipo === TIPO_P() && e.periodo === st.mes);
       const d75 = st.hechas.find(e => e.empleadoId === m.id && e.tipo === 'DIA75');
       let acciones = '';
       if (et.dia75 || d75) {
@@ -590,10 +630,10 @@
       if (et.mensual) {
         const pl = plazoEvaluar(st.ses, m.id, st.mes);
         const abierta = !men || men.estado !== 'confirmada';
-        acciones += `<div class="ev-eq-tipo"><span class="ev-eq-lbl">Mensual</span>${chipEstado(men)}${chipNivel(men)}
+        acciones += `<div class="ev-eq-tipo"><span class="ev-eq-lbl">${nombreFrecuencia()}</span>${chipEstado(men)}${chipNivel(men)}
           ${men ? `<button class="ev-btn ev-btn-sm" data-ev="ver" data-id="${men.id}">Ver</button>` : ''}
           ${abierta && pl.bloqueado ? `<span class="ev-chip ev-chip-warn" title="Solo el administrador puede reabrirlo"><i class="fas fa-lock"></i> Plazo vencido el ${fechaCorta(pl.lim)}</span>` : ''}
-          ${abierta && !pl.bloqueado ? `<button class="ev-btn ev-btn-sm ${men ? '' : 'ev-btn-primary'}" data-ev="evaluar" data-tipo="MENSUAL" data-emp="${esc(m.id)}">${men ? 'Corregir' : 'Evaluar'}</button>` : ''}
+          ${abierta && !pl.bloqueado ? `<button class="ev-btn ev-btn-sm ${men ? '' : 'ev-btn-primary'}" data-ev="evaluar" data-tipo="${TIPO_P()}" data-emp="${esc(m.id)}">${men ? 'Corregir' : 'Evaluar'}</button>` : ''}
           ${!men && !pl.vencido && pl.lim ? `<span class="ev-muted ev-small">hasta el ${fechaCorta(pl.lim)}</span>` : ''}
           ${pl.reabierto && !men ? '<span class="ev-chip ev-chip-env">Plazo reabierto</span>' : ''}</div>`;
       } else if (!et.dia75 && !d75) {
@@ -605,15 +645,15 @@
         <div class="ev-eq-info"><strong>${esc(m.nombre || m.id)}</strong>${pideReunion ? ' <span class="ev-chip ev-chip-reu"><i class="fas fa-comments"></i> Pidió reunión</span>' : ''}<span class="ev-muted">${esc(m.cargo || '')}${m.area ? ' · ' + esc(m.area) : ''}${st.hechas.some(e => e.empleadoId === m.id) ? ` · <button class="ev-link" data-ev="persona" data-emp="${esc(m.id)}">Ver evolución</button>` : ''}</span>${acciones}</div>
       </div>`;
     }).join('');
-    const pendientes = st.ses.equipo.filter(m => etapa(m).mensual && !st.hechas.some(e => e.empleadoId === m.id && e.tipo === 'MENSUAL' && e.periodo === st.mes)).length;
+    const pendientes = st.ses.equipo.filter(m => etapa(m).mensual && !st.hechas.some(e => e.empleadoId === m.id && e.tipo === TIPO_P() && e.periodo === st.mes)).length;
     return `<div class="ev-card">
       <div class="ev-card-head">
         <h3 class="ev-h3"><i class="fas fa-users"></i> Mi equipo</h3>
-        <select data-ev="mes" class="ev-select">${mesesDisponibles().map(m => `<option value="${m}" ${m === st.mes ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')}</select>
+        <select data-ev="mes" class="ev-select">${periodosDisponibles().map(m => `<option value="${m}" ${m === st.mes ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')}</select>
       </div>
-      <p class="ev-muted ev-mb">${pendientes ? `${pendientes} evaluación(es) mensual(es) pendiente(s) para ${etiquetaPeriodo(st.mes)}.` : `Equipo al día para ${etiquetaPeriodo(st.mes)}.`}
+      <p class="ev-muted ev-mb">${pendientes ? `${pendientes} evaluación(es) ${trimestral() ? 'trimestral(es)' : 'mensual(es)'} pendiente(s) para ${etiquetaPeriodo(st.mes)}.` : `Equipo al día para ${etiquetaPeriodo(st.mes)}.`}
         ${limiteEvaluar(st.mes) ? `<strong>Plazo: ${hoyLocal() > limiteEvaluar(st.mes) ? 'venció el' : 'hasta el'} ${fechaCorta(limiteEvaluar(st.mes))}.</strong>` : ''}
-        Califica en los últimos días del mes y conversa el resultado la semana siguiente. Meta de cumplimiento: ${pct(META)}.</p>
+        Califica en los últimos días del ${textoPeriodo()} y conversa el resultado la semana siguiente. Meta de cumplimiento: ${pct(META)}.</p>
       ${filas}
       <p class="ev-muted ev-small">¿Falta alguien? Pide a Psicología Organizacional que lo asigne y <button class="ev-link" data-ev="salir">vuelve a ingresar tu PIN</button>.</p>
     </div>`;
@@ -660,7 +700,7 @@
         <button class="ev-btn ev-btn-primary ev-btn-block" data-ev="confirmar" data-id="${e.id}"><i class="fas fa-check"></i> Confirmo que recibí la retroalimentación</button>
       </div>`;
     } else if (soyEvaluador && e.estado === 'enviada') {
-      const pl = e.tipo === 'MENSUAL' ? plazoEvaluar(st.ses, e.empleadoId, e.periodo) : { bloqueado: false };
+      const pl = e.tipo !== 'DIA75' ? plazoEvaluar(st.ses, e.empleadoId, e.periodo) : { bloqueado: false };
       acciones = pl.bloqueado
         ? `<p class="ev-muted ev-small"><i class="fas fa-lock"></i> El plazo para corregir esta evaluación venció el ${fechaCorta(pl.lim)}.</p>`
         : `<div class="ev-actions"><button class="ev-btn" data-ev="evaluar" data-tipo="${e.tipo}" data-emp="${esc(e.empleadoId)}" data-periodo="${esc(e.periodo)}"><i class="fas fa-pen"></i> Corregir evaluación</button></div>`;
@@ -774,7 +814,7 @@
   function abrirForm(st, empId, tipo, periodo) {
     const m = st.ses.equipo.find(x => x.id === empId) || { id: empId };
     const per = tipo === 'DIA75' ? 'DIA75' : (periodo || st.mes);
-    if (tipo === 'MENSUAL') {
+    if (tipo !== 'DIA75') {
       const pl = plazoEvaluar(st.ses, empId, per);
       if (pl.bloqueado) { toast(`El plazo para evaluar ${etiquetaPeriodo(per)} venció el ${fechaCorta(pl.lim)}. Pide al administrador que lo reabra.`, 'warning'); return; }
     }
@@ -790,7 +830,7 @@
       fortalezas: previa ? previa.fortalezas || '' : '',
       mejoras: previa ? previa.mejoras || '' : '',
       compromisos: previa ? previa.compromisos || '' : '',
-      proxima: previa ? normFecha(previa.proximaEvaluacion) : (tipo === 'MENSUAL' ? finDeMesSiguiente() : ''),
+      proxima: previa ? normFecha(previa.proximaEvaluacion) : (tipo !== 'DIA75' ? finDeMesSiguiente() : ''),
       error: '', enviando: false
     };
     st.vista = 'form';
@@ -810,7 +850,7 @@
       `<div class="ev-paso ${f.paso === i + 1 ? 'ev-paso-on' : ''} ${f.paso > i + 1 ? 'ev-paso-ok' : ''}"><span>${f.paso > i + 1 ? '<i class="fas fa-check"></i>' : i + 1}</span>${t}</div>`).join('<div class="ev-paso-linea"></div>');
     const periodoCtl = f.tipo === 'DIA75'
       ? `<strong>Día 75 desde el ingreso</strong>`
-      : `<select data-ev="form-mes" class="ev-select ev-select-sm">${mesesDisponibles().map(x => `<option value="${x}" ${x === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(x)}</option>`).join('')}</select>
+      : `<select data-ev="form-mes" class="ev-select ev-select-sm">${periodosDisponibles().map(x => `<option value="${x}" ${x === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(x)}</option>`).join('')}</select>
          ${limiteEvaluar(f.periodo) ? `<small class="ev-muted">Plazo: hasta el ${fechaCorta(limiteEvaluar(f.periodo))}</small>` : ''}`;
     let cuerpo = '';
     if (f.paso === 1) {
@@ -845,7 +885,7 @@
         <h4 class="ev-h4">Retroalimentación y compromisos</h4>
         ${campo('fortalezas', 'Fortalezas observadas', 'Lo que hizo especialmente bien en el período')}
         ${campo('mejoras', 'Oportunidades de mejora', 'Comportamientos a reforzar')}
-        ${campo('compromisos', 'Compromisos acordados para el próximo mes', 'Acciones concretas, vinculadas a sus KPIs cuando aplique')}
+        ${campo('compromisos', `Compromisos acordados para el próximo ${textoPeriodo()}`, 'Acciones concretas, vinculadas a sus KPIs cuando aplique')}
         <label class="ev-campo"><span>Fecha de la próxima evaluación</span><input type="date" data-ev="proxima" value="${esc(f.proxima)}" min="${hoyLocal()}"></label>
       </div>`;
     } else {
@@ -1028,7 +1068,7 @@
     else if (a === 'form-mes') {
       const f = st.form;
       f.periodo = el.value;
-      const previa = st.hechas.find(e => e.empleadoId === f.emp.id && e.tipo === 'MENSUAL' && e.periodo === f.periodo);
+      const previa = st.hechas.find(e => e.empleadoId === f.emp.id && e.tipo === f.tipo && e.periodo === f.periodo);
       const pl = plazoEvaluar(st.ses, f.emp.id, f.periodo);
       if (pl.bloqueado) toast(`El plazo para evaluar ${etiquetaPeriodo(f.periodo)} venció el ${fechaCorta(pl.lim)}: no se podrá enviar.`, 'warning');
       else if (previa) toast(`${etiquetaPeriodo(f.periodo)} ya tiene una evaluación; al enviar la reemplazarás.`, 'warning');
@@ -1115,7 +1155,7 @@
     st.todas = [];
     st.empleados = opts.empleados;
     st.rVista = 'dashboard';
-    st.filtro = { periodo: mesPorDefecto(), q: '', unidad: '', area: '', estado: '' };
+    st.filtro = { periodo: periodoPorDefecto(), q: '', unidad: '', area: '', estado: '' };
     st.alIniciar = async () => {
       if (!st.ses.rrhh) { st.vista = 'sin-permiso'; return pintarResultados(st, opts); }
       await cargarTodas(st, opts);
@@ -1153,6 +1193,7 @@
       if (!r.ok) throw new Error(r.error);
       st.todas = r.evaluaciones || [];
       st.error = '';
+      if (st.filtro.periodo !== 'DIA75' && !periodoValido(st.filtro.periodo)) st.filtro.periodo = periodoPorDefecto();
     } catch (e) {
       if (e.sesion) st.ses = null;
       st.error = e.message || String(e);
@@ -1167,7 +1208,7 @@
     const per = st.filtro.periodo;
     const emps = (opts.empleados() || []).filter(e => String(e.activo || 'SI').toUpperCase() !== 'NO' && !e.esEliminado);
     const porId = new Map(emps.map(e => [String(e.id), e]));
-    const evals = st.todas.filter(e => per === 'DIA75' ? e.tipo === 'DIA75' : (e.tipo === 'MENSUAL' && e.periodo === per));
+    const evals = st.todas.filter(e => per === 'DIA75' ? e.tipo === 'DIA75' : (e.tipo !== 'DIA75' && e.periodo === per));
     const filas = new Map();
     // Esperados: EVALUADO activos (mensual si pasó prueba; Día 75 si está entre los días 60 y 120)
     emps.forEach(emp => {
@@ -1215,7 +1256,7 @@
     const areas = [...new Set(todas.map(x => areaDe(x.emp)).filter(Boolean))].sort();
     const unidades = [...new Set((opts.empleados() || []).map(unidadDe).filter(Boolean))].sort();
     const promDim = k => conEval.length ? conEval.reduce((s, x) => s + Number((x.ev.dimensiones[k] || {}).porcentaje || 0), 0) / conEval.length : 0;
-    const opcionesPer = mesesDisponibles(12).map(m => `<option value="${m}" ${m === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')
+    const opcionesPer = periodosDisponibles(trimestral() ? 8 : 12).map(m => `<option value="${m}" ${m === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')
       + `<option value="DIA75" ${f.periodo === 'DIA75' ? 'selected' : ''}>Seguimiento Día 75 (nuevos ingresos)</option>`;
     const etiquetaEstado = { 'pendiente': '<span class="ev-chip ev-chip-pend">Pendiente</span>', 'vencida': '<span class="ev-chip ev-chip-warn"><i class="fas fa-lock"></i> Plazo vencido</span>', 'sin-evaluador': '<span class="ev-chip ev-chip-warn">Sin evaluador</span>' };
     const barra = `<div class="ev-card ev-barra-r">
@@ -1287,7 +1328,12 @@
 
   // ---------------------------------------------------------------- dashboards
   const ordenEval = (a, b) => String(a.fechaAplicacion || '').localeCompare(String(b.fechaAplicacion || '')) || String(a.periodo).localeCompare(String(b.periodo));
-  const etiquetaCorta = per => per === 'DIA75' ? 'Día 75' : (() => { const m = String(per).match(/^(\d{4})-(\d{2})$/); return m ? `${MESES[Number(m[2]) - 1].slice(0, 3)} ${m[1].slice(2)}` : per; })();
+  const etiquetaCorta = per => per === 'DIA75' ? 'Día 75' : (() => {
+    const t = String(per).match(/^(\d{4})-T([1-4])$/);
+    if (t) return `T${t[2]} ${t[1].slice(2)}`;
+    const m = String(per).match(/^(\d{4})-(\d{2})$/);
+    return m ? `${MESES[Number(m[2]) - 1].slice(0, 3)} ${m[1].slice(2)}` : per;
+  })();
   const promedio = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
   const puntos = d => `${d > 0 ? '+' : ''}${Math.round(d * 1000) / 10} pts`;
 
@@ -1397,15 +1443,15 @@
     const cobertura = filas.length ? conEval.length / filas.length : 0;
     const enRiesgo = conEval.filter(x => !cumpleMeta(x.ev));
 
-    // Tendencia mensual (últimos 12 meses con datos)
-    const meses = mesesDisponibles(12).slice().reverse();
+    // Tendencia por período (últimos 12 meses u 8 trimestres con datos)
+    const meses = periodosDisponibles(trimestral() ? 8 : 12).slice().reverse();
     const serie = meses.map(m => {
-      const ev = st.todas.filter(e => e.tipo === 'MENSUAL' && e.periodo === m);
+      const ev = st.todas.filter(e => e.tipo === TIPO_P() && e.periodo === m);
       return ev.length ? { t: etiquetaCorta(m), v: promedio(ev.map(e => Number(e.porcentaje))), n: `${ev.length} eval.` } : null;
     }).filter(Boolean);
     let deltaMes = null;
     if (f.periodo !== 'DIA75') {
-      const prev = st.todas.filter(e => e.tipo === 'MENSUAL' && e.periodo === mesAnterior(f.periodo, 1));
+      const prev = st.todas.filter(e => e.tipo !== 'DIA75' && e.periodo === periodoAnterior(f.periodo));
       if (prev.length && prom !== null) deltaMes = prom - promedio(prev.map(e => Number(e.porcentaje)));
     }
 
@@ -1445,11 +1491,11 @@
         <div class="ev-kpi"><span>Cobertura</span><strong>${pct(cobertura)}</strong><small>${conEval.length} de ${filas.length} evaluados</small></div>
         <div class="ev-kpi"><span>Confirmadas</span><strong class="ev-ok">${conEval.filter(x => x.ev.estado === 'confirmada').length}</strong><small>${conEval.filter(x => x.ev.estado === 'enviada').length} por confirmar</small></div>
         <div class="ev-kpi"><span>Promedio general</span><strong class="${prom === null ? '' : claseNivel(nivelDe(prom)) + ' ev-kpi-nivel'}">${prom === null ? '—' : pct(prom)}</strong><small>${prom === null ? '' : nivelDe(prom)}</small></div>
-        <div class="ev-kpi"><span>Vs. mes anterior</span><strong class="${deltaMes === null ? '' : deltaMes >= 0 ? 'ev-ok' : 'ev-danger'}">${deltaMes === null ? '—' : puntos(deltaMes)}</strong><small>promedio general</small></div>
+        <div class="ev-kpi"><span>Vs. ${trimestral() ? 'trimestre' : 'mes'} anterior</span><strong class="${deltaMes === null ? '' : deltaMes >= 0 ? 'ev-ok' : 'ev-danger'}">${deltaMes === null ? '—' : puntos(deltaMes)}</strong><small>promedio general</small></div>
         <div class="ev-kpi"><span>Bajo la meta (${pct(META)})</span><strong class="ev-danger">${enRiesgo.length}</strong><small>${conEval.length ? `${pct((conEval.length - enRiesgo.length) / conEval.length)} cumple la meta` : 'requieren plan de mejora'}</small></div>
         <div class="ev-kpi"><span>Pendientes</span><strong class="ev-warn">${filas.filter(x => x.estado === 'pendiente').length}</strong><small>${filas.filter(x => x.estado === 'sin-evaluador').length} sin evaluador</small></div>
       </div>
-      <div class="ev-card"><h4 class="ev-h4">Tendencia del promedio general (mensual)</h4>${lineaSvg(serie, { titulo: 'Promedio general por mes' })}</div>
+      <div class="ev-card"><h4 class="ev-h4">Tendencia del promedio general (${trimestral() ? 'trimestral' : 'mensual'})</h4>${lineaSvg(serie, { titulo: 'Promedio general por período' })}</div>
       <div class="ev-grid2">
         <div class="ev-card"><h4 class="ev-h4">Distribución por nivel · ${esc(etiquetaPeriodo(f.periodo))}</h4>${distHtml}</div>
         <div class="ev-card"><h4 class="ev-h4">Promedio por dimensión</h4>${conEval.length ? `<div class="ev-dims">${DIMENSIONES.map(d => barraH(d.t, promedio(conEval.map(x => Number((x.ev.dimensiones[d.k] || {}).porcentaje || 0))))).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
@@ -1856,7 +1902,12 @@
       <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-bullseye"></i> Meta y plazos</h4>
         <div class="ev-cfg-grid">
           <label class="ev-campo"><span>Meta de cumplimiento (%)</span>${por('meta', g.meta)}<small class="ev-muted">Bajo este porcentaje la evaluación no cumple y se alerta a RR.HH.</small></label>
-          <label class="ev-campo"><span>Día límite para evaluar (del mes siguiente)</span>${num('plazos.evaluarDia', pl.evaluarDia, 1, 28)}<small class="ev-muted">Ej.: 10 → septiembre se evalúa hasta el 10 de octubre.</small></label>
+          <label class="ev-campo"><span>Frecuencia de la evaluación</span>
+            <select class="ev-select" data-ev="cfg" data-p="frecuencia" data-t="txt">
+              <option value="MENSUAL" ${g.frecuencia !== 'TRIMESTRAL' ? 'selected' : ''}>Mensual</option>
+              <option value="TRIMESTRAL" ${g.frecuencia === 'TRIMESTRAL' ? 'selected' : ''}>Trimestral (ene–mar, abr–jun, jul–sep, oct–dic)</option>
+            </select><small class="ev-muted">El seguimiento Día 75 de nuevos ingresos no cambia.</small></label>
+          <label class="ev-campo"><span>Día límite para evaluar (mes siguiente al cierre)</span>${num('plazos.evaluarDia', pl.evaluarDia, 1, 28)}<small class="ev-muted">Ej.: 10 → ${g.frecuencia === 'TRIMESTRAL' ? 'el trimestre jul–sep se evalúa hasta el 10 de octubre' : 'septiembre se evalúa hasta el 10 de octubre'}.</small></label>
           <label class="ev-campo"><span>Días para confirmar</span>${num('plazos.confirmarDias', pl.confirmarDias, 1, 60)}<small class="ev-muted">Desde que el jefe envía la evaluación.</small></label>
           <label class="ev-campo"><span>Vigencia del resultado (días)</span>${num('plazos.vigenciaDias', pl.vigenciaDias, 7, 400)}<small class="ev-muted">Después se considera desactualizado.</small></label>
           <label class="ev-campo"><span>Avisar con anticipación (días)</span>${num('plazos.avisoDias', pl.avisoDias, 0, 15)}<small class="ev-muted">Notificaciones de plazos por vencer.</small></label>
@@ -1927,7 +1978,7 @@
         <p class="ev-muted ev-small">Permite al evaluador registrar o corregir un mes cuyo plazo ya venció. El plazo para confirmar se reabre desde la evaluación.</p>
         <div class="ev-filtros">
           <select class="ev-select" data-ev="cfg-reabrir-emp"><option value="">Colaborador…</option>${emps.map(e => `<option value="${esc(e.id)}">${esc(e.nombre || e.id)}</option>`).join('')}</select>
-          <select class="ev-select" data-ev="cfg-reabrir-mes">${mesesDisponibles(6).map(m => `<option value="${m}" ${m === mesAnterior(mesPorDefecto(), 0) ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')}</select>
+          <select class="ev-select" data-ev="cfg-reabrir-mes">${periodosDisponibles(6).map(m => `<option value="${m}" ${m === periodoPorDefecto() ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')}</select>
           <label class="ev-small">por <input type="number" class="ev-select ev-select-sm ev-num-corto" data-ev="cfg-reabrir-dias" value="5" min="1" max="60"> días</label>
           <input type="text" class="ev-cfg-in" data-ev="cfg-reabrir-motivo" maxlength="300" placeholder="Motivo (opcional)">
           <button type="button" class="ev-btn ev-btn-primary" data-ev="cfg-reabrir"><i class="fas fa-unlock"></i> Reabrir</button>

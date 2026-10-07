@@ -9,9 +9,9 @@
  *   - Eventos (guardarEvaluacionEnHoja → notificarEvaluacion_): evaluación enviada, corregida,
  *     confirmada, alerta para RR.HH. (bajo la meta o caída de 10 pts), reunión solicitada o
  *     agendada y plazo reabierto. Vienen de la cola de Postgres con params.evento.
- *   - Recordatorios diarios (recordatoriosDiarios, activador de las 08:30), con los plazos del
- *     cuestionario (api.eval_config): evaluaciones del mes por registrar (desde el día 25 hasta el
- *     día límite del mes siguiente), evaluaciones por confirmar que están por vencer, las que
+ *   - Recordatorios diarios (recordatoriosDiarios, activador de las 08:30), con la frecuencia y los
+ *     plazos del cuestionario (api.eval_config): evaluaciones del período (mes o trimestre calendario)
+ *     por registrar (desde el día 25 de su último mes hasta el día límite del mes siguiente), evaluaciones por confirmar que están por vencer, las que
  *     vencieron sin confirmar (aviso a RR.HH.), resultados que pierden vigencia y Día 75 de nuevos
  *     ingresos (desde el día 60). También borra avisos de más de 60 días.
  *
@@ -126,6 +126,8 @@ function whatsappA_(empleadoId, texto) {
 
 function mesTexto_(periodo) {
   if (periodo === 'DIA75') return 'seguimiento Día 75';
+  var t = String(periodo || '').match(/^(\d{4})-T([1-4])$/);
+  if (t) return ['primer', 'segundo', 'tercer', 'cuarto'][Number(t[2]) - 1] + ' trimestre ' + t[1];
   var m = String(periodo || '').match(/^(\d{4})-(\d{2})$/);
   return m ? NOTIF_MESES[Number(m[2]) - 1] + ' ' + m[1] : String(periodo || '');
 }
@@ -232,21 +234,33 @@ function recordatoriosDiarios() {
     var plazos = cfg.plazos || {};
     var diaLimite = Number(plazos.evaluarDia) || 10;
     var aviso = plazos.avisoDias === undefined ? 3 : Number(plazos.avisoDias);
+    var tipoPeriodo = cfg.frecuencia === 'TRIMESTRAL' ? 'TRIMESTRAL' : 'MENSUAL';
+    // Períodos a revisar: el actual y el anterior (mes o trimestre calendario), con su último mes
+    var periodos = [];
+    if (tipoPeriodo === 'TRIMESTRAL') {
+      var q = Math.ceil(partes[1] / 3);
+      [[partes[0], q], q === 1 ? [partes[0] - 1, 4] : [partes[0], q - 1]].forEach(function (x) {
+        periodos.push({ id: x[0] + '-T' + x[1], ultimoMes: mesDesplazado_(x[0], x[1] * 3, 0) });
+      });
+    } else {
+      [0, -1].forEach(function (d) { var m = mesDesplazado_(partes[0], partes[1], d); periodos.push({ id: m, ultimoMes: m }); });
+    }
 
-    // 1. Jefes con evaluaciones mensuales pendientes: desde el día 25 del mes hasta su día límite
-    //    (el día diaLimite del mes siguiente). Un solo aviso por jefe y mes, que se renueva cada día.
-    [mesDesplazado_(partes[0], partes[1], 0), mesDesplazado_(partes[0], partes[1], -1)].forEach(function (mesObjetivo) {
-      var pm = mesObjetivo.split('-').map(Number);
+    // 1. Jefes con evaluaciones del período pendientes: desde el día 25 de su último mes hasta el día
+    //    límite (diaLimite del mes siguiente). Un solo aviso por jefe y período, que se renueva cada día.
+    periodos.forEach(function (per) {
+      var mesObjetivo = per.id;
+      var pm = per.ultimoMes.split('-').map(Number);
       var limite = mesDesplazado_(pm[0], pm[1], 1) + '-' + ('0' + diaLimite).slice(-2);
       var faltan = diasEntre_(hoy, limite);
-      var desdeAviso = mesObjetivo + '-25';
+      var desdeAviso = per.ultimoMes + '-25';
       var evaluadores = {};
       activos.forEach(function (e) { if (e.evaluador_id) evaluadores[e.evaluador_id] = true; });
       // Al día siguiente del vencimiento se retiran los avisos de pendientes de ese mes
       if (faltan === -1) borrarNotificaciones_(Object.keys(evaluadores).map(function (j) { return 'pend_' + j + '_' + mesObjetivo; }));
       if (faltan === null || faltan < 0 || hoy < desdeAviso) return;
       var hechas = {};
-      evals.forEach(function (e) { if (e.tipo === 'MENSUAL' && e.periodo === mesObjetivo) hechas[e.empleadoId] = true; });
+      evals.forEach(function (e) { if (e.tipo === tipoPeriodo && e.periodo === mesObjetivo) hechas[e.empleadoId] = true; });
       var pendientesPorJefe = {};
       activos.forEach(function (e) {
         var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase();

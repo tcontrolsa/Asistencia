@@ -199,7 +199,7 @@ function guardarEvaluacionEnHoja(p) {
     obs.forEach(function (o, i) { if (o) notas.push((i + 1) + ': ' + o); });
 
     var fila = [
-      id, p.tipo === 'DIA75' ? 'Día 75' : 'Mensual', p.periodo === 'DIA75' ? '' : p.periodo, p.fechaAplicacion,
+      id, ({ DIA75: 'Día 75', TRIMESTRAL: 'Trimestral' })[p.tipo] || 'Mensual', p.periodo === 'DIA75' ? '' : p.periodo, p.fechaAplicacion,
       p.empleadoId, p.empleadoNombre || '', p.area || '', p.cargo || '', p.evaluadorId, p.evaluadorNombre || ''
     ];
     for (var i = 0; i < 14; i++) fila.push(cal[i] ? Number(cal[i]) : '');
