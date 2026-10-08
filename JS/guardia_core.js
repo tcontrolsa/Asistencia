@@ -22,9 +22,23 @@ function mostrarToast(msg, tipo = 'info') {
     setTimeout(() => { container.innerHTML = ''; }, 3000);
 }
 
-function showLoading(show) {
+// Pantalla de espera con mensaje. Si tarda, avisa que sigue trabajando (6 s) o que la conexión falla (20 s).
+let tLoadingLento = null, tLoadingMuyLento = null;
+function showLoading(show, mensaje) {
     $('loadingOverlay').classList.toggle('hidden', !show);
+    clearTimeout(tLoadingLento); clearTimeout(tLoadingMuyLento);
+    const nota = $('loadingNota');
+    if (!show) return;
+    if ($('loadingMsg')) $('loadingMsg').textContent = mensaje || 'Procesando…';
+    if (nota) {
+        nota.textContent = '';
+        tLoadingLento = setTimeout(() => { nota.textContent = 'La conexión está lenta, sigue trabajando…'; }, 6000);
+        tLoadingMuyLento = setTimeout(() => { nota.textContent = 'Está tardando demasiado. Revisa el internet del equipo.'; }, 20000);
+    }
 }
+
+// Spinner pequeño para botones e indicadores en línea
+const SPIN = '<span class="spin-sm" aria-hidden="true"></span>';
 
 // Convertir URL de Drive a formato de imagen
 function convertirUrlDrive(url) {
@@ -168,78 +182,156 @@ async function registrarAsistencia(datos) {
     return await jsonpRequest({ ...datos, accion: 'guardarRegistro', dispositivo: 'GUARDIA' });
 }
 
-async function obtenerPresentes() {
-    return await jsonpRequest({ accion: 'obtenerDatosSupervisor' });
-}
-
 // ============================================================
 //  PRESENTES
 // ============================================================
-async function cargarPresentes() {
-    showLoading(true);
-    try {
-        const res = await obtenerPresentes();
-        showLoading(false);
-        
-        if (res.error) {
-            mostrarToast(res.error, 'error');
-            return;
+// Antes se usaba obtenerDatosSupervisor (todos los empleados, 60 días de registros y el histórico
+// archivado). Aquí solo hace falta lo de hoy: los registros desde las 00:00 y los empleados activos
+// (estos en memoria 10 min). Lo último cargado se muestra al instante mientras se actualiza.
+const CACHE_PRESENTES = 'guardia_presentes_hoy';
+let empleadosGuardia = null;          // { t, mapa }
+let cargaPresentes = null;            // promesa en curso (evita cargas simultáneas)
+let presentesTs = 0;
+
+const hoyStrLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const horaCorta = ms => ms ? new Date(ms).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+async function empleadosActivosGuardia() {
+    if (empleadosGuardia && Date.now() - empleadosGuardia.t < 10 * 60 * 1000) return empleadosGuardia.mapa;
+    const snap = await firebase.firestore().collection('empleados').get();
+    const mapa = {};
+    snap.forEach(doc => {
+        const d = doc.data();
+        const act = String(d.activo || '').trim().toUpperCase(), est = String(d.estado || '').trim().toUpperCase();
+        if (act === 'NO' || act === 'FALSE' || d.activo === false || est === 'INACTIVO') return;
+        mapa[doc.id] = { id: doc.id, nombre: d.nombre || doc.id, foto_url: d.foto_url || '' };
+    });
+    empleadosGuardia = { t: Date.now(), mapa };
+    return mapa;
+}
+
+function msDeHora(hora) {
+    if (!hora) return 0;
+    const [h, m, s] = String(hora).split(':');
+    const d = new Date(); d.setHours(parseInt(h, 10) || 0, parseInt(m, 10) || 0, parseInt(s, 10) || 0, 0);
+    return d.getTime();
+}
+
+async function obtenerPresentesHoy() {
+    const FB = window.FirebaseBackend;
+    if (!(window.USE_FIREBASE && FB && window.firebase)) {
+        // Respaldo (sin Firebase): la acción completa de Apps Script
+        const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor' });
+        if (res.error) throw new Error(res.error);
+        return (res.empleados || []).filter(e => e.entradaHoy === true);
+    }
+    const hoy = hoyStrLocal();
+    const [empleados, regSnap] = await Promise.all([
+        empleadosActivosGuardia(),
+        firebase.firestore().collection('registros')
+            .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(hoy + 'T00:00:00'))).get()
+    ]);
+    const porEmp = {};
+    regSnap.forEach(doc => {
+        const reg = FB._processDoc(doc.id, doc.data());
+        if (!reg || reg.fecha !== hoy) return;
+        const eid = String(reg.empleadoId || reg.id_empleado || String(reg.id || '').split('_')[0]).trim();
+        const emp = empleados[eid];
+        if (!emp) return;
+        const p = porEmp[eid] || (porEmp[eid] = { ...emp, entradaHoy: false, salidaHoy: false, almuerzoHoy: '' });
+        const vAlm = String(reg.almuerzo || '').trim().toUpperCase();
+        const alm = (vAlm === 'SI' || vAlm === 'SÍ' || vAlm === 'PLANTA') ? 'SI' : ((vAlm === 'NO' || vAlm === 'FUERA') ? 'NO' : '');
+        if (reg.tipo === 'ENTRADA') {
+            p.entradaHoy = true;
+            p.horaEntradaMs = msDeHora(reg.hora);
+            if (!p.almuerzoHoy) p.almuerzoHoy = alm;
+        } else if (reg.tipo === 'SOLO_ALMUERZO') {
+            if (!p.almuerzoHoy) p.almuerzoHoy = alm;
+        } else if (reg.tipo === 'SALIDA') {
+            p.salidaHoy = true;
+            p.horaSalidaMs = msDeHora(reg.hora);
         }
-        
-        const empleados = res.empleados || [];
-        // Filtrar solo los que tienen entrada hoy
-        const presentes = empleados.filter(emp => emp.entradaHoy === true);
-        listaPresentes = presentes;
-        
-        const count = presentes.length;
-        $('presentCount').innerHTML = count;
-        
-        if (count === 0) {
-            $('presentList').innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-user-clock"></i>
-                    <p>No hay empleados registrados hoy</p>
-                </div>
-            `;
-            return;
-        }
-        
-        // Ordenar por hora de entrada (más reciente primero)
-        presentes.sort((a, b) => {
-            if (!a.horaEntradaMs) return 1;
-            if (!b.horaEntradaMs) return -1;
-            return b.horaEntradaMs - a.horaEntradaMs;
-        });
-        
-        $('presentList').innerHTML = presentes.map(emp => {
-            const fotoUrl = convertirUrlDrive(emp.foto_url);
-            const tieneFoto = fotoUrl && fotoUrl.trim() !== '';
-            const inicial = (emp.nombre || '?').charAt(0).toUpperCase();
-            const horaEntrada = emp.horaEntradaMs ? new Date(emp.horaEntradaMs).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '--:--';
-            const almuerzo = emp.almuerzoHoy === 'SI' ? '🏢 Planta' : (emp.almuerzoHoy === 'NO' ? '🏠 Fuera' : '');
-            
-            return `
-                <div class="present-item">
-                    ${tieneFoto ? 
-                        `<img class="present-photo" src="${fotoUrl}" alt="${emp.nombre}" onclick="showPhotoModal('${fotoUrl}')" style="cursor:pointer;">` : 
-                        `<div class="present-photo-placeholder">${inicial}</div>`
-                    }
-                    <div class="present-info">
-                        <div class="present-name">${escapeHtml(emp.nombre)}</div>
-                        <div class="present-time">
-                            <i class="fas fa-clock"></i> ${horaEntrada}
-                            ${emp.salidaHoy ? `<span class="present-badge badge-salida-small"><i class="fas fa-sign-out-alt"></i> Salida: ${emp.horaSalidaMs ? new Date(emp.horaSalidaMs).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>` : ''}
-                            ${almuerzo ? `<span class="present-badge badge-almuerzo"><i class="fas fa-utensils"></i> ${almuerzo}</span>` : ''}
-                        </div>
+    });
+    return Object.values(porEmp).filter(p => {
+        // Igual que el panel: si salió antes de las 09:30, no almuerza
+        if (p.salidaHoy && p.horaSalidaMs) { const d = new Date(p.horaSalidaMs); if (d.getHours() * 60 + d.getMinutes() < 570) p.almuerzoHoy = 'NO'; }
+        return p.entradaHoy;
+    });
+}
+
+function pintarPresentes(presentes) {
+    listaPresentes = presentes;
+    $('presentCount').textContent = presentes.length;
+    if (!presentes.length) {
+        $('presentList').innerHTML = `<div class="empty-state"><i class="fas fa-user-clock"></i><p>No hay empleados registrados hoy</p></div>`;
+        return;
+    }
+    // Más reciente primero
+    const lista = presentes.slice().sort((a, b) => (b.horaEntradaMs || 0) - (a.horaEntradaMs || 0));
+    $('presentList').innerHTML = lista.map(emp => {
+        const fotoUrl = convertirUrlDrive(emp.foto_url);
+        const inicial = escapeHtml((emp.nombre || '?').charAt(0).toUpperCase());
+        const almuerzo = emp.almuerzoHoy === 'SI' ? '🏢 Planta' : (emp.almuerzoHoy === 'NO' ? '🏠 Fuera' : '');
+        return `
+            <div class="present-item">
+                ${fotoUrl
+                    ? `<img class="present-photo" src="${escapeHtml(fotoUrl)}" alt="" decoding="async" data-foto="${escapeHtml(fotoUrl)}" style="cursor:pointer;" onerror="this.outerHTML='<div class=&quot;present-photo-placeholder&quot;>${inicial}</div>'">`
+                    : `<div class="present-photo-placeholder">${inicial}</div>`}
+                <div class="present-info">
+                    <div class="present-name">${escapeHtml(emp.nombre)}</div>
+                    <div class="present-time">
+                        <i class="fas fa-clock"></i> ${horaCorta(emp.horaEntradaMs)}
+                        ${emp.salidaHoy ? `<span class="present-badge badge-salida-small"><i class="fas fa-sign-out-alt"></i> Salida: ${horaCorta(emp.horaSalidaMs)}</span>` : ''}
+                        ${almuerzo ? `<span class="present-badge badge-almuerzo"><i class="fas fa-utensils"></i> ${almuerzo}</span>` : ''}
                     </div>
                 </div>
-            `;
-        }).join('');
-        
-    } catch (err) {
-        showLoading(false);
-        mostrarToast('Error al cargar presentes: ' + err.message, 'error');
+            </div>`;
+    }).join('');
+}
+
+function pintarEsqueletoPresentes() {
+    $('presentCount').innerHTML = SPIN;
+    const fila = `<div class="present-item sk-fila"><div class="sk sk-foto"></div><div style="flex:1"><div class="sk sk-linea" style="width:60%"></div><div class="sk sk-linea" style="width:35%;margin-top:8px"></div></div></div>`;
+    $('presentList').innerHTML = fila.repeat(5) + `<p class="cargando-nota lento-6s">La conexión está lenta, sigue cargando…</p>`;
+}
+
+function estadoPresentes(html) { if ($('presentEstado')) $('presentEstado').innerHTML = html; }
+
+function cargarPresentes() {
+    if (cargaPresentes) return cargaPresentes;
+    // Lo último cargado (de hoy) se muestra al instante; si no hay nada, esqueleto animado
+    if (!presentesTs) {
+        try {
+            const c = JSON.parse(localStorage.getItem(CACHE_PRESENTES) || 'null');
+            if (c && c.fecha === hoyStrLocal() && Array.isArray(c.lista)) { pintarPresentes(c.lista); presentesTs = c.ts; }
+        } catch (e) { }
     }
+    if (!presentesTs) pintarEsqueletoPresentes();
+    estadoPresentes(`${SPIN} Actualizando…`);
+    const btn = $('btnActualizarPresentes');
+    if (btn) { btn.disabled = true; btn.innerHTML = `${SPIN} Actualizando…`; }
+    cargaPresentes = obtenerPresentesHoy()
+        .then(lista => {
+            presentesTs = Date.now();
+            pintarPresentes(lista);
+            estadoPresentes(`<i class="fas fa-check-circle" style="color:var(--success)"></i> Actualizado a las ${horaCorta(presentesTs)}`);
+            try { localStorage.setItem(CACHE_PRESENTES, JSON.stringify({ fecha: hoyStrLocal(), ts: presentesTs, lista })); } catch (e) { }
+        })
+        .catch(err => {
+            if (presentesTs) {
+                estadoPresentes(`<i class="fas fa-exclamation-triangle" style="color:var(--warning,#f59e0b)"></i> Sin conexión. Datos de las ${horaCorta(presentesTs)}`);
+            } else {
+                $('presentCount').textContent = '–';
+                $('presentList').innerHTML = `<div class="empty-state"><i class="fas fa-wifi"></i><p>No se pudo cargar la lista.<br><small>${escapeHtml(err.message || '')}</small></p></div>`;
+                estadoPresentes('');
+            }
+            if (tabActual === 'presentes') mostrarToast('No se pudo actualizar la lista de presentes', 'error');
+        })
+        .finally(() => {
+            cargaPresentes = null;
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt"></i> Actualizar'; }
+        });
+    return cargaPresentes;
 }
 
 function escapeHtml(str) {
@@ -301,7 +393,7 @@ async function login() {
         return; 
     }
     
-    showLoading(true);
+    showLoading(true, 'Verificando clave…');
     try {
         const deviceToken = generarDeviceToken();
         // Usar verificarClaveGuardia que valida contra TCONTROL2026
@@ -357,7 +449,7 @@ async function buscar() {
     if (!id) { mostrarToast('Ingrese ID', 'error'); return; }
     if (!gpsOk) { mostrarToast('Espere GPS', 'info'); return; }
     
-    showLoading(true);
+    showLoading(true, 'Buscando empleado ' + id + '…');
     try {
         const res = await obtenerEstado(id);
         showLoading(false);
@@ -473,7 +565,7 @@ async function registrar() {
         }
     }
     
-    showLoading(true);
+    showLoading(true, 'Registrando ' + (empleadoActual.tipo === 'ENTRADA' ? 'entrada' : 'salida') + ' de ' + (empleadoActual.nombre || '') + '…');
     const btn = $('btnRegistrar');
     btn.disabled = true;
     
@@ -492,10 +584,8 @@ async function registrar() {
         
         if (res && res.ok) {
             mostrarToast(`${empleadoActual.tipo} registrada correctamente`, 'success');
-            // Actualizar lista de presentes después de registrar
-            if (tabActual === 'presentes') {
-                cargarPresentes();
-            }
+            // La lista de presentes se actualiza en segundo plano (queda lista al abrir la pestaña)
+            cargarPresentes();
             setTimeout(() => {
                 volverABuscar();
             }, 1500);
@@ -538,6 +628,7 @@ function verificarEstadoSesion() {
 }
 
 $('iClave')?.addEventListener('keypress', e => { if (e.key === 'Enter') login(); });
+$('presentList')?.addEventListener('click', e => { const f = e.target.closest('[data-foto]'); if (f) showPhotoModal(f.dataset.foto); });
 $('iId')?.addEventListener('keypress', e => { if (e.key === 'Enter') buscar(); });
 
 window.addEventListener('beforeunload', () => {

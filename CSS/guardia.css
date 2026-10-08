@@ -619,3 +619,70 @@
         .text-center {
             text-align: center;
         }
+
+        /* ===== Estados de carga (2026-10-08) ===== */
+        .loading-card {
+            background: white;
+            border-radius: 18px;
+            padding: 26px 28px 22px;
+            min-width: 230px;
+            max-width: 320px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+            animation: cardIn .18s ease-out;
+        }
+        .loading-card .spinner {
+            margin: 0 auto 14px;
+            border-color: var(--primary-light);
+            border-top-color: var(--primary);
+        }
+        .loading-msg { font-weight: 600; color: var(--gray-800); font-size: 15px; }
+        .loading-nota { color: var(--gray-500); font-size: 13px; margin-top: 8px; min-height: 0; }
+        .loading-nota:empty { display: none; }
+        @keyframes cardIn { from { transform: scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
+
+        .spin-sm {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            vertical-align: -2px;
+            animation: spin .7s linear infinite;
+        }
+
+        .cargando-nota {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--gray-500);
+            margin: -6px 0 10px;
+            min-height: 18px;
+        }
+
+        /* Esqueleto animado mientras llegan los datos */
+        .sk {
+            background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-300) 37%, var(--gray-200) 63%);
+            background-size: 400% 100%;
+            animation: skBrillo 1.3s ease infinite;
+            border-radius: 8px;
+        }
+        .sk-fila { pointer-events: none; }
+        .sk-foto { width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; }
+        .sk-linea { height: 12px; }
+        .sk-bloque { height: 64px; margin-bottom: 10px; border-radius: 12px; }
+        @keyframes skBrillo { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+        /* Aviso que aparece solo si la carga pasa de 6 s */
+        .lento-6s { opacity: 0; animation: aparecer .3s ease 6s forwards; }
+        @keyframes aparecer { to { opacity: 1; } }
+
+        button:disabled .spin-sm { opacity: .9; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .sk, .spin-sm, .spinner, .loading-card { animation-duration: 2.5s; }
+        }
+
