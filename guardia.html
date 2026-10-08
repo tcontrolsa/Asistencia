@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <link rel="stylesheet" href="./CSS/guardia.css?v=20261008_01">
+    <link rel="stylesheet" href="./CSS/guardia.css?v=20261008_02">
     <!-- FIREBASE SDKS -->
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
@@ -26,15 +26,17 @@
     <!-- Login -->
     <div id="vLogin">
         <div class="header">
-            <h1>🔐 Terminal Guardia</h1>
-            <p>Control de Asistencia</p>
+            <button type="button" class="header-ayuda" onclick="mostrarAyuda()" aria-label="Ayuda" title="Ayuda"><i class="fas fa-question"></i></button>
+            <div class="header-logo"><img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" width="120" height="53"></div>
+            <h1>Terminal Guardia</h1>
+            <p>Control de asistencia</p>
         </div>
         <div class="main-content">
             <div class="card">
                 <div class="mb-4 text-center">
-                    <i class="fas fa-terminal fa-3x text-danger mb-3"></i>
-                    <h2 class="h5 mb-1">Acceso de Seguridad</h2>
-                    <p class="text-muted small">Ingrese la contraseña de terminal</p>
+                    <div class="login-icono"><i class="fas fa-shield-alt"></i></div>
+                    <h2 class="h5 mb-1">Acceso de seguridad</h2>
+                    <p class="text-muted small">Ingrese la contraseña de la terminal</p>
                 </div>
                 <div class="mb-4">
                     <input type="password" id="iClave" class="form-control" placeholder="••••••••" style="padding: 18px; border-radius: 48px; text-align: center; font-size: 24px; letter-spacing: 4px;">
@@ -42,6 +44,7 @@
                 <button class="btn-large btn-primary" onclick="login()">
                     <i class="fas fa-unlock-alt"></i> Activar Terminal
                 </button>
+                <p class="ayuda-campo" style="justify-content:center;margin-top:14px"><i class="fas fa-info-circle"></i> La contraseña la entrega el supervisor de seguridad. La terminal queda activa en este equipo.</p>
             </div>
         </div>
     </div>
@@ -49,7 +52,9 @@
     <!-- Terminal Principal -->
     <div id="vTerm" class="hidden">
         <div class="header">
-            <h1>📋 Terminal Guardia</h1>
+            <button type="button" class="header-ayuda" onclick="mostrarAyuda()" aria-label="Ayuda" title="Ayuda"><i class="fas fa-question"></i></button>
+            <div class="header-logo"><img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" width="120" height="53"></div>
+            <h1>Terminal Guardia</h1>
             <p>Registro de asistencia</p>
         </div>
         
@@ -80,7 +85,8 @@
                 <!-- Pantalla de Búsqueda -->
                 <div id="screenSearch">
                     <div class="card">
-                        <input type="text" id="iId" class="form-control input-id" placeholder="ID" inputmode="numeric" autocomplete="off">
+                        <input type="text" id="iId" class="form-control input-id" placeholder="ID" inputmode="numeric" autocomplete="off" aria-describedby="ayudaId">
+                        <p class="ayuda-campo" id="ayudaId"><i class="fas fa-info-circle"></i> Escriba el número de empleado (el de su credencial) y presione Buscar o Enter. El sistema sabe si toca entrada o salida.</p>
                         <button class="btn-large btn-primary" onclick="buscar()" style="margin-top: 20px;">
                             <i class="fas fa-search"></i> Buscar
                         </button>
@@ -98,6 +104,7 @@
                         
                         <!-- Opción de almuerzo (solo para entrada) -->
                         <div id="lunchSection" class="hidden">
+                            <p class="lunch-titulo"><i class="fas fa-utensils"></i> ¿Dónde almorzará hoy?</p>
                             <div class="lunch-row">
                                 <div class="lunch-btn" id="lunchPlanta" onclick="seleccionarAlmuerzo('SI')">
                                     <i class="fas fa-building"></i>
@@ -163,6 +170,11 @@
     </div>
 </div>
 
+<footer class="pie-marca">
+    <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL" width="90" height="40" loading="lazy">
+    <span>TCONTROL S.A. · Tecnología en control industrial</span>
+</footer>
+
 <div id="loadingOverlay" class="loading-overlay hidden" role="status" aria-live="polite">
     <div class="loading-card">
         <div class="spinner"></div>
@@ -172,6 +184,6 @@
 </div>
 <div id="toastContainer" class="toast-container"></div>
 
-<script src="./JS/guardia_core.js?v=20261008_01"></script>
+<script src="./JS/guardia_core.js?v=20261008_02"></script>
 </body>
 </html>

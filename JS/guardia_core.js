@@ -37,6 +37,43 @@ function showLoading(show, mensaje) {
     }
 }
 
+// Guía rápida para el guardia (botón "?" de la cabecera)
+function mostrarAyuda() {
+    if (document.querySelector('.ayuda-modal')) return;
+    const conVisitas = !!$('panelVisitas');
+    const m = document.createElement('div');
+    m.className = 'ayuda-modal';
+    m.innerHTML = `<div class="ayuda-caja" role="dialog" aria-modal="true" aria-labelledby="ayudaTitulo">
+        <div class="ayuda-cab"><h3 id="ayudaTitulo"><i class="fas fa-question-circle"></i> Guía de la terminal</h3>
+            <button type="button" class="ayuda-x" aria-label="Cerrar">&times;</button></div>
+        <div class="ayuda-cuerpo">
+            <h4><i class="fas fa-clipboard-list"></i> Registrar entrada o salida</h4>
+            <ol><li>Escriba el número de empleado y presione <b>Buscar</b>.</li>
+                <li>Compare la foto con la persona.</li>
+                <li>En la entrada, elija dónde almorzará: <b>En planta</b> o <b>Fuera de planta</b>.</li>
+                <li>Presione <b>Registrar</b> y espere el mensaje de confirmación.</li></ol>
+            <p class="ayuda-nota">Una salida antes de las 16:15 pide confirmación. Si dice <b>Jornada completada</b>, esa persona ya tiene entrada y salida hoy.</p>
+            <h4><i class="fas fa-users"></i> Presentes</h4>
+            <p>Quiénes marcaron entrada hoy, la más reciente primero. 🏢 almuerza en planta, 🏠 fuera. Toque la foto para ampliarla. La lista se actualiza sola después de cada registro.</p>
+            ${conVisitas ? `<h4><i class="fas fa-id-card-alt"></i> Visitas</h4>
+            <ol><li>Active la portería de visitas con su clave (es distinta de la de la terminal).</li>
+                <li>Escanee el QR del visitante o escriba su código de 8 caracteres.</li>
+                <li>Mire su documento de identidad: el nombre debe coincidir. No lo copie ni lo anote.</li>
+                <li>Registre la <b>entrada</b>; al irse, busque de nuevo su código y registre la <b>salida</b>.</li></ol>
+            <p class="ayuda-nota">Si la ficha sale en amarillo, no permita el ingreso: lea el aviso (no aprobada, otro día, etc.) y comuníquese con el anfitrión.</p>` : ''}
+            <h4><i class="fas fa-exclamation-triangle"></i> Si algo falla</h4>
+            <ul><li><b>Sin GPS / Permiso denegado:</b> active la ubicación del equipo y toque <i class="fas fa-sync-alt"></i> en la barra del GPS.</li>
+                <li><b>«La conexión está lenta»:</b> espere; el sistema sigue trabajando. Si pasa de 20 segundos, revise el internet.</li>
+                <li><b>Empleado no encontrado:</b> confirme el número con la persona o con su supervisor.</li></ul>
+        </div></div>`;
+    const cerrar = () => { m.remove(); document.removeEventListener('keydown', esc); };
+    const esc = e => { if (e.key === 'Escape') cerrar(); };
+    m.addEventListener('click', e => { if (e.target === m || e.target.closest('.ayuda-x')) cerrar(); });
+    document.addEventListener('keydown', esc);
+    document.body.appendChild(m);
+    m.querySelector('.ayuda-x').focus();
+}
+
 // Spinner pequeño para botones e indicadores en línea
 const SPIN = '<span class="spin-sm" aria-hidden="true"></span>';
 
