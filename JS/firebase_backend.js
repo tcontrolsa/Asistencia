@@ -3362,6 +3362,47 @@ window.FirebaseBackend = {
                 _fetchAlmuerzosExtra(); // En segundo plano, la interfaz abre de inmediato
             }
 
+            // 2.7 Días hábiles sin ningún registro en ninguna fuente. Pasa cuando el panel ya archivó días
+            // (se borran de Firebase) y la caché del histórico es anterior a ese archivado (se renueva cada
+            // 24 h) o su actualización falló: el período quedaba con días vacíos y casi todo el personal
+            // aparecía "Por regularizar" por inasistencia. Si hay huecos, se actualiza el histórico ahora.
+            // Se mide por personas con ENTRADA en el día (los registros sueltos de justificaciones o vacaciones
+            // con fecha pasada no cuentan): un día hábil con menos de la cuarta parte de un día normal es un hueco.
+            const diasSinDatos = () => {
+                const entradas = {};
+                const sumar = (f, eid, tipo) => {
+                    if (!f || !eid || String(tipo || '').toUpperCase() !== 'ENTRADA') return;
+                    (entradas[f] = entradas[f] || new Set()).add(String(eid));
+                };
+                (archivadosData.registros || []).forEach(r => sumar(this._normFecha(r.fecha), r.empleadoId || r.id_empleado, r.tipo));
+                allRegistros.forEach(r => sumar(r.fecha, r.empleadoId || r.id_empleado || String(r.id || '').split('_')[0], r.tipo));
+                const dias = [];
+                const d = new Date(limiteStr + 'T12:00:00');
+                const hoyStr = this._hoyStr(new Date());
+                while (this._hoyStr(d) < hoyStr) {
+                    const dow = d.getDay();
+                    if (dow !== 0 && dow !== 6) { const f = this._hoyStr(d); dias.push([f, entradas[f] ? entradas[f].size : 0]); }
+                    d.setDate(d.getDate() + 1);
+                }
+                const llenos = dias.map(x => x[1]).filter(n => n > 0).sort((a, b) => a - b);
+                const mediana = llenos.length ? llenos[Math.floor(llenos.length / 2)] : 0;
+                return dias.filter(([, n]) => n < Math.max(1, mediana * 0.25)).map(([f]) => f);
+            };
+            let huecos = diasSinDatos();
+            // Solo los huecos posteriores al último día archivado indican una caché vieja (un feriado
+            // dentro del histórico también queda vacío y no debe forzar nada)
+            const calcUltimoArchivado = () => (archivadosData.registros || []).reduce((m, r) => { const f = this._normFecha(r.fecha); return f && f > m ? f : m; }, '');
+            let ultimoArchivado = calcUltimoArchivado();
+            if (huecos.some(f => f > ultimoArchivado) && !(params.force || params.forceSheets || params.forceAll) && horasArchivados > 0.25) {
+                console.warn(`⚠️ Faltan datos de ${huecos.filter(f => f > ultimoArchivado).join(', ')} en la caché del histórico. Actualizando antes de mostrar...`);
+                await _fetchArchivados();
+                huecos = diasSinDatos();
+                ultimoArchivado = calcUltimoArchivado();
+            }
+            // Los días que siguen vacíos no se cuentan como inasistencia de todo el personal (ver supervisor_core)
+            window._diasSinDatosAsistencia = new Set(huecos);
+            if (huecos.length) console.warn('Días hábiles sin ningún registro (no se cuentan como inasistencia):', huecos.join(', '));
+
             const archivadosNorm = archivadosData.registros.map(reg => {
                 const normR = {
                     id: reg.id || `arch_${reg.empleadoId}_${reg.fecha}_${reg.tipo}`,
@@ -3396,8 +3437,20 @@ window.FirebaseBackend = {
                 return normR;
             }).filter(r => r.fecha && r.empleadoId); // descartar filas vacías
 
+            // La caché local guarda copias de registros que el panel ya archivó y borró de Firebase (la consulta
+            // incremental solo trae desde ayer, así que nunca se revalidan). Para los días ya archivados manda el
+            // histórico: si no, una copia vieja (p. ej. la entrada sin la salida completada al archivar) lo tapa.
+            const idsFrescos = new Set(regSnap.docs.map(doc => doc.id));
+            const archEmpFecha = new Set(archivadosNorm.map(r => `${r.empleadoId}|${r.fecha}`));
+            const vigentes = allRegistros.filter(r => {
+                if (idsFrescos.has(r.id) || !ultimoArchivado || r.fecha > ultimoArchivado) return true;
+                const eid = String(r.empleadoId || r.id_empleado || '').trim();
+                return !archEmpFecha.has(`${eid}|${r.fecha}`);
+            });
+            if (vigentes.length < allRegistros.length) console.log(`🧹 ${allRegistros.length - vigentes.length} copias en caché de registros ya archivados: se usa el histórico.`);
+
             // Registros de Firebase: también normalizar fecha y hora desde timestamp si existe
-            const registrosFirebase = allRegistros.map(r => {
+            const registrosFirebase = vigentes.map(r => {
                 const rf = {
                     ...r,
                     empleadoId: String(r.empleadoId || r.id_empleado || '').trim(),

@@ -2351,6 +2351,8 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
     const fFmt = (fParts.length === 3) ? `${fParts[2]}/${fParts[1]}` : f;
 
     if (esFalta) {
+      // Día sin ningún registro de nadie: faltan datos (histórico desactualizado), no es inasistencia
+      if (window._diasSinDatosAsistencia && window._diasSinDatosAsistencia.has(f)) return;
       fechasPendientes.push({ fecha: f, label: fFmt, motivo: 'Inasistencia', tipo: 'ausencia' });
       return;
     }
@@ -5928,7 +5930,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         const fParts = f.split('-');
         const fFmt = (fParts.length === 3) ? `${fParts[2]}/${fParts[1]}` : f;
         if (esFaltaSinJustificar) {
-          fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Inasistencia', tipo: 'ausencia' });
+          // Día sin ningún registro de nadie: faltan datos del histórico, no es inasistencia
+          if (!(window._diasSinDatosAsistencia && window._diasSinDatosAsistencia.has(f)))
+            fechasARegularizar.push({ fecha: f, label: fFmt, motivo: 'Inasistencia', tipo: 'ausencia' });
         } else if (esPasanteDet) {
           // Pasantes: horario flexible. Solo si falta salida o entrada se solicita regularizar
           if (faltaMarcacionSalida) {
