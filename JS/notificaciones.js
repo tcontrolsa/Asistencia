@@ -24,6 +24,11 @@
     vigencia_por_vencer: ['fa-calendar-times', 'nt-ambar'],
     reunion_solicitada: ['fa-comments', 'nt-azul'],
     reunion_agendada: ['fa-calendar-check', 'nt-verde'],
+    visita_solicitada: ['fa-id-card-alt', 'nt-ambar'],
+    visita_confirmada: ['fa-user-check', 'nt-verde'],
+    visita_llego: ['fa-door-open', 'nt-azul'],
+    visita_cancelada: ['fa-ban', 'nt-gris'],
+    visita_calificada: ['fa-star', 'nt-verde'],
     general: ['fa-info-circle', 'nt-gris']
   };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

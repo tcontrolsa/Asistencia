@@ -60,6 +60,7 @@ function mostrarAyuda() {
                 <li>Escanee el QR del visitante o escriba su código de 8 caracteres.</li>
                 <li>Mire su documento de identidad: el nombre debe coincidir. No lo copie ni lo anote.</li>
                 <li>Registre la <b>entrada</b>; al irse, busque de nuevo su código y registre la <b>salida</b>.</li></ol>
+            <p><b>¿Llegó alguien sin cita?</b> En «¿Llegó alguien sin cita?» toque <b>Mostrar QR</b>: el visitante lo escanea y se registra en su celular; luego escanee el QR que le aparece. Si no tiene celular, toque <b>Registrarlo yo</b>, llene sus datos, léale el aviso de datos y registre su entrada.</p>
             <p class="ayuda-nota">Si la ficha sale en amarillo, no permita el ingreso: lea el aviso (no aprobada, otro día, etc.) y comuníquese con el anfitrión.</p>` : ''}
             <h4><i class="fas fa-exclamation-triangle"></i> Si algo falla</h4>
             <ul><li><b>Sin GPS / Permiso denegado:</b> active la ubicación del equipo y toque <i class="fas fa-sync-alt"></i> en la barra del GPS.</li>
@@ -120,24 +121,19 @@ function showPhotoModal(url) {
 function cambiarTab(tab) {
     tabActual = tab;
     
-    // Actualizar estilos de pestañas
-    document.querySelectorAll('.tab').forEach((t, index) => {
-        if ((tab === 'registro' && index === 0) || (tab === 'presentes' && index === 1)) {
-            t.classList.add('active');
-        } else {
-            t.classList.remove('active');
-        }
-    });
-    
+    // Actualizar estilos de pestañas (registro, presentes, visitas)
+    const orden = ['registro', 'presentes', 'visitas'];
+    document.querySelectorAll('.tab').forEach((t, index) => t.classList.toggle('active', orden[index] === tab));
+
     // Mostrar/ocultar paneles
-    if (tab === 'registro') {
-        $('panelRegistro').classList.remove('hidden');
-        $('panelPresentes').classList.add('hidden');
-    } else {
-        $('panelRegistro').classList.add('hidden');
-        $('panelPresentes').classList.remove('hidden');
-        cargarPresentes();
-    }
+    $('panelRegistro').classList.toggle('hidden', tab !== 'registro');
+    $('panelPresentes').classList.toggle('hidden', tab !== 'presentes');
+    if ($('panelVisitas')) $('panelVisitas').classList.toggle('hidden', tab !== 'visitas');
+    // La barra de GPS solo aplica al registro de asistencia
+    if ($('gpsBar')) $('gpsBar').classList.toggle('hidden', tab === 'visitas');
+    if (tab !== 'visitas' && window.GuardiaVisitas) window.GuardiaVisitas.detenerCamara();
+    if (tab === 'presentes') cargarPresentes();
+    if (tab === 'visitas' && window.GuardiaVisitas) window.GuardiaVisitas.montar($('panelVisitas'));
 }
 
 // ============================================================

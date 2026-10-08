@@ -141,7 +141,8 @@ function sha256Hex_(texto) {
 // 3. Respaldo: la PWA llama a Apps Script y este reenvía a PostgREST
 // ---------------------------------------------------------------------
 var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar', 'eval_eliminar',
-  'eval_config', 'eval_reabrir', 'eval_reunion'];
+  'eval_config', 'eval_reabrir', 'eval_reunion',
+  'visita_anfitrion', 'visita_guardia'];   // registro de visitas (visitas.gs)
 
 function proxyEvaluacion(d) {
   var fn = String(d.fn || '');

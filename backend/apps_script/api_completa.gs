@@ -562,6 +562,16 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
 
+      // Registro de visitas (visitas.gs): token de portería y respaldo de la página pública, solo por POST
+      if (data.accion === 'tokenGuardia' && typeof emitirTokenGuardia === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(emitirTokenGuardia(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      if (data.accion === 'visitaRpc' && typeof proxyVisitaPublica === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(proxyVisitaPublica(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Acceso seguro (acceso_seguro.gs): solo por POST, el PIN nunca viaja en la URL
       if (typeof ACCIONES_ACCESO !== 'undefined' && ACCIONES_ACCESO.indexOf(data.accion) !== -1) {
         return ContentService.createTextOutput(JSON.stringify(procesarAccesoSeguro(data)))
@@ -857,6 +867,10 @@ function procesarAccion(params) {
 
     case 'eliminarEvaluacion':
       return eliminarEvaluacionEnHoja(params);
+
+    // Registro de visitas (visitas.gs): avisos desde la cola de Postgres
+    case 'notificarVisita':
+      return typeof notificarVisita === 'function' ? notificarVisita(params) : { ok: false, error: 'visitas.gs no publicado' };
 
     default:
       return { error: `Acción no reconocida: ${accion}` };

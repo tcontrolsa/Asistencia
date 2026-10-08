@@ -7673,6 +7673,8 @@ async function navigateTo(page) {
             renderAdminPage();
         } else if (page === 'desarrollo') {
             renderDesarrolloPage();
+        } else if (page === 'visitas') {
+            renderVisitasPage();
         }
         ajustarLayout();
     };
@@ -7706,6 +7708,20 @@ function renderDesarrolloPage() {
             supervisor: (estado && estado.esSupervisor) ? 'SI' : ''
         }
     });
+}
+
+// Registro de visitas (JS/visitas_anfitrion.js): solicitudes, invitaciones, almuerzo y calificación
+function renderVisitasPage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `<div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;"><div id="vsVisitasApp"></div></div>`;
+    const cont = document.getElementById('vsVisitasApp');
+    if (!window.VisitasAnfitrion || !empleado) {
+        cont.innerHTML = '<div class="glass-card text-center" style="background:white; border-radius:20px; padding:30px;">No se pudo cargar el módulo de visitas. Recarga la app.</div>';
+        return;
+    }
+    const enlace = window.__vsEnlacePendiente || null;
+    window.__vsEnlacePendiente = null;
+    window.VisitasAnfitrion.montar(cont, { enlace, empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area } });
 }
 
 function renderAdminPage() {
@@ -7887,6 +7903,9 @@ function montarCampanaApp() {
             if (enlace.modulo === 'desempeno') {
                 window.__evEnlacePendiente = enlace;
                 navigateTo('desarrollo');
+            } else if (enlace.modulo === 'visitas') {
+                window.__vsEnlacePendiente = enlace;
+                navigateTo('visitas');
             }
         }
     });

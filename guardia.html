@@ -19,6 +19,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
     <script src="./JS/firebase_backend.js?v=20261007_03"></script>
     <script>window.USE_FIREBASE = true;</script>
+    <link rel="stylesheet" href="./CSS/visitas.css?v=20261008_04">
 </head>
 <body>
 
@@ -65,6 +66,9 @@
             </button>
             <button class="tab" onclick="cambiarTab('presentes')">
                 <i class="fas fa-users"></i> Presentes
+            </button>
+            <button class="tab" onclick="cambiarTab('visitas')">
+                <i class="fas fa-id-card-alt"></i> Visitas
             </button>
         </div>
         
@@ -145,6 +149,9 @@
                 </div>
             </div>
 
+            <!-- Panel Visitas (JS/guardia_visitas.js) -->
+            <div id="panelVisitas" class="hidden"></div>
+
             <!-- Panel Presentes -->
             <div id="panelPresentes" class="hidden">
                 <div class="card">
@@ -184,6 +191,9 @@
 </div>
 <div id="toastContainer" class="toast-container"></div>
 
-<script src="./JS/guardia_core.js?v=20261008_02"></script>
+<script src="./JS/guardia_core.js?v=20261008_03"></script>
+<script async src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="./JS/guardia_visitas.js?v=20261008_04"></script>
 </body>
 </html>

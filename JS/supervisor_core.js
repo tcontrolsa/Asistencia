@@ -7245,6 +7245,9 @@ function cambiarPanel(panel) {
     else if (panel === 'desempeno') {
       cargarPanelDesempeno();
     }
+    else if (panel === 'visitas') {
+      cargarPanelVisitas();
+    }
     else if (panel === 'opciones') {
       if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
       if (window.poblarTablaRolesActuales) window.poblarTablaRolesActuales();
@@ -9112,6 +9115,24 @@ function cargarPanelDesempeno() {
 }
 window.cargarPanelDesempeno = cargarPanelDesempeno;
 
+// Registro de visitas (JS/visitas_anfitrion.js): cada supervisor ve las suyas; supervisor admin, todas
+function cargarPanelVisitas(enlace) {
+  const cont = $('vsPanelVisitas');
+  if (!cont || !window.VisitasAnfitrion) return;
+  if (cont.dataset.montado === '1') return;
+  let ses = {};
+  try { ses = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+  const yo = (empCache || []).find(e => String(e.id) === String(ses.id)) || {};
+  cont.dataset.montado = '1';
+  window.VisitasAnfitrion.montar(cont, {
+    empleado: { id: String(ses.id || ''), nombre: ses.nombre || yo.nombre || '', area: yo.area || '' },
+    admin: tienePermisoAdmin(),
+    config: true,   // la pestaña Configuración solo aparece si el PIN es del admin master
+    enlace
+  });
+}
+window.cargarPanelVisitas = cargarPanelVisitas;
+
 // Permiso para registrar entrada/salida en modo CAMPO desde la app. El colaborador lo solicita con un
 // período (empleados.campo_solicitud); un supervisor admin lo aprueba, ajusta, rechaza o revoca.
 // Vigente solo entre campo_desde y campo_hasta: después debe volver a solicitarlo.
@@ -9301,6 +9322,7 @@ function montarCampanaPanel(session) {
     empleadoId: String(session.id),
     rrhh: tienePermisoAdmin(session),
     onAbrir: enlace => {
+      if (enlace.modulo === 'visitas') { cambiarPanel('visitas'); return; }
       if (enlace.modulo !== 'desempeno') return;
       cambiarPanel('desempeno');
       const cont = $('evPanelDesempeno');
