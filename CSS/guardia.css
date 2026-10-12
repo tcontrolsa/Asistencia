@@ -845,6 +845,13 @@
             body.terminal-activa #panelPresentes .present-list { max-height: calc(100vh - 360px); min-height: 240px; }
             body.terminal-activa #panelPresentes .present-count { margin-bottom: 10px; }
 
+            /* Pestaña Visitas: la columna derecha muestra las visitas de hoy en lugar de presentes */
+            body.terminal-activa #panelVisitasLista { grid-column: 2; grid-row: 1 / span 10; position: sticky; top: 20px; }
+            body.terminal-activa.tab-visitas #panelPresentes,
+            body.terminal-activa.tab-visitas #panelPresentes.hidden { display: none !important; }
+            body.terminal-activa #panelVisitasLista .gv-lista { margin: 0; }
+            body.terminal-activa #panelVisitasLista .gv-lista-filas { max-height: calc(100vh - 330px); min-height: 240px; overflow-y: auto; }
+
             /* Registro: campo y botones más cómodos con teclado y mouse */
             body.terminal-activa #screenSearch .card { padding: 32px 40px; }
             body.terminal-activa #screenSearch .input-id { font-size: 40px; padding: 22px; letter-spacing: 6px; }

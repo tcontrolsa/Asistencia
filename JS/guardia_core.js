@@ -129,6 +129,8 @@ function cambiarTab(tab) {
     $('panelRegistro').classList.toggle('hidden', tab !== 'registro');
     $('panelPresentes').classList.toggle('hidden', tab !== 'presentes');
     if ($('panelVisitas')) $('panelVisitas').classList.toggle('hidden', tab !== 'visitas');
+    if ($('panelVisitasLista')) $('panelVisitasLista').classList.toggle('hidden', tab !== 'visitas');
+    ['registro', 'presentes', 'visitas'].forEach(t => document.body.classList.toggle('tab-' + t, t === tab));
     // La barra de GPS solo aplica al registro de asistencia
     if ($('gpsBar')) $('gpsBar').classList.toggle('hidden', tab === 'visitas');
     if (tab !== 'visitas' && window.GuardiaVisitas) window.GuardiaVisitas.detenerCamara();

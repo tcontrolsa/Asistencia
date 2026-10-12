@@ -76,9 +76,11 @@ function notificarVisita(p) {
         titulo: titulo + tipo + ' (copia)', texto: textoCopia });
     });
   };
+  // El resultado de cada envío queda en la respuesta de la cola (para revisar si salió o por qué no)
   var whatsapp = function (texto, textoCopia) {
-    if (texto) whatsappA_(p.anfitrionId, texto);
-    if (whatsappCopias && textoCopia) copias.forEach(function (c) { whatsappA_(c, textoCopia); });
+    var res = r.whatsapp = r.whatsapp || {};
+    if (texto) res.anfitrion = resumenEnvio_(whatsappA_(p.anfitrionId, texto));
+    if (whatsappCopias && textoCopia) copias.forEach(function (c) { res['copia_' + c] = resumenEnvio_(whatsappA_(c, textoCopia)); });
   };
 
   if (evento === 'solicitada') {
@@ -144,6 +146,7 @@ function listaVisita_(v) {
   if (t.charAt(0) === '[') { try { var a = JSON.parse(t); if (Array.isArray(a)) return a.map(String); } catch (e) { } }
   return t.replace(/[\[\]"']/g, '').split(/[\s,;]+/).filter(String);
 }
+function resumenEnvio_(x) { return x && x.ok ? 'ok' : String((x && x.error) || 'sin respuesta').slice(0, 120); }
 function esVerdadVisita_(v) { return v === true || String(v).toLowerCase() === 'true'; }
 
 // "APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2" → "Nombre1 Apellido1" (igual que la base)
