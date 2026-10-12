@@ -7660,11 +7660,15 @@ async function iniciarArchivadoFirebase() {
 
     mostrarLoader(true);
 
-    const limite = new Date();
-    limite.setDate(limite.getDate() - diasNum);
-    const y = limite.getFullYear();
-    const m = String(limite.getMonth() + 1).padStart(2, '0');
-    const d = String(limite.getDate()).padStart(2, '0');
+    // Fechas y horas siempre en hora de Ecuador (UTC−5, sin horario de verano), sin importar la zona
+    // horaria del equipo donde está abierto el panel: el 8 y 9/10/2026 se archivó desde un equipo con
+    // otra zona y las marcas de tiempo quedaron 7 h adelantadas (y "hoy" puede ser otro día).
+    const enEcuador = dt => new Date(dt.getTime() - 5 * 3600 * 1000); // leer con getUTC*
+    const limite = enEcuador(new Date());
+    limite.setUTCDate(limite.getUTCDate() - diasNum);
+    const y = limite.getUTCFullYear();
+    const m = String(limite.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(limite.getUTCDate()).padStart(2, '0');
     const limiteStr = `${y}-${m}-${d}`;
 
     mostrarToast('Buscando registros y solicitudes en Firebase...', 'info');
@@ -7681,7 +7685,7 @@ async function iniciarArchivadoFirebase() {
     }
 
     const registrosToArchive = [];
-    const limitDateNormalized = new Date(limite.getFullYear(), limite.getMonth(), limite.getDate()).getTime();
+    const limitDateNormalized = new Date(y, Number(m) - 1, Number(d)).getTime();
 
     console.log("=== DIAGNÓSTICO DE ARCHIVADO ===");
     console.log("Fecha límite original (limite):", limite);
@@ -7770,12 +7774,13 @@ async function iniciarArchivadoFirebase() {
           else dateObj = new Date(ts);
 
           if (dateObj && !isNaN(dateObj.getTime())) {
-            const d = dateObj.getDate();
-            const m = dateObj.getMonth() + 1;
-            const y = dateObj.getFullYear();
-            const hh = String(dateObj.getHours()).padStart(2, '0');
-            const mm = String(dateObj.getMinutes()).padStart(2, '0');
-            const ss = String(dateObj.getSeconds()).padStart(2, '0');
+            const ec = enEcuador(dateObj); // la hoja interpreta este texto en hora de Ecuador
+            const d = ec.getUTCDate();
+            const m = ec.getUTCMonth() + 1;
+            const y = ec.getUTCFullYear();
+            const hh = String(ec.getUTCHours()).padStart(2, '0');
+            const mm = String(ec.getUTCMinutes()).padStart(2, '0');
+            const ss = String(ec.getUTCSeconds()).padStart(2, '0');
             ts = `${d}-${m}-${y} ${hh}:${mm}:${ss}`;
           } else {
             ts = String(ts);

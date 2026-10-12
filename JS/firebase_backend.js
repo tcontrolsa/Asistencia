@@ -35,6 +35,20 @@ try {
 }
 window.db = db;
 
+// Versión de los datos del histórico archivado: cuando se corrigen datos ya archivados (p. ej. las horas
+// del 8 y 9/10/2026, archivadas desde un equipo con otra zona horaria) se cambia este valor y cada
+// navegador descarta una vez sus copias en caché del histórico para volver a descargarlo corregido.
+const VERSION_DATOS_HISTORICO = '2026-10-12';
+try {
+    if (localStorage.getItem('tcontrol_version_historico') !== VERSION_DATOS_HISTORICO) {
+        Object.keys(localStorage).filter(k => k.startsWith('tcontrol_archivados_cache')).forEach(k => localStorage.removeItem(k));
+        const rq = indexedDB.open('TControlLocalDB', 1);
+        rq.onupgradeneeded = e => { if (!e.target.result.objectStoreNames.contains('heavy_cache')) e.target.result.createObjectStore('heavy_cache'); };
+        rq.onsuccess = e => { try { e.target.result.transaction('heavy_cache', 'readwrite').objectStore('heavy_cache').delete('tcontrol_archivados_cache_idb'); } catch (x) { } };
+        localStorage.setItem('tcontrol_version_historico', VERSION_DATOS_HISTORICO);
+    }
+} catch (e) { console.warn('No se pudo renovar la caché del histórico:', e); }
+
 // Variable global para usar desde INDEX_PRUEBAS.html
 window.FirebaseBackend = {
 
