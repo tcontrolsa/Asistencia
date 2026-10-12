@@ -2539,6 +2539,8 @@ window.FirebaseBackend = {
         if (updateData.cultura_habilitada !== undefined) {
             updateData.cultura_activa = updateData.cultura_habilitada;
         }
+        // La regla de Firestore exige el campo id en el documento: se incluye siempre (es el mismo doc id)
+        updateData.id = id;
 
         await db.collection('empleados').doc(id).set(updateData, { merge: true });
         return { ok: true, empleadoId: id, actualizados: Object.keys(updateData) };
@@ -2716,12 +2718,14 @@ window.FirebaseBackend = {
                 if (!emp.id) continue;
                 const docRef = db.collection('empleados').doc(emp.id.toString());
 
-                const dataObj = {};
+                // La regla de Firestore de "empleados" exige el campo id en el documento: sin él, ninguna
+                // edición posterior se puede guardar (pasó con las fichas 2000–2017)
+                const dataObj = { id: emp.id.toString() };
 
                 // Mapear dinámicamente todas las propiedades recibidas
                 for (const key in emp) {
                     if (emp.hasOwnProperty(key)) {
-                        if (key === 'id') continue; // ID es el doc id, no va en el cuerpo del doc
+                        if (key === 'id') continue; // ya se puso arriba, como texto
 
                         let val = emp[key];
 
