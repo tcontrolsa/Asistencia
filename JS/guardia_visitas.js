@@ -89,7 +89,7 @@
              <button class="btn-large btn-secondary" data-gv="detener"><i class="fas fa-stop"></i> Detener cámara</button>`
           : `<button class="btn-large btn-primary" data-gv="escanear"><i class="fas fa-camera"></i> Escanear su código QR</button>`}
         <form id="gvCodigoForm" class="gv-codigo" style="margin-top:12px">
-          <input class="vs-input" id="gvCodigo" maxlength="9" placeholder="O escriba el código: ABCD-EFGH" autocomplete="off" autocapitalize="characters" ${st.buscando ? 'disabled' : ''}>
+          <input class="vs-input" id="gvCodigo" maxlength="9" placeholder="Código: ABCD-EFGH" autocomplete="off" autocapitalize="characters" ${st.buscando ? 'disabled' : ''}>
           <button class="vs-btn vs-btn-prim" type="submit" ${st.buscando ? 'disabled' : ''} aria-label="Buscar">${st.buscando ? SPIN : '<i class="fas fa-search"></i>'}</button></form>
         ${st.error ? `<div class="vs-error" style="margin-top:12px"><i class="fas fa-exclamation-circle"></i> ${esc(st.error)}</div>` : ''}
       </div>
