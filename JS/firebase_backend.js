@@ -1284,6 +1284,9 @@ window.FirebaseBackend = {
             nuevoRegistro.razon_ausencia = data.razon_ausencia;
         }
 
+        // Precisión del GPS y distancia a la empresa al registrar desde la app (auditoría de "fuera de área")
+        if (data.precision_gps !== undefined && data.precision_gps !== null && data.precision_gps !== '' && !isNaN(Number(data.precision_gps))) nuevoRegistro.precision_gps = Math.round(Number(data.precision_gps));
+        if (data.distancia_m !== undefined && data.distancia_m !== null && data.distancia_m !== '' && !isNaN(Number(data.distancia_m))) nuevoRegistro.distancia_m = Math.round(Number(data.distancia_m));
         if (data.justificado) nuevoRegistro.justificado = data.justificado;
         if (data.quien_justifica) nuevoRegistro.quien_justifica = data.quien_justifica;
         if (data.observacion) nuevoRegistro.observacion = data.observacion;

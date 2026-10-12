@@ -30,7 +30,7 @@ let WHATSAPP_MESSAGE = CONFIG.WHATSAPP_MESSAGE;
 
 // ========== VARIABLES GLOBALES ==========
 let deviceToken = null;
-let posicion = { lat: null, lng: null };
+let posicion = { lat: null, lng: null, precision: null, ts: 0 };
 let currentMode = 'OFICINA'; // 'OFICINA' o 'CAMPO'
 let gpsActivo = false;
 let registrosCompletos = [];
@@ -965,9 +965,8 @@ function campoPermisoHtml() {
             <strong><i class="fas fa-calendar-check"></i> Permiso de campo aprobado</strong><br>
             Podrás registrar en campo del ${fechaCortaCampo(sol.desde)} al ${fechaCortaCampo(sol.hasta)}.`);
     }
-    // La invitación a solicitar solo aparece fuera de la empresa (GPS a más de RADIO_METROS)
-    const fuera = Boolean(posicion.lat && posicion.lng) &&
-        calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA) > RADIO_METROS;
+    // La invitación a solicitar solo aparece cuando el GPS confirma que está fuera de la empresa
+    const fuera = evaluarUbicacion().estado === 'FUERA';
     if (!fuera) return '';
     let previo = '';
     if (sol && sol.estado === 'RECHAZADA') {
@@ -1072,8 +1071,8 @@ window.enviarSolicitudCampo = async function () {
 // Modo de trabajo automático: con permiso de campo vigente y GPS a más de RADIO_METROS de la
 // empresa se registra en CAMPO; en cualquier otro caso, en OFICINA. El colaborador no elige.
 function modoAutomatico() {
-    if (!esCampoAutorizado() || !posicion.lat || !posicion.lng) return 'OFICINA';
-    return calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA) > RADIO_METROS ? 'CAMPO' : 'OFICINA';
+    // Solo CAMPO cuando el GPS confirma que está fuera (con una lectura imprecisa no se decide)
+    return esCampoAutorizado() && evaluarUbicacion().estado === 'FUERA' ? 'CAMPO' : 'OFICINA';
 }
 
 // Indicador (solo para quien tiene permiso de campo): en qué modo se registrará y por qué
@@ -1094,7 +1093,12 @@ function modoTrabajoHtml() {
         return chip('#f8fafc', '#e2e8f0', '#475569', 'fa-location-crosshairs', 'Buscando tu ubicación…',
             `El modo OFICINA o CAMPO se elige solo según dónde estés. ${hasta}`);
     }
-    const dist = calcularDistancia(posicion.lat, posicion.lng, LAT_EMPRESA, LNG_EMPRESA);
+    const u = evaluarUbicacion();
+    if (u.estado === 'INCIERTO') {
+        return chip('#f8fafc', '#e2e8f0', '#475569', 'fa-location-crosshairs', 'Ubicación imprecisa…',
+            `Tu GPS tiene un margen de ±${u.acc} m. Espera unos segundos con la ubicación precisa activada. ${hasta}`);
+    }
+    const dist = u.dist;
     return currentMode === 'CAMPO'
         ? chip('#fffbeb', '#fcd34d', '#92400e', 'fa-map-marker-alt', 'Registrarás en CAMPO',
             `Estás a ${m(dist)} de la empresa. ${hasta}`)
@@ -1115,74 +1119,155 @@ function actualizarGuiaCampo() {
 }
 
 // ========== FUNCIONES DE DISTANCIA ==========
+// Con poca señal el celular entrega primero una ubicación aproximada (antenas/Wi-Fi) con cientos de
+// metros de error: compararla como exacta dejaba "fuera del área" a personas que estaban dentro.
+// Se usa la precisión de cada lectura:
+//   DENTRO   lectura razonable (≤ GPS_PRECISION_MAX) y a ≤ radio + tolerancia (error, hasta GPS_TOLERANCIA_MAX)
+//   FUERA    aun restando el error queda más lejos que el radio
+//   INCIERTO lo demás: no se registra ni se ofrece reportar ausencia; se espera una lectura mejor
+const GPS_TOLERANCIA_MAX = 100;
+const GPS_PRECISION_MAX = 150;
+const GPS_LECTURA_VIGENTE_MS = 20000;
+
+function evaluarUbicacion(p = posicion) {
+    const lat = parseFloat(p && p.lat), lng = parseFloat(p && p.lng);
+    if (!p || isNaN(lat) || isNaN(lng)) return { estado: 'SIN_GPS', dist: null, acc: null };
+    const dist = Math.round(calcularDistancia(lat, lng, LAT_EMPRESA, LNG_EMPRESA));
+    const acc = Math.round(Number(p.precision) > 0 ? Number(p.precision) : 50);
+    if (acc <= GPS_PRECISION_MAX && dist <= RADIO_METROS + Math.min(acc, GPS_TOLERANCIA_MAX)) return { estado: 'DENTRO', dist, acc };
+    if (dist - acc > RADIO_METROS) return { estado: 'FUERA', dist, acc };
+    return { estado: 'INCIERTO', dist, acc };
+}
+
 function verificarDistanciaEmpresa(silencioso = false) {
     actualizarGuiaCampo();
-    if (!posicion.lat || !posicion.lng) {
+    const u = evaluarUbicacion();
+    window._ubicacion = u;
+    const tieneMarcacionHoy = Boolean(typeof estado !== 'undefined' && estado && (estado.tieneEntrada || estado.tieneSalida));
+    const cardFuera = document.getElementById('contenedorBotonFueraArea');
+    const mostrarCard = v => { if (cardFuera) cardFuera.style.display = v ? 'block' : 'none'; };
+
+    if (u.estado === 'SIN_GPS') {
         if (!silencioso) mostrarToast('Obteniendo ubicación...', 'info');
+        mostrarCard(false);
         return false;
     }
-
-    const lat = parseFloat(posicion.lat);
-    const lng = parseFloat(posicion.lng);
-
-    if (isNaN(lat) || isNaN(lng)) {
-        if (!silencioso) mostrarToast('Coordenadas inválidas', 'error');
-        return false;
-    }
-
-    let targetLat = LAT_EMPRESA;
-    let targetLng = LNG_EMPRESA;
-    let radio = RADIO_METROS;
-    let msgError = 'Fuera del área de la empresa';
+    window._distanciaFuera = u.dist;
 
     if (currentMode === 'CAMPO') {
+        // modoAutomatico solo da CAMPO con permiso vigente y GPS que confirma que está fuera
         if (!esCampoAutorizado()) {
             if (!silencioso) mostrarToast('No tienes un permiso de campo vigente. Solicítalo desde el inicio de la app.', 'error');
             return false;
         }
-        const distEmpresa = calcularDistancia(lat, lng, LAT_EMPRESA, LNG_EMPRESA);
-        if (distEmpresa <= RADIO_METROS) {
-            if (!silencioso) mostrarToast(`Estás dentro de la empresa (${Math.round(distEmpresa)} m): registra en modo OFICINA`, 'error');
-            return false;
-        }
         window._estaFueraArea = true;
-        window._distanciaFuera = Math.round(distEmpresa);
-        // En CAMPO se registra con Entrada/Salida: el reporte de "fuera de área" no aplica
-        const cardFueraCampo = document.getElementById('contenedorBotonFueraArea');
-        if (cardFueraCampo) cardFueraCampo.style.display = 'none';
+        mostrarCard(false); // En CAMPO se registra con Entrada/Salida: el reporte de "fuera de área" no aplica
         return true;
     }
 
-    const distancia = calcularDistancia(lat, lng, targetLat, targetLng);
     const indicator = document.getElementById('distanceIndicator');
     if (indicator) {
-        indicator.textContent = `📍 ${Math.round(distancia)}m / ${radio}m`;
+        indicator.textContent = `📍 ${u.dist}m ±${u.acc}m / ${RADIO_METROS}m`;
         indicator.classList.remove('hidden');
     }
 
-    const tieneMarcacionHoy = Boolean(typeof estado !== 'undefined' && estado && (estado.tieneEntrada || estado.tieneSalida));
-    const cardFuera = document.getElementById('contenedorBotonFueraArea');
-
-    if (distancia <= radio) {
+    if (u.estado === 'DENTRO') {
         if (indicator) setTimeout(() => indicator.classList.add('hidden'), 3000);
         window._estaFueraArea = false;
-        window._distanciaFuera = Math.round(distancia);
-        if (cardFuera) {
-            cardFuera.style.display = 'none';
-        }
+        mostrarCard(false);
         return true;
-    } else {
+    }
+    if (u.estado === 'FUERA') {
         window._estaFueraArea = true;
-        window._distanciaFuera = Math.round(distancia);
-        // La opción de reporte solo se muestra si el colaborador NO ha registrado asistencia presencial hoy
-        if (cardFuera) {
-            cardFuera.style.display = !tieneMarcacionHoy ? 'block' : 'none';
-        }
-        if (!silencioso) {
-            mostrarToast(`❌ ${msgError} (${Math.round(distancia)}m)`, 'error');
-        }
+        // La opción de reporte solo se muestra si el colaborador NO ha registrado asistencia hoy
+        mostrarCard(!tieneMarcacionHoy);
+        if (!silencioso) mostrarToast(`❌ Fuera del área de la empresa (${u.dist} m)`, 'error');
         return false;
     }
+    // INCIERTO: ni dentro ni fuera; no se ofrece reportar ausencia
+    window._estaFueraArea = false;
+    mostrarCard(false);
+    if (!silencioso) mostrarToast(`📡 Ubicación imprecisa (±${u.acc} m). Espera unos segundos…`, 'warning');
+    return false;
+}
+
+// Espera una lectura que permita decidir (DENTRO o FUERA), hasta maxMs, mostrando el margen actual
+function esperarUbicacionDecisiva(maxMs = 20000) {
+    const fresca = () => posicion.ts && Date.now() - posicion.ts < GPS_LECTURA_VIGENTE_MS;
+    const decisiva = u => fresca() && (u.estado === 'DENTRO' || u.estado === 'FUERA');
+    let u = evaluarUbicacion();
+    if (decisiva(u)) return Promise.resolve(u);
+    return new Promise(resolve => {
+        document.getElementById('overlayUbicacion')?.remove();
+        const ov = document.createElement('div');
+        ov.id = 'overlayUbicacion';
+        ov.style.cssText = 'position: fixed; inset: 0; z-index: 99998; background: rgba(15,23,42,.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 16px;';
+        ov.innerHTML = `<div style="background: #fff; border-radius: 18px; padding: 22px 24px; max-width: 320px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,.25);">
+            <div class="spinner-border text-primary" role="status" style="width: 2.4rem; height: 2.4rem;"></div>
+            <div style="font-weight: 800; color: #0f172a; margin-top: 12px;">Verificando tu ubicación…</div>
+            <div id="overlayUbicacionTxt" style="font-size: 12.5px; color: #64748b; margin-top: 6px;">Mantén el teléfono quieto unos segundos.</div></div>`;
+        document.body.appendChild(ov);
+        solicitarPermisoGPS();
+        const fin = Date.now() + maxMs;
+        const iv = setInterval(() => {
+            u = evaluarUbicacion();
+            const txt = document.getElementById('overlayUbicacionTxt');
+            if (txt && u.acc) txt.textContent = `Precisión actual: ±${u.acc} m. Mantén el teléfono quieto unos segundos.`;
+            if (decisiva(u) || Date.now() > fin) {
+                clearInterval(iv);
+                ov.remove();
+                resolve(u);
+            }
+        }, 500);
+    });
+}
+
+// Antes de registrar: lectura decisiva; si no permite registrar, explica qué hacer (nunca reporta ausencia sola)
+async function asegurarUbicacionParaRegistrar(tipo) {
+    if (verificarDistanciaEmpresa(true) && posicion.ts && Date.now() - posicion.ts < GPS_LECTURA_VIGENTE_MS) return true;
+    const u = await esperarUbicacionDecisiva();
+    if (verificarDistanciaEmpresa(true)) return true;
+    mostrarAvisoUbicacion(u, tipo);
+    return false;
+}
+
+function mostrarAvisoUbicacion(u, tipo) {
+    document.getElementById('modalAvisoUbicacion')?.remove();
+    const sinMarcacion = !(typeof estado !== 'undefined' && estado && (estado.tieneEntrada || estado.tieneSalida));
+    const fuera = u && u.estado === 'FUERA';
+    const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${d} m`;
+    const btn = (accion, texto, estilo) => `<button type="button" data-aviso="${accion}" style="width: 100%; padding: 11px 14px; border-radius: 12px; font-weight: 800; font-size: 13px; border: ${estilo === 'prim' ? 'none' : '1.5px solid #cbd5e1'}; background: ${estilo === 'prim' ? '#2563eb' : '#fff'}; color: ${estilo === 'prim' ? '#fff' : '#334155'}; margin-top: 8px;">${texto}</button>`;
+    const modal = document.createElement('div');
+    modal.id = 'modalAvisoUbicacion';
+    modal.style.cssText = 'position: fixed; inset: 0; z-index: 99999; background: rgba(15,23,42,.7); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px;';
+    modal.innerHTML = `<div style="background: #fff; border-radius: 20px; max-width: 400px; width: 100%; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,.3);">
+        <div style="background: ${fuera ? 'linear-gradient(135deg,#b91c1c,#ef4444)' : 'linear-gradient(135deg,#b45309,#f59e0b)'}; color: #fff; padding: 16px 20px;">
+            <div style="font-size: 16px; font-weight: 800;">${fuera ? '📍 Estás fuera del área de registro' : '📡 No pudimos confirmar tu ubicación'}</div>
+            <div style="font-size: 12px; opacity: .9; margin-top: 2px;">${u && u.dist != null ? `A ${m(u.dist)} de la empresa · margen ±${u.acc} m` : 'Sin lectura de GPS'}</div>
+        </div>
+        <div style="padding: 16px 20px 20px; font-size: 13px; color: #334155; line-height: 1.5;">
+            ${fuera
+            ? `<p style="margin: 0 0 6px;">Para registrar tu ${tipo === 'SALIDA' ? 'salida' : 'entrada'} debes estar en las instalaciones (radio de ${RADIO_METROS} m).</p>
+               <p style="margin: 0; color: #64748b;">Si estás en la empresa, activa la <strong>ubicación precisa</strong> y toca <strong>Reintentar</strong>.</p>`
+            : `<p style="margin: 0 0 6px;">La señal de ubicación de tu teléfono es débil y no permite saber si estás en la empresa.</p>
+               <ol style="margin: 0 0 6px; padding-left: 18px;"><li>Activa la ubicación <strong>precisa / alta precisión</strong> y el <strong>Wi-Fi</strong>.</li>
+               <li>Acércate a una ventana o a un lugar abierto y toca <strong>Reintentar</strong>.</li></ol>
+               <p style="margin: 0; font-weight: 700; color: #92400e;"><i class="fas fa-shield-alt"></i> Si no se corrige, registra tu marcación en la <strong>terminal del guardia</strong> en portería.</p>`}
+            ${btn('reintentar', '<i class="fas fa-sync-alt"></i> Reintentar', 'prim')}
+            ${fuera && tipo === 'ENTRADA' && sinMarcacion ? btn('reportar', 'Hoy no vengo: reportar vacación o permiso') : ''}
+            ${fuera && tipo === 'ENTRADA' && !esCampoAutorizado() ? btn('campo', 'Trabajo fuera de la empresa: solicitar permiso de campo') : ''}
+            ${btn('cerrar', 'Cerrar')}
+        </div></div>`;
+    modal.addEventListener('click', e => {
+        const b = e.target.closest('[data-aviso]');
+        if (!b && e.target !== modal) return;
+        const a = b ? b.dataset.aviso : 'cerrar';
+        modal.remove();
+        if (a === 'reintentar') iniciarRegistro(tipo);
+        else if (a === 'reportar') window.abrirModalReporteFueraArea();
+        else if (a === 'campo') window.abrirSolicitudCampo();
+    });
+    document.body.appendChild(modal);
 }
 
 window.abrirModalReporteFueraArea = function () {
@@ -1200,7 +1285,7 @@ window.abrirModalReporteFueraArea = function () {
     if (existingModal) existingModal.remove();
 
     const hoyStrLocal = getLocalHoyStr(new Date());
-    let tipoPrevio = 'VACACIONES';
+    let tipoPrevio = '';
     let obsPrevia = '';
     if (typeof empleado !== 'undefined' && empleado && empleado.id) {
         const stored = localStorage.getItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`);
@@ -1256,6 +1341,7 @@ window.abrirModalReporteFueraArea = function () {
                         Seleccione su Estado de Hoy (Jornada Completa) *
                     </label>
                     <select id="selectEstadoFueraArea" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1.5px solid #cbd5e1; font-size: 14px; font-weight: 700; color: #0f172a; background: #f8fafc; outline: none; cursor: pointer;">
+                        <option value="" ${!tipoPrevio ? 'selected' : ''} disabled>Seleccione…</option>
                         <option value="VACACIONES" ${tipoPrevio === 'VACACIONES' ? 'selected' : ''}>🏖️ VACACIÓN</option>
                         <optgroup label="📋 PERMISO JUSTIFICADO">
                             <option value="PERMISO_PERSONAL" ${tipoPrevio === 'PERMISO_PERSONAL' ? 'selected' : ''}>👤 Permiso Personal</option>
@@ -1293,8 +1379,15 @@ window.guardarReporteFueraArea = async function () {
     const tipo = sel.value;
     const obs = document.getElementById('obsReporteFueraArea')?.value.trim() || '';
     const hoyStrLocal = getLocalHoyStr(new Date());
+    if (!tipo) {
+        mostrarToast('Seleccione su estado de hoy', 'error');
+        sel.focus();
+        return;
+    }
 
     let textoEstado = sel.options[sel.selectedIndex].text;
+    if (!confirm(`¿Confirmas que HOY NO VIENES A TRABAJAR?\n\nSe registrará "${textoEstado.replace(/^[^A-Za-zÁÉÍÓÚ]+/, '')}" por la jornada completa.\n\nSi estás en la empresa y el GPS falla, cancela y registra tu entrada en la terminal del guardia.`)) return;
+    const uRep = evaluarUbicacion();
 
     showLoading(true);
     try {
@@ -1311,7 +1404,12 @@ window.guardarReporteFueraArea = async function () {
             justificado: 'SI',
             quien_justifica: 'Colaborador (Reporte Fuera de Área)',
             dispositivo: 'APP_COLABORADOR_EXTERNO',
-            origen_app: 'COLABORADOR'
+            origen_app: 'COLABORADOR',
+            // Dónde estaba al reportar (para auditar casos de GPS impreciso)
+            lat: posicion.lat || '',
+            lng: posicion.lng || '',
+            precision_gps: uRep.acc,
+            distancia_m: uRep.dist
         };
 
         let res = null;
@@ -1380,37 +1478,52 @@ function solicitarPermisoGPS() {
         mostrarToast('Geolocalización no soportada', 'error');
         return;
     }
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            let lat = position.coords.latitude;
-            let lng = position.coords.longitude;
-            lat = Math.round(lat * 1000000) / 1000000;
-            lng = Math.round(lng * 1000000) / 1000000;
-            posicion = { lat: lat, lng: lng };
-            gpsActivo = true;
-            console.log("Ubicación obtenida del GPS:", posicion);
-            verificarDistanciaEmpresa(true);
-        },
-        (error) => {
-            console.error('GPS error:', error);
-            if (error.code === 1) {
-                mostrarToast('Permiso de ubicación denegado. Activa el GPS para registrar asistencia', 'error');
-            } else {
-                mostrarToast('Error al obtener ubicación', 'error');
-            }
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-    );
+    navigator.geolocation.getCurrentPosition(aplicarLecturaGPS, errorGPS, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
 
+// Cada lectura trae su precisión (coords.accuracy, en metros). Se conserva la más precisa de los
+// últimos segundos: con señal débil llegan primero lecturas aproximadas y luego mejoran.
+function aplicarLecturaGPS(position) {
+    const lat = Math.round(position.coords.latitude * 1000000) / 1000000;
+    const lng = Math.round(position.coords.longitude * 1000000) / 1000000;
+    const acc = Math.round(Number(position.coords.accuracy) || 0);
+    const ahora = Date.now();
+    const anteriorVigente = posicion.ts && ahora - posicion.ts < GPS_LECTURA_VIGENTE_MS;
+    if (!anteriorVigente || !posicion.precision || acc <= posicion.precision + 10) {
+        posicion = { lat, lng, precision: acc || null, ts: ahora };
+    }
+    gpsActivo = true;
+    verificarDistanciaEmpresa(true);
+}
+
+let _ultimoAvisoGps = 0;
+function errorGPS(error) {
+    console.error('GPS error:', error);
+    if (error.code === 1) {
+        mostrarToast('Permiso de ubicación denegado. Activa el GPS para registrar asistencia', 'error');
+    } else if (Date.now() - _ultimoAvisoGps > 60000) {
+        _ultimoAvisoGps = Date.now(); // los timeouts de una señal débil no deben llenar la pantalla de avisos
+        mostrarToast('Buscando señal de ubicación…', 'info');
+    }
+}
+
+let _watchGps = null;
 function iniciarGPS() {
     solicitarPermisoGPS();
+    if (navigator.geolocation && _watchGps === null) {
+        // Seguimiento continuo mientras la app está abierta: la lectura mejora sola y está lista al registrar
+        _watchGps = navigator.geolocation.watchPosition(aplicarLecturaGPS, errorGPS, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+    }
     if (intervaloGPS) {
         clearInterval(intervaloGPS);
         intervaloGPS = null;
     }
     intervaloGPS = setInterval(solicitarPermisoGPS, 60000);
 }
+document.addEventListener('visibilitychange', () => {
+    // Al volver a la app el seguimiento pudo detenerse: se pide una lectura nueva
+    if (document.visibilityState === 'visible' && _watchGps !== null) solicitarPermisoGPS();
+});
 
 // ========== FUNCIÓN JSONP CON RETRY AUTOMÁTICO ==========
 // Reintenta automáticamente si el servidor está bloqueado (error de LockService)
@@ -1645,7 +1758,7 @@ async function obtenerRegistrosEmpleado(force = false) {
 }
 
 async function registrar() {
-    if (!verificarDistanciaEmpresa()) return;
+    if (!(await asegurarUbicacionParaRegistrar(empleado.tipoRegistro))) return;
 
     if (empleado.tipoRegistro === 'SALIDA' && !window._salidaConfirmadaPreviamente) {
         const horaSalidaConfig = (typeof obtenerHoraSalidaConfigrada === 'function') ? (obtenerHoraSalidaConfigrada() || '16:15') : '16:15';
@@ -1954,7 +2067,7 @@ window.cancelarRazonSalida = function () {
 };
 
 async function procederConRegistro() {
-    if (!verificarDistanciaEmpresa()) return;
+    if (!(await asegurarUbicacionParaRegistrar(empleado.tipoRegistro))) return;
 
     // Cancelación silenciosa antes de las 09:30 o confirmación antes de las 10:00 a.m.
     if (empleado.tipoRegistro === 'SALIDA') {
@@ -2045,7 +2158,9 @@ async function procederConRegistro() {
         tipo_salida: empleado.tipo_salida || '',
         modo: currentMode,
         origen_app: 'COLABORADOR',
-        razon_permiso: empleado.razon_permiso || ''
+        razon_permiso: empleado.razon_permiso || '',
+        precision_gps: (window._ubicacion && window._ubicacion.acc) || null,
+        distancia_m: window._ubicacion ? window._ubicacion.dist : null
     };
 
     const ahora = new Date();
@@ -2151,14 +2266,11 @@ function horaLimiteAlmuerzoPasada() {
     return ahoraMinutos > limiteMinutos;
 }
 
-function iniciarRegistro(tipo) {
-    if (!verificarDistanciaEmpresa(true)) {
-        verificarDistanciaEmpresa(false);
-        if (tipo === 'ENTRADA' && typeof window.abrirModalReporteFueraArea === 'function') {
-            window.abrirModalReporteFueraArea();
-        }
-        return;
-    }
+async function iniciarRegistro(tipo) {
+    // Lectura de GPS que permita decidir; si no se puede registrar se explica qué hacer.
+    // Ya no se abre "Reportar estado de hoy" automáticamente: con un GPS impreciso eso terminaba en
+    // ausencias reportadas por personas que estaban en la empresa.
+    if (!(await asegurarUbicacionParaRegistrar(tipo))) return;
 
     const status = calcularStatusActual();
     const esReentrada = status.label.includes('PERMISO') || status.label.includes('CAMPO');
