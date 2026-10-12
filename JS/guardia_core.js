@@ -292,8 +292,26 @@ async function obtenerPresentesHoy() {
     });
 }
 
+// Resumen del día bajo el registro (en escritorio; en celular el contenedor está oculto)
+function pintarResumenHoy(presentes) {
+    const el = $('resumenHoy');
+    if (!el) return;
+    const salieron = presentes.filter(p => p.salidaHoy).length;
+    const planta = presentes.filter(p => p.almuerzoHoy === 'SI').length;
+    const fuera = presentes.filter(p => p.almuerzoHoy === 'NO').length;
+    const ultima = presentes.reduce((u, p) => (p.horaEntradaMs || 0) > (u ? u.horaEntradaMs || 0 : 0) ? p : u, null);
+    const kpi = (icono, color, valor, etiqueta) => `<div class="resumen-kpi"><i class="fas ${icono}" style="color:${color}"></i><strong>${valor}</strong><span>${etiqueta}</span></div>`;
+    el.innerHTML = `
+        ${kpi('fa-user-check', 'var(--success)', presentes.length - salieron, 'En la empresa')}
+        ${kpi('fa-sign-out-alt', 'var(--gray-500)', salieron, 'Ya salieron')}
+        ${kpi('fa-building', 'var(--primary)', planta, 'Almuerzan en planta')}
+        ${kpi('fa-home', 'var(--info)', fuera, 'Almuerzan fuera')}
+        ${ultima ? `<div class="resumen-ultima"><i class="fas fa-clock"></i> Última entrada: <strong>${escapeHtml(ultima.nombre)}</strong> a las ${horaCorta(ultima.horaEntradaMs)}</div>` : ''}`;
+}
+
 function pintarPresentes(presentes) {
     listaPresentes = presentes;
+    pintarResumenHoy(presentes);
     $('presentCount').textContent = presentes.length;
     if (!presentes.length) {
         $('presentList').innerHTML = `<div class="empty-state"><i class="fas fa-user-clock"></i><p>No hay empleados registrados hoy</p></div>`;
@@ -320,6 +338,7 @@ function pintarPresentes(presentes) {
                 </div>
             </div>`;
     }).join('');
+    filtrarPresentes();
 }
 
 function pintarEsqueletoPresentes() {
@@ -329,6 +348,15 @@ function pintarEsqueletoPresentes() {
 }
 
 function estadoPresentes(html) { if ($('presentEstado')) $('presentEstado').innerHTML = html; }
+
+// Filtro rápido de la lista de presentes (útil en escritorio, donde la lista está siempre a la vista)
+function filtrarPresentes() {
+    const q = ($('buscarPresente')?.value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    document.querySelectorAll('#presentList .present-item:not(.sk-fila)').forEach(it => {
+        const nombre = (it.querySelector('.present-name')?.textContent || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        it.style.display = !q || nombre.includes(q) ? '' : 'none';
+    });
+}
 
 function cargarPresentes() {
     if (cargaPresentes) return cargaPresentes;
@@ -442,6 +470,7 @@ async function login() {
             
             $('vLogin').classList.add('hidden');
             $('vTerm').classList.remove('hidden');
+            document.body.classList.add('terminal-activa');
             mostrarToast('Terminal Activa', 'success');
             startGPS();
             $('iId').focus();
@@ -466,6 +495,7 @@ function generarDeviceToken() {
 
 function logout() {
     localStorage.removeItem('GUARDIA_SESSION');
+    document.body.classList.remove('terminal-activa');
     $('vTerm').classList.add('hidden');
     $('vLogin').classList.remove('hidden');
     $('iClave').value = '';
@@ -653,6 +683,7 @@ function verificarEstadoSesion() {
     if (session) {
         $('vLogin').classList.add('hidden');
         $('vTerm').classList.remove('hidden');
+        document.body.classList.add('terminal-activa');
         startGPS();
         cargarPresentes();
     } else {
@@ -662,6 +693,26 @@ function verificarEstadoSesion() {
 
 $('iClave')?.addEventListener('keypress', e => { if (e.key === 'Enter') login(); });
 $('presentList')?.addEventListener('click', e => { const f = e.target.closest('[data-foto]'); if (f) showPhotoModal(f.dataset.foto); });
+$('buscarPresente')?.addEventListener('input', filtrarPresentes);
+
+// ============================================================
+//  ESCRITORIO: reloj de portería y presentes siempre a la vista
+// ============================================================
+const esEscritorio = () => window.matchMedia('(min-width: 1024px)').matches;
+function actualizarReloj() {
+    const ahora = new Date();
+    if ($('relojHora')) $('relojHora').textContent = ahora.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    if ($('relojFecha')) $('relojFecha').textContent = ahora.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+actualizarReloj();
+setInterval(actualizarReloj, 1000);
+// En escritorio la lista de presentes no tiene pestaña propia: se mantiene al día sola
+setInterval(() => {
+    if (document.body.classList.contains('terminal-activa') && esEscritorio() && document.visibilityState === 'visible') cargarPresentes();
+}, 2 * 60 * 1000);
+window.matchMedia('(min-width: 1024px)').addEventListener('change', e => {
+    if (e.matches && tabActual === 'presentes') cambiarTab('registro');
+});
 $('iId')?.addEventListener('keypress', e => { if (e.key === 'Enter') buscar(); });
 
 window.addEventListener('beforeunload', () => {
