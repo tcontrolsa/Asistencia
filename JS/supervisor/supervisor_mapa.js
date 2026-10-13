@@ -165,7 +165,10 @@ window.obtenerEstadoEmpleadoEnFecha = function (emp, fechaStr) {
     const t = String(r.tipo || '').toUpperCase();
     return t !== 'ENTRADA' && t !== 'SALIDA' && t !== 'SOLO_ALMUERZO';
   });
-  const razonStr = String(rAusencia?.razon_ausencia || rAusencia?.razon_permiso || rAusencia?.observacion || rAusencia?.tipo || '').toUpperCase();
+  // El tipo del registro manda (VACACIONES, PERMISO_MEDICO…); el motivo escrito solo complementa.
+  // Antes se leía solo el motivo: una vacación con motivo "Registrado por supervisor" no se reconocía.
+  const razonStr = [rAusencia?.tipo, rAusencia?.razon_ausencia, rAusencia?.razon_permiso, rAusencia?.observacion]
+    .filter(Boolean).join(' ').toUpperCase();
   const modoStr = String(regs.find(r => r.modo)?.modo || rEntrada?.modo || '').toUpperCase();
 
   const dObj = new Date(fechaStr + 'T12:00:00');
