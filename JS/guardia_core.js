@@ -270,6 +270,8 @@ async function obtenerPresentesHoy() {
     regSnap.forEach(doc => {
         const reg = FB._processDoc(doc.id, doc.data());
         if (!reg || reg.fecha !== hoy) return;
+        // Teletrabajo: trabaja fuera de la empresa, no está en planta
+        if (String(reg.modo || '').toUpperCase() === 'TELETRABAJO') return;
         const eid = String(reg.empleadoId || reg.id_empleado || String(reg.id || '').split('_')[0]).trim();
         const emp = empleados[eid];
         if (!emp) return;

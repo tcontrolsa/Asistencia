@@ -31,7 +31,7 @@ let WHATSAPP_MESSAGE = CONFIG.WHATSAPP_MESSAGE;
 // ========== VARIABLES GLOBALES ==========
 let deviceToken = null;
 let posicion = { lat: null, lng: null, precision: null, ts: 0 };
-let currentMode = 'OFICINA'; // 'OFICINA' o 'CAMPO'
+let currentMode = 'OFICINA'; // 'OFICINA', 'CAMPO' o 'TELETRABAJO'
 let gpsActivo = false;
 let registrosCompletos = [];
 let vacacionesCompletas = [];
@@ -941,6 +941,17 @@ function esCampoAutorizado() {
     return !empleado.campoHasta || getLocalHoyStr(new Date()) <= empleado.campoHasta;
 }
 
+// Teletrabajo: el supervisor asigna días (empleados.teletrabajo_dias) a personal administrativo
+function esTeletrabajoHoy() {
+    return typeof empleado !== 'undefined' && !!empleado && empleado.teletrabajoHoy === true;
+}
+
+function proximoTeletrabajo() {
+    if (typeof empleado === 'undefined' || !empleado || !Array.isArray(empleado.teletrabajoDias)) return '';
+    const hoy = getLocalHoyStr(new Date());
+    return empleado.teletrabajoDias.find(d => d > hoy) || '';
+}
+
 function fechaCortaCampo(f) {
     const p = String(f || '').split('-');
     return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(f || '');
@@ -1071,16 +1082,15 @@ window.enviarSolicitudCampo = async function () {
 // Modo de trabajo automático: con permiso de campo vigente y GPS a más de RADIO_METROS de la
 // empresa se registra en CAMPO; en cualquier otro caso, en OFICINA. El colaborador no elige.
 function modoAutomatico() {
+    const u = evaluarUbicacion();
+    // Día de teletrabajo: fuera de la empresa (o con GPS impreciso) registra en TELETRABAJO
+    if (esTeletrabajoHoy() && u.estado !== 'SIN_GPS' && u.estado !== 'DENTRO') return 'TELETRABAJO';
     // Solo CAMPO cuando el GPS confirma que está fuera (con una lectura imprecisa no se decide)
-    return esCampoAutorizado() && evaluarUbicacion().estado === 'FUERA' ? 'CAMPO' : 'OFICINA';
+    return esCampoAutorizado() && u.estado === 'FUERA' ? 'CAMPO' : 'OFICINA';
 }
 
 // Indicador (solo para quien tiene permiso de campo): en qué modo se registrará y por qué
 function modoTrabajoHtml() {
-    if (!esCampoAutorizado()) return '';
-    const hayGps = Boolean(posicion.lat && posicion.lng);
-    const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
-    const hasta = `Permiso de campo hasta el ${fechaCortaCampo(empleado.campoHasta)}`;
     const chip = (bg, borde, color, icono, titulo, detalle) => `
         <div style="margin: 12px auto 0; max-width: 340px; display: flex; gap: 10px; align-items: center; text-align: left; background: ${bg}; border: 1.5px solid ${borde}; border-radius: 12px; padding: 8px 12px; color: ${color};">
             <i class="fas ${icono}" style="font-size: 18px;"></i>
@@ -1089,6 +1099,23 @@ function modoTrabajoHtml() {
                 <div style="font-size: 11px; opacity: .85;">${detalle}</div>
             </div>
         </div>`;
+    if (esTeletrabajoHoy()) {
+        const hayGpsT = Boolean(posicion.lat && posicion.lng);
+        if (!hayGpsT) return chip('#f5f3ff', '#ddd6fe', '#5b21b6', 'fa-location-crosshairs', 'Hoy tienes teletrabajo · buscando tu ubicación…',
+            'Activa la ubicación del teléfono: se guarda dónde registras tu entrada y salida.');
+        return currentMode === 'TELETRABAJO'
+            ? chip('#f5f3ff', '#c4b5fd', '#5b21b6', 'fa-laptop', 'Registrarás en TELETRABAJO',
+                'Día asignado por tu supervisor. Se guardará tu ubicación al registrar.')
+            : chip('#f0fdf4', '#bbf7d0', '#166534', 'fa-building', 'Estás en la empresa: registrarás en OFICINA',
+                'Hoy tenías teletrabajo asignado; como estás aquí, se registra como presencial.');
+    }
+    const prox = proximoTeletrabajo();
+    const avisoTele = prox ? chip('#f5f3ff', '#ddd6fe', '#5b21b6', 'fa-laptop', `Próximo teletrabajo: ${fechaCortaCampo(prox)}`,
+        'Ese día podrás registrar tu entrada y salida desde donde estés.') : '';
+    if (!esCampoAutorizado()) return avisoTele;
+    const hayGps = Boolean(posicion.lat && posicion.lng);
+    const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+    const hasta = `Permiso de campo hasta el ${fechaCortaCampo(empleado.campoHasta)}`;
     if (!hayGps) {
         return chip('#f8fafc', '#e2e8f0', '#475569', 'fa-location-crosshairs', 'Buscando tu ubicación…',
             `El modo OFICINA o CAMPO se elige solo según dónde estés. ${hasta}`);
@@ -1154,6 +1181,13 @@ function verificarDistanciaEmpresa(silencioso = false) {
     }
     window._distanciaFuera = u.dist;
 
+    if (currentMode === 'TELETRABAJO') {
+        // Día de teletrabajo asignado: se registra desde donde esté (se guarda la ubicación)
+        window._estaFueraArea = false;
+        mostrarCard(false);
+        return true;
+    }
+
     if (currentMode === 'CAMPO') {
         // modoAutomatico solo da CAMPO con permiso vigente y GPS que confirma que está fuera
         if (!esCampoAutorizado()) {
@@ -1194,7 +1228,7 @@ function verificarDistanciaEmpresa(silencioso = false) {
 // Espera una lectura que permita decidir (DENTRO o FUERA), hasta maxMs, mostrando el margen actual
 function esperarUbicacionDecisiva(maxMs = 20000) {
     const fresca = () => posicion.ts && Date.now() - posicion.ts < GPS_LECTURA_VIGENTE_MS;
-    const decisiva = u => fresca() && (u.estado === 'DENTRO' || u.estado === 'FUERA');
+    const decisiva = u => fresca() && (u.estado === 'DENTRO' || u.estado === 'FUERA' || (esTeletrabajoHoy() && u.estado === 'INCIERTO'));
     let u = evaluarUbicacion();
     if (decisiva(u)) return Promise.resolve(u);
     return new Promise(resolve => {
@@ -1271,6 +1305,10 @@ function mostrarAvisoUbicacion(u, tipo) {
 }
 
 window.abrirModalReporteFueraArea = function () {
+    if (currentMode === 'TELETRABAJO') {
+        mostrarToast('Hoy tienes teletrabajo: registra tu entrada y salida con los botones de siempre.', 'info');
+        return;
+    }
     if (currentMode === 'CAMPO') {
         mostrarToast('Estás registrando en CAMPO: usa el botón de Entrada o Salida.', 'info');
         return;
@@ -2282,6 +2320,13 @@ async function iniciarRegistro(tipo) {
         if (estado.tieneEntrada && esReentrada) {
             // Es re-entrada de permiso o campo - registrar directamente como ENTRADA
             empleado.almuerzo = estado.almuerzo || '';
+            registrar();
+            return;
+        }
+
+        if (currentMode === 'TELETRABAJO') {
+            // En teletrabajo no almuerza en planta: no se pregunta
+            empleado.almuerzo = 'NO';
             registrar();
             return;
         }
@@ -4499,7 +4544,7 @@ function renderHomePage() {
                         </div>
                     </div>
                 ` : (!tieneEntrada && !tieneSalida ? `
-                    <div id="contenedorBotonFueraArea" data-reportado="false" style="display: ${Boolean(window._estaFueraArea) && currentMode !== 'CAMPO' ? 'block' : 'none'}; margin-top: 12px; margin-bottom: 8px;">
+                    <div id="contenedorBotonFueraArea" data-reportado="false" style="display: ${Boolean(window._estaFueraArea) && currentMode !== 'CAMPO' && currentMode !== 'TELETRABAJO' ? 'block' : 'none'}; margin-top: 12px; margin-bottom: 8px;">
                         <div onclick="window.abrirModalReporteFueraArea()" style="background: #ffffff; border: 1.5px dashed #3b82f6; border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(59,130,246,0.06);">
                             <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
                                 <div style="background: #eff6ff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #2563eb; flex-shrink: 0;">

@@ -434,6 +434,8 @@ window.FirebaseBackend = {
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
                 campoSolicitud: empData.campo_solicitud || null,
+                teletrabajoHoy: window.FirebaseBackend._teletrabajoHoy(empData),
+                teletrabajoDias: window.FirebaseBackend._teletrabajoProximos(empData),
                 cultura_habilitada: empData.cultura_habilitada !== false && empData.cultura_activa !== false,
                 cultura_activa: empData.cultura_habilitada !== false && empData.cultura_activa !== false
             }
@@ -559,6 +561,8 @@ window.FirebaseBackend = {
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
                 campoSolicitud: empData.campo_solicitud || null,
+                teletrabajoHoy: window.FirebaseBackend._teletrabajoHoy(empData),
+                teletrabajoDias: window.FirebaseBackend._teletrabajoProximos(empData),
                 supervisor: empData.supervisor || (esSupervisor ? 'SI' : 'NO'),
                 esSupervisor: esSupervisor,
                 pagos_url: empData.id_dispositivo || "",
@@ -881,6 +885,8 @@ window.FirebaseBackend = {
             campoDesde: empData.campo_desde || '',
             campoHasta: empData.campo_hasta || '',
             campoSolicitud: empData.campo_solicitud || null,
+            teletrabajoHoy: window.FirebaseBackend._teletrabajoHoy(empData),
+            teletrabajoDias: window.FirebaseBackend._teletrabajoProximos(empData),
             authExtras: empData.authExtras || 'NO',
             esSupervisor: empData.supervisor === 'SI' || empData.esSupervisor === true || empData.cargo?.toUpperCase().includes("SUPERVISOR"),
             tieneEntrada: tieneEntrada,
@@ -1100,6 +1106,10 @@ window.FirebaseBackend = {
         const pideCampo = String(data.modo || '').toUpperCase() === 'CAMPO' || String(data.tipo || '').toUpperCase() === 'TRABAJO_DE_CAMPO';
         if (data.origen_app === 'COLABORADOR' && pideCampo && !campoAutorizado) {
             return { error: "No tienes un permiso de campo vigente. Solicítalo desde la app." };
+        }
+        // TELETRABAJO solo en los días que asignó un supervisor y para áreas administrativas
+        if (data.origen_app === 'COLABORADOR' && String(data.modo || '').toUpperCase() === 'TELETRABAJO' && !window.FirebaseBackend._teletrabajoHoy(infoEmpleado)) {
+            return { error: "Hoy no tienes teletrabajo asignado. Consulta con tu supervisor." };
         }
 
         // Fechas
@@ -1409,6 +1419,52 @@ window.FirebaseBackend = {
             return { error: 'Acción no válida' };
         }
         return { ok: true };
+    },
+
+    // ---------------------------------------------------------------- teletrabajo
+    // empleados/{id}.teletrabajo_dias: fechas YYYY-MM-DD que asigna un supervisor. Solo áreas
+    // administrativas (no TALLER, BODEGA ni PRODUCCION). Ese día la app registra en modo TELETRABAJO
+    // desde fuera de la empresa y guarda la ubicación; dentro de la empresa registra en OFICINA.
+    AREAS_SIN_TELETRABAJO: ['TALLER', 'BODEGA', 'PRODUCCION'],
+    _areaTeletrabajo(area) {
+        const a = String(area || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+        return Boolean(a) && !this.AREAS_SIN_TELETRABAJO.includes(a);
+    },
+    _teletrabajoDias(e) {
+        const d = e && e.teletrabajo_dias;
+        return Array.isArray(d) ? d.map(String).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x)) : [];
+    },
+    _teletrabajoHoy(e) {
+        return Boolean(e) && this._areaTeletrabajo(e.area) && this._teletrabajoDias(e).includes(this._hoyStr());
+    },
+    _teletrabajoProximos(e) {
+        if (!e || !this._areaTeletrabajo(e.area)) return [];
+        const hoy = this._hoyStr();
+        return this._teletrabajoDias(e).filter(x => x >= hoy).sort();
+    },
+
+    // Guarda los días de teletrabajo (reemplaza la lista). Conserva solo los últimos 31 días pasados.
+    async asignarTeletrabajo(params) {
+        const id = String(params.empleadoId || '').trim();
+        if (!id) return { error: 'ID faltante' };
+        const ref = db.collection('empleados').doc(id);
+        const snap = await ref.get();
+        if (!snap.exists) return { error: 'Empleado no encontrado' };
+        const emp = snap.data();
+        if (!this._areaTeletrabajo(emp.area)) return { error: `El área ${emp.area || '(sin área)'} no puede tener teletrabajo` };
+        const hoy = this._hoyStr();
+        const limite = this._hoyStr(new Date(Date.now() + 92 * 86400000));
+        const corte = this._hoyStr(new Date(Date.now() - 31 * 86400000));
+        const nuevos = [...new Set((params.dias || []).map(String))].filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x));
+        if (nuevos.some(x => x > limite)) return { error: 'Solo se puede asignar hasta 3 meses adelante' };
+        const pasados = this._teletrabajoDias(emp).filter(x => x < hoy && x >= corte);
+        const dias = [...new Set([...pasados, ...nuevos.filter(x => x >= hoy)])].sort();
+        await ref.set({
+            id: String(emp.id != null ? emp.id : id),
+            teletrabajo_dias: dias,
+            teletrabajo_actualizado: { por: String(params.supervisor || 'Supervisor'), en: new Date().toISOString() }
+        }, { merge: true });
+        return { ok: true, dias };
     },
 
     async actualizarBaseCampo(params) {
