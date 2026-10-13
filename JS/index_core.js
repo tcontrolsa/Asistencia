@@ -941,16 +941,91 @@ function esCampoAutorizado() {
     return !empleado.campoHasta || getLocalHoyStr(new Date()) <= empleado.campoHasta;
 }
 
-// Teletrabajo: el supervisor asigna días (empleados.teletrabajo_dias) a personal administrativo
+// Teletrabajo: el personal administrativo habilitado lo elige en la app cuando está fuera de la
+// empresa (sin solicitud). La elección vale por el día. Antes del primer uso acepta el aviso de
+// protección de datos (LOPDP) sobre su ubicación.
+function teletrabajoHabilitado() {
+    return typeof empleado !== 'undefined' && !!empleado && empleado.teletrabajoHabilitado === true;
+}
+function claveTeletrabajo() {
+    return `tcontrol_teletrabajo_${empleado.id}_${getLocalHoyStr(new Date())}`;
+}
 function esTeletrabajoHoy() {
-    return typeof empleado !== 'undefined' && !!empleado && empleado.teletrabajoHoy === true;
+    if (!teletrabajoHabilitado()) return false;
+    try { return localStorage.getItem(claveTeletrabajo()) === '1'; } catch (e) { return false; }
 }
 
-function proximoTeletrabajo() {
-    if (typeof empleado === 'undefined' || !empleado || !Array.isArray(empleado.teletrabajoDias)) return '';
-    const hoy = getLocalHoyStr(new Date());
-    return empleado.teletrabajoDias.find(d => d > hoy) || '';
+const AVISO_TELETRABAJO_HTML = `
+    <p style="margin: 0 0 10px;"><strong>Responsable:</strong> TCONTROL S.A.</p>
+    <p style="margin: 0 0 10px;"><strong>Qué datos se registran:</strong> la ubicación de tu teléfono <strong>aproximada</strong> (latitud y longitud redondeadas a unos 100 m) y su margen de precisión, la distancia a la empresa, la fecha y hora de la marcación y el identificador del dispositivo.</p>
+    <p style="margin: 0 0 10px;"><strong>Cuándo:</strong> solo en el momento en que registras tu entrada o salida en teletrabajo. No se guarda tu ubicación durante la jornada ni en otros momentos.</p>
+    <p style="margin: 0 0 10px;"><strong>Para qué:</strong> verificar el cumplimiento de la jornada en teletrabajo y calcular tu asistencia y horas trabajadas. No se usa para otros fines.</p>
+    <p style="margin: 0 0 10px;"><strong>Base legal:</strong> la relación laboral y tu consentimiento para el uso de la ubicación, según la Ley Orgánica de Protección de Datos Personales.</p>
+    <p style="margin: 0 0 10px;"><strong>Quién lo ve:</strong> Talento Humano y los supervisores administradores de TCONTROL. No se comparte con terceros, salvo obligación legal.</p>
+    <p style="margin: 0 0 10px;"><strong>Conservación:</strong> el mismo tiempo que los demás registros de asistencia, según la normativa laboral.</p>
+    <p style="margin: 0;"><strong>Tus derechos:</strong> puedes pedir acceso, rectificación, eliminación u oposición, o retirar tu consentimiento, escribiendo a <strong>informacion@tcontrolsa.com</strong>. Si no aceptas, puedes seguir registrando tu asistencia en la empresa.</p>`;
+
+function modalTeletrabajoBase(id, cuerpo, pie) {
+    document.getElementById(id)?.remove();
+    const m = document.createElement('div');
+    m.id = id;
+    m.style.cssText = 'position: fixed; inset: 0; z-index: 99999; background: rgba(15,23,42,.7); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px;';
+    m.innerHTML = `<div style="background: #fff; border-radius: 20px; max-width: 440px; width: 100%; max-height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,.3);">
+        <div style="background: linear-gradient(135deg,#6d28d9,#8b5cf6); color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div><div style="font-size: 16px; font-weight: 800;"><i class="fas fa-laptop"></i> Teletrabajo</div>
+            <div style="font-size: 12px; opacity: .9;">Aviso de protección de datos personales</div></div>
+            <button type="button" data-tt="cerrar" style="background: none; border: none; color: #fff; font-size: 24px; line-height: 1; cursor: pointer;">&times;</button>
+        </div>
+        <div style="padding: 16px 20px; overflow-y: auto; font-size: 13px; color: #334155; line-height: 1.5;">${cuerpo}</div>
+        <div style="padding: 12px 20px 18px; border-top: 1px solid #f1f5f9;">${pie}</div></div>`;
+    m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-tt="cerrar"]')) m.remove(); });
+    document.body.appendChild(m);
+    return m;
 }
+
+window.verAvisoTeletrabajo = function () {
+    modalTeletrabajoBase('modalAvisoTeletrabajo', AVISO_TELETRABAJO_HTML,
+        '<button type="button" data-tt="cerrar" style="width: 100%; padding: 12px; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #fff; font-weight: 800; color: #334155;">Cerrar</button>');
+};
+
+// Elige teletrabajo para hoy; la primera vez pide aceptar el aviso de datos. Con "tipo" continúa el registro.
+window.elegirTeletrabajo = function (tipo) {
+    if (!teletrabajoHabilitado()) { mostrarToast('No estás habilitado para teletrabajo. Consulta con tu supervisor.', 'warning'); return; }
+    const activar = () => {
+        try { localStorage.setItem(claveTeletrabajo(), '1'); } catch (e) { }
+        actualizarGuiaCampo();
+        mostrarToast('Registrarás hoy en TELETRABAJO', 'success');
+        if (tipo) iniciarRegistro(tipo);
+    };
+    if (empleado.teletrabajoAviso === true) return activar();
+    const m = modalTeletrabajoBase('modalAvisoTeletrabajo',
+        `<p style="margin: 0 0 12px; font-weight: 700; color: #0f172a;">Para registrar desde fuera de la empresa necesitamos tu ubicación al marcar. Lee cómo la tratamos:</p>${AVISO_TELETRABAJO_HTML}`,
+        `<label style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: #0f172a; font-weight: 700; margin-bottom: 12px; cursor: pointer;">
+            <input type="checkbox" id="ttAcepto" style="width: 20px; height: 20px; margin-top: 1px; flex: 0 0 20px;"> Leí el aviso y acepto que se registre mi ubicación aproximada al marcar en teletrabajo.</label>
+         <div id="ttAvisoError" style="display: none; color: #b91c1c; font-size: 12px; font-weight: 700; margin-bottom: 8px;"></div>
+         <button type="button" id="ttAceptarBtn" style="width: 100%; padding: 13px; border-radius: 12px; border: none; background: #6d28d9; color: #fff; font-weight: 800; font-size: 14px;">Aceptar y continuar</button>`);
+    m.querySelector('#ttAceptarBtn').addEventListener('click', async () => {
+        const err = m.querySelector('#ttAvisoError');
+        if (!m.querySelector('#ttAcepto').checked) { err.textContent = 'Marca la casilla para aceptar.'; err.style.display = 'block'; return; }
+        const b = m.querySelector('#ttAceptarBtn');
+        b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Guardando…';
+        try {
+            const r = await window.FirebaseBackend.aceptarAvisoTeletrabajo({ empleadoId: empleado.id, dispositivo: (typeof deviceToken !== 'undefined' && deviceToken) || '' });
+            if (!r || r.error) throw new Error((r && r.error) || 'No se pudo guardar');
+            empleado.teletrabajoAviso = true;
+            m.remove();
+            activar();
+        } catch (e) {
+            err.textContent = e.message || String(e); err.style.display = 'block';
+            b.disabled = false; b.textContent = 'Aceptar y continuar';
+        }
+    });
+};
+
+window.dejarTeletrabajo = function () {
+    try { localStorage.removeItem(claveTeletrabajo()); } catch (e) { }
+    actualizarGuiaCampo();
+};
 
 function fechaCortaCampo(f) {
     const p = String(f || '').split('-');
@@ -1083,67 +1158,256 @@ window.enviarSolicitudCampo = async function () {
 // empresa se registra en CAMPO; en cualquier otro caso, en OFICINA. El colaborador no elige.
 function modoAutomatico() {
     const u = evaluarUbicacion();
-    // Día de teletrabajo: fuera de la empresa (o con GPS impreciso) registra en TELETRABAJO
+    // Eligió teletrabajo hoy: fuera de la empresa (o con GPS impreciso) registra en TELETRABAJO
     if (esTeletrabajoHoy() && u.estado !== 'SIN_GPS' && u.estado !== 'DENTRO') return 'TELETRABAJO';
     // Solo CAMPO cuando el GPS confirma que está fuera (con una lectura imprecisa no se decide)
     return esCampoAutorizado() && u.estado === 'FUERA' ? 'CAMPO' : 'OFICINA';
-}
-
-// Indicador (solo para quien tiene permiso de campo): en qué modo se registrará y por qué
-function modoTrabajoHtml() {
-    const chip = (bg, borde, color, icono, titulo, detalle) => `
-        <div style="margin: 12px auto 0; max-width: 340px; display: flex; gap: 10px; align-items: center; text-align: left; background: ${bg}; border: 1.5px solid ${borde}; border-radius: 12px; padding: 8px 12px; color: ${color};">
-            <i class="fas ${icono}" style="font-size: 18px;"></i>
-            <div style="line-height: 1.3;">
-                <div style="font-size: 12.5px; font-weight: 800;">${titulo}</div>
-                <div style="font-size: 11px; opacity: .85;">${detalle}</div>
-            </div>
-        </div>`;
-    if (esTeletrabajoHoy()) {
-        const hayGpsT = Boolean(posicion.lat && posicion.lng);
-        if (!hayGpsT) return chip('#f5f3ff', '#ddd6fe', '#5b21b6', 'fa-location-crosshairs', 'Hoy tienes teletrabajo · buscando tu ubicación…',
-            'Activa la ubicación del teléfono: se guarda dónde registras tu entrada y salida.');
-        return currentMode === 'TELETRABAJO'
-            ? chip('#f5f3ff', '#c4b5fd', '#5b21b6', 'fa-laptop', 'Registrarás en TELETRABAJO',
-                'Día asignado por tu supervisor. Se guardará tu ubicación al registrar.')
-            : chip('#f0fdf4', '#bbf7d0', '#166534', 'fa-building', 'Estás en la empresa: registrarás en OFICINA',
-                'Hoy tenías teletrabajo asignado; como estás aquí, se registra como presencial.');
-    }
-    const prox = proximoTeletrabajo();
-    const avisoTele = prox ? chip('#f5f3ff', '#ddd6fe', '#5b21b6', 'fa-laptop', `Próximo teletrabajo: ${fechaCortaCampo(prox)}`,
-        'Ese día podrás registrar tu entrada y salida desde donde estés.') : '';
-    if (!esCampoAutorizado()) return avisoTele;
-    const hayGps = Boolean(posicion.lat && posicion.lng);
-    const m = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
-    const hasta = `Permiso de campo hasta el ${fechaCortaCampo(empleado.campoHasta)}`;
-    if (!hayGps) {
-        return chip('#f8fafc', '#e2e8f0', '#475569', 'fa-location-crosshairs', 'Buscando tu ubicación…',
-            `El modo OFICINA o CAMPO se elige solo según dónde estés. ${hasta}`);
-    }
-    const u = evaluarUbicacion();
-    if (u.estado === 'INCIERTO') {
-        return chip('#f8fafc', '#e2e8f0', '#475569', 'fa-location-crosshairs', 'Ubicación imprecisa…',
-            `Tu GPS tiene un margen de ±${u.acc} m. Espera unos segundos con la ubicación precisa activada. ${hasta}`);
-    }
-    const dist = u.dist;
-    return currentMode === 'CAMPO'
-        ? chip('#fffbeb', '#fcd34d', '#92400e', 'fa-map-marker-alt', 'Registrarás en CAMPO',
-            `Estás a ${m(dist)} de la empresa. ${hasta}`)
-        : chip('#f0fdf4', '#bbf7d0', '#166534', 'fa-building', 'Registrarás en OFICINA',
-            `Estás en la empresa. Al salir de ella cambiará solo a CAMPO. ${hasta}`);
 }
 
 // Se llama con cada lectura de GPS: fija el modo y repinta lo que depende de la ubicación
 function actualizarGuiaCampo() {
     currentMode = modoAutomatico();
     if (typeof empleado === 'undefined' || !empleado) return;
-    [['modoTrabajo', modoTrabajoHtml], ['campoPermiso', campoPermisoHtml]].forEach(([id, fn]) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        const html = fn();
+    const el = document.getElementById('panelUbicacion');
+    if (el) {
+        const html = panelUbicacionHtml();
         if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    }
+    actualizarBotonPrincipal();
+}
+
+// ========== PANEL DE UBICACIÓN (pantalla de inicio) ==========
+// Un solo lugar que explica qué pasa con la ubicación y qué puede hacer el colaborador:
+//   buscando GPS → afinando → en la empresa (OFICINA) → fuera: teletrabajo, campo o ausencia justificada.
+// El botón principal se bloquea con un mensaje mientras no pueda usarse, en lugar de fallar al tocarlo.
+const TIPOS_AUSENCIA_DIA = ['VACACIONES', 'VACACION', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA', 'PERMISO'];
+let _esperaUbicDesde = 0;      // desde cuándo se está esperando una lectura útil (para mostrar ayuda)
+let _midiendoHasta = 0;        // "Volver a medir": muestra que se está midiendo
+
+function ausenciaReportadaHoy() {
+    if (typeof empleado === 'undefined' || !empleado || !empleado.id) return false;
+    const hoy = getLocalHoyStr(new Date());
+    try {
+        const p = JSON.parse(localStorage.getItem(`tcontrol_reporte_fuera_${empleado.id}_${hoy}`) || 'null');
+        if (p && TIPOS_AUSENCIA_DIA.includes(String(p.tipo || '').toUpperCase())) return true;
+    } catch (e) { }
+    return Array.isArray(registrosCompletos) && registrosCompletos.some(r => {
+        const f = getVal(r, 'fecha', 0) || r.fecha || r[0];
+        const t = String(getVal(r, 'tipo', 3) || r.tipo || r[3] || '').toUpperCase();
+        return f === hoy && TIPOS_AUSENCIA_DIA.includes(t);
     });
 }
+
+function asegurarEstilosPanelUbic() {
+    if (document.getElementById('estilosPanelUbic')) return;
+    const s = document.createElement('style');
+    s.id = 'estilosPanelUbic';
+    s.textContent = `
+      .pu-card { margin: 12px 0 8px; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 14px; text-align: left; box-shadow: 0 4px 14px rgba(15,23,42,.05); animation: puAparece .3s ease; }
+      .pu-cab { display: flex; gap: 12px; align-items: center; }
+      .pu-icono { position: relative; width: 42px; height: 42px; flex: 0 0 42px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; }
+      .pu-titulo { font-size: 14px; font-weight: 800; color: #0f172a; line-height: 1.25; }
+      .pu-sub { font-size: 12px; color: #64748b; margin-top: 2px; line-height: 1.35; }
+      .pu-radar::before, .pu-radar::after { content: ''; position: absolute; inset: 0; border-radius: 12px; border: 2px solid currentColor; opacity: 0; animation: puRadar 1.8s ease-out infinite; }
+      .pu-radar::after { animation-delay: .9s; }
+      .pu-barra { height: 5px; border-radius: 3px; background: #e2e8f0; overflow: hidden; margin-top: 10px; }
+      .pu-barra span { display: block; height: 100%; width: 40%; border-radius: 3px; background: currentColor; animation: puBarra 1.4s ease-in-out infinite; }
+      .pu-opciones { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+      .pu-op { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 11px 12px; cursor: pointer; font: inherit; color: #0f172a; transition: border-color .15s, background .15s, transform .1s; animation: puAparece .3s ease both; }
+      .pu-op:nth-child(2) { animation-delay: .05s; } .pu-op:nth-child(3) { animation-delay: .1s; } .pu-op:nth-child(4) { animation-delay: .15s; }
+      .pu-op:active { transform: scale(.98); }
+      .pu-op[disabled] { cursor: default; opacity: .75; }
+      .pu-op > i:first-child { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 11px; display: grid; place-items: center; font-size: 16px; }
+      .pu-op span { flex: 1; line-height: 1.3; }
+      .pu-op strong { display: block; font-size: 13.5px; }
+      .pu-op small { display: block; font-size: 11.5px; color: #64748b; }
+      .pu-op > i:last-child { color: #94a3b8; font-size: 12px; }
+      .pu-chip { margin: 12px 0 8px; display: flex; gap: 10px; align-items: center; text-align: left; border-radius: 14px; padding: 10px 12px; border: 1.5px solid; animation: puAparece .3s ease; }
+      .pu-chip i { font-size: 18px; }
+      .pu-chip b { display: block; font-size: 13px; }
+      .pu-chip small { display: block; font-size: 11.5px; opacity: .85; line-height: 1.35; }
+      .pu-link { background: none; border: none; padding: 0; font: inherit; font-size: 11.5px; font-weight: 800; text-decoration: underline; cursor: pointer; color: inherit; }
+      .pu-ayuda { margin-top: 10px; font-size: 11.5px; color: #92400e; background: #fffbeb; border-radius: 10px; padding: 8px 10px; line-height: 1.4; animation: puAparece .3s ease; }
+      .btn-main-action.pu-bloqueado { filter: grayscale(.55); opacity: .72; cursor: not-allowed; }
+      .btn-main-action.pu-elegir { background: linear-gradient(135deg,#ea580c,#f97316) !important; }
+      .pu-compacta { display: flex; gap: 12px; align-items: center; width: 100%; font: inherit; cursor: pointer; border-color: #fed7aa; }
+      .pu-compacta > span { flex: 1; display: flex; flex-direction: column; }
+      .pu-modal { position: fixed; inset: 0; z-index: 99990; background: rgba(15,23,42,.55); backdrop-filter: blur(3px); display: flex; align-items: flex-end; justify-content: center; animation: puFondo .2s ease; }
+      .pu-hoja { width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; background: #fff; border-radius: 22px 22px 0 0; padding: 10px 16px 22px; text-align: left; box-shadow: 0 -10px 30px rgba(0,0,0,.2); animation: puSube .28s cubic-bezier(.2,.9,.3,1.1); }
+      .pu-asa { width: 42px; height: 5px; border-radius: 3px; background: #e2e8f0; margin: 0 auto 12px; }
+      .pu-x { width: 36px; height: 36px; flex: 0 0 36px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-size: 22px; line-height: 1; cursor: pointer; }
+      .pu-modal.pu-saliendo { animation: puFondoSale .18s ease forwards; }
+      .pu-modal.pu-saliendo .pu-hoja { animation: puBaja .18s ease forwards; }
+      @media (min-width: 600px) { .pu-modal { align-items: center; } .pu-hoja { border-radius: 22px; } .pu-asa { display: none; } }
+      @keyframes puFondo { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes puFondoSale { to { opacity: 0; } }
+      @keyframes puSube { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+      @keyframes puBaja { to { transform: translateY(40px); opacity: 0; } }
+      @keyframes puRadar { 0% { transform: scale(.7); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
+      @keyframes puBarra { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+      @keyframes puAparece { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      @media (prefers-reduced-motion: reduce) { .pu-modal, .pu-hoja, .pu-card, .pu-op, .pu-chip, .pu-ayuda, .pu-radar::before, .pu-radar::after, .pu-barra span { animation: none !important; } }`;
+    document.head.appendChild(s);
+}
+
+function panelUbicacionHtml() {
+    if (typeof empleado === 'undefined' || !empleado || !empleado.id) return '';
+    if (estado && estado.tieneSalida) return '';                       // jornada terminada
+    if (!(estado && estado.tieneEntrada) && ausenciaReportadaHoy()) return '';   // ya reportó su ausencia
+    asegurarEstilosPanelUbic();
+    const u = evaluarUbicacion();
+    const conEntrada = Boolean(estado && estado.tieneEntrada);
+    const km = d => d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+    const espera = ['SIN_GPS', 'INCIERTO'].includes(u.estado) && currentMode !== 'TELETRABAJO';
+    if (espera && !_esperaUbicDesde) _esperaUbicDesde = Date.now();
+    if (!espera) _esperaUbicDesde = 0;
+    const segs = _esperaUbicDesde ? (Date.now() - _esperaUbicDesde) / 1000 : 0;
+    const chip = (bg, borde, color, icono, titulo, detalle) => `<div class="pu-chip" style="background:${bg}; border-color:${borde}; color:${color};"><i class="fas ${icono}"></i><div><b>${titulo}</b><small>${detalle}</small></div></div>`;
+    const op = (accion, icono, fondo, color, titulo, sub, deshab) => `<button type="button" class="pu-op" ${deshab ? 'disabled' : `onclick="${accion}"`}><i class="fas ${icono}" style="background:${fondo}; color:${color};"></i><span><strong>${titulo}</strong><small>${sub}</small></span>${deshab ? '' : '<i class="fas fa-chevron-right"></i>'}</button>`;
+    const guardia = '<i class="fas fa-shield-alt"></i> Si estás en la empresa y no mejora, registra en la <strong>terminal del guardia</strong> en portería.';
+
+    // 1) Sin lectura todavía
+    if (u.estado === 'SIN_GPS') {
+        if (window._gpsDenegado) {
+            return `<div class="pu-card" style="border-color:#fecaca;"><div class="pu-cab"><div class="pu-icono" style="background:#fef2f2; color:#dc2626;"><i class="fas fa-ban"></i></div>
+                <div><div class="pu-titulo">La ubicación está desactivada</div><div class="pu-sub">Actívala en tu teléfono y permite que esta app la use. Sin ubicación no se puede registrar.</div></div></div>
+                <div class="pu-opciones">${op('window.reintentarUbicacion()', 'fa-sync-alt', '#eff6ff', '#2563eb', 'Ya la activé: volver a intentar', 'Pediremos tu ubicación de nuevo')}</div>
+                <div class="pu-ayuda">${guardia}</div></div>`;
+        }
+        return `<div class="pu-card"><div class="pu-cab"><div class="pu-icono pu-radar" style="background:#eff6ff; color:#2563eb;"><i class="fas fa-location-crosshairs"></i></div>
+            <div><div class="pu-titulo">Buscando tu ubicación…</div><div class="pu-sub">Mantén activada la ubicación del teléfono. Suele tardar unos segundos.</div></div></div>
+            <div class="pu-barra" style="color:#2563eb;"><span></span></div>${segs > 25 ? `<div class="pu-ayuda">${guardia}</div>` : ''}</div>`;
+    }
+
+    // 2) Ya eligió teletrabajo hoy
+    if (esTeletrabajoHoy()) {
+        if (currentMode === 'TELETRABAJO') {
+            return chip('#f5f3ff', '#c4b5fd', '#5b21b6', 'fa-laptop', 'Hoy trabajas desde casa (TELETRABAJO)',
+                `Se guarda tu ubicación aproximada solo al marcar. <button type="button" class="pu-link" onclick="window.verAvisoTeletrabajo()">Aviso de datos</button> · <button type="button" class="pu-link" onclick="window.dejarTeletrabajo()">Cambiar</button>`);
+        }
+        return chip('#f0fdf4', '#bbf7d0', '#166534', 'fa-building', 'Estás en la empresa: se registra en OFICINA', 'Elegiste teletrabajo, pero como estás aquí se registra como presencial.');
+    }
+
+    // 3) Lectura imprecisa: afinando
+    if (u.estado === 'INCIERTO') {
+        return `<div class="pu-card"><div class="pu-cab"><div class="pu-icono pu-radar" style="background:#fffbeb; color:#d97706;"><i class="fas fa-satellite-dish"></i></div>
+            <div><div class="pu-titulo">Afinando tu ubicación…</div><div class="pu-sub">Margen actual ±${u.acc} m. Quédate quieto unos segundos con la ubicación precisa activada.</div></div></div>
+            <div class="pu-barra" style="color:#d97706;"><span></span></div>
+            ${segs > 20 ? `<div class="pu-ayuda">Acércate a una ventana o activa el Wi-Fi para mejorar la señal.<br>${guardia}</div>` : ''}
+            ${segs > 20 && teletrabajoHabilitado() ? `<div class="pu-opciones">${op('window.elegirTeletrabajo()', 'fa-laptop', '#f5f3ff', '#6d28d9', 'Estoy trabajando desde casa', 'Registrar en teletrabajo')}</div>` : ''}</div>`;
+    }
+
+    // 4) En la empresa
+    if (u.estado === 'DENTRO') {
+        return chip('#f0fdf4', '#bbf7d0', '#166534', 'fa-check-circle', 'Estás en la empresa', 'Tu registro será presencial (OFICINA). Ya puedes marcar.') + campoPermisoHtml();
+    }
+
+    // 5) Fuera, con permiso de campo vigente
+    if (currentMode === 'CAMPO') {
+        return chip('#fffbeb', '#fcd34d', '#92400e', 'fa-truck-pickup', 'Registrarás en CAMPO', `Estás a ${km(u.dist)} de la empresa · permiso hasta el ${fechaCortaCampo(empleado.campoHasta)}.`);
+    }
+
+    // 6) Fuera, sin modo: tarjeta compacta; las opciones van en una ventana emergente
+    const midiendo = Date.now() < _midiendoHasta;
+    if (midiendo) {
+        return `<div class="pu-card"><div class="pu-cab"><div class="pu-icono pu-radar" style="background:#f1f5f9; color:#475569;"><i class="fas fa-location-crosshairs"></i></div>
+            <div><div class="pu-titulo">Midiendo tu ubicación…</div><div class="pu-sub">Espera unos segundos.</div></div></div><div class="pu-barra" style="color:#475569;"><span></span></div></div>`;
+    }
+    if (!_opcionesFueraVistas && !document.getElementById('modalOpcionesFuera')) {
+        _opcionesFueraVistas = true;                       // se abre sola una vez; luego, con el botón
+        setTimeout(() => { if (evaluarUbicacion().estado === 'FUERA' && currentMode === 'OFICINA') window.abrirOpcionesFuera(); }, 400);
+    }
+    return `<button type="button" class="pu-card pu-compacta" onclick="window.abrirOpcionesFuera()">
+        <div class="pu-icono" style="background:#fff7ed; color:#ea580c;"><i class="fas fa-map-marker-alt"></i></div>
+        <span><span class="pu-titulo">Estás fuera de la empresa</span><span class="pu-sub">A ${km(u.dist)} · Toca para elegir qué ocurre hoy</span></span>
+        <i class="fas fa-chevron-right" style="color:#ea580c;"></i></button>`;
+}
+
+let _opcionesFueraVistas = false;
+function puOpcion(accion, icono, fondo, color, titulo, sub, deshab) {
+    return `<button type="button" class="pu-op" ${deshab ? 'disabled' : `onclick="window.cerrarOpcionesFuera(); ${accion}"`}><i class="fas ${icono}" style="background:${fondo}; color:${color};"></i><span><strong>${titulo}</strong><small>${sub}</small></span>${deshab ? '' : '<i class="fas fa-chevron-right"></i>'}</button>`;
+}
+
+// Ventana con lo que puede hacer quien está fuera de la empresa. Con "tipo" (tocó Entrada/Salida),
+// al elegir teletrabajo continúa directamente con el registro.
+window.abrirOpcionesFuera = function (tipo) {
+    if (typeof empleado === 'undefined' || !empleado || !empleado.id) return;
+    asegurarEstilosPanelUbic();
+    document.getElementById('modalOpcionesFuera')?.remove();
+    const u = evaluarUbicacion();
+    const conEntrada = Boolean(estado && estado.tieneEntrada);
+    const km = d => d == null ? '' : d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+    const sol = empleado.campoSolicitud || null;
+    const hoy = getLocalHoyStr(new Date());
+    const sigue = tipo ? `'${tipo}'` : (conEntrada ? "'SALIDA'" : '');
+    const opciones = [];
+    if (teletrabajoHabilitado()) {
+        opciones.push(puOpcion(`window.elegirTeletrabajo(${sigue})`, 'fa-laptop', '#f5f3ff', '#6d28d9', conEntrada ? 'Trabajé desde casa' : 'Trabajo desde casa',
+            conEntrada ? 'Registrar mi salida en teletrabajo' : 'Registrar mi jornada en teletrabajo'));
+    }
+    if (!conEntrada) {
+        if (sol && sol.estado === 'PENDIENTE' && String(sol.hasta || '') >= hoy) {
+            opciones.push(puOpcion('', 'fa-hourglass-half', '#eff6ff', '#2563eb', 'Trabajo en campo: solicitud enviada', `Del ${fechaCortaCampo(sol.desde)} al ${fechaCortaCampo(sol.hasta)} · esperando aprobación. Te avisaremos por WhatsApp.`, true));
+        } else if (sol && sol.estado === 'APROBADA' && String(sol.desde || '') > hoy) {
+            opciones.push(puOpcion('', 'fa-calendar-check', '#ecfdf5', '#047857', 'Trabajo en campo: aprobado', `Podrás registrar en campo desde el ${fechaCortaCampo(sol.desde)}.`, true));
+        } else {
+            opciones.push(puOpcion('window.abrirSolicitudCampo()', 'fa-truck-pickup', '#fffbeb', '#b45309', 'Trabajo en campo o en un cliente',
+                (sol && sol.estado === 'RECHAZADA' ? 'Tu última solicitud no fue aprobada. ' : '') + 'Pide permiso a supervisión para registrar en campo'));
+        }
+        opciones.push(puOpcion('window.abrirModalReporteFueraArea()', 'fa-calendar-xmark', '#eff6ff', '#1d4ed8', 'Hoy no vengo', 'Vacación, permiso personal o médico, falta justificada'));
+    }
+    opciones.push(puOpcion('window.reintentarUbicacion()', 'fa-location-crosshairs', '#f1f5f9', '#475569', 'Estoy en la empresa', 'Volver a medir mi ubicación'));
+    const m = document.createElement('div');
+    m.id = 'modalOpcionesFuera';
+    m.className = 'pu-modal';
+    m.innerHTML = `<div class="pu-hoja" role="dialog" aria-modal="true">
+        <div class="pu-asa"></div>
+        <div class="pu-cab"><div class="pu-icono" style="background:#fff7ed; color:#ea580c;"><i class="fas fa-map-marker-alt"></i></div>
+          <div style="flex:1;"><div class="pu-titulo">Estás fuera de la empresa</div><div class="pu-sub">${u.dist != null ? `A ${km(u.dist)} · ` : ''}${conEntrada ? 'Para registrar tu salida aquí, elige una opción.' : '¿Qué ocurre hoy?'}</div></div>
+          <button type="button" class="pu-x" onclick="window.cerrarOpcionesFuera()" aria-label="Cerrar">&times;</button></div>
+        <div class="pu-opciones">${opciones.join('')}</div>
+        ${conEntrada ? '<div class="pu-ayuda"><i class="fas fa-shield-alt"></i> Si estás en la empresa y no mejora, registra en la <strong>terminal del guardia</strong> en portería.</div>' : ''}
+      </div>`;
+    m.addEventListener('click', e => { if (e.target === m) window.cerrarOpcionesFuera(); });
+    document.body.appendChild(m);
+};
+window.cerrarOpcionesFuera = function () {
+    const m = document.getElementById('modalOpcionesFuera');
+    if (!m) return;
+    m.classList.add('pu-saliendo');
+    setTimeout(() => m.remove(), 180);
+};
+
+// Bloquea el botón principal mientras no pueda usarse, con un texto que dice por qué. Fuera de la
+// empresa sin modo, el botón abre las opciones.
+function actualizarBotonPrincipal() {
+    const b = document.getElementById('btnMainAction');
+    if (!b || !['ENTRADA', 'SALIDA', 'RETORNO_CAMPO'].includes(b.dataset.tipo)) return;
+    const tipoEl = b.querySelector('.btn-type');
+    if (!tipoEl) return;
+    if (!b.dataset.orig) b.dataset.orig = tipoEl.innerHTML;
+    const u = evaluarUbicacion();
+    const sinGps = u.estado === 'SIN_GPS';
+    const fuera = u.estado === 'FUERA' && currentMode === 'OFICINA';
+    b.disabled = sinGps;
+    b.classList.toggle('pu-bloqueado', sinGps);
+    b.classList.toggle('pu-elegir', fuera);
+    const html = sinGps ? '<i class="fas fa-spinner fa-spin"></i> BUSCANDO UBICACIÓN…'
+        : fuera ? '<i class="fas fa-list-ul"></i> FUERA DE LA EMPRESA · ELEGIR'
+        : b.dataset.orig;
+    if (tipoEl.innerHTML !== html) tipoEl.innerHTML = html;
+}
+
+window.reintentarUbicacion = function () {
+    window._gpsDenegado = false;
+    _midiendoHasta = Date.now() + 15000;
+    solicitarPermisoGPS();
+    actualizarGuiaCampo();
+    setTimeout(actualizarGuiaCampo, 15200);
+};
+
+// La ayuda que aparece con el tiempo necesita repintarse aunque no lleguen lecturas nuevas
+setInterval(() => { if (typeof currentPage !== 'undefined' && currentPage === 'home' && document.visibilityState === 'visible') actualizarGuiaCampo(); }, 5000);
 
 // ========== FUNCIONES DE DISTANCIA ==========
 // Con poca señal el celular entrega primero una ubicación aproximada (antenas/Wi-Fi) con cientos de
@@ -1182,7 +1446,7 @@ function verificarDistanciaEmpresa(silencioso = false) {
     window._distanciaFuera = u.dist;
 
     if (currentMode === 'TELETRABAJO') {
-        // Día de teletrabajo asignado: se registra desde donde esté (se guarda la ubicación)
+        // Eligió teletrabajo: se registra desde donde esté (se guarda la ubicación aproximada)
         window._estaFueraArea = false;
         mostrarCard(false);
         return true;
@@ -1287,6 +1551,7 @@ function mostrarAvisoUbicacion(u, tipo) {
                <ol style="margin: 0 0 6px; padding-left: 18px;"><li>Activa la ubicación <strong>precisa / alta precisión</strong> y el <strong>Wi-Fi</strong>.</li>
                <li>Acércate a una ventana o a un lugar abierto y toca <strong>Reintentar</strong>.</li></ol>
                <p style="margin: 0; font-weight: 700; color: #92400e;"><i class="fas fa-shield-alt"></i> Si no se corrige, registra tu marcación en la <strong>terminal del guardia</strong> en portería.</p>`}
+            ${teletrabajoHabilitado() && !esTeletrabajoHoy() && u && u.estado !== 'SIN_GPS' ? btn('teletrabajo', '<i class="fas fa-laptop"></i> Trabajo desde casa: registrar en TELETRABAJO', 'prim') : ''}
             ${btn('reintentar', '<i class="fas fa-sync-alt"></i> Reintentar', 'prim')}
             ${fuera && tipo === 'ENTRADA' && sinMarcacion ? btn('reportar', 'Hoy no vengo: reportar vacación o permiso') : ''}
             ${fuera && tipo === 'ENTRADA' && !esCampoAutorizado() ? btn('campo', 'Trabajo fuera de la empresa: solicitar permiso de campo') : ''}
@@ -1300,13 +1565,14 @@ function mostrarAvisoUbicacion(u, tipo) {
         if (a === 'reintentar') iniciarRegistro(tipo);
         else if (a === 'reportar') window.abrirModalReporteFueraArea();
         else if (a === 'campo') window.abrirSolicitudCampo();
+        else if (a === 'teletrabajo') window.elegirTeletrabajo(tipo);
     });
     document.body.appendChild(modal);
 }
 
 window.abrirModalReporteFueraArea = function () {
     if (currentMode === 'TELETRABAJO') {
-        mostrarToast('Hoy tienes teletrabajo: registra tu entrada y salida con los botones de siempre.', 'info');
+        mostrarToast('Estás en teletrabajo: registra tu entrada y salida con los botones de siempre.', 'info');
         return;
     }
     if (currentMode === 'CAMPO') {
@@ -1531,6 +1797,7 @@ function aplicarLecturaGPS(position) {
         posicion = { lat, lng, precision: acc || null, ts: ahora };
     }
     gpsActivo = true;
+    window._gpsDenegado = false;
     verificarDistanciaEmpresa(true);
 }
 
@@ -1538,6 +1805,8 @@ let _ultimoAvisoGps = 0;
 function errorGPS(error) {
     console.error('GPS error:', error);
     if (error.code === 1) {
+        window._gpsDenegado = true;
+        actualizarGuiaCampo();
         mostrarToast('Permiso de ubicación denegado. Activa el GPS para registrar asistencia', 'error');
     } else if (Date.now() - _ultimoAvisoGps > 60000) {
         _ultimoAvisoGps = Date.now(); // los timeouts de una señal débil no deben llenar la pantalla de avisos
@@ -2305,6 +2574,11 @@ function horaLimiteAlmuerzoPasada() {
 }
 
 async function iniciarRegistro(tipo) {
+    // Fuera de la empresa sin modo (teletrabajo/campo): se ofrecen las opciones en lugar de un error
+    if (evaluarUbicacion().estado === 'FUERA' && currentMode === 'OFICINA' && posicion.ts && Date.now() - posicion.ts < GPS_LECTURA_VIGENTE_MS) {
+        window.abrirOpcionesFuera(tipo);
+        return;
+    }
     // Lectura de GPS que permita decidir; si no se puede registrar se explica qué hacer.
     // Ya no se abre "Reportar estado de hoy" automáticamente: con un GPS impreciso eso terminaba en
     // ausencias reportadas por personas que estaban en la empresa.
@@ -2840,6 +3114,8 @@ async function verificarPIN() {
                 campoDesde: res.empleado.campoDesde || '',
                 campoHasta: res.empleado.campoHasta || '',
                 campoSolicitud: res.empleado.campoSolicitud || null,
+                teletrabajoHabilitado: res.empleado.teletrabajoHabilitado === true || (typeof estadoRes !== 'undefined' && estadoRes && estadoRes.teletrabajoHabilitado === true),
+                teletrabajoAviso: res.empleado.teletrabajoAviso === true || (typeof estadoRes !== 'undefined' && estadoRes && estadoRes.teletrabajoAviso === true),
                 pagos_url: estadoRes.pagos_url || '',
                 cultura_habilitada: (res.empleado.cultura_habilitada !== undefined) ? res.empleado.cultura_habilitada : estadoRes.cultura_habilitada,
                 cultura_activa: (res.empleado.cultura_activa !== undefined) ? res.empleado.cultura_activa : estadoRes.cultura_activa,
@@ -3080,6 +3356,8 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
                 campoDesde: estadoRes.campoDesde || '',
                 campoHasta: estadoRes.campoHasta || '',
                 campoSolicitud: estadoRes.campoSolicitud || null,
+                teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
+                teletrabajoAviso: estadoRes.teletrabajoAviso === true,
                 tipoRegistro: '',
                 almuerzo: ''
             };
@@ -3314,6 +3592,8 @@ async function confirmarRegistroInicial() {
                     campoDesde: estadoRes.campoDesde || '',
                     campoHasta: estadoRes.campoHasta || '',
                     campoSolicitud: estadoRes.campoSolicitud || null,
+                    teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
+                    teletrabajoAviso: estadoRes.teletrabajoAviso === true,
                     cultura_habilitada: estadoRes.cultura_habilitada,
                     cultura_activa: estadoRes.cultura_activa,
                     tipoRegistro: '',
@@ -4475,10 +4755,6 @@ function renderHomePage() {
                         </div>
                         <div style="margin-top: 6px; color: #64748b; font-size: clamp(11px, 3vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${empleado.area || 'General'}</div>
 
-                        <!-- Modo de trabajo automático (OFICINA / CAMPO según el GPS) -->
-                        <div id="modoTrabajo">${modoTrabajoHtml()}</div>
-
-                        <div id="campoPermiso">${campoPermisoHtml()}</div>
                     </div>
                     
 
@@ -4543,24 +4819,7 @@ function renderHomePage() {
                             </button>
                         </div>
                     </div>
-                ` : (!tieneEntrada && !tieneSalida ? `
-                    <div id="contenedorBotonFueraArea" data-reportado="false" style="display: ${Boolean(window._estaFueraArea) && currentMode !== 'CAMPO' && currentMode !== 'TELETRABAJO' ? 'block' : 'none'}; margin-top: 12px; margin-bottom: 8px;">
-                        <div onclick="window.abrirModalReporteFueraArea()" style="background: #ffffff; border: 1.5px dashed #3b82f6; border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(59,130,246,0.06);">
-                            <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
-                                <div style="background: #eff6ff; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #2563eb; flex-shrink: 0;">
-                                    📍
-                                </div>
-                                <div>
-                                    <div style="font-size: 12.5px; font-weight: 800; color: #1e3a8a;">¿Fuera del área de registro?</div>
-                                    <div style="font-size: 11px; color: #64748b; font-weight: 600;">Reporte aquí: Vacación, Permiso Justificado o Campo</div>
-                                </div>
-                            </div>
-                            <div style="background: #2563eb; color: white; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(37,99,235,0.25);">
-                                Reportar <i class="fas fa-chevron-right" style="font-size: 10px; margin-left: 2px;"></i>
-                            </div>
-                        </div>
-                    </div>
-                ` : '')}
+                ` : `<div id="panelUbicacion">${panelUbicacionHtml()}</div>`}
 
                 <!-- Botón de Acción Único y Dinámico -->
                 <div class="main-action-wrapper">
@@ -4580,7 +4839,7 @@ function renderHomePage() {
                 btn = { type: 'NONE', label: 'JORNADA FINALIZADA', class: 'bg-salida', icon: 'fa-check-circle', disabled: 'disabled' };
             }
             return `
-                        <button class="btn-main-action ${btn.class}" onclick="${btn.type !== 'NONE' ? `iniciarRegistro('${btn.type}')` : ''}" ${btn.disabled}>
+                        <button id="btnMainAction" data-tipo="${btn.type}" class="btn-main-action ${btn.class}" onclick="${btn.type !== 'NONE' ? `iniciarRegistro('${btn.type}')` : ''}" ${btn.disabled}>
                             <div class="btn-type"><i class="fas ${btn.icon}"></i> ${btn.label}</div>
                             ${tieneSalida
                     ? `<div id="btnTime" class="btn-time" data-completa="true">COMPLETA</div>`
@@ -4620,6 +4879,8 @@ function renderHomePage() {
                 ` : ''}
             </div>
         `;
+
+    actualizarBotonPrincipal();
 
     // ====== RELOJ EN VIVO ======
     if (window._clockInterval) clearInterval(window._clockInterval);
@@ -8002,6 +8263,8 @@ async function verificarEstadoInicial() {
                         campoDesde: estadoRes.campoDesde || '',
                         campoHasta: estadoRes.campoHasta || '',
                         campoSolicitud: estadoRes.campoSolicitud || null,
+                        teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
+                        teletrabajoAviso: estadoRes.teletrabajoAviso === true,
                         authExtras: estadoRes.authExtras || 'NO',
                         pagos_url: estadoRes.pagos_url || '',
                         cultura_habilitada: estadoRes.cultura_habilitada,

@@ -2933,9 +2933,7 @@ function cargarAsistencia() {
     if (modo === 'CAMPO') {
       modoBadge = '<span class="rep-badge-pill rep-badge-campo"><i class="fas fa-truck-pickup" style="font-size:9.5px;"></i> CAMPO</span>';
     } else if (modo === 'TELETRABAJO') {
-      modoBadge = '<span class="rep-badge-pill" style="background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe;" title="Registró desde fuera de la empresa (día de teletrabajo asignado)"><i class="fas fa-laptop" style="font-size:9.5px;"></i> TELETRAB.</span>';
-    } else if (!e.entradaHoy && window.FirebaseBackend && window.FirebaseBackend._teletrabajoHoy(e)) {
-      modoBadge = '<span class="rep-badge-pill" style="background:#faf5ff; color:#7c3aed; border:1px dashed #c4b5fd;" title="Tiene teletrabajo asignado hoy"><i class="fas fa-laptop" style="font-size:9.5px;"></i> Teletrab. hoy</span>';
+      modoBadge = '<span class="rep-badge-pill" style="background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe;" title="Registró en teletrabajo, desde fuera de la empresa"><i class="fas fa-laptop" style="font-size:9.5px;"></i> TELETRAB.</span>';
     } else if (modo === 'EMPRESA' || modo === 'PLANTA') {
       modoBadge = '<span class="rep-badge-pill" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1;"><i class="fas fa-building" style="font-size:9.5px;"></i> PLANTA</span>';
     } else {
@@ -9298,170 +9296,46 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
   }
 };
 
-// Teletrabajo: un supervisor administrador asigna días (empleados.teletrabajo_dias) a personal administrativo
-// (no TALLER, BODEGA ni PRODUCCION). Esos días la app registra en modo TELETRABAJO fuera de la
-// empresa y guarda la ubicación. Se avisa al colaborador por WhatsApp.
-function teletrabajoDiaCorto(f) {
-  const p = String(f || '').split('-');
-  if (p.length !== 3) return String(f || '');
-  const d = new Date(+p[0], +p[1] - 1, +p[2]);
-  return `${d.toLocaleDateString('es-EC', { weekday: 'short' }).replace('.', '')} ${p[2]}/${p[1]}`;
-}
-
+// Teletrabajo: el personal administrativo (no TALLER, BODEGA ni PRODUCCION) lo elige en la app sin
+// solicitud. Un supervisor administrador puede deshabilitarlo por persona (teletrabajo_habilitado).
+// La ficha muestra si aceptó el aviso de protección de datos (LOPDP).
 function botonTeletrabajoHtml(emp) {
   const FB = window.FirebaseBackend;
   if (!FB || !FB._areaTeletrabajo(emp.area)) return '';
-  const prox = FB._teletrabajoProximos(emp);
-  const hoy = FB._teletrabajoHoy(emp);
-  const estilo = hoy ? ['#7c3aed', '#f5f3ff', '#6d28d9'] : prox.length ? ['#a78bfa', '#faf5ff', '#6d28d9'] : ['#cbd5e1', 'white', '#64748b'];
-  const texto = hoy ? 'Teletrabajo: hoy' : prox.length ? `Teletrabajo: ${prox.length} día${prox.length === 1 ? '' : 's'} (próx. ${teletrabajoDiaCorto(prox[0])})` : 'Teletrabajo: sin días';
-  return `<button class="btn" id="btnTeletrabajo_${emp.id}" onclick="window.abrirTeletrabajo('${emp.id}')"
-    title="Días en que puede registrar entrada y salida desde fuera de la empresa"
+  const hab = emp.teletrabajo_habilitado !== false;
+  const aviso = emp.teletrabajo_aviso && FB._teletrabajoAvisoAceptado(emp) ? emp.teletrabajo_aviso : null;
+  const estilo = hab ? ['#a78bfa', '#faf5ff', '#6d28d9'] : ['#cbd5e1', 'white', '#64748b'];
+  const titulo = hab
+    ? `Puede registrar en teletrabajo desde la app. ${aviso ? 'Aceptó el aviso de datos el ' + String(aviso.aceptado_en || '').slice(0, 10) : 'Aún no acepta el aviso de datos (se le pide al primer uso).'} Clic para deshabilitar.`
+    : 'Deshabilitado por un administrador. Clic para habilitar.';
+  return `<button class="btn" id="btnTeletrabajo_${emp.id}" onclick="window.cambiarTeletrabajo('${emp.id}')" title="${escapeHtml(titulo)}"
     style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border:1.5px solid ${estilo[0]}; background:${estilo[1]}; color:${estilo[2]};">
-    <i class="fas fa-laptop"></i> ${texto}
+    <i class="fas ${hab ? 'fa-laptop' : 'fa-ban'}"></i> Teletrabajo: ${hab ? 'habilitado' : 'deshabilitado'}${hab && aviso ? ' <i class="fas fa-shield-alt" title="Aceptó el aviso de datos"></i>' : ''}
   </button>`;
 }
 
-let _ttEdicion = null;   // { empId, dias:Set, originales:[] }
-
-window.abrirTeletrabajo = function (empId) {
+window.cambiarTeletrabajo = async function (empId) {
   if (!tienePermisoAdmin()) {
-    mostrarToast('Solo un supervisor administrador puede asignar días de teletrabajo', 'warning');
+    mostrarToast('Solo un supervisor administrador puede cambiar el teletrabajo', 'warning');
     return;
   }
   const emp = (empCache || []).find(x => String(x.id) === String(empId));
-  const FB = window.FirebaseBackend;
-  if (!emp || !FB) return;
-  if (!FB._areaTeletrabajo(emp.area)) {
-    mostrarToast(`El área ${emp.area || '(sin área)'} no puede registrar teletrabajo`, 'warning');
-    return;
-  }
-  const proximos = FB._teletrabajoProximos(emp);
-  _ttEdicion = { empId: String(empId), dias: new Set(proximos), originales: proximos.slice() };
-  document.getElementById('modalTeletrabajo')?.remove();
-  const hoy = FB._hoyStr();
-  const campo = 'width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #cbd5e1; font-size:13px; box-sizing:border-box;';
-  const etiqueta = 'display:block; font-size:11px; font-weight:700; color:#334155; margin-bottom:4px; text-transform:uppercase;';
-  const chipDia = (v, t) => `<label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; padding:4px 9px; border:1.5px solid #ddd6fe; border-radius:999px; background:#faf5ff; color:#5b21b6; cursor:pointer;">
-      <input type="checkbox" class="ttDiaSemana" value="${v}" ${v >= 1 && v <= 5 ? 'checked' : ''} style="margin:0;"> ${t}</label>`;
-  const modal = document.createElement('div');
-  modal.id = 'modalTeletrabajo';
-  modal.style.cssText = 'position:fixed; inset:0; z-index:100001; background:rgba(15,23,42,0.6); display:flex; align-items:center; justify-content:center; padding:16px;';
-  modal.innerHTML = `
-    <div style="background:white; border-radius:14px; width:100%; max-width:470px; max-height:calc(100vh - 32px); overflow:auto; box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
-      <div style="background:linear-gradient(135deg,#6d28d9,#8b5cf6); color:white; padding:14px 18px; display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <div style="font-weight:800; font-size:15px;"><i class="fas fa-laptop"></i> Teletrabajo</div>
-          <div style="font-size:11.5px; opacity:.9;">${escapeHtml(emp.nombre || '')} (${emp.id}) · ${escapeHtml(emp.area || '')}</div>
-        </div>
-        <button onclick="document.getElementById('modalTeletrabajo').remove()" style="background:none; border:none; color:white; font-size:22px; cursor:pointer;">&times;</button>
-      </div>
-      <div style="padding:16px 18px; font-size:12.5px; color:#334155;">
-        <div style="font-size:11.5px; color:#64748b; margin-bottom:12px; line-height:1.45;">Esos días podrá registrar su entrada y salida en la app desde fuera de la empresa (modo <strong>TELETRABAJO</strong>); se guarda su ubicación. Si ese día viene a la empresa, registra normal en OFICINA.</div>
-        <label style="${etiqueta}">Días asignados</label>
-        <div id="ttLista" style="display:flex; flex-wrap:wrap; gap:6px; min-height:34px; padding:8px; border:1.5px dashed #ddd6fe; border-radius:10px; margin-bottom:12px;"></div>
-        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-          <button type="button" onclick="window.ttAgregarDias(['${hoy}'])" style="padding:6px 12px; border-radius:8px; border:1.5px solid #c4b5fd; background:#faf5ff; color:#5b21b6; font-weight:700; font-size:12px;">+ Hoy</button>
-          <button type="button" onclick="window.ttAgregarDias(['${FB._hoyStr(new Date(Date.now() + 86400000))}'])" style="padding:6px 12px; border-radius:8px; border:1.5px solid #c4b5fd; background:#faf5ff; color:#5b21b6; font-weight:700; font-size:12px;">+ Mañana</button>
-        </div>
-        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:12px;">
-          <div style="font-weight:800; font-size:12px; margin-bottom:8px;">Agregar varios días</div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;">
-            <div><label style="${etiqueta}">Desde</label><input type="date" id="ttDesde" value="${hoy}" min="${hoy}" style="${campo}"></div>
-            <div><label style="${etiqueta}">Hasta</label><input type="date" id="ttHasta" value="${hoy}" min="${hoy}" style="${campo}"></div>
-          </div>
-          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">${[[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb']].map(([v, t]) => chipDia(v, t)).join('')}</div>
-          <button type="button" onclick="window.ttAgregarRango()" style="padding:7px 14px; border-radius:8px; border:none; background:#7c3aed; color:white; font-weight:800; font-size:12px;"><i class="fas fa-plus"></i> Agregar días</button>
-        </div>
-        <label style="display:flex; align-items:center; gap:8px; font-size:12px; margin-bottom:12px; cursor:pointer;">
-          <input type="checkbox" id="ttAvisar" checked ${emp.telefono ? '' : 'disabled'}> Avisarle por WhatsApp ${emp.telefono ? '' : '<span style="color:#b91c1c;">(sin teléfono registrado)</span>'}
-        </label>
-        <div id="ttMensaje" role="alert" style="display:none; margin-bottom:10px; padding:8px 10px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:12px; font-weight:600;"></div>
-        <div id="ttBotones" style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
-          <button onclick="document.getElementById('modalTeletrabajo').remove()" style="padding:8px 12px; border-radius:8px; border:1.5px solid #cbd5e1; background:white; color:#475569; font-weight:700; font-size:12px;">Cancelar</button>
-          <button onclick="window.guardarTeletrabajoUI()" style="padding:8px 14px; border-radius:8px; border:none; background:#6d28d9; color:white; font-weight:800; font-size:12px;"><i class="fas fa-check"></i> Guardar</button>
-        </div>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  pintarListaTeletrabajo();
-};
-
-function pintarListaTeletrabajo() {
-  const caja = document.getElementById('ttLista');
-  if (!caja || !_ttEdicion) return;
-  const dias = [..._ttEdicion.dias].sort();
-  caja.innerHTML = dias.length
-    ? dias.map(d => `<span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:4px 6px 4px 10px; border-radius:999px; background:#ede9fe; color:#5b21b6;">${teletrabajoDiaCorto(d)}
-        <button type="button" onclick="window.ttQuitarDia('${d}')" title="Quitar" style="border:none; background:#ddd6fe; color:#5b21b6; width:18px; height:18px; border-radius:50%; font-size:12px; line-height:1; padding:0; cursor:pointer;">&times;</button></span>`).join('')
-    : '<span style="color:#94a3b8; font-size:12px; align-self:center;">Sin días asignados</span>';
-}
-
-window.ttAgregarDias = function (lista) {
-  if (!_ttEdicion) return;
-  const hoy = window.FirebaseBackend._hoyStr();
-  lista.filter(d => d >= hoy).forEach(d => _ttEdicion.dias.add(d));
-  pintarListaTeletrabajo();
-};
-window.ttQuitarDia = function (d) {
-  if (!_ttEdicion) return;
-  _ttEdicion.dias.delete(d);
-  pintarListaTeletrabajo();
-};
-window.ttAgregarRango = function () {
-  const FB = window.FirebaseBackend;
-  const desde = document.getElementById('ttDesde')?.value, hasta = document.getElementById('ttHasta')?.value;
-  const semana = [...document.querySelectorAll('.ttDiaSemana:checked')].map(c => Number(c.value));
-  const msj = document.getElementById('ttMensaje');
-  const error = t => { if (msj) { msj.textContent = t; msj.style.display = 'block'; } };
-  if (msj) msj.style.display = 'none';
-  if (!desde || !hasta || hasta < desde) return error('Revisa las fechas: la final no puede ser anterior a la inicial.');
-  if (!semana.length) return error('Marca al menos un día de la semana.');
-  const p = desde.split('-').map(Number), d = new Date(p[0], p[1] - 1, p[2]);
-  const nuevos = [];
-  for (let i = 0; i < 100 && FB._hoyStr(d) <= hasta; i++) {
-    if (semana.includes(d.getDay())) nuevos.push(FB._hoyStr(d));
-    d.setDate(d.getDate() + 1);
-  }
-  if (!nuevos.length) return error('En ese rango no hay días de los marcados.');
-  window.ttAgregarDias(nuevos);
-};
-
-window.guardarTeletrabajoUI = async function () {
-  const ed = _ttEdicion;
-  const emp = ed && (empCache || []).find(x => String(x.id) === ed.empId);
   if (!emp) return;
-  const dias = [...ed.dias].sort();
-  const caja = document.getElementById('ttMensaje');
-  const botones = [...document.querySelectorAll('#ttBotones button')];
-  if (caja) caja.style.display = 'none';
-  botones.forEach(b => { b.disabled = true; b.style.opacity = '0.6'; });
+  const hab = emp.teletrabajo_habilitado !== false;
+  if (!confirm(hab
+    ? `¿Deshabilitar el teletrabajo de ${emp.nombre}? Ya no podrá registrar su entrada y salida desde fuera de la empresa.`
+    : `¿Habilitar el teletrabajo de ${emp.nombre}? Podrá registrar desde fuera de la empresa cuando lo elija en la app.`)) return;
   let quien = 'Supervisor';
   try { quien = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').nombre || quien; } catch (e) { }
   try {
-    const res = await window.FirebaseBackend.asignarTeletrabajo({ empleadoId: emp.id, dias, supervisor: quien });
+    const res = await window.FirebaseBackend.habilitarTeletrabajo({ empleadoId: emp.id, habilitado: !hab, supervisor: quien });
     if (!res || res.error) throw new Error((res && res.error) || 'No se pudo guardar');
-    emp.teletrabajo_dias = res.dias;
-    const avisar = document.getElementById('ttAvisar')?.checked;
-    const cambio = dias.join() !== ed.originales.join();
-    document.getElementById('modalTeletrabajo')?.remove();
+    emp.teletrabajo_habilitado = !hab;
     const btn = document.getElementById('btnTeletrabajo_' + emp.id);
     if (btn) btn.outerHTML = botonTeletrabajoHtml(emp);
-    mostrarToast('Días de teletrabajo guardados', 'success');
-    if (avisar && cambio && emp.telefono && window.OpenWAService && typeof window.OpenWAService.enviarMensajeTexto === 'function') {
-      const nombre = String(emp.nombre || '').split(/\s+/);
-      const pila = nombre.length >= 3 ? nombre[2] : (nombre[0] || '');
-      const saludo = `Hola *${pila.charAt(0) + pila.slice(1).toLowerCase()}*, te escribimos de TCONTROL.\n\n`;
-      const texto = dias.length
-        ? saludo + `Tienes *teletrabajo* asignado estos días:\n${dias.map(d => '• ' + teletrabajoDiaCorto(d)).join('\n')}\n\n` +
-          'Esos días registra tu *entrada y salida* en la app de asistencia desde donde estés, con la ubicación del teléfono activada. Si vienes a la empresa, registra como siempre.'
-        : saludo + 'Ya no tienes días de *teletrabajo* asignados. Registra tu asistencia en la empresa como siempre.';
-      const r = await window.OpenWAService.enviarMensajeTexto(emp.telefono, texto).catch(e => ({ ok: false, error: e.message }));
-      mostrarToast(r && r.ok !== false ? 'Se le avisó por WhatsApp' : 'Guardado, pero no se pudo enviar el WhatsApp', r && r.ok !== false ? 'success' : 'warning');
-    }
+    mostrarToast(hab ? 'Teletrabajo deshabilitado' : 'Teletrabajo habilitado', 'success');
   } catch (err) {
-    if (caja) { caja.textContent = 'No se pudo guardar: ' + (err.message || err); caja.style.display = 'block'; }
-    botones.forEach(b => { b.disabled = false; b.style.opacity = ''; });
+    mostrarToast('No se pudo guardar: ' + (err.message || err), 'error');
   }
 };
 
