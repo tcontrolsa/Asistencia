@@ -567,6 +567,11 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(emitirTokenGuardia(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Respaldo de la portería de visitas si PostgREST no responde (visitas_respaldo.gs)
+      if (data.accion === 'visitasRespaldo' && typeof procesarRespaldoVisitas === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(procesarRespaldoVisitas(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
       if (data.accion === 'visitaRpc' && typeof proxyVisitaPublica === 'function') {
         return ContentService.createTextOutput(JSON.stringify(proxyVisitaPublica(data)))
           .setMimeType(ContentService.MimeType.JSON);

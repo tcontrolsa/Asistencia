@@ -9,7 +9,10 @@
  *   - Registra visitantes sin cita en una ventana guiada: con celular (QR de portería) o sin él (4 pasos).
  * La lista "Visitas de hoy" va en #panelVisitasLista (columna derecha en escritorio, debajo en celular),
  * se actualiza sola cada minuto y anima los estados (dentro, por llegar, sin aprobar, salió).
- * Datos: PostgREST api.visita_guardia (respaldo: Apps Script evalRpc).
+ * Datos: PostgREST api.visita_guardia (respaldo de red: Apps Script evalRpc).
+ * Si el servidor no responde, la portería pasa sola a MODO CONTINGENCIA: trabaja con la copia que
+ * Apps Script guarda cada 10 min (visitas_respaldo.gs, hoja privada), registra entradas, salidas y
+ * sin cita allí (con aviso al anfitrión) y, cuando el servidor vuelve, se envían a Postgres.
  */
 (function () {
   'use strict';
@@ -39,7 +42,9 @@
     if (window.FirebaseBackend && typeof window.FirebaseBackend._post === 'function') return window.FirebaseBackend._post(datos);
     throw new Error('Servicio no disponible');
   }
-  async function rpc(p) {
+  // Servidor de visitas (PostgREST y, si falla la red, Apps Script evalRpc). Un error con "caida"
+  // indica que el servidor no responde: se usa el respaldo.
+  async function rpcServidor(p) {
     let causa = '';
     for (let i = 0; i < 2; i++) {
       const b = await base(i > 0);
@@ -52,10 +57,80 @@
         causa = 'HTTP ' + r.status;
       } catch (e) { if (e.sesion) throw e; causa = e.message; } finally { clearTimeout(t); }
     }
-    const r = await post({ accion: 'evalRpc', token: st.ses.token, fn: 'visita_guardia', p: JSON.stringify(p) });
-    if (!r || typeof r.status !== 'number') throw new Error('Sin conexión con la base de visitas (' + causa + ')');
-    if (r.status === 401) { salir(); throw new Error('La sesión de portería venció. Ingresa la clave de nuevo.'); }
+    let r = null;
+    try { r = await post({ accion: 'evalRpc', token: st.ses.token, fn: 'visita_guardia', p: JSON.stringify(p) }); } catch (e) { causa = e.message; }
+    if (r && r.status === 401) { salir(); throw Object.assign(new Error('La sesión de portería venció. Ingresa la clave de nuevo.'), { sesion: true }); }
+    if (!r || typeof r.status !== 'number' || r.status === 0 || r.status === 404 || r.status >= 500 || !r.body) {
+      throw Object.assign(new Error('Sin conexión con la base de visitas (' + causa + ')'), { caida: true });
+    }
     return r.body;
+  }
+
+  // ---------------------------------------------------------------- modo contingencia (respaldo)
+  const nuevoId = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  const OPS_RESPALDO = { hoy: 'estado', entrada: 'entrada', salida: 'salida', registrar: 'registrar', anfitriones: 'anfitriones' };
+
+  async function respaldo(p) {
+    if (p.accion === 'pase_porteria') {
+      return { ok: false, error: 'Sin servidor de visitas no se puede generar el QR. Toque «Volver» y elija «No tiene celular» para registrarlo usted.' };
+    }
+    if (p.accion === 'buscar') {
+      const r = await respaldo({ accion: 'hoy' });
+      if (!r.ok) return r;
+      const cod = String(p.codigo || '').toUpperCase().replace(/^TCV1:?/, '').replace(/[^A-Z0-9]/g, '');
+      const v = (r.visitas || []).find(x => x.codigo === cod);
+      return v ? { ok: true, visita: v, hoy: r.hoy } : { ok: false, error: 'Ese código no está entre las visitas de hoy de la copia de respaldo.' };
+    }
+    const op = OPS_RESPALDO[p.accion];
+    if (!op) return { ok: false, error: 'No disponible en modo contingencia.' };
+    let r;
+    try {
+      r = await post(Object.assign({}, p, { accion: 'visitasRespaldo', op, token: st.ses.token, id: p.id || nuevoId(), en: new Date().toISOString() }));
+    } catch (e) { throw new Error('Sin conexión con el servidor ni con el respaldo de visitas. Revise el internet de la terminal.'); }
+    if (!r) throw new Error('El respaldo de visitas no respondió.');
+    if (r.sesion) { salir(); throw Object.assign(new Error(r.error), { sesion: true }); }
+    if (p.accion === 'hoy' && r.ok) st.respaldo = { generado: r.generado, pendientes: r.pendientes || 0 };
+    if (op !== 'estado' && op !== 'anfitriones' && r.ok && st.respaldo) st.respaldo.pendientes = (st.respaldo.pendientes || 0) + 1;
+    return r;
+  }
+
+  async function volverDeContingencia() {
+    let s = null;
+    try { const r = await post({ accion: 'visitasRespaldo', op: 'sincronizar', token: st.ses.token }); s = r && r.sincronizacion; } catch (e) { }
+    st.contingencia = false; st.respaldo = null;
+    if (typeof window.mostrarToast === 'function') {
+      window.mostrarToast(`Servidor de visitas restablecido${s && s.enviados ? ` · ${s.enviados} registro(s) del respaldo enviados` : ''}.`, 'success');
+    }
+  }
+
+  // Todas las acciones pasan por aquí: servidor; si no responde, respaldo; en contingencia se
+  // vuelve a probar el servidor cada vez que se actualiza la lista (como máximo cada 45 s).
+  async function rpc(p) {
+    if (st.contingencia) {
+      if (p.accion === 'hoy' && Date.now() - (st.sondeo || 0) > 45000) {
+        st.sondeo = Date.now();
+        try { await rpcServidor({ accion: 'hoy' }); await volverDeContingencia(); return await rpcServidor(p); }
+        catch (e) { if (e.sesion) throw e; }
+      }
+      return respaldo(p);
+    }
+    try { return await rpcServidor(p); }
+    catch (e) {
+      if (!e.caida) throw e;
+      st.contingencia = true; st.sondeo = Date.now();
+      if (typeof window.mostrarToast === 'function') window.mostrarToast('El servidor de visitas no responde: la portería sigue en modo contingencia.', 'warning');
+      return respaldo(p);
+    }
+  }
+
+  function bannerContingencia() {
+    const r = st.respaldo || {};
+    const copia = r.generado ? horaDe(r.generado) : '';
+    return `<div class="card gv-contingencia" role="status">
+      <div class="gv-cont-cab"><i class="fas fa-life-ring"></i><strong>Modo contingencia</strong><span class="gv-cont-punto"></span></div>
+      <p>El servidor de visitas no responde. Puede seguir registrando entradas, salidas y visitantes sin cita: se guardan en el respaldo y se envían solos cuando vuelva.</p>
+      <p class="gv-cont-meta">${copia ? `Lista de visitas copiada a las ${copia}` : 'Usando la copia de respaldo'}${r.pendientes ? ` · <b>${r.pendientes}</b> registro(s) por enviar` : ''} · Reintentando cada minuto</p>
+    </div>`;
   }
   function salir() { try { localStorage.removeItem(KEY); } catch (e) { } st.ses = null; detenerCamara(); }
 
@@ -81,6 +156,7 @@
     // Si la cámara está activa, se conserva el mismo video al redibujar (no se corta el escaneo)
     const scanVivo = st.escaneando && (st.stream || st.abriendoCamara === 'pidiendo') ? cont.querySelector('.gv-scan') : null;
     cont.innerHTML = `<div class="vs-root">
+      ${st.contingencia ? bannerContingencia() : ''}
       <div class="card gv-card-ingreso">
         <h3 class="gv-titulo"><i class="fas fa-qrcode"></i> Visitante con cita</h3>
         ${st.escaneando
@@ -386,7 +462,8 @@
     if (!f.acepta) { sc.error = 'Léale el aviso de datos y marque que estuvo de acuerdo.'; return pintarModal(); }
     sc.enviando = true; sc.error = ''; pintarModal();
     try {
-      const r = await rpc({ accion: 'registrar', tipo: t.id, anfitrionId: f.anfitrion ? f.anfitrion.id : '', nombre: f.nombre, empresa: f.empresa, motivo: f.motivo,
+      sc.idRespaldo = sc.idRespaldo || nuevoId();   // mismo id si se reintenta: el respaldo no lo duplica
+      const r = await rpc({ accion: 'registrar', id: sc.idRespaldo, tipo: t.id, anfitrionId: f.anfitrion ? f.anfitrion.id : '', nombre: f.nombre, empresa: f.empresa, motivo: f.motivo,
         documentoVerificado: true, aceptaVerbal: true, eppVerificado: !!f.epp });
       if (!r.ok) throw new Error(r.error);
       st.sc = { modo: 'listo', visita: r.visita };
@@ -572,7 +649,12 @@
     const a = b.dataset.gv;
     const m = document.getElementById('gvModal');
     // Ventana de visitante sin cita
-    if (a === 'sc-abrir' || a === 'sc-elegir' || a === 'sc-otro') { clearInterval(tReloj); st.sc = { modo: 'elegir' }; return pintarModal(); }
+    if (a === 'sc-abrir' || a === 'sc-elegir' || a === 'sc-otro') {
+      clearInterval(tReloj);
+      // En contingencia no hay QR de portería (lo genera el servidor): el guardia lo registra
+      st.sc = st.contingencia ? { modo: 'form', paso: 1, f: {} } : { modo: 'elegir' };
+      return pintarModal();
+    }
     if (a === 'sc-qr' || a === 'sc-nuevo') return nuevoQrPorteria();
     if (a === 'sc-form') { st.sc = { modo: 'form', paso: 1, f: {} }; return pintarModal(); }
     if (a === 'sc-cerrar') return cerrarModal();
