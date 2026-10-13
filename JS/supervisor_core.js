@@ -1471,7 +1471,7 @@ function cargarDashboard() {
     if (entr) {
       hoyP++;
       let m = obtenerMinutos(entr.hora);
-      if (m !== null && m > refEntradaHoy + 5 && !esPas) hoyT++;
+      if (m !== null && !esFestivoHoy && m > refEntradaHoy + 5 && !esPas) hoyT++;   // sábado, domingo y feriado: sin atraso
       if (sal) hoySalieron++;
     } else {
       hoyA++;
@@ -1501,7 +1501,7 @@ function cargarDashboard() {
         let m = obtenerMinutos(r.hora);
         const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
         const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
-        if (m !== null && m > refEntradaR + 5) tard++;
+        if (m !== null && !esFestivoR && m > refEntradaR + 5) tard++;
       });
 
       const resAlm = calcularAlmuerzosPeriodo(e, periodo.inicio, hoy_);
@@ -1755,7 +1755,8 @@ function cargarDashboard() {
         let m = obtenerMinutos(firstE.hora);
         if (m !== null) {
           nE++;
-          if (m > HORA_ENTRADA_REF + 5 && !esPasanteEmp) {
+          const esFestivoF = esFeriadoODomingo(fecha) || new Date(fecha + 'T12:00:00').getDay() === 6;
+          if (m > HORA_ENTRADA_REF + 5 && !esPasanteEmp && !esFestivoF) {
             tardE++;
             let diffMin = m - HORA_ENTRADA_REF;
             minutosTardE += diffMin;
@@ -2170,7 +2171,7 @@ function cargarAnalisisTardanzas() {
       sE += mins; nE++;
       const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
       const refEnt = esFestivoR ? 420 : HORA_ENTRADA_REF;
-      if (mins - refEnt > 5) { t++; m += mins - refEnt; }
+      if (!esFestivoR && mins - refEnt > 5) { t++; m += mins - refEnt; }
     });
     salidas.forEach(r => {
       let mins = obtenerMinutos(r.hora);
@@ -2703,7 +2704,7 @@ function cargarAsistencia() {
     if (!e.entradaHoy) return false;
     if (typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(e)) return false;
     let m = obtenerMinutos(e.horaEntradaMs);
-    return m !== null && m > refEntradaHoy + 5;
+    return m !== null && !esFestivoHoy && m > refEntradaHoy + 5;   // sábado, domingo y feriado: sin atraso
   }).length;
   let salieron = empCache.filter(e => {
     if (e.salidaHoy) return true;
@@ -2834,7 +2835,7 @@ function cargarAsistencia() {
 
     let horaV = e.horaEntradaMs || eReg?.hora || eReg?.timestamp;
     let mEnt = e.entradaHoy ? obtenerMinutos(horaV) : null;
-    let tard = !esPasante && (mEnt !== null && mEnt > refEntradaHoy + 5);
+    let tard = !esPasante && !esFestivoHoy && (mEnt !== null && mEnt > refEntradaHoy + 5);
 
     let eHtml = '';
     if (e.entradaHoy) {
@@ -13484,7 +13485,7 @@ window.recalcularTiemposModalJornada = function () {
       ordDur = Math.max(0, ordDur);
       const falt = esFestivo ? 0 : Math.max(0, 480 - ordDur);
 
-      let atraso = (mE > refEntrada + 5) ? (mE - refEntrada) : 0;
+      let atraso = (!esFestivo && mE > refEntrada + 5) ? (mE - refEntrada) : 0;   // sábado, domingo y feriado: sin atraso
       if (!esFestivo && atraso > falt) {
         atraso = falt;
       }

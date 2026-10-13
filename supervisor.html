@@ -2073,6 +2073,15 @@
               <div class="kpi-value" id="mapaKpiCampo">0</div>
             </div>
 
+            <!-- 4b. TELETRABAJO -->
+            <div class="kpi-card" data-filter="teletrabajo" onclick="setFiltroKpiMapa('teletrabajo', this)" style="--card-color: #7c3aed; --active-bg: #f5f3ff; --active-text: #6d28d9; --shadow-color: rgba(124, 58, 237, 0.15); cursor:pointer;">
+              <div class="kpi-header">
+                <div class="kpi-icon" style="background: #ede9fe; color: #6d28d9;"><i class="fas fa-laptop"></i></div>
+                <span class="kpi-label">Teletrabajo</span>
+              </div>
+              <div class="kpi-value" id="mapaKpiTeletrabajo">0</div>
+            </div>
+
             <!-- 5. VACACIONES -->
             <div class="kpi-card" data-filter="vacaciones" onclick="setFiltroKpiMapa('vacaciones', this)" style="--card-color: #06b6d4; --active-bg: #ecfeff; --active-text: #0e7490; --shadow-color: rgba(6, 182, 212, 0.15); cursor:pointer;">
               <div class="kpi-header">
@@ -2229,6 +2238,9 @@
               <button class="legend-chip" data-estado="CAMPO" onclick="setFiltroEstadoMapa('CAMPO', this)">
                 <span class="legend-dot" style="background:#ea580c;"></span> En Campo
               </button>
+              <button class="legend-chip" data-estado="TELETRABAJO" onclick="setFiltroEstadoMapa('TELETRABAJO', this)">
+                <span class="legend-dot" style="background:#7c3aed;"></span> Teletrabajo
+              </button>
               <button class="legend-chip" data-estado="VACACIONES" onclick="setFiltroEstadoMapa('VACACIONES', this)">
                 <span class="legend-dot" style="background:#06b6d4;"></span> Vacaciones
               </button>
@@ -2237,6 +2249,9 @@
               </button>
               <button class="legend-chip" data-estado="PERMISO" onclick="setFiltroEstadoMapa('PERMISO', this)">
                 <span class="legend-dot" style="background:#a855f7;"></span> Permiso Pers.
+              </button>
+              <button class="legend-chip" data-estado="JUSTIFICADA" onclick="setFiltroEstadoMapa('JUSTIFICADA', this)">
+                <span class="legend-dot" style="background:#eab308;"></span> F. Justificada
               </button>
               <button class="legend-chip" data-estado="FALTA" onclick="setFiltroEstadoMapa('FALTA', this)">
                 <span class="legend-dot" style="background:#ef4444;"></span> Faltas
@@ -5234,10 +5249,10 @@
 
   <script src="./JS/openwa_service.js?v=20261006_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261013_02"></script>
+  <script src="./JS/supervisor_core.js?v=20261013_03"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261003_01"></script>
-  <script src="./JS/supervisor/supervisor_mapa.js?v=20260925_02"></script>
+  <script src="./JS/supervisor/supervisor_mapa.js?v=20261013_01"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
   <script src="./JS/evaluacion_desempeno.js?v=20261007_02"></script>

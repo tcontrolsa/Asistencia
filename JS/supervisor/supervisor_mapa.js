@@ -156,7 +156,9 @@ window.obtenerEstadoEmpleadoEnFecha = function (emp, fechaStr) {
   const esHoy = (fechaStr === hoyStr);
   const regs = (emp.registros || []).filter(r => normalizarFechaStr(r.fecha) === fechaStr);
 
-  const rEntrada = regs.find(r => r.tipo === 'ENTRADA');
+  // La entrada del día es la más temprana (una re-entrada tras un permiso no es tardanza)
+  const rEntrada = regs.filter(r => r.tipo === 'ENTRADA')
+    .sort((a, b) => (obtenerMinutos(a.hora) ?? 9999) - (obtenerMinutos(b.hora) ?? 9999))[0];
   const rSalida = regs.find(r => r.tipo === 'SALIDA');
 
   const rAusencia = regs.find(r => {
@@ -182,6 +184,21 @@ window.obtenerEstadoEmpleadoEnFecha = function (emp, fechaStr) {
       border: '#fed7aa',
       alm: (rEntrada?.almuerzo || emp.almuerzoHoy || ''),
       detalle: `Trabajo en campo: ${rAusencia?.observacion || 'Autorizado'}`
+    };
+  }
+
+  // 1b. TELETRABAJO (registró desde fuera de la empresa)
+  if (modoStr.includes('TELETRABAJO')) {
+    return {
+      codigo: 'TELETRABAJO',
+      label: 'Teletrabajo',
+      sub: rEntrada?.hora ? `Ent: ${rEntrada.hora.slice(0, 5)}` : 'Desde casa',
+      icono: 'fas fa-laptop',
+      color: '#6d28d9',
+      bg: '#f5f3ff',
+      border: '#ddd6fe',
+      alm: '',
+      detalle: `Teletrabajo${rEntrada?.hora ? ': entrada ' + rEntrada.hora : ''}${rSalida?.hora ? ' · Salida: ' + rSalida.hora : ''}`
     };
   }
 
@@ -230,13 +247,32 @@ window.obtenerEstadoEmpleadoEnFecha = function (emp, fechaStr) {
     };
   }
 
+  // 4b. FALTA JUSTIFICADA (tipo FALTA_JUSTIFICADA, o FALTA marcada como justificada por un supervisor):
+  // no descuenta, no es una falta injustificada
+  const tipoAus = String(rAusencia?.tipo || '').toUpperCase();
+  if (!rEntrada && (tipoAus === 'FALTA_JUSTIFICADA' || (tipoAus === 'FALTA' && String(rAusencia?.justificado || '').toUpperCase() === 'SI'))) {
+    const motivo = rAusencia?.razon_ausencia || rAusencia?.razon_justificac || rAusencia?.observacion || '';
+    return {
+      codigo: 'JUSTIFICADA',
+      label: 'F. Justif.',
+      sub: motivo || 'Justificada',
+      icono: 'fas fa-clipboard-check',
+      color: '#a16207',
+      bg: '#fefce8',
+      border: '#fde047',
+      alm: '',
+      detalle: `Falta justificada${motivo ? ': ' + motivo : ''}${rAusencia?.quien_justifica ? ' (' + rAusencia.quien_justifica + ')' : ''}`
+    };
+  }
+
   // 5. ENTRADA REGISTRADA
   if (rEntrada || (esHoy && emp.entradaHoy)) {
     const horaE = rEntrada?.hora || emp.horaEntrada || '';
     const horaS = rSalida?.hora || emp.horaSalida || '';
     const mEnt = obtenerMinutos(horaE);
-    const refEnt = esFinSemanaOFeriado ? 420 : HORA_ENTRADA_REF;
-    const esTardanza = (mEnt !== null && mEnt > refEnt + 5);
+    // Sábado, domingo y feriado no tienen atraso; los pasantes tienen horario flexible
+    const esPasante = typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(emp);
+    const esTardanza = !esFinSemanaOFeriado && !esPasante && mEnt !== null && mEnt > HORA_ENTRADA_REF + 5;
 
     if (esTardanza) {
       return {
@@ -465,8 +501,12 @@ window.renderMapaAsistencia = function () {
 
   const hoyStr = getLocalHoyStr();
 
+  // El personal "solo almuerzo" (SIN ASISTENCIA) no lleva asistencia: no aparece en el mapa ni cuenta faltas
+  const conAsistencia = empCache.filter(e => !(typeof esEmpleadoSoloAlmuerzo === 'function' && esEmpleadoSoloAlmuerzo(e)));
+
   // 1. CÁLCULO DE KPIS (RESUMEN HOY Y RANGO)
-  let kpiTotal = empCache.length;
+  let kpiTotal = conAsistencia.length;
+  let kpiTeletrabajo = 0;
   let kpiPlanta = 0;
   let kpiSinMarcar = 0;
   let kpiCampo = 0;
@@ -478,24 +518,27 @@ window.renderMapaAsistencia = function () {
   let kpiAlmFuera = 0;
 
   empCache.forEach(e => {
+    // Almuerzo (incluye al personal solo almuerzo)
+    const esPresenteOAlm = e.entradaHoy || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
+    if (esPresenteOAlm && (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA')) kpiAlmPlanta++;
+    else if (esPresenteOAlm && (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA')) kpiAlmFuera++;
+  });
+
+  conAsistencia.forEach(e => {
     const stHoy = window.obtenerEstadoEmpleadoEnFecha(e, hoyStr);
     if (stHoy.codigo === 'PRESENTE') kpiPlanta++;
     else if (stHoy.codigo === 'TARDANZA') { kpiPlanta++; kpiTardanzas++; }
     else if (stHoy.codigo === 'SIN_MARCAR') kpiSinMarcar++;
     else if (stHoy.codigo === 'CAMPO') kpiCampo++;
     else if (stHoy.codigo === 'VACACIONES') kpiVacaciones++;
-    else if (stHoy.codigo === 'PERMISO_MEDICO' || stHoy.codigo === 'PERMISO') kpiPermisos++;
-
-    // Almuerzo
-    const esPresenteOAlm = e.entradaHoy || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
-    if (esPresenteOAlm && (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA')) kpiAlmPlanta++;
-    else if (esPresenteOAlm && (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA')) kpiAlmFuera++;
+    else if (stHoy.codigo === 'TELETRABAJO') kpiTeletrabajo++;
+    else if (stHoy.codigo === 'PERMISO_MEDICO' || stHoy.codigo === 'PERMISO' || stHoy.codigo === 'JUSTIFICADA') kpiPermisos++;
 
     // Contar eventos futuros en el rango
     rangoInfo.fechas.forEach(f => {
       if (f > hoyStr) {
         const stF = window.obtenerEstadoEmpleadoEnFecha(e, f);
-        if (stF.codigo === 'VACACIONES' || stF.codigo === 'CAMPO' || stF.codigo === 'PERMISO' || stF.codigo === 'PERMISO_MEDICO') {
+        if (['VACACIONES', 'CAMPO', 'PERMISO', 'PERMISO_MEDICO', 'JUSTIFICADA'].includes(stF.codigo)) {
           kpiFuturos++;
         }
       }
@@ -511,6 +554,7 @@ window.renderMapaAsistencia = function () {
   if ($('mapaKpiPlanta')) $('mapaKpiPlanta').textContent = kpiPlanta;
   if ($('mapaKpiSinMarcar')) $('mapaKpiSinMarcar').textContent = kpiSinMarcar;
   if ($('mapaKpiCampo')) $('mapaKpiCampo').textContent = kpiCampo;
+  if ($('mapaKpiTeletrabajo')) $('mapaKpiTeletrabajo').textContent = kpiTeletrabajo;
   if ($('mapaKpiVacaciones')) $('mapaKpiVacaciones').textContent = kpiVacaciones;
   if ($('mapaKpiPermisos')) $('mapaKpiPermisos').textContent = kpiPermisos;
   if ($('mapaKpiTardanzas')) $('mapaKpiTardanzas').textContent = kpiTardanzas;
@@ -519,7 +563,7 @@ window.renderMapaAsistencia = function () {
   if ($('mapaKpiAlmFuera')) $('mapaKpiAlmFuera').textContent = kpiAlmFuera;
 
   // 2. FILTRADO DE EMPLEADOS
-  let filtrados = empCache.filter(e => {
+  let filtrados = conAsistencia.filter(e => {
     // Filtro búsqueda texto
     if (window._mapaSearchQuery) {
       const q = window._mapaSearchQuery;
@@ -540,8 +584,9 @@ window.renderMapaAsistencia = function () {
     if (window._mapaFiltroKpi === 'presente' && stHoy.codigo !== 'PRESENTE' && stHoy.codigo !== 'TARDANZA') return false;
     if (window._mapaFiltroKpi === 'sin_marcar' && stHoy.codigo !== 'SIN_MARCAR') return false;
     if (window._mapaFiltroKpi === 'en_campo' && stHoy.codigo !== 'CAMPO') return false;
+    if (window._mapaFiltroKpi === 'teletrabajo' && stHoy.codigo !== 'TELETRABAJO') return false;
     if (window._mapaFiltroKpi === 'vacaciones' && stHoy.codigo !== 'VACACIONES') return false;
-    if (window._mapaFiltroKpi === 'permisos' && stHoy.codigo !== 'PERMISO' && stHoy.codigo !== 'PERMISO_MEDICO') return false;
+    if (window._mapaFiltroKpi === 'permisos' && !['PERMISO', 'PERMISO_MEDICO', 'JUSTIFICADA'].includes(stHoy.codigo)) return false;
     if (window._mapaFiltroKpi === 'tardanza' && stHoy.codigo !== 'TARDANZA') return false;
     if (window._mapaFiltroKpi === 'almuerzo_si' && e.almuerzoHoy !== 'SI' && e.almuerzoHoy !== 'PLANTA') return false;
     if (window._mapaFiltroKpi === 'almuerzo_no' && e.almuerzoHoy !== 'NO' && e.almuerzoHoy !== 'FUERA') return false;
@@ -549,7 +594,7 @@ window.renderMapaAsistencia = function () {
       const tieneFuturo = rangoInfo.fechas.some(f => {
         if (f <= hoyStr) return false;
         const stF = window.obtenerEstadoEmpleadoEnFecha(e, f);
-        return stF.codigo === 'VACACIONES' || stF.codigo === 'CAMPO' || stF.codigo === 'PERMISO' || stF.codigo === 'PERMISO_MEDICO';
+        return ['VACACIONES', 'CAMPO', 'PERMISO', 'PERMISO_MEDICO', 'JUSTIFICADA'].includes(stF.codigo);
       });
       if (!tieneFuturo) return false;
     }
@@ -568,7 +613,7 @@ window.renderMapaAsistencia = function () {
 
   // Actualizar contadores visibles
   if ($('mapaResultCount')) $('mapaResultCount').textContent = filtrados.length;
-  if ($('mapaTotalCount')) $('mapaTotalCount').textContent = empCache.length;
+  if ($('mapaTotalCount')) $('mapaTotalCount').textContent = conAsistencia.length;
 
   // Renderizar la vista activa
   if (window._mapaVistaActual === 'matriz') {
@@ -676,14 +721,14 @@ window.renderMatrizMapa = function (empleados, rangoInfo) {
     empleados.forEach(e => {
       const st = window.obtenerEstadoEmpleadoEnFecha(e, f);
       if (st.codigo === 'PRESENTE' || st.codigo === 'TARDANZA') presDia++;
-      else if (st.codigo === 'CAMPO') campoDia++;
-      else if (st.codigo === 'VACACIONES' || st.codigo === 'PERMISO' || st.codigo === 'PERMISO_MEDICO' || st.codigo === 'FALTA') ausDia++;
+      else if (st.codigo === 'CAMPO' || st.codigo === 'TELETRABAJO') campoDia++;
+      else if (['VACACIONES', 'PERMISO', 'PERMISO_MEDICO', 'JUSTIFICADA', 'FALTA'].includes(st.codigo)) ausDia++;
     });
 
     return `
           <td style="text-align:center; padding:5px 3px; font-size:9.5px; background:#f8fafc;">
             <div style="color:#15803d; font-weight:750;" title="Presentes en planta"><i class="fas fa-building" style="font-size:8.5px;"></i> ${presDia}</div>
-            <div style="color:#ea580c; font-weight:750;" title="En campo"><i class="fas fa-route" style="font-size:8.5px;"></i> ${campoDia}</div>
+            <div style="color:#ea580c; font-weight:750;" title="En campo o teletrabajo"><i class="fas fa-route" style="font-size:8.5px;"></i> ${campoDia}</div>
             <div style="color:#dc2626; font-weight:750;" title="Ausencias / Vacaciones"><i class="fas fa-times-circle" style="font-size:8.5px;"></i> ${ausDia}</div>
           </td>`;
   }).join('');
@@ -703,7 +748,7 @@ window.renderMatrizMapa = function (empleados, rangoInfo) {
             <tr style="border-top:2px solid #cbd5e1; font-weight:750;">
               <td class="col-emp-sticky" style="font-size:10.5px; color:#475569;">
                 <div style="font-weight:800;">TOTALES DIARIOS</div>
-                <div style="font-size:9px; color:#64748b; font-weight:600;">(🟩 Planta · 🟧 Campo · 🟥 Ausentes)</div>
+                <div style="font-size:9px; color:#64748b; font-weight:600;">(🟩 Planta · 🟧 Campo/Teletrab. · 🟥 Ausentes)</div>
               </td>
               ${footerDailyCols}
             </tr>
@@ -830,7 +875,7 @@ window.renderCoberturaMapa = function (empleados, rangoInfo) {
     staff.forEach(e => {
       const st = window.obtenerEstadoEmpleadoEnFecha(e, hoyStr);
       if (st.codigo === 'PRESENTE' || st.codigo === 'TARDANZA') pres++;
-      else if (st.codigo === 'CAMPO') campo++;
+      else if (st.codigo === 'CAMPO' || st.codigo === 'TELETRABAJO') campo++;
       else aus++;
     });
 
@@ -860,7 +905,7 @@ window.renderCoberturaMapa = function (empleados, rangoInfo) {
             <!-- Barra de Progreso de Cobertura -->
             <div style="height:10px; width:100%; background:#f1f5f9; border-radius:6px; overflow:hidden; display:flex; margin-bottom:12px;">
               <div style="width:${pctPres}%; background:#16a34a;" title="En Planta: ${pres} (${pctPres}%)"></div>
-              <div style="width:${pctCampo}%; background:#ea580c;" title="En Campo: ${campo} (${pctCampo}%)"></div>
+              <div style="width:${pctCampo}%; background:#ea580c;" title="En Campo o Teletrabajo: ${campo} (${pctCampo}%)"></div>
               <div style="width:${pctAus}%; background:#ef4444;" title="Ausente/Permiso: ${aus} (${pctAus}%)"></div>
             </div>
 
@@ -872,7 +917,7 @@ window.renderCoberturaMapa = function (empleados, rangoInfo) {
               </div>
               <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:6px;">
                 <div style="font-size:16px; font-weight:800; color:#c2410c;">${campo}</div>
-                <div style="font-size:9.5px; font-weight:700; color:#9a3412;">En Campo</div>
+                <div style="font-size:9.5px; font-weight:700; color:#9a3412;">Campo/Teletrab.</div>
               </div>
               <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:6px;">
                 <div style="font-size:16px; font-weight:800; color:#dc2626;">${aus}</div>
@@ -904,7 +949,7 @@ window.exportarExcelMapaAsistencia = function () {
   });
   csv += '\n';
 
-  empCache.forEach(emp => {
+  empCache.filter(e => !(typeof esEmpleadoSoloAlmuerzo === 'function' && esEmpleadoSoloAlmuerzo(e))).forEach(emp => {
     const nom = (emp.nombre || '').replaceAll('"', '""');
     const area = (emp.area || '').replaceAll('"', '""');
     const cargo = (emp.cargo || '').replaceAll('"', '""');
