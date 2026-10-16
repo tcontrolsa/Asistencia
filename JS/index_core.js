@@ -991,11 +991,14 @@ window.verAvisoTeletrabajo = function () {
 // Elige teletrabajo para hoy; la primera vez pide aceptar el aviso de datos. Con "tipo" continúa el registro.
 window.elegirTeletrabajo = function (tipo) {
     if (!teletrabajoHabilitado()) { mostrarToast('No estás habilitado para teletrabajo. Consulta con tu supervisor.', 'warning'); return; }
+    // Elegir teletrabajo no registra nada por sí solo: si aún no marcó la entrada, se sigue directo a
+    // registrarla (antes solo mostraba un aviso verde y muchos creían que ya habían marcado).
+    if (!tipo && typeof estado !== 'undefined' && estado && !estado.tieneSalida) tipo = estado.tieneEntrada ? '' : 'ENTRADA';
     const activar = () => {
         try { localStorage.setItem(claveTeletrabajo(), '1'); } catch (e) { }
         actualizarGuiaCampo();
-        mostrarToast('Registrarás hoy en TELETRABAJO', 'success');
         if (tipo) iniciarRegistro(tipo);
+        else mostrarToast('Modo TELETRABAJO activado. Recuerda registrar tu salida al terminar.', 'info');
     };
     if (empleado.teletrabajoAviso === true) return activar();
     const m = modalTeletrabajoBase('modalAvisoTeletrabajo',
@@ -1282,7 +1285,8 @@ function panelUbicacionHtml() {
     // 2) Ya eligió teletrabajo hoy
     if (esTeletrabajoHoy()) {
         if (currentMode === 'TELETRABAJO') {
-            return chip('#f5f3ff', '#c4b5fd', '#5b21b6', 'fa-laptop', 'Hoy trabajas desde casa (TELETRABAJO)',
+            const faltaEntrada = !(estado && estado.tieneEntrada);
+            return chip('#f5f3ff', '#c4b5fd', '#5b21b6', 'fa-laptop', faltaEntrada ? 'Teletrabajo · falta registrar tu entrada ↓' : 'Hoy trabajas desde casa (TELETRABAJO)',
                 `Se guarda tu ubicación aproximada solo al marcar. <button type="button" class="pu-link" onclick="window.verAvisoTeletrabajo()">Aviso de datos</button> · <button type="button" class="pu-link" onclick="window.dejarTeletrabajo()">Cambiar</button>`);
         }
         return chip('#f0fdf4', '#bbf7d0', '#166534', 'fa-building', 'Estás en la empresa: se registra en OFICINA', 'Elegiste teletrabajo, pero como estás aquí se registra como presencial.');
