@@ -320,6 +320,16 @@
           </div>`;
       pie = `<button type="button" class="vs-btn" data-gv="sc-nuevo"><i class="fas fa-sync-alt"></i> Otro QR</button>
         <button type="button" class="btn-large btn-primary gv-m-prim" data-gv="sc-escanear"><i class="fas fa-camera"></i> Ya se registró: escanear su QR</button>`;
+    } else if (sc.modo === 'calificar') {
+      // Al registrar la salida: QR con el enlace privado de la visita para que el visitante la califique
+      cab = `<h2>¡Gracias por su visita!</h2>`;
+      cuerpo = `<div class="gv-m-qr">
+          <p class="gv-m-pregunta" style="text-align:center">${esc(sc.nombre || 'Visitante')}, ¿nos califica?</p>
+          <p class="gv-m-ayuda" style="text-align:center">Pídale que escanee este código con la cámara de su celular. Toma un minuto.</p>
+          <div class="gv-qr-grande">${qrGrande(sc.url)}</div>
+          <p class="gv-reloj"><i class="fas fa-star" style="color:#f59e0b"></i> Atención · Puntualidad · Instalaciones</p>
+        </div>`;
+      pie = `<button type="button" class="btn-large btn-success gv-m-prim" data-gv="sc-terminar"><i class="fas fa-check"></i> Listo</button>`;
     } else if (sc.modo === 'listo') {
       const v = sc.visita || {};
       cab = `<h2>Visitante registrado</h2>`;
@@ -609,6 +619,13 @@
       if (!r.ok) throw new Error(r.error);
       st.ficha = null; st.error = ''; st.registrando = '';
       if (typeof window.mostrarToast === 'function') window.mostrarToast(accion === 'entrada' ? `Entrada registrada: ${r.visita.nombre}` : `Salida registrada: ${r.visita.nombre}`, 'success');
+      // Salida: QR para que el visitante califique la visita (enlace nuevo que genera el servidor)
+      if (accion === 'salida' && r.calificar) {
+        st.sc = { modo: 'calificar', nombre: r.visita.nombre, url: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}visitas.html#t=${r.calificar}` };
+        pintarModal();
+        const abierto = st.sc;
+        setTimeout(() => { if (st.sc === abierto) cerrarModal(true); }, 3 * 60 * 1000);
+      }
       cargar();
     } catch (e) { st.error = e.message; st.registrando = ''; pintarPrincipal(); }
   }

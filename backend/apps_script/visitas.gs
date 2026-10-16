@@ -127,8 +127,10 @@ function notificarVisita(p) {
       'Aviso de visitas TCONTROL' + tipo + ': ' + visitante + (sinCita ? ' llegó sin cita e' : '') + ' ingresó por portería para visitar a ' + anfitrion + '.' +
       (conEpp ? ' Visita a planta: el guardia verificó su EPP.' : ''));
   } else if (evento === 'concluida') {
+    // El enlace para calificar se genera al registrar la salida (010_visitas_calificacion.sql)
     avisarVisitante_(p, 'Gracias por tu visita',
-      'Gracias por visitar TCONTROL, ' + (p.visitanteNombre || '') + '. Si tienes un minuto, califica tu visita desde tu enlace privado; nos ayuda a mejorar.');
+      'Gracias por visitar TCONTROL, ' + (p.visitanteNombre || '') + '. ¿Nos regalas un minuto? Califica tu visita aquí: ' +
+      (enlaceVisitante || 'tu enlace privado') + ' · Tu opinión nos ayuda a mejorar.');
   } else if (evento === 'calificada') {
     campana('visita_calificada', 'Visita calificada', 'Tu visitante calificó la visita del ' + fecha + '.',
       'El visitante de ' + anfitrion + ' calificó la visita del ' + fecha + '.');
