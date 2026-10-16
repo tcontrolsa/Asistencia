@@ -499,13 +499,15 @@ function doPost(e) {
             timestampStr = String(timestampVal).trim();
           }
 
-          // Regla: Extraer fecha y hora desde TIMESTAMP
-          if (timestampVal) {
+          // FECHA (A) y HORA (F) mandan, igual que la lectura por GET (la que usan el panel y Postgres).
+          // El TIMESTAMP solo completa lo que falte: en registros cargados días después marca cuándo se
+          // cargaron, no el día de la jornada (antes tomaba siempre el TIMESTAMP y los movía de día).
+          if (timestampVal && (!fechaStr || !horaStr)) {
             var rawTs = (timestampVal instanceof Date) ? Utilities.formatDate(timestampVal, tz, 'yyyy-MM-dd HH:mm:ss') : String(timestampVal).trim();
             var parsedTs = parsearTimestampGAS(rawTs);
             if (parsedTs) {
-              fechaStr = parsedTs.fecha;
-              horaStr = parsedTs.hora;
+              if (!fechaStr) fechaStr = parsedTs.fecha;
+              if (!horaStr) horaStr = parsedTs.hora;
               if (!timestampStr) timestampStr = parsedTs.timestampFormatted;
             }
           }
