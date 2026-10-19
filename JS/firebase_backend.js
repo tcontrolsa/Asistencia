@@ -3325,15 +3325,13 @@ window.FirebaseBackend = {
             ayer.setDate(ayer.getDate() - 1);
             const ayerStr = this._hoyStr(ayer);
 
-            if (cacheData.lastSync && !params.force) {
-                console.log("⚡ Usando caché local. Obteniendo solo registros desde:", ayerStr);
-                query = query.where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(ayerStr + 'T00:00:00')));
-            } else {
-                console.log("📥 Obteniendo registros desde Firestore (últimos 60 días):", limiteStr);
-                query = query.where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(limiteStr + 'T00:00:00')));
-                // Limpiar registros antiguos del caché para no mantener registros eliminados/archivados
-                cacheData.registros = {};
-            }
+            // Siempre todo lo que hay en Firestore (60 días): solo guarda lo aún no archivado (uno o dos días,
+            // pocos cientos de documentos). Antes, con caché, solo se pedía "desde ayer" por TIMESTAMP: una
+            // marcación agregada o corregida hoy para un día anterior (p. ej. la salida de "Sin salida" desde
+            // Gestionar) no se volvía a leer y, al recargar, el día volvía a "Por regularizar" hasta archivar.
+            console.log("📥 Obteniendo registros de Firestore (no archivados, últimos 60 días):", limiteStr, cacheData.lastSync ? '' : '(sin caché)');
+            query = query.where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(limiteStr + 'T00:00:00')));
+            cacheData.registros = {};   // lo leído reemplaza la caché: no quedan copias de registros ya archivados o borrados
 
             const regSnap = await query.get();
 
