@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v2.00';
+const CACHE_NAME = 'tcontrol-v2.01';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -22,13 +22,17 @@ const PRECACHE_URLS = [
   './JS/tcontrol_core.js',
   './JS/index_core.js',
   './JS/firebase_backend.js',
+  './JS/credencial_campo.js',
+  './CSS/credencial_campo.css',
   // CDNs críticos (Bootstrap, FontAwesome, Firebase SDKs)
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Outfit:wght@600;800&display=swap',
   'https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js'
+  'https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js',
+  // Credencial de campo: el QR debe generarse sin internet
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'
 ];
 
 // ===== INSTALACIÓN =====
@@ -104,7 +108,7 @@ self.addEventListener('fetch', event => {
       url.hostname.includes('drive.google.com') ||
       url.hostname === '192.168.10.129' ||
       url.hostname.includes('trycloudflare.com') ||
-      url.hostname.includes('cloudflare.com') ||
+      (url.hostname.includes('cloudflare.com') && url.hostname !== 'cdnjs.cloudflare.com') || // cdnjs sí se cachea (paso 4)
       url.port === '2785' ||
       url.port === '8081') {
     // No interceptamos — el navegador maneja directamente

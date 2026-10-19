@@ -8097,6 +8097,8 @@ async function navigateTo(page) {
             renderDesarrolloPage();
         } else if (page === 'visitas') {
             renderVisitasPage();
+        } else if (page === 'carne') {
+            renderCarnePage();
         }
         ajustarLayout();
     };
@@ -8144,6 +8146,23 @@ function renderVisitasPage() {
     const enlace = window.__vsEnlacePendiente || null;
     window.__vsEnlacePendiente = null;
     window.VisitasAnfitrion.montar(cont, { enlace, empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area } });
+}
+
+// Credencial de campo (JS/credencial_campo.js): carné con QR verificable para presentar ante clientes
+function renderCarnePage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `<div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;"><div id="ccCarneApp" class="cc-app"></div></div>`;
+    const cont = document.getElementById('ccCarneApp');
+    if (!window.CredencialCampo || !empleado) {
+        cont.innerHTML = '<div class="glass-card text-center" style="background:white; border-radius:20px; padding:30px;">No se pudo cargar la credencial de campo. Recarga la app.</div>';
+        return;
+    }
+    window.CredencialCampo.montar(cont, {
+        empleado: {
+            id: String(empleado.id), nombre: empleado.nombre, cargo: empleado.cargo, area: empleado.area,
+            foto_url: empleado.foto_url, cedula: empleado.cedula
+        }
+    });
 }
 
 function renderAdminPage() {

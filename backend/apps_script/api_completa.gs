@@ -584,6 +584,12 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(procesarAccesoSeguro(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+
+      // Credencial de campo (credencial_campo.gs): activación con PIN y verificación pública del QR
+      if (typeof ACCIONES_CREDENCIAL_CAMPO !== 'undefined' && ACCIONES_CREDENCIAL_CAMPO.indexOf(data.accion) !== -1) {
+        return ContentService.createTextOutput(JSON.stringify(procesarCredencialCampo(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     }
   } catch(e) {}
   
