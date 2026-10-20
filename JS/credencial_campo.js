@@ -40,9 +40,29 @@
   }
 
   // ---------------------------------------------------------------- perfil para usar sin internet
+  // Basta con la credencial activada: el QR es lo que valida; el perfil completa nombre y foto
   function perfilGuardado(id) {
     const c = leer(id);
-    return c && c.cid && c.perfil ? Object.assign({ id: String(id) }, c.perfil) : null;
+    return c && c.cid && c.secreto ? Object.assign({ id: String(id) }, c.perfil || {}) : null;
+  }
+
+  function idsGuardados() {
+    const ids = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf('tcontrol_carne_') === 0 && perfilGuardado(k.slice(15))) ids.push(k.slice(15));
+      }
+    } catch (e) { }
+    return ids;
+  }
+
+  // Lo que ya trae la app se guarda al instante; la cédula y la foto llegan después (actualizarPerfil)
+  function guardarPerfilBasico(st) {
+    const p = Object.assign({}, st.cred.perfil || {});
+    ['nombre', 'cargo', 'area', 'cedula'].forEach(k => { if (st.emp[k]) p[k] = String(st.emp[k]); });
+    st.cred.perfil = p;
+    guardar(st.emp.id, st.cred);
   }
 
   async function actualizarPerfil(st) {
@@ -110,6 +130,7 @@
     if (!window.crypto || !crypto.subtle) { cont.innerHTML = '<div class="cc-panel">Este navegador no permite generar el código de verificación. Actualiza el navegador o abre la app desde Chrome o Safari.</div>'; return; }
     render(st);
     if (st.cred && enTelefono()) pedirPantallaCompleta();
+    if (st.cred && st.emp.nombre) guardarPerfilBasico(st);
     if (st.cred && navigator.onLine) { sincronizar(st); actualizarPerfil(st); }
   }
 
@@ -159,6 +180,7 @@
       guardar(st.emp.id, st.cred);
       toast('Credencial activada', 'success');
       if (enTelefono()) pedirPantallaCompleta();
+      guardarPerfilBasico(st);
       render(st);
       actualizarPerfil(st);
     });
@@ -428,5 +450,5 @@
     } catch (e) { /* sin red: se queda con lo guardado */ }
   }
 
-  window.CredencialCampo = { montar, perfilGuardado, _codigo: codigo, _enmascarar: enmascarar };
+  window.CredencialCampo = { montar, perfilGuardado, idsGuardados, _codigo: codigo, _enmascarar: enmascarar };
 })();

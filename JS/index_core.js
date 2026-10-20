@@ -4000,8 +4000,30 @@ function renderAuthScreen() {
             </div>
         `;
 
+    ofrecerCarneSinConexion();
     verificarDispositivoConPIN();
     ajustarLayout();
+}
+
+// Sin internet en la pantalla de acceso: ofrecer la credencial de campo guardada en este teléfono
+function ofrecerCarneSinConexion() {
+    if (navigator.onLine || !window.CredencialCampo || typeof window.CredencialCampo.idsGuardados !== 'function') return;
+    const mainContent = document.getElementById('mainContent');
+    const page = mainContent && mainContent.querySelector('.page');
+    if (!page) return;
+    const ids = window.CredencialCampo.idsGuardados();
+    const aviso = document.createElement('div');
+    aviso.className = 'glass-card';
+    aviso.style.cssText = 'max-width: 420px; margin: 0 auto 14px; background: #fff7ed; border: 1.5px solid #fdba74; border-radius: 16px; padding: 14px 16px; color: #9a3412; font-size: 13px; line-height: 1.45;';
+    aviso.innerHTML = ids.length
+        ? `<div style="font-weight: 800; margin-bottom: 4px;"><i class="fas fa-wifi me-1"></i> Sin conexión a internet</div>
+           <div style="margin-bottom: 10px;">Tu credencial de campo funciona sin internet.</div>
+           <button type="button" class="btn w-100" id="btnCarneSinConexion" style="background: #b02a35; color: #fff; border-radius: 12px; font-weight: 700;"><i class="fas fa-id-badge me-1"></i> Mostrar mi credencial</button>`
+        : `<div style="font-weight: 800; margin-bottom: 4px;"><i class="fas fa-wifi me-1"></i> Sin conexión a internet</div>
+           <div>Para usar tu credencial de campo sin internet, ábrela una vez en la pestaña <b>Carné</b> con conexión.</div>`;
+    page.prepend(aviso);
+    const btn = document.getElementById('btnCarneSinConexion');
+    if (btn) btn.addEventListener('click', () => abrirCarneSinConexion(ids[0]));
 }
 
 function authMostrarPaso(paso) {
@@ -8157,6 +8179,7 @@ function abrirCarneSinConexion(empleadoId) {
     showLoading(false);
     empleado = { id: String(empleadoId), nombre: perfil.nombre || '', cargo: perfil.cargo || '', area: perfil.area || '', foto_url: perfil.fotoUrl || '', cedula: perfil.cedula || '' };
     isAuthenticated = true;
+    if (typeof hideSplash === 'function') hideSplash();
     navigateTo('carne');
     return true;
 }
