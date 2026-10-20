@@ -82,28 +82,36 @@
 
 /* ---------- modo presentación: la credencial ocupa toda la pantalla ---------- */
 body.cc-presentando { overflow: hidden; }
+/* Cajas medidas igual con o sin Bootstrap (la app lo carga, verificar.html no) */
+.cc-presentacion, .cc-presentacion *, .cc-presentacion *::before, .cc-presentacion *::after { box-sizing: border-box; }
 .cc-pantalla { position: fixed; inset: 0; z-index: 5000; background: var(--cc-tinta); display: flex; flex-direction: column;
-  overflow-y: auto; overscroll-behavior: contain; }
-.cc-pantalla .cc-carne { flex: 1 0 auto; width: 100%; max-width: 520px; margin: 0 auto; border-radius: 0; box-shadow: none;
+  height: 100%; overflow: hidden; }
+.cc-pantalla .cc-carne { flex: 1 1 auto; min-height: 0; width: 100%; max-width: 520px; margin: 0 auto; border-radius: 0; box-shadow: none;
   display: flex; flex-direction: column; }
-.cc-pantalla .cc-logo { padding-top: calc(env(safe-area-inset-top, 0px) + 12px); }
-.cc-pantalla .cc-cuerpo { flex: 1 0 auto; justify-content: space-evenly; gap: 10px; padding-top: 12px; padding-bottom: 12px;
+.cc-pantalla .cc-logo { flex: none; padding-top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.cc-pantalla .cc-cuerpo { flex: 1 1 auto; min-height: 0; gap: 10px; padding-top: 12px; padding-bottom: 12px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.cc-pantalla .cc-qrbox { flex-direction: column; gap: 8px; padding: 10px; }
-/* el QR toma la altura que sobra para que la credencial quepa sin desplazarse */
-.cc-pantalla .cc-qr { --cc-qr: clamp(140px, min(60vw, calc(100dvh - 630px)), 250px); width: var(--cc-qr); height: var(--cc-qr); }
+.cc-pantalla .cc-cuerpo > * { flex: none; }
+.cc-pantalla .cc-dominio { display: none; }
+/* El recuadro del QR se queda con todo el alto que sobra y el QR se dibuja tan grande como quepa:
+   así la credencial llena la pantalla sin desplazarse, con cualquier fuente o tamaño de teléfono. */
+.cc-pantalla .cc-cuerpo > .cc-qrbox { flex: 1 1 0; min-height: 150px; container-type: size;
+  flex-direction: column; justify-content: center; gap: 8px; padding: 10px; }
+.cc-pantalla .cc-qr { width: 150px; height: 150px; padding: 6px; }
+@supports (height: 1cqh) {
+  .cc-pantalla .cc-qr { --cc-qr: max(96px, min(260px, 100cqw - 8px, 100cqh - 44px)); width: var(--cc-qr); height: var(--cc-qr); }
+}
+.cc-pantalla .cc-qr svg { width: 100%; height: 100%; }
+.cc-pantalla .cc-qrmeta { flex: none; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 10px; row-gap: 4px;
+  text-align: center; width: 100%; line-height: 1.2; }
+.cc-pantalla .cc-qrmeta > span:first-child { display: none; }
+.cc-pantalla .cc-reloj { line-height: 1.1; }
+.cc-pantalla .cc-barra { flex-basis: 100%; }
 @media (max-height: 760px) {
   .cc-pantalla .cc-logo img { height: 62px; }
   .cc-pantalla .cc-id { grid-template-columns: 124px 1fr; }
   .cc-pantalla .cc-foto { width: 124px; height: 152px; }
-  .cc-pantalla .cc-qr { --cc-qr: clamp(130px, min(60vw, calc(100dvh - 560px)), 250px); }
 }
-.cc-pantalla .cc-qr svg { width: 100%; height: 100%; }
-.cc-pantalla .cc-qrmeta { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 10px; row-gap: 4px; text-align: center; width: 100%; }
-.cc-pantalla .cc-qrmeta > span:first-child { display: none; }
-.cc-pantalla .cc-barra { flex-basis: 100%; }
-.cc-pantalla .cc-dominio { flex-basis: 100%; }
-.cc-pantalla .cc-dominio br { display: none; }
 .cc-pantalla .cc-pie { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
 .cc-acciones { position: absolute; z-index: 3; left: 0; right: 0; max-width: 520px; margin: 0 auto; display: flex; justify-content: space-between;
   top: calc(env(safe-area-inset-top, 0px) + 10px);
