@@ -46,12 +46,12 @@
   background-size: 260% 100%; animation: cc-brillo 4.5s linear infinite; }
 @keyframes cc-brillo { from { background-position: 130% 0 } to { background-position: -130% 0 } }
 .cc-logo { background: var(--cc-papel); padding: 12px 16px; display: flex; justify-content: center; }
-.cc-logo img { height: 46px; width: auto; }
+.cc-logo img { height: 80px; width: auto; max-width: 62%; object-fit: contain; }
 .cc-cuerpo { position: relative; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 .cc-cargo { text-align: center; font-weight: 800; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; color: var(--cc-rojo-claro); }
-.cc-id { display: grid; grid-template-columns: 104px 1fr; gap: 14px; align-items: center; }
-.cc-foto { width: 104px; height: 128px; object-fit: cover; border: 2px solid var(--cc-rojo); background: #dfe3e7; display: block; }
-.cc-foto-vacia { display: grid; place-items: center; color: #9aa4ae; font-size: 40px; }
+.cc-id { display: grid; grid-template-columns: 156px 1fr; gap: 14px; align-items: center; }
+.cc-foto { width: 156px; height: 192px; object-fit: cover; border: 2px solid var(--cc-rojo); background: #dfe3e7; display: block; }
+.cc-foto-vacia { display: grid; place-items: center; color: #9aa4ae; font-size: 60px; }
 .cc-quien { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .cc-nombre { font-weight: 800; font-size: 18px; line-height: 1.15; overflow-wrap: anywhere; }
 .cc-area { font-size: 12.5px; color: #aab3bc; }
@@ -79,6 +79,54 @@
 .cc-dominio b { font-weight: 600; white-space: nowrap; }
 .cc-vigencia { text-align: center; font-size: 11.5px; color: #aab3bc; }
 .cc-pie { background: var(--cc-rojo); padding: 10px 14px; font-size: 11px; text-align: center; line-height: 1.5; font-weight: 600; }
+
+/* ---------- modo presentación: la credencial ocupa toda la pantalla ---------- */
+body.cc-presentando { overflow: hidden; }
+.cc-pantalla { position: fixed; inset: 0; z-index: 5000; background: var(--cc-tinta); display: flex; flex-direction: column;
+  overflow-y: auto; overscroll-behavior: contain; }
+.cc-pantalla .cc-carne { flex: 1 0 auto; width: 100%; max-width: 520px; margin: 0 auto; border-radius: 0; box-shadow: none;
+  display: flex; flex-direction: column; }
+.cc-pantalla .cc-logo { padding-top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.cc-pantalla .cc-cuerpo { flex: 1 0 auto; justify-content: space-evenly; gap: 10px; padding-top: 12px; padding-bottom: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.cc-pantalla .cc-qrbox { flex-direction: column; gap: 8px; padding: 10px; }
+/* el QR toma la altura que sobra para que la credencial quepa sin desplazarse */
+.cc-pantalla .cc-qr { --cc-qr: clamp(140px, min(60vw, calc(100dvh - 630px)), 250px); width: var(--cc-qr); height: var(--cc-qr); }
+@media (max-height: 760px) {
+  .cc-pantalla .cc-logo img { height: 62px; }
+  .cc-pantalla .cc-id { grid-template-columns: 124px 1fr; }
+  .cc-pantalla .cc-foto { width: 124px; height: 152px; }
+  .cc-pantalla .cc-qr { --cc-qr: clamp(130px, min(60vw, calc(100dvh - 560px)), 250px); }
+}
+.cc-pantalla .cc-qr svg { width: 100%; height: 100%; }
+.cc-pantalla .cc-qrmeta { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 10px; row-gap: 4px; text-align: center; width: 100%; }
+.cc-pantalla .cc-qrmeta > span:first-child { display: none; }
+.cc-pantalla .cc-barra { flex-basis: 100%; }
+.cc-pantalla .cc-dominio { flex-basis: 100%; }
+.cc-pantalla .cc-dominio br { display: none; }
+.cc-pantalla .cc-pie { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
+.cc-acciones { position: absolute; z-index: 3; left: 0; right: 0; max-width: 520px; margin: 0 auto; display: flex; justify-content: space-between;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); pointer-events: none; }
+.cc-acciones-der { display: flex; gap: 8px; }
+.cc-accion { pointer-events: auto; position: relative; width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(23, 28, 33, .08);
+  color: var(--cc-tinta); font-size: 16px; display: grid; place-items: center; cursor: pointer; }
+.cc-accion:focus-visible { outline: 2px solid var(--cc-rojo); outline-offset: 2px; }
+.cc-accion-alerta::after { content: ""; position: absolute; top: 4px; right: 4px; width: 9px; height: 9px; border-radius: 50%; background: #f59e0b; border: 2px solid var(--cc-papel); }
+.cc-aviso-sup { position: relative; z-index: 2; border-radius: 0; text-align: center; }
+
+/* hoja emergente "Más opciones" */
+.cc-hoja-fondo { position: fixed; inset: 0; z-index: 5100; background: rgba(15, 23, 42, .55); display: flex; align-items: flex-end; justify-content: center; }
+.cc-hoja-fondo[hidden] { display: none; }
+.cc-hoja { width: 100%; max-width: 520px; max-height: 88dvh; overflow-y: auto; overscroll-behavior: contain; background: #f1f5f9;
+  border-radius: 22px 22px 0 0; display: flex; flex-direction: column; gap: 12px;
+  padding: 10px max(14px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 18px) max(14px, env(safe-area-inset-left, 0px));
+  animation: cc-subir .22s ease-out; }
+@keyframes cc-subir { from { transform: translateY(40px); opacity: 0 } to { transform: none; opacity: 1 } }
+.cc-hoja-cab { display: flex; justify-content: space-between; align-items: center; padding: 6px 4px 0; }
+.cc-hoja-cab h3 { margin: 0; font-size: 17px; font-weight: 800; color: #0f172a; }
+.cc-hoja-cerrar { width: 36px; height: 36px; border-radius: 50%; border: 0; background: #e2e8f0; color: #0f172a; font-size: 16px; cursor: pointer; }
+.cc-hoja-cerrar:focus-visible { outline: 2px solid var(--cc-rojo); outline-offset: 2px; }
 
 /* ---------- verificar.html ---------- */
 .vc-body { margin: 0; min-height: 100vh; background: #eef0f2; color: #0f172a; font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.5;
@@ -110,6 +158,6 @@
 .vc-pie { max-width: 440px; margin: 18px auto 0; text-align: center; font-size: 11.5px; color: #64748b; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cc-brillo, .cc-activo::before { animation: none; }
+  .cc-brillo, .cc-activo::before, .cc-hoja { animation: none; }
   .cc-barra i { transition: none; }
 }

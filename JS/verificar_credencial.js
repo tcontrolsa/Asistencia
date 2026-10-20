@@ -42,7 +42,7 @@
           <dt>Empresa</dt><dd>${esc(p.empresa)}</dd>
           ${p.area ? `<dt>Área</dt><dd>${esc(p.area)}</dd>` : ''}
           <dt>Cédula</dt><dd>${esc(p.cedula || '—')}</dd>
-          <dt>Código</dt><dd>${esc(p.codigo)}</dd>
+          <dt>ID de empleado</dt><dd>${esc(p.codigo)}</dd>
           <dt>Consulta</dt><dd>${esc(hora(r.consulta))}</dd>
         </dl>`;
     } else if (r.consulta) {

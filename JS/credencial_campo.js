@@ -63,16 +63,29 @@
   // ---------------------------------------------------------------- montaje
   function montar(cont, opts) {
     const emp = (opts && opts.empleado) || {};
-    const st = { emp, cont, cred: leer(emp.id), verCedula: false, timer: null, wake: null, aviso: '', editandoSangre: false };
+    const st = { emp, cont, cred: leer(emp.id), verCedula: false, timer: null, wake: null, aviso: '', editandoSangre: false, errorSangre: '', hoja: false };
     if (!emp.id) { cont.innerHTML = '<div class="cc-panel">No se pudo cargar tu información. Recarga la app.</div>'; return; }
     if (!window.crypto || !crypto.subtle) { cont.innerHTML = '<div class="cc-panel">Este navegador no permite generar el código de verificación. Actualiza el navegador o abre la app desde Chrome o Safari.</div>'; return; }
     render(st);
+    if (st.cred && enTelefono()) pedirPantallaCompleta();
     if (st.cred && navigator.onLine) sincronizar(st);
   }
 
+  const enTelefono = () => window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+
   function render(st) {
     detener(st);
-    if (!st.cred) return renderActivar(st);
+    if (!st.cred) { salirPresentacion(st); return renderActivar(st); }
+    // La capa va directo en <body>: dentro de .page (will-change: transform) un position:fixed
+    // queda atrapado en la página y no cubre la barra inferior.
+    if (!st.root || !st.root.isConnected) {
+      document.querySelectorAll('.cc-presentacion').forEach(el => el.remove());
+      st.root = document.createElement('div');
+      st.root.className = 'cc-presentacion';
+      document.body.appendChild(st.root);
+    }
+    document.body.classList.add('cc-presentando');
+    st.cont.innerHTML = '';
     renderCarne(st);
     iniciar(st);
   }
@@ -103,6 +116,7 @@
       st.cred = { cid: r.cid, secreto: r.secreto, periodo: r.periodo || 30, emitida: r.emitida, sangre: r.sangre || '', url: r.urlVerificar || URL_VERIFICAR };
       guardar(st.emp.id, st.cred);
       toast('Credencial activada', 'success');
+      if (enTelefono()) pedirPantallaCompleta();
       render(st);
     });
   }
@@ -114,12 +128,25 @@
       ? `<img class="cc-foto" src="${esc(e.foto_url)}" alt="Foto de ${esc(e.nombre)}">`
       : '<div class="cc-foto cc-foto-vacia"><i class="fas fa-user"></i></div>';
     const cedula = st.verCedula ? String(e.cedula || '') : enmascarar(e.cedula);
-    st.cont.innerHTML = `
-      ${st.aviso ? `<div class="cc-aviso" role="alert"><i class="fas fa-triangle-exclamation"></i> ${esc(st.aviso)}</div>` : ''}
-      ${!(e.foto_url && String(e.foto_url).trim()) ? '<div class="cc-aviso"><i class="fas fa-camera"></i> Tu credencial no tiene foto. Súbela desde la pestaña Credencial; sin foto el cliente no puede identificarte.</div>' : ''}
+    const avisos = [
+      st.aviso ? `<div class="cc-aviso" role="alert"><i class="fas fa-triangle-exclamation"></i> ${esc(st.aviso)}</div>` : '',
+      !(e.foto_url && String(e.foto_url).trim()) ? '<div class="cc-aviso"><i class="fas fa-camera"></i> Tu credencial no tiene foto. Súbela desde la pestaña Credencial; sin foto el cliente no puede identificarte.</div>' : ''
+    ].join('');
+    const puedePantallaCompleta = document.fullscreenEnabled && !document.fullscreenElement;
+    // Pantalla de presentación: la credencial cubre la app (barra inferior, campana) y lo demás va en la hoja "Más"
+    st.root.innerHTML = `
+      <div class="cc-pantalla">
+      <div class="cc-acciones">
+        <button type="button" class="cc-accion" id="ccSalir" aria-label="Salir de la credencial"><i class="fas fa-arrow-left"></i></button>
+        <span class="cc-acciones-der">
+          ${puedePantallaCompleta ? '<button type="button" class="cc-accion" id="ccCompleta" aria-label="Pantalla completa"><i class="fas fa-expand"></i></button>' : ''}
+          <button type="button" class="cc-accion${avisos ? ' cc-accion-alerta' : ''}" id="ccMas" aria-label="Más opciones" aria-haspopup="dialog"><i class="fas fa-ellipsis"></i></button>
+        </span>
+      </div>
       <article class="cc-carne" aria-label="Credencial de campo">
         <div class="cc-brillo" aria-hidden="true"></div>
         <header class="cc-logo"><img src="./assets/images/Logotipo T Control.png" alt="TCONTROL · Tecnología en control industrial"></header>
+        ${st.aviso ? `<div class="cc-aviso cc-aviso-sup" role="alert"><i class="fas fa-triangle-exclamation"></i> ${esc(st.aviso)}</div>` : ''}
         <div class="cc-cuerpo">
           <div class="cc-cargo">${esc(e.cargo || 'COLABORADOR')}</div>
           <div class="cc-id">
@@ -135,7 +162,7 @@
           </div>
           <dl class="cc-datos">
             <div><dt>Cédula</dt><dd><button type="button" class="cc-ced" id="ccCedula" aria-label="${st.verCedula ? 'Ocultar' : 'Mostrar'} cédula completa">${esc(cedula || '—')} <i class="fas fa-${st.verCedula ? 'eye-slash' : 'eye'}"></i></button></dd></div>
-            <div><dt>Código</dt><dd>${esc(e.id)}</dd></div>
+            <div><dt>ID de empleado</dt><dd>${esc(e.id)}</dd></div>
             <div><dt>Empresa</dt><dd>${esc(EMPRESA.nombre)}</dd></div>
             <div><dt>Emitida</dt><dd>${esc(fechaCorta(c.emitida))}</dd></div>
           </dl>
@@ -146,34 +173,76 @@
               <span class="cc-reloj" id="ccReloj">--:--:--</span>
               <span>Nuevo código en <b id="ccSeg">--</b> s</span>
               <div class="cc-barra"><i id="ccBarra"></i></div>
-              <span class="cc-dominio">Verifique solo en<br><b>asistencia.tcontrolsa.com</b></span>
-            </div>
+                          </div>
           </div>
           <div class="cc-vigencia">Válida mientras sea colaborador activo de ${esc(EMPRESA.nombre)}</div>
         </div>
         <footer class="cc-pie">${esc(EMPRESA.nombre)}<br>${esc(EMPRESA.direccion)}<br>Verificación telefónica: ${esc(EMPRESA.telefono)}</footer>
       </article>
+      </div>
 
-      <section class="cc-panel cc-sangre-panel" id="ccSangrePanel">${sangreHtml(st)}</section>
+      <div class="cc-hoja-fondo" id="ccHojaFondo" ${st.hoja ? '' : 'hidden'}>
+        <section class="cc-hoja" role="dialog" aria-modal="true" aria-labelledby="ccHojaTitulo">
+          <div class="cc-hoja-cab">
+            <h3 id="ccHojaTitulo">Más opciones</h3>
+            <button type="button" class="cc-hoja-cerrar" id="ccHojaCerrar" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>
+          </div>
+          ${avisos}
+          <section class="cc-panel cc-sangre-panel" id="ccSangrePanel">${sangreHtml(st)}</section>
+          <section class="cc-panel cc-ayuda">
+            <h4>Cómo presentarla</h4>
+            <ol>
+              <li>Abre la pestaña Carné y muestra o entrega el teléfono al guardia.</li>
+              <li>El guardia escanea el QR con la cámara de su teléfono y ve tu foto y tu estado en la página de Tcontrol.</li>
+              <li>Si no puede escanear, puede llamar al ${esc(EMPRESA.telefono)} y dar tu ID de empleado ${esc(e.id)}.</li>
+            </ol>
+            <p class="cc-muted">Una captura de pantalla no sirve: el código vence a los 30 segundos.</p>
+            <button type="button" class="cc-link" id="ccDesactivar">Quitar la credencial de este teléfono</button>
+          </section>
+        </section>
+      </div>`;
 
-      <section class="cc-panel cc-ayuda">
-        <h4>Cómo presentarla</h4>
-        <ol>
-          <li>Abre esta pestaña y entrega el teléfono o muéstralo al guardia.</li>
-          <li>El guardia escanea el QR con la cámara de su teléfono y ve tu foto y tu estado en la página de Tcontrol.</li>
-          <li>Si no puede escanear, puede llamar al ${esc(EMPRESA.telefono)} y dar tu código ${esc(e.id)}.</li>
-        </ol>
-        <p class="cc-muted">Una captura de pantalla no sirve: el código vence a los 30 segundos.</p>
-        <button type="button" class="cc-link" id="ccDesactivar">Quitar la credencial de este teléfono</button>
-      </section>`;
-
-    st.cont.querySelector('#ccCedula').addEventListener('click', () => { st.verCedula = !st.verCedula; render(st); });
-    st.cont.querySelector('#ccDesactivar').addEventListener('click', () => {
-      const b = st.cont.querySelector('#ccDesactivar');
+    const $ = sel => st.root.querySelector(sel);
+    $('#ccCedula').addEventListener('click', () => { st.verCedula = !st.verCedula; render(st); });
+    $('#ccSalir').addEventListener('click', () => {
+      salirPresentacion(st);
+      if (typeof window.navigateTo === 'function') window.navigateTo('home');
+    });
+    const completa = $('#ccCompleta');
+    if (completa) completa.addEventListener('click', () => pedirPantallaCompleta().then(() => render(st)));
+    const abrirHoja = abierta => {
+      st.hoja = abierta;
+      $('#ccHojaFondo').hidden = !abierta;
+      if (abierta) $('#ccHojaCerrar').focus(); else $('#ccMas').focus();
+    };
+    $('#ccMas').addEventListener('click', () => abrirHoja(true));
+    $('#ccHojaCerrar').addEventListener('click', () => abrirHoja(false));
+    $('#ccHojaFondo').addEventListener('click', ev => { if (ev.target.id === 'ccHojaFondo') abrirHoja(false); });
+    $('#ccHojaFondo').addEventListener('keydown', ev => { if (ev.key === 'Escape') abrirHoja(false); });
+    $('#ccDesactivar').addEventListener('click', () => {
+      const b = $('#ccDesactivar');
       if (b.dataset.confirmar !== '1') { b.dataset.confirmar = '1'; b.textContent = 'Toca otra vez para confirmar. Tendrás que activarla con tu contraseña.'; return; }
-      borrar(st.emp.id); st.cred = null; render(st);
+      borrar(st.emp.id); st.cred = null; st.hoja = false; render(st);
     });
     enlazarSangre(st);
+  }
+
+  // ---------------------------------------------------------------- modo presentación
+  // La capa .cc-pantalla tapa la app; además se pide pantalla completa al teléfono para ocultar
+  // la barra del navegador (cuando la app se abre desde un enlace y no instalada).
+  function pedirPantallaCompleta() {
+    const el = document.documentElement;
+    if (!document.fullscreenEnabled || document.fullscreenElement || !el.requestFullscreen) return Promise.resolve();
+    return el.requestFullscreen({ navigationUI: 'hide' }).catch(() => { });
+  }
+
+  function salirPresentacion(st) {
+    document.body.classList.remove('cc-presentando');
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => { });
+    if (st) {
+      detener(st);
+      if (st.root) { st.root.remove(); st.root = null; }
+    }
   }
 
   // ---------------------------------------------------------------- tipo de sangre (opcional)
@@ -192,6 +261,7 @@
     return `
       <h4>Tipo de sangre <span class="cc-opcional">opcional</span></h4>
       <form class="cc-form" id="ccFormSangre">
+        ${st.errorSangre ? `<div class="cc-error" role="alert">${esc(st.errorSangre)}</div>` : ''}
         <label for="ccSangreTipo">Tipo</label>
         <select id="ccSangreTipo" required>
           <option value="">Selecciona…</option>
@@ -207,13 +277,13 @@
   }
 
   function enlazarSangre(st) {
-    const panel = st.cont.querySelector('#ccSangrePanel');
+    const panel = st.root && st.root.querySelector('#ccSangrePanel');
     if (!panel) return;
     const repintar = () => { panel.innerHTML = sangreHtml(st); enlazarSangre(st); };
     const editar = panel.querySelector('#ccSangreEditar');
     if (editar) editar.addEventListener('click', () => { st.editandoSangre = true; repintar(); });
     const cancelar = panel.querySelector('#ccSangreCancelar');
-    if (cancelar) cancelar.addEventListener('click', () => { st.editandoSangre = false; repintar(); });
+    if (cancelar) cancelar.addEventListener('click', () => { st.editandoSangre = false; st.errorSangre = ''; repintar(); });
     const quitar = panel.querySelector('#ccSangreQuitar');
     if (quitar) quitar.addEventListener('click', () => enviarSangre(st, '', false));
     const f = panel.querySelector('#ccFormSangre');
@@ -224,12 +294,14 @@
   }
 
   async function enviarSangre(st, tipo, consentimiento) {
-    if (!navigator.onLine) return toast('Necesitas internet para guardar este dato.', 'warning');
+    const fallar = msg => { st.errorSangre = msg; st.editandoSangre = true; render(st); };
+    if (!navigator.onLine) return fallar('Necesitas internet para guardar este dato.');
     const t = await codigo(st.cred.secreto, st.cred.cid, pasoActual(st));
     const r = await post({ accion: 'credencialCampoSangre', cid: st.cred.cid, t, tipo, consentimiento });
-    if (!r || !r.ok) return toast((r && r.error) || 'No se pudo guardar.', 'error');
+    if (!r || !r.ok) return fallar((r && r.error) || 'No se pudo guardar. Revisa tu conexión.');
     st.cred.sangre = r.sangre || '';
     st.editandoSangre = false;
+    st.errorSangre = '';
     guardar(st.emp.id, st.cred);
     toast(consentimiento ? 'Tipo de sangre guardado' : 'Tipo de sangre eliminado', 'success');
     render(st);
@@ -242,19 +314,19 @@
     let ultimoPaso = -1;
     const periodo = st.cred.periodo || 30;
     const tick = async () => {
-      const raiz = st.cont.querySelector('.cc-carne');
-      if (!raiz || !raiz.isConnected) return detener(st); // el usuario cambió de pestaña
+      // La pestaña se reemplazó (otra página de la app): quitar la capa
+      if (!st.cont.isConnected || !st.root || !st.root.isConnected) return salirPresentacion(st);
       const ahora = new Date();
       const s = Math.floor(ahora.getTime() / 1000);
       const resta = periodo - (s % periodo);
-      st.cont.querySelector('#ccReloj').textContent = ahora.toLocaleTimeString('es-EC', { hour12: false });
-      st.cont.querySelector('#ccSeg').textContent = resta;
-      st.cont.querySelector('#ccBarra').style.transform = `scaleX(${resta / periodo})`;
+      st.root.querySelector('#ccReloj').textContent = ahora.toLocaleTimeString('es-EC', { hour12: false });
+      st.root.querySelector('#ccSeg').textContent = resta;
+      st.root.querySelector('#ccBarra').style.transform = `scaleX(${resta / periodo})`;
       const paso = Math.floor(s / periodo);
       if (paso !== ultimoPaso) {
         ultimoPaso = paso;
         const t = await codigo(st.cred.secreto, st.cred.cid, paso);
-        const qr = st.cont.querySelector('#ccQr');
+        const qr = st.root && st.root.querySelector('#ccQr');
         if (qr) qr.innerHTML = qrSvg(`${st.cred.url || URL_VERIFICAR}?c=${st.cred.cid}&t=${t}`);
       }
     };
@@ -280,6 +352,7 @@
       if (!r || !r.ok) return;
       if (r.estado === 'INACTIVO' || r.estado === 'NO_VALIDA') {
         borrar(st.emp.id); st.cred = null;
+        salirPresentacion(st);
         return renderActivar(st, 'Tu credencial fue desactivada por RR. HH. Si es un error, vuelve a activarla con tu contraseña.');
       }
       if (r.estado === 'QR_VENCIDO') {
@@ -290,7 +363,7 @@
         if (r.emitida) st.cred.emitida = r.emitida;
         guardar(st.emp.id, st.cred);
       }
-      if (st.cont.querySelector('.cc-carne') && !st.editandoSangre) render(st);
+      if (st.root && st.root.isConnected && st.cont.isConnected && !st.editandoSangre) render(st);
     } catch (e) { /* sin red: se queda con lo guardado */ }
   }
 
