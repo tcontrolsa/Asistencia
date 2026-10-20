@@ -5,7 +5,7 @@
  * escanea y abre verificar.html, que consulta credencial_campo.gs. El código se calcula aquí sin
  * internet (Web Crypto), así funciona en sitios sin señal; solo el guardia necesita datos.
  *
- * El secreto llega una vez, al activar con el PIN, y se guarda en este teléfono (localStorage).
+ * El secreto llega una vez, al activar con la contraseña de la app, y se guarda en este teléfono (localStorage).
  * Con internet, cada apertura confirma con el servidor que la credencial siga vigente.
  *
  * Uso: window.CredencialCampo.montar(contenedor, { empleado: { id, nombre, cargo, area, foto_url, cedula } })
@@ -86,8 +86,8 @@
         <p>Es el carné que presentas en garita o ante el supervisor del cliente. Tiene un QR que cambia cada 30 segundos; al escanearlo, el cliente confirma con Tcontrol que trabajas con nosotros y ve tu foto registrada.</p>
         <p class="cc-muted">Se activa una sola vez por teléfono. Después funciona sin internet.</p>
         <form class="cc-form" id="ccFormActivar" autocomplete="off">
-          <label for="ccPin">Tu PIN de la app</label>
-          <input id="ccPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" required>
+          <label for="ccPin">Tu contraseña de la app</label>
+          <input id="ccPin" type="password" autocomplete="current-password" required>
           ${error ? `<div class="cc-error" role="alert">${esc(error)}</div>` : ''}
           <button type="submit" class="cc-btn" id="ccBtnActivar"><i class="fas fa-unlock"></i> Activar credencial</button>
         </form>
@@ -170,7 +170,7 @@
     st.cont.querySelector('#ccCedula').addEventListener('click', () => { st.verCedula = !st.verCedula; render(st); });
     st.cont.querySelector('#ccDesactivar').addEventListener('click', () => {
       const b = st.cont.querySelector('#ccDesactivar');
-      if (b.dataset.confirmar !== '1') { b.dataset.confirmar = '1'; b.textContent = 'Toca otra vez para confirmar. Tendrás que activarla con tu PIN.'; return; }
+      if (b.dataset.confirmar !== '1') { b.dataset.confirmar = '1'; b.textContent = 'Toca otra vez para confirmar. Tendrás que activarla con tu contraseña.'; return; }
       borrar(st.emp.id); st.cred = null; render(st);
     });
     enlazarSangre(st);
@@ -280,7 +280,7 @@
       if (!r || !r.ok) return;
       if (r.estado === 'INACTIVO' || r.estado === 'NO_VALIDA') {
         borrar(st.emp.id); st.cred = null;
-        return renderActivar(st, 'Tu credencial fue desactivada por RR. HH. Si es un error, vuelve a activarla con tu PIN.');
+        return renderActivar(st, 'Tu credencial fue desactivada por RR. HH. Si es un error, vuelve a activarla con tu contraseña.');
       }
       if (r.estado === 'QR_VENCIDO') {
         st.aviso = 'La hora de tu teléfono no coincide con la del servidor y el QR no será aceptado. Activa "Fecha y hora automáticas" en los ajustes del teléfono.';
