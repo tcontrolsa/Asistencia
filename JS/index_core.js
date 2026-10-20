@@ -8148,6 +8148,19 @@ function renderVisitasPage() {
     window.VisitasAnfitrion.montar(cont, { enlace, empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area } });
 }
 
+// Arranque sin internet: solo la credencial de campo (el QR se genera en el teléfono).
+// Usa el perfil que credencial_campo.js guardó la última vez que hubo conexión.
+function abrirCarneSinConexion(empleadoId) {
+    const perfil = window.CredencialCampo && window.CredencialCampo.perfilGuardado(empleadoId);
+    if (!perfil) return false;
+    window.__tcCarneSinConexion = true;
+    showLoading(false);
+    empleado = { id: String(empleadoId), nombre: perfil.nombre || '', cargo: perfil.cargo || '', area: perfil.area || '', foto_url: perfil.fotoUrl || '', cedula: perfil.cedula || '' };
+    isAuthenticated = true;
+    navigateTo('carne');
+    return true;
+}
+
 // Credencial de campo (JS/credencial_campo.js): carné con QR verificable para presentar ante clientes
 function renderCarnePage() {
     const mainContent = document.getElementById('mainContent');
@@ -8242,6 +8255,8 @@ async function verificarEstadoInicial() {
         try {
             const data = JSON.parse(sessionData);
             if (data.empleadoId && data.token === deviceToken) {
+                // Sin internet: abrir directo la credencial de campo guardada en el teléfono
+                if (!navigator.onLine && abrirCarneSinConexion(data.empleadoId)) return;
                 showLoading(true);
 
                 // ✨ PARALELO: config + estado + verificación de PIN activo al mismo tiempo
@@ -8317,6 +8332,11 @@ async function verificarEstadoInicial() {
                     }
                     return;
                 }
+
+                // Hay red pero no responde (wifi sin internet, servidor caído): misma salida
+                const errEstado = String((estadoRes && estadoRes.error) || '');
+                if ((!navigator.onLine || /offline|network|fetch|conexi|\bred\b|unavailable|timeout/i.test(errEstado)) &&
+                    abrirCarneSinConexion(data.empleadoId)) return;
             }
         } catch (e) {
             console.error('Error cargando sesión:', e);

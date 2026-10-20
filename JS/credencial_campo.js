@@ -8,6 +8,10 @@
  * El secreto llega una vez, al activar con la contraseña de la app, y se guarda en este teléfono (localStorage).
  * Con internet, cada apertura confirma con el servidor que la credencial siga vigente.
  *
+ * Sin internet: con internet se guarda en el teléfono el perfil (nombre, cargo, área, cédula y la
+ * foto como data:) y index_core.js abre directo esta pestaña con perfilGuardado() si la app arranca
+ * sin conexión.
+ *
  * Uso: window.CredencialCampo.montar(contenedor, { empleado: { id, nombre, cargo, area, foto_url, cedula } })
  */
 (function () {
@@ -33,6 +37,42 @@
   function post(p) {
     if (!window.FirebaseBackend || typeof window.FirebaseBackend._post !== 'function') return Promise.resolve({ ok: false, error: 'Sin conexión con el servidor.' });
     return window.FirebaseBackend._post(p);
+  }
+
+  // ---------------------------------------------------------------- perfil para usar sin internet
+  function perfilGuardado(id) {
+    const c = leer(id);
+    return c && c.cid && c.perfil ? Object.assign({ id: String(id) }, c.perfil) : null;
+  }
+
+  async function actualizarPerfil(st) {
+    const e = st.emp, p = Object.assign({}, st.cred.perfil || {});
+    ['nombre', 'cargo', 'area', 'cedula'].forEach(k => { if (e[k]) p[k] = String(e[k]); });
+    try {
+      // obtenerEstado no trae la cédula: se lee del documento del colaborador
+      if (!e.cedula && window.firebase && firebase.firestore) {
+        const doc = await firebase.firestore().collection('empleados').doc(String(e.id)).get();
+        const ced = doc.exists ? String(doc.data().cedula || '').trim() : '';
+        if (ced) p.cedula = ced;
+      }
+    } catch (err) { }
+    try {
+      if (e.foto_url && e.foto_url !== p.fotoUrl) {
+        const r = await fetch(e.foto_url, { mode: 'cors' });
+        const blob = r.ok ? await r.blob() : null;
+        if (blob && /^image\//.test(blob.type) && blob.size < 300000) {
+          p.foto = await new Promise((ok, mal) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = mal; fr.readAsDataURL(blob); });
+          p.fotoUrl = e.foto_url;
+        }
+      }
+    } catch (err) { /* sin foto guardada: se usa la URL mientras haya internet */ }
+    if (!st.cred) return;
+    st.cred.perfil = p;
+    guardar(e.id, st.cred);
+    if (!e.cedula && p.cedula) {
+      e.cedula = p.cedula;
+      if (st.root && st.root.isConnected && !st.editandoSangre) render(st);
+    }
   }
 
   // Debe coincidir con codigoCred_() de backend/apps_script/credencial_campo.gs
@@ -64,11 +104,13 @@
   function montar(cont, opts) {
     const emp = (opts && opts.empleado) || {};
     const st = { emp, cont, cred: leer(emp.id), verCedula: false, timer: null, wake: null, aviso: '', editandoSangre: false, errorSangre: '', hoja: false };
+    const guardado = st.cred && st.cred.perfil;
+    if (guardado) ['nombre', 'cargo', 'area', 'cedula'].forEach(k => { if (!emp[k] && guardado[k]) emp[k] = guardado[k]; });
     if (!emp.id) { cont.innerHTML = '<div class="cc-panel">No se pudo cargar tu información. Recarga la app.</div>'; return; }
     if (!window.crypto || !crypto.subtle) { cont.innerHTML = '<div class="cc-panel">Este navegador no permite generar el código de verificación. Actualiza el navegador o abre la app desde Chrome o Safari.</div>'; return; }
     render(st);
     if (st.cred && enTelefono()) pedirPantallaCompleta();
-    if (st.cred && navigator.onLine) sincronizar(st);
+    if (st.cred && navigator.onLine) { sincronizar(st); actualizarPerfil(st); }
   }
 
   const enTelefono = () => window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
@@ -118,19 +160,21 @@
       toast('Credencial activada', 'success');
       if (enTelefono()) pedirPantallaCompleta();
       render(st);
+      actualizarPerfil(st);
     });
   }
 
   // ---------------------------------------------------------------- carné
   function renderCarne(st) {
     const e = st.emp, c = st.cred;
-    const foto = e.foto_url && String(e.foto_url).trim()
-      ? `<img class="cc-foto" src="${esc(e.foto_url)}" alt="Foto de ${esc(e.nombre)}">`
+    const fotoSrc = (c.perfil && c.perfil.foto) || (e.foto_url && String(e.foto_url).trim()) || '';
+    const foto = fotoSrc
+      ? `<img class="cc-foto" src="${esc(fotoSrc)}" alt="Foto de ${esc(e.nombre)}">`
       : '<div class="cc-foto cc-foto-vacia"><i class="fas fa-user"></i></div>';
     const cedula = st.verCedula ? String(e.cedula || '') : enmascarar(e.cedula);
     const avisos = [
       st.aviso ? `<div class="cc-aviso" role="alert"><i class="fas fa-triangle-exclamation"></i> ${esc(st.aviso)}</div>` : '',
-      !(e.foto_url && String(e.foto_url).trim()) ? '<div class="cc-aviso"><i class="fas fa-camera"></i> Tu credencial no tiene foto. Súbela desde la pestaña Credencial; sin foto el cliente no puede identificarte.</div>' : ''
+      !fotoSrc ? '<div class="cc-aviso"><i class="fas fa-camera"></i> Tu credencial no tiene foto. Súbela desde la pestaña Credencial; sin foto el cliente no puede identificarte.</div>' : ''
     ].join('');
     const puedePantallaCompleta = document.fullscreenEnabled && !document.fullscreenElement;
     // Pantalla de presentación: la credencial cubre la app (barra inferior, campana) y lo demás va en la hoja "Más"
@@ -206,6 +250,8 @@
     $('#ccCedula').addEventListener('click', () => { st.verCedula = !st.verCedula; render(st); });
     $('#ccSalir').addEventListener('click', () => {
       salirPresentacion(st);
+      // Sin internet el resto de la app no carga: se queda en una pantalla propia
+      if (!navigator.onLine || window.__tcCarneSinConexion) return renderSinConexion(st);
       if (typeof window.navigateTo === 'function') window.navigateTo('home');
     });
     const completa = $('#ccCompleta');
@@ -225,6 +271,21 @@
       borrar(st.emp.id); st.cred = null; st.hoja = false; render(st);
     });
     enlazarSangre(st);
+  }
+
+  function renderSinConexion(st) {
+    st.cont.innerHTML = `
+      <div class="cc-panel cc-activar">
+        <div class="cc-activar-ico"><i class="fas fa-wifi"></i></div>
+        <h3>Sin conexión a internet</h3>
+        <p>Tu credencial de campo funciona sin internet. El resto de la app necesita conexión.</p>
+        <div class="cc-fila" style="justify-content:center">
+          <button type="button" class="cc-btn" id="ccVolverCarne"><i class="fas fa-id-badge"></i> Mostrar credencial</button>
+          <button type="button" class="cc-btn cc-btn-sec" id="ccReintentar"><i class="fas fa-rotate"></i> Reintentar</button>
+        </div>
+      </div>`;
+    st.cont.querySelector('#ccVolverCarne').addEventListener('click', () => { if (enTelefono()) pedirPantallaCompleta(); render(st); });
+    st.cont.querySelector('#ccReintentar').addEventListener('click', () => window.location.reload());
   }
 
   // ---------------------------------------------------------------- modo presentación
@@ -367,5 +428,5 @@
     } catch (e) { /* sin red: se queda con lo guardado */ }
   }
 
-  window.CredencialCampo = { montar, _codigo: codigo, _enmascarar: enmascarar };
+  window.CredencialCampo = { montar, perfilGuardado, _codigo: codigo, _enmascarar: enmascarar };
 })();
