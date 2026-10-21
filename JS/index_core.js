@@ -2474,11 +2474,53 @@ async function procederConRegistro() {
         distancia_m: window._ubicacion ? window._ubicacion.dist : null
     };
 
-    const ahora = new Date();
-    const horaActual = formatearHora(ahora);
-    const horaActual24 = formatearHora24(ahora);
+    // ---- Confirmación real: el éxito solo se muestra cuando el servidor confirmó el guardado ----
+    // Antes la pantalla "¡Inicio de Jornada!" salía al instante y luego se guardaba: con mala señal, o si
+    // cerraban la app, la marcación se perdía aunque el colaborador vio "registrado" (quejas de oct/2026).
+    const tipoReg = empleado.tipoRegistro;
+    const inicioIntento = new Date();
+    const evBase = {
+        intento: `${empleado.id}_${inicioIntento.getTime().toString(36)}`,
+        empleadoId: String(empleado.id), nombre: empleado.nombre || '', tipo: tipoReg, modo: currentMode,
+        fecha: getLocalHoyStr(inicioIntento), dispositivo: deviceToken || '', dispositivo_ts: inicioIntento.toISOString(),
+        en_linea: navigator.onLine, precision_gps: datos.precision_gps, distancia_m: datos.distancia_m
+    };
+    bitacoraIntento({ ...evBase, fase: 'inicio' });
 
-    if (empleado.tipoRegistro === 'ENTRADA') {
+    if (!navigator.onLine) {
+        bitacoraIntento({ ...evBase, fase: 'sin_conexion', error: 'Teléfono sin conexión a internet' });
+        mostrarFalloMarcacion(tipoReg, 'Tu teléfono no tiene conexión a internet.', evBase.intento);
+        return;
+    }
+
+    mostrarGuardandoMarcacion(tipoReg);
+    let res;
+    try {
+        res = await conTiempoLimite(guardarRegistroAPI(datos), 25000);
+    } catch (e) {
+        res = { error: e && e.message === 'TIEMPO' ? 'La conexión está muy lenta y no se pudo confirmar el guardado.' : 'Error de conexión: ' + ((e && e.message) || e) };
+    }
+    // Reintento después de un corte: si la marcación anterior sí llegó, se toma como guardada
+    if (res && res.error && /Ya registraste tu/i.test(res.error)) {
+        const previa = await marcacionDeHoy(tipoReg);
+        if (previa) res = { ok: true, id: previa.id, hora: previa.hora, yaExistia: true };
+    }
+    ocultarGuardandoMarcacion();
+    if (!res || res.error) {
+        const motivo = String((res && res.error) || 'El servidor no respondió.');
+        bitacoraIntento({ ...evBase, fase: 'error', error: motivo.slice(0, 200) });
+        mostrarFalloMarcacion(tipoReg, motivo, evBase.intento);
+        return;
+    }
+    bitacoraIntento({ ...evBase, fase: 'guardado', registro: res.id || '', hora_servidor: res.hora || '' });
+
+    const ahora = new Date();
+    const horaActual = res.hora ? String(res.hora).slice(0, 5) : formatearHora(ahora);
+    const horaActual24 = res.hora ? String(res.hora).slice(0, 5) : formatearHora24(ahora);
+    const comprobante = window.FirebaseBackend && res.id ? window.FirebaseBackend.comprobanteMarcacion(res.id) : '';
+    guardarComprobanteLocal({ codigo: comprobante, tipo: tipoReg, fecha: res.fecha || getLocalHoyStr(ahora), hora: horaActual, id: res.id || '' });
+
+    if (tipoReg === 'ENTRADA') {
         estado.tieneEntrada = true;
         estado.horaEntrada = horaActual24;
         estado.almuerzo = empleado.almuerzo;
@@ -2498,7 +2540,7 @@ async function procederConRegistro() {
     let transIcon = "attendance";
     let transDetalles = ["Hora exacta registrada", "Ubicación GPS confirmada"];
 
-    if (empleado.tipoRegistro === 'ENTRADA') {
+    if (tipoReg === 'ENTRADA') {
         transTitulo = "¡Inicio de Jornada!";
         transSub = `¡Bienvenido(a)! Turno iniciado con éxito • ${horaActual}`;
         transIcon = "entrada";
@@ -2507,7 +2549,7 @@ async function procederConRegistro() {
             "Hora de entrada registrada (" + horaActual + ")",
             empleado.almuerzo === 'SI' ? "Almuerzo en planta confirmado" : "Ubicación confirmada"
         ];
-    } else if (empleado.tipoRegistro === 'SALIDA') {
+    } else if (tipoReg === 'SALIDA') {
         transTitulo = "¡Fin de Jornada!";
         transSub = `¡Excelente trabajo hoy! Que tengas buen descanso • ${horaActual}`;
         transIcon = "salida";
@@ -2525,46 +2567,139 @@ async function procederConRegistro() {
         transSub = `${empleado.razon_permiso || 'Permiso'} • ${horaActual}`;
         transIcon = "permiso";
     }
+    if (comprobante) transDetalles = [...transDetalles.slice(0, 2), `Comprobante: ${comprobante}`];
 
-    // ⚡ MOSTRAR EL SPLASH INMEDIATAMENTE (0ms DE RETARDO TRAS EL CLIC)
-    const splashPromise = mostrarSplashTransicion({
+    // Limpiar variables de razón de salida, entrada y permisos
+    razonSalidaTemprana = null;
+    detalleRazonSalida = null;
+    razonEntradaTardia = null;
+    detalleRazonEntrada = null;
+    esPermisoIntermedio = false;
+    razonPermiso = null;
+
+    await mostrarSplashTransicion({
         titulo: transTitulo,
         nombreEmpleado: empleado.nombre || "",
         subtitulo: transSub,
         icono: transIcon,
         detalles: transDetalles,
-        duracion: 2800,
+        duracion: 3500,
         onPreExit: async () => {
             await obtenerRegistrosEmpleado();
             if (currentPage === 'home') renderHomePage();
             if (currentPage === 'history') renderHistoryPage();
         }
     });
+}
 
+// ---- Apoyo de la confirmación real de marcaciones ----
+function conTiempoLimite(promesa, ms) {
+    return Promise.race([promesa, new Promise((_, rechazar) => setTimeout(() => rechazar(new Error('TIEMPO')), ms))]);
+}
+
+// Bitácora inmutable de intentos (colección 'logs'). Si no hay red, queda en el teléfono y se sube después.
+const CLAVE_BITACORA = 'tcontrol_bitacora_pendiente';
+function bitacoraIntento(ev) {
+    let cola = [];
+    try { cola = JSON.parse(localStorage.getItem(CLAVE_BITACORA) || '[]'); } catch (e) { }
+    cola.push(ev);
+    try { localStorage.setItem(CLAVE_BITACORA, JSON.stringify(cola.slice(-200))); } catch (e) { }
+    enviarBitacoraPendiente();
+}
+let _enviandoBitacora = false;
+async function enviarBitacoraPendiente() {
+    if (_enviandoBitacora || !navigator.onLine || !window.FirebaseBackend || !window.FirebaseBackend.registrarIntentoMarcacion) return;
+    _enviandoBitacora = true;
     try {
-        const res = await guardarRegistroAPI(datos);
-
-        if (res && res.error) {
-            const overlay = document.getElementById('transitionSplashOverlay');
-            if (overlay) overlay.remove();
-            mostrarToast(res.error, 'error');
-            return;
+        let cola = [];
+        try { cola = JSON.parse(localStorage.getItem(CLAVE_BITACORA) || '[]'); } catch (e) { }
+        while (cola.length) {
+            try { await conTiempoLimite(window.FirebaseBackend.registrarIntentoMarcacion(cola[0]), 15000); }
+            catch (e) { if (!/permission|exists|PERMISSION/i.test(String(e && e.message))) break; }  // ya existía: se descarta
+            cola.shift();
+            try { localStorage.setItem(CLAVE_BITACORA, JSON.stringify(cola)); } catch (e) { }
         }
+    } finally { _enviandoBitacora = false; }
+}
+window.addEventListener('online', enviarBitacoraPendiente);
+setTimeout(enviarBitacoraPendiente, 5000);
 
-        await splashPromise;
-
-        // Limpiar variables de razón de salida, entrada y permisos
-        razonSalidaTemprana = null;
-        detalleRazonSalida = null;
-        razonEntradaTardia = null;
-        detalleRazonEntrada = null;
-        esPermisoIntermedio = false;
-        razonPermiso = null;
-    } catch (error) {
-        const overlay = document.getElementById('transitionSplashOverlay');
-        if (overlay) overlay.remove();
-        mostrarToast('Error al registrar: ' + error.message, 'error');
+// Comprobante visible en el inicio, debajo de la hora: del registro guardado (o del último confirmado en este teléfono)
+function comprobanteHoyHtml(tipo, reg) {
+    let codigo = '';
+    const id = reg && (reg.id || getVal(reg, 'id', -1));
+    if (id && !String(id).startsWith('arch_') && window.FirebaseBackend) codigo = window.FirebaseBackend.comprobanteMarcacion(id);
+    if (!codigo) {
+        try {
+            const hoy = getLocalHoyStr(new Date());
+            const c = JSON.parse(localStorage.getItem(`tcontrol_comprobantes_${empleado.id}`) || '[]').find(x => x.fecha === hoy && x.tipo === tipo);
+            if (c) codigo = c.codigo;
+        } catch (e) { }
     }
+    return codigo ? `<div style="font-size: 10px; font-weight: 700; color: #64748b; margin-top: 2px; letter-spacing: .3px;" title="Comprobante de tu marcación"><i class="fas fa-receipt"></i> ${codigo}</div>` : '';
+}
+
+function guardarComprobanteLocal(c) {
+    if (!c || !c.codigo) return;
+    try {
+        const k = `tcontrol_comprobantes_${empleado.id}`;
+        const lista = JSON.parse(localStorage.getItem(k) || '[]');
+        lista.unshift(c);
+        localStorage.setItem(k, JSON.stringify(lista.slice(0, 40)));
+    } catch (e) { }
+}
+
+// Marcación de hoy del tipo dado (para reconocer un reintento que ya había llegado)
+async function marcacionDeHoy(tipo) {
+    try {
+        await obtenerRegistrosEmpleado(true);
+        const hoy = getLocalHoyStr(new Date());
+        const lista = (registrosCompletos || []).filter(r => (getVal(r, 'fecha', 0) || r.fecha) === hoy && String(getVal(r, 'tipo', 3) || r.tipo).toUpperCase() === tipo);
+        const r = lista[lista.length - 1];
+        return r ? { id: r.id || '', hora: getVal(r, 'hora', 5) || r.hora || '' } : null;
+    } catch (e) { return null; }
+}
+
+function mostrarGuardandoMarcacion(tipo) {
+    document.getElementById('overlayGuardandoMarcacion')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'overlayGuardandoMarcacion';
+    ov.style.cssText = 'position: fixed; inset: 0; z-index: 99998; background: rgba(15,23,42,.65); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 16px;';
+    ov.innerHTML = `<div style="background: #fff; border-radius: 20px; padding: 26px 24px; max-width: 320px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,.25);">
+        <div class="spinner-border text-danger" role="status" style="width: 2.6rem; height: 2.6rem;"></div>
+        <div style="font-weight: 800; color: #0f172a; margin-top: 14px; font-size: 16px;">Guardando tu ${tipo === 'SALIDA' ? 'salida' : 'entrada'}…</div>
+        <div style="font-size: 12.5px; color: #64748b; margin-top: 6px; line-height: 1.45;">No cierres la app hasta ver la confirmación con tu comprobante.</div></div>`;
+    document.body.appendChild(ov);
+}
+function ocultarGuardandoMarcacion() { document.getElementById('overlayGuardandoMarcacion')?.remove(); }
+
+function mostrarFalloMarcacion(tipo, motivo, intento) {
+    document.getElementById('modalFalloMarcacion')?.remove();
+    const que = tipo === 'SALIDA' ? 'SALIDA' : 'ENTRADA';
+    const m = document.createElement('div');
+    m.id = 'modalFalloMarcacion';
+    m.style.cssText = 'position: fixed; inset: 0; z-index: 99999; background: rgba(15,23,42,.75); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px;';
+    m.innerHTML = `<div style="background: #fff; border-radius: 20px; max-width: 400px; width: 100%; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,.3);">
+        <div style="background: linear-gradient(135deg,#991b1b,#dc2626); color: #fff; padding: 18px 20px; text-align: center;">
+            <div style="font-size: 34px; line-height: 1;"><i class="fas fa-circle-xmark"></i></div>
+            <div style="font-size: 18px; font-weight: 900; margin-top: 8px;">TU ${que} NO SE GUARDÓ</div>
+        </div>
+        <div style="padding: 16px 20px 20px; font-size: 13.5px; color: #334155; line-height: 1.5;">
+            <p style="margin: 0 0 8px;"><strong>Motivo:</strong> ${escapeHtml(motivo || 'No se pudo confirmar el guardado.')}</p>
+            <p style="margin: 0 0 8px;">Revisa tu conexión (datos móviles o Wi-Fi) y toca <strong>Reintentar</strong>. Solo cuenta como registrada cuando veas la confirmación con tu <strong>comprobante</strong>.</p>
+            <p style="margin: 0; color: #92400e; font-weight: 700;"><i class="fas fa-shield-alt"></i> Si no se soluciona, registra en la <strong>terminal del guardia</strong>.</p>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #94a3b8;">Este intento quedó anotado (${escapeHtml(intento || '')}).</p>
+            <button type="button" data-fm="reintentar" style="width: 100%; margin-top: 14px; padding: 13px; border-radius: 12px; border: none; background: #dc2626; color: #fff; font-weight: 800; font-size: 14px;"><i class="fas fa-rotate-right"></i> Reintentar</button>
+            <button type="button" data-fm="cerrar" style="width: 100%; margin-top: 8px; padding: 11px; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #fff; color: #334155; font-weight: 700;">Cerrar</button>
+        </div></div>`;
+    m.addEventListener('click', e => {
+        const b = e.target.closest('[data-fm]');
+        if (!b) return;
+        m.remove();
+        if (b.dataset.fm === 'reintentar') { empleado.tipoRegistro = tipo; procederConRegistro(); }
+        else if (currentPage === 'home') renderHomePage();
+    });
+    document.body.appendChild(m);
 }
 
 function horaLimiteAlmuerzoPasada() {
@@ -4792,12 +4927,12 @@ function renderHomePage() {
                             <div class="status-card unified" style="width: 100%; display: flex; flex-direction: row !important; align-items: center; justify-content: space-around; padding: 12px 16px; border-radius: 14px;">
                                 <div class="unified-item" style="flex: 1; text-align: center;">
                                     <div class="unified-label" style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">ENTRADA</div>
-                                    <div class="unified-value ${tieneEntrada ? 'success' : 'pending'}" style="font-size: 17px; font-weight: 800; margin-top: 2px;">${horaEntradaMostrar}</div>
+                                    <div class="unified-value ${tieneEntrada ? 'success' : 'pending'}" style="font-size: 17px; font-weight: 800; margin-top: 2px;">${horaEntradaMostrar}</div>${tieneEntrada ? comprobanteHoyHtml('ENTRADA', entradaHoyReg) : ''}
                                 </div>
                                 <div class="unified-divider" style="width: 1px; height: 32px; background: #e2e8f0; margin: 0 10px;"></div>
                                 <div class="unified-item" style="flex: 1; text-align: center;">
                                     <div class="unified-label" style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">SALIDA</div>
-                                    <div class="unified-value ${tieneSalida ? 'success' : 'pending'}" style="font-size: 17px; font-weight: 800; margin-top: 2px;">${horaSalidaMostrar}</div>
+                                    <div class="unified-value ${tieneSalida ? 'success' : 'pending'}" style="font-size: 17px; font-weight: 800; margin-top: 2px;">${horaSalidaMostrar}</div>${tieneSalida ? comprobanteHoyHtml('SALIDA', salidaHoyReg) : ''}
                                 </div>
                             </div>
                         </div>

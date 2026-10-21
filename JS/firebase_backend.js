@@ -1358,7 +1358,8 @@ window.FirebaseBackend = {
         // además una fila inmediata en REGISTROS: las vacaciones quedaban en dos hojas y, si la ausencia
         // se borraba el mismo día, la fila de la hoja quedaba huérfana.
 
-        return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})` };
+        // id del documento: base del comprobante que ve el colaborador (comprobanteMarcacion)
+        return { ok: true, msg: `${data.tipo} registrado con éxito (${modo})`, id: idDocumento, fecha: fechaStr, hora: horaStr };
     },
 
     // ---------------------------------------------------------------- permiso de campo
@@ -4448,6 +4449,41 @@ window.FirebaseBackend = {
             console.error("Error in registrarLog:", e);
             return { error: e.message };
         }
+    },
+
+    // Comprobante de una marcación: se deriva del id del documento (empleado_TIPO_fecha_hhmmss), así la app,
+    // el panel y cualquier revisión llegan al mismo código. Ej.: E-0731-K7QZ (Entrada a las 07:31).
+    comprobanteMarcacion(id) {
+        const s = String(id || '');
+        const m = s.match(/_([A-Z_]+)_\d{4}-\d{2}-\d{2}_(\d{2})(\d{2})/);
+        let h = 5381;
+        for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+        const letra = m ? (/SALIDA/.test(m[1]) ? 'S' : /ENTRADA/.test(m[1]) ? 'E' : m[1].slice(-1)) : 'M';
+        return `${letra}-${m ? m[2] + m[3] : '0000'}-${h.toString(36).toUpperCase().slice(-4).padStart(4, '0')}`;
+    },
+
+    // ---------------------------------------------------------------- bitácora de intentos de marcación
+    // Cada toque de "Registrar" deja eventos en 'logs' (colección de solo creación: no se editan ni
+    // borran desde la app). Fases: inicio → guardado | error | sin_conexion. Sirve de prueba ante un
+    // reclamo: si no hay intento, no hubo marcación; si hay error, se ve el motivo y la hora.
+    async registrarIntentoMarcacion(ev) {
+        const id = `im_${String(ev.intento || '').replace(/[^A-Za-z0-9_-]/g, '')}_${String(ev.fase || 'evento').replace(/[^a-z_]/g, '')}`;
+        await db.collection('logs').doc(id).set({
+            ...ev,
+            tipo_log: 'intento_marcacion',
+            empleadoId: String(ev.empleadoId || ''),
+            servidor: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return { ok: true };
+    },
+
+    async obtenerIntentosMarcacion(params) {
+        const snap = await db.collection('logs').where('empleadoId', '==', String(params.empleadoId || '')).get();
+        const desde = String(params.desde || '');
+        return snap.docs.map(d => d.data())
+            .filter(x => x.tipo_log === 'intento_marcacion' && (!desde || String(x.fecha || '') >= desde))
+            .map(x => ({ ...x, servidor: x.servidor && x.servidor.toDate ? x.servidor.toDate().toISOString() : '' }))
+            .sort((a, b) => String(a.dispositivo_ts || '').localeCompare(String(b.dispositivo_ts || '')));
     },
 
     async registrarLogWhatsApp(params) {

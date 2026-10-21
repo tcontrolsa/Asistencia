@@ -6493,6 +6493,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             </button>
             ${botonCampoAutorizadoHtml(e)}
             ${botonTeletrabajoHtml(e)}
+            <button class="btn" onclick="window.verBitacoraMarcaciones('${e.id}')" title="Intentos de marcación desde la app y sus resultados" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border:1.5px solid #94a3b8; background:#f8fafc; color:#334155;">
+              <i class="fas fa-clipboard-list"></i> Bitácora de marcaciones
+            </button>
           </div>
         </div>
         
@@ -9338,6 +9341,66 @@ window.cambiarTeletrabajo = async function (empId) {
   } catch (err) {
     mostrarToast('No se pudo guardar: ' + (err.message || err), 'error');
   }
+};
+
+// Bitácora de marcaciones: cada toque de "Registrar" en la app deja eventos inmutables en 'logs'
+// (inicio → guardado | error | sin_conexion). Permite responder un reclamo "marqué y no se guardó":
+// si no hay intento, no hubo marcación; si hubo error, se ve el motivo. Junto a cada marcación guardada
+// va su comprobante (el mismo código que vio el colaborador en la app).
+window.verBitacoraMarcaciones = async function (empId) {
+  const emp = (empCache || []).find(x => String(x.id) === String(empId));
+  if (!emp || !window.FirebaseBackend) return;
+  document.getElementById('modalBitacoraMarcaciones')?.remove();
+  const m = document.createElement('div');
+  m.id = 'modalBitacoraMarcaciones';
+  m.style.cssText = 'position:fixed; inset:0; z-index:100001; background:rgba(15,23,42,0.6); display:flex; align-items:center; justify-content:center; padding:16px;';
+  m.innerHTML = `<div style="background:white; border-radius:14px; width:100%; max-width:640px; max-height:calc(100vh - 32px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
+      <div style="background:linear-gradient(135deg,#0f172a,#334155); color:white; padding:14px 18px; display:flex; justify-content:space-between; align-items:center;">
+        <div><div style="font-weight:800; font-size:15px;"><i class="fas fa-clipboard-list"></i> Bitácora de marcaciones</div>
+        <div style="font-size:11.5px; opacity:.85;">${escapeHtml(emp.nombre || '')} (${emp.id}) · últimos 15 días</div></div>
+        <button onclick="document.getElementById('modalBitacoraMarcaciones').remove()" style="background:none; border:none; color:white; font-size:22px; cursor:pointer;">&times;</button>
+      </div>
+      <div id="bitacoraCuerpo" style="padding:14px 18px; overflow:auto; font-size:12.5px; color:#334155;"><i class="fas fa-spinner fa-spin"></i> Cargando intentos…</div>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+
+  const desde = window.FirebaseBackend._hoyStr(new Date(Date.now() - 15 * 86400000));
+  let intentos = [];
+  try { intentos = await window.FirebaseBackend.obtenerIntentosMarcacion({ empleadoId: emp.id, desde }); }
+  catch (e) { document.getElementById('bitacoraCuerpo').innerHTML = `<div style="color:#b91c1c;">No se pudo leer la bitácora: ${escapeHtml(e.message || String(e))}</div>`; return; }
+
+  // Agrupa los eventos por intento y por día
+  const porIntento = {};
+  intentos.forEach(ev => { (porIntento[ev.intento] = porIntento[ev.intento] || []).push(ev); });
+  const filas = Object.values(porIntento).map(evs => {
+    const ini = evs.find(e => e.fase === 'inicio') || evs[0];
+    const fin = evs.find(e => e.fase !== 'inicio');
+    return { fecha: ini.fecha || '', ts: ini.dispositivo_ts || '', tipo: ini.tipo, modo: ini.modo, fin, ini };
+  });
+  const regs = (emp.registros || []).filter(r => normalizarFechaStr(r.fecha) >= desde && ['ENTRADA', 'SALIDA'].includes(String(r.tipo).toUpperCase()));
+  const dias = [...new Set([...filas.map(f => f.fecha), ...regs.map(r => normalizarFechaStr(r.fecha))])].filter(Boolean).sort().reverse();
+  const hora = iso => iso ? new Date(iso).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  const estadoHtml = f => {
+    if (!f.fin) return '<span style="color:#b45309; font-weight:800;">⏳ Sin resultado</span> <span style="color:#94a3b8;">(cerró la app o perdió señal antes de terminar)</span>';
+    if (f.fin.fase === 'guardado') return `<span style="color:#15803d; font-weight:800;">✅ Guardado</span>${f.fin.registro ? ` · comprobante <code>${escapeHtml(window.FirebaseBackend.comprobanteMarcacion(f.fin.registro))}</code>` : ''}`;
+    if (f.fin.fase === 'sin_conexion') return '<span style="color:#b91c1c; font-weight:800;">📵 Sin conexión</span> <span style="color:#94a3b8;">(no se registró; se le indicó reintentar)</span>';
+    return `<span style="color:#b91c1c; font-weight:800;">❌ Error</span> <span style="color:#64748b;">${escapeHtml(f.fin.error || '')}</span>`;
+  };
+  const html = dias.map(d => {
+    const fs = filas.filter(f => f.fecha === d).sort((a, b) => a.ts.localeCompare(b.ts));
+    const rs = regs.filter(r => normalizarFechaStr(r.fecha) === d);
+    return `<div style="border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:10px;">
+      <div style="font-weight:800; margin-bottom:6px;">${typeof obtenerNombreDiaMapa === 'function' ? obtenerNombreDiaMapa(d) : ''} ${d.slice(8, 10)}/${d.slice(5, 7)}</div>
+      <div style="font-size:11.5px; color:#475569; margin-bottom:6px;"><strong>Marcaciones guardadas:</strong> ${rs.length ? rs.map(r => `${escapeHtml(r.tipo)} ${escapeHtml(String(r.hora || '').slice(0, 5))}${r.id && !String(r.id).startsWith('arch_') ? ` <code>${escapeHtml(window.FirebaseBackend.comprobanteMarcacion(r.id))}</code>` : ''}${String(r.dispositivo || '').startsWith('DEV_') ? '' : ` <span style="color:#94a3b8;">(${escapeHtml(r.dispositivo || 'manual')})</span>`}`).join(' · ') : '<span style="color:#b91c1c;">ninguna</span>'}</div>
+      ${fs.length ? fs.map(f => `<div style="display:flex; gap:8px; align-items:baseline; padding:3px 0; border-top:1px dashed #f1f5f9;">
+          <span style="min-width:70px; color:#64748b; font-variant-numeric:tabular-nums;">${hora(f.ts)}</span>
+          <span style="min-width:62px; font-weight:700;">${escapeHtml(f.tipo || '')}</span><span>${estadoHtml(f)}</span></div>`).join('')
+        : '<div style="color:#94a3b8;">Sin intentos desde la app este día.</div>'}
+    </div>`;
+  }).join('');
+  document.getElementById('bitacoraCuerpo').innerHTML = (html || '<div style="color:#64748b;">Sin intentos ni marcaciones en los últimos 15 días.</div>') +
+    '<div style="font-size:11px; color:#94a3b8; margin-top:6px;">La bitácora registra desde la versión de la app del 21/10/2026. Cada intento queda con la hora del teléfono y no se puede borrar desde la app.</div>';
 };
 
 // Aviso en Control Diario con las solicitudes de campo pendientes (solo supervisor admin), en tiempo real
