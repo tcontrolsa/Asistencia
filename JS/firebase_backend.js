@@ -3508,14 +3508,11 @@ window.FirebaseBackend = {
             // dentro del histórico también queda vacío y no debe forzar nada)
             const calcUltimoArchivado = () => (archivadosData.registros || []).reduce((m, r) => { const f = this._normFecha(r.fecha); return f && f > m ? f : m; }, '');
             let ultimoArchivado = calcUltimoArchivado();
-            if (huecos.some(f => f > ultimoArchivado) && (horasArchivados > 0.25 || this._promesaArchivados)) {
-                console.warn(`⚠️ Faltan datos de ${huecos.filter(f => f > ultimoArchivado).join(', ')} en la caché del histórico. Actualizando antes de mostrar...`);
-                this._faseCarga('historico_espera', 'Descargando días recién archivados (puede tardar 1-2 min)…');
-                await _fetchArchivados();
-                // La descarga pudo iniciarla otra llamada: tomar lo que dejó en memoria
-                if (Array.isArray(this._cacheArchivadosMemoria) && this._cacheArchivadosMemoria.length) archivadosData.registros = this._cacheArchivadosMemoria;
-                huecos = diasSinDatos();
-                ultimoArchivado = calcUltimoArchivado();
+            // No se espera la descarga (1-2 min, o varios si cae al respaldo de Sheets): el panel abre con lo
+            // que hay, esos días no cuentan como inasistencia y al terminar 'archivadosActualizados' lo redibuja.
+            if (huecos.some(f => f > ultimoArchivado) && horasArchivados > 0.25) {
+                console.warn(`⚠️ Faltan datos de ${huecos.filter(f => f > ultimoArchivado).join(', ')} en la caché del histórico. Actualizando en segundo plano...`);
+                _fetchArchivados();
             }
             // Los días que siguen vacíos no se cuentan como inasistencia de todo el personal (ver supervisor_core)
             window._diasSinDatosAsistencia = new Set(huecos);
@@ -3968,6 +3965,21 @@ window.FirebaseBackend = {
 
     // Registros archivados: PostgREST si hay URL de la base fría; si falla, Sheets.
     // Devuelve el mismo formato que la acción obtenerRegistrosArchivados de Apps Script.
+    // Una página de registros_archivados desde PostgREST (lanza error con .status si la respuesta no es válida)
+    async _paginaArchivados(base, token, q, timeoutMs) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+            const resp = await fetch(`${base}/registros_archivados?${q}`, {
+                headers: { Authorization: 'Bearer ' + token },
+                signal: ctrl.signal
+            });
+            if (resp.status === 401) sessionStorage.removeItem('tcontrol_token_historico');
+            if (!resp.ok) throw Object.assign(new Error('PostgREST HTTP ' + resp.status), { status: resp.status });
+            return await resp.json();
+        } finally { clearTimeout(t); }
+    },
+
     async _obtenerRegistrosArchivados(params = {}, maxRetries = 2, timeoutMs = 20000) {
         let anterior = null, fueToken = false;
         for (let intento = 0; intento < 2; intento++) {
@@ -3978,7 +3990,9 @@ window.FirebaseBackend = {
             fueToken = false;
             try {
                 const token = await this._tokenHistorico();
-                const PAGINA = 20000;
+                // Páginas de 5000 (~2,5 MB): con 20000 (~10 MB) el túnel llegó a cortar la respuesta a la mitad
+                // y todo caía al respaldo de Sheets (minutos). Cada página se reintenta una vez.
+                const PAGINA = 5000;
                 const registros = [];
                 for (let offset = 0; ; offset += PAGINA) {
                     // Solo la hoja REGISTROS (las vacaciones se cargan aparte) y los campos de Apps Script
@@ -3988,26 +4002,20 @@ window.FirebaseBackend = {
                         order: 'id', limit: String(PAGINA), offset: String(offset)
                     });
                     if (params.empleadoId) q.set('empleadoId', 'eq.' + String(params.empleadoId).trim());
-                    const ctrl = new AbortController();
-                    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-                    let resp;
+                    let pagina;
                     try {
-                        resp = await fetch(`${base}/registros_archivados?${q}`, {
-                            headers: { Authorization: 'Bearer ' + token },
-                            signal: ctrl.signal
-                        });
-                    } finally { clearTimeout(t); }
-                    if (resp.status === 401) {
-                        sessionStorage.removeItem('tcontrol_token_historico');
-                        fueToken = true;
+                        pagina = await this._paginaArchivados(base, token, q, timeoutMs);
+                    } catch (e) {
+                        if (e.status === 401) { fueToken = true; throw e; }
+                        console.warn(`Reintentando página ${offset} del histórico:`, e.message || e);
+                        pagina = await this._paginaArchivados(base, token, q, timeoutMs);
                     }
-                    if (!resp.ok) throw new Error('PostgREST HTTP ' + resp.status);
-                    const pagina = await resp.json();
                     for (const r of pagina) {
                         r.lat = r.lat == null ? '' : String(r.lat);
                         r.lng = r.lng == null ? '' : String(r.lng);
                         registros.push(r);
                     }
+                    if (!params.empleadoId) this._faseCarga('historico_progreso', `Descargando histórico: ${registros.length.toLocaleString('es-EC')} registros…`);
                     if (pagina.length < PAGINA) break;
                 }
                 console.log(`⚡ ${registros.length} registros archivados desde PostgreSQL`);

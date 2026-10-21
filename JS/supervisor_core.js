@@ -8847,6 +8847,13 @@ window.addEventListener('progresoCargaPanel', ev => {
     indicadorSincronizacion(estaActualizando);
     return;
   }
+  if (fase === 'historico_progreso' && !estaActualizando) {
+    // Descarga en segundo plano: el chip muestra cuánto lleva
+    const txt = document.querySelector('#btnRefresh .live-txt');
+    const n = (texto.match(/[\d.]+(?= registros)/) || [''])[0];
+    if (txt && n) txt.textContent = `Histórico ${n}…`;
+    return;
+  }
   if (!estaActualizando || !texto) return;
   indicadorSincronizacion(true, texto);
   const sub = $('loaderSubtext');
@@ -9809,6 +9816,8 @@ if ($('supPin')) {
 let _actualizandoArchivadosSup = false;
 window.addEventListener('archivadosActualizados', async () => {
   const sessionStr = localStorage.getItem('SUPERVISOR_SESSION');
+  // Si hay una carga en curso, se encola una más para que tome el histórico recién descargado
+  if (sessionStr && estaActualizando) { cargarDatosCompletos(false, true); return; }
   if (sessionStr && !_actualizandoArchivadosSup && !estaActualizando) {
     _actualizandoArchivadosSup = true;
     try {
