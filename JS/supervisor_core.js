@@ -1417,12 +1417,12 @@ async function cambiarEstadoAlmuerzo(id, estado, fecha) {
 
   // Enviar la petición en segundo plano
   try {
-    const res = await jsonpRequest({
+    const res = await seguirGuardado(jsonpRequest({
       accion: 'actualizarAlmuerzoSupervisor',
       empleadoId: id,
       almuerzo: estado,
       fecha: targetFecha
-    });
+    }));
     if (res && !res.error) {
       mostrarToast('Almuerzo actualizado', 'success');
       // Limpiar caches de la app
@@ -6670,7 +6670,7 @@ window.guardarPermiso = async function (empleadoId, fecha, tipo, valor, comentar
     try {
       let res;
       if (window.FirebaseBackend && window.FirebaseBackend.guardarModalidadSupervisor) {
-        res = await window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad: valor, supervisorId });
+        res = await seguirGuardado(window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad: valor, supervisorId }));
       } else {
         res = await jsonpRequest({
           accion: 'guardarModalidadSupervisor',
@@ -6765,7 +6765,7 @@ window.guardarPermiso = async function (empleadoId, fecha, tipo, valor, comentar
   try {
     let resultado;
     if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
-      resultado = await window.FirebaseBackend.guardarPermisoSupervisor(params);
+      resultado = await seguirGuardado(window.FirebaseBackend.guardarPermisoSupervisor(params));
     } else {
       resultado = await new Promise((resolve, reject) => {
         const cb = 'cb_guardarPermiso_' + Date.now();
@@ -8785,13 +8785,13 @@ window.guardarJustificacion = async function () {
 
   // Perform network request in background
   try {
-    const res = await jsonpRequest({
+    const res = await seguirGuardado(jsonpRequest({
       accion: 'justificarDia',
       empleadoId: empId,
       fecha: fecha,
       razon: razonCompleta,
       supervisor: supervisorName
-    });
+    }));
 
     if (res && res.ok) {
       mostrarToast('Día justificado correctamente', 'success');
@@ -8827,16 +8827,87 @@ window.guardarJustificacion = async function () {
 // ============================================================
 // CARGA DE DATOS
 // ============================================================
+// ========== GUARDADOS CON CONFIRMACIÓN ==========
+// Cada guardado del panel se cuenta hasta que el servidor responde: el chip muestra "Guardando…",
+// la sincronización automática espera (antes el cambio desaparecía y reaparecía) y el navegador avisa
+// si se intenta cerrar la página. Un fallo ya no queda solo en la consola: aviso rojo con Reintentar.
+let _guardadosEnCurso = 0;
+let _recargaTrasGuardados = false;
+
+function _fallaRespuesta(res) {
+  return res && (res.error || res.ok === false) ? String(res.error || res.mensaje || 'el servidor no lo aceptó') : null;
+}
+
+async function seguirGuardado(promesa) {
+  _guardadosEnCurso++;
+  indicadorSincronizacion(estaActualizando);
+  try {
+    return await promesa;
+  } finally {
+    _guardadosEnCurso--;
+    indicadorSincronizacion(estaActualizando);
+    if (!_guardadosEnCurso && _recargaTrasGuardados) {
+      _recargaTrasGuardados = false;
+      cargarDatosCompletos(true, true);
+    }
+  }
+}
+
+function avisoGuardadoFallido(titulo, detalle, reintentar) {
+  const cont = $('toast-container');
+  if (!cont) return;
+  const el = document.createElement('div');
+  el.className = 'toast-msg error toast-accion';
+  el.innerHTML = `<div><i class="fas fa-triangle-exclamation"></i> ${escapeHtml(titulo)}</div>
+    ${detalle ? `<div class="toast-detalle">${escapeHtml(detalle)}</div>` : ''}
+    <div class="toast-botones">${reintentar ? '<button type="button" data-a="r"><i class="fas fa-rotate-right"></i> Reintentar</button>' : ''}<button type="button" data-a="c">Cerrar</button></div>`;
+  el.addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    el.remove();
+    if (b.dataset.a === 'r') reintentar();
+  });
+  cont.appendChild(el);
+}
+
+// Ejecuta en paralelo las partes de un guardado ([nombre, () => promesa]) y confirma solo si todas
+// respondieron bien. Si alguna falla: aviso con las partes que no se guardaron y Reintentar (solo esas).
+async function ejecutarGuardado(titulo, tareas, alFallar, textoExito) {
+  const resultados = await Promise.all(tareas.map(([nombre, run]) =>
+    seguirGuardado(Promise.resolve().then(run))
+      .then(res => ({ nombre, falla: _fallaRespuesta(res) }), err => ({ nombre, falla: (err && err.message) || String(err) }))));
+  const fallidas = tareas.filter((t, i) => resultados[i].falla);
+  if (!fallidas.length) {
+    mostrarToast(textoExito || `✅ ${titulo}: guardado`, 'success');
+    return true;
+  }
+  const detalle = resultados.filter(r => r.falla).map(r => `${r.nombre}: ${r.falla}`).join(' · ');
+  avisoGuardadoFallido(`${titulo}: NO se guardó`, detalle,
+    () => { mostrarToast(`Reintentando: ${titulo}…`, 'info'); ejecutarGuardado(titulo, fallidas, alFallar, textoExito); });
+  if (alFallar) alFallar();
+  return false;
+}
+
+window.addEventListener('beforeunload', ev => {
+  if (_guardadosEnCurso > 0) {
+    ev.preventDefault();
+    ev.returnValue = '';
+  }
+});
+
 // Barra superior y chip "En vivo" mientras el panel trae datos: así nunca parece congelado
 function indicadorSincronizacion(activo, texto) {
   const historico = !!window._sincronizandoHistorico;
-  document.body.classList.toggle('sincronizando-panel', !!activo || historico);
+  const guardando = _guardadosEnCurso > 0;
+  document.body.classList.toggle('sincronizando-panel', !!activo || historico || guardando);
   const chip = $('btnRefresh');
   const txt = chip ? chip.querySelector('.live-txt') : null;
   const icono = $('bgSyncIndicator');
-  if (txt) txt.textContent = activo ? (texto || 'Actualizando…') : (historico ? 'Histórico…' : 'En vivo');
-  if (icono) icono.classList.toggle('hidden', !activo && !historico);
-  if (chip) chip.title = activo ? (texto || 'Actualizando datos…')
+  if (txt) txt.textContent = guardando ? `Guardando${_guardadosEnCurso > 1 ? ' ' + _guardadosEnCurso : ''}…`
+    : activo ? (texto || 'Actualizando…') : (historico ? 'Histórico…' : 'En vivo');
+  if (icono) icono.classList.toggle('hidden', !activo && !historico && !guardando);
+  if (chip) chip.title = guardando ? 'Hay cambios guardándose: no cierres la página hasta que termine'
+    : activo ? (texto || 'Actualizando datos…')
     : historico ? 'Actualizando el histórico en segundo plano (puede tardar 1-2 min); el panel se redibuja al terminar'
       : 'Datos en vivo · última sincronización. Clic para actualizar todo ahora';
 }
@@ -8848,6 +8919,7 @@ window.addEventListener('progresoCargaPanel', ev => {
     return;
   }
   if (fase === 'historico_progreso' && !estaActualizando) {
+    if (_guardadosEnCurso > 0) return;
     // Descarga en segundo plano: el chip muestra cuánto lleva
     const txt = document.querySelector('#btnRefresh .live-txt');
     const n = (texto.match(/[\d.]+(?= registros)/) || [''])[0];
@@ -8867,6 +8939,11 @@ window.addEventListener('progresoCargaPanel', ev => {
 // datos viejos hasta el siguiente refresco): se repite una vez al terminar, con las opciones más fuertes.
 let _recargaPendiente = null;
 async function cargarDatosCompletos(force = false, silencioso = false, forceSheets = false) {
+  // Con guardados en curso, una recarga silenciosa traería datos sin el cambio: se hace al terminar
+  if (silencioso && _guardadosEnCurso > 0) {
+    _recargaTrasGuardados = true;
+    return;
+  }
   if (estaActualizando) {
     const p = _recargaPendiente || (_recargaPendiente = { force: false, forceSheets: false, esperas: [] });
     p.force = p.force || force;
@@ -13938,7 +14015,7 @@ window.guardarModalGestionJornada = async function () {
     const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
     mostrarDetalle(empleadoId, idxSel);
     if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
-    if (typeof mostrarToast === 'function') mostrarToast('✅ Jornada y permisos guardados exitosamente', 'success');
+    mostrarToast('Guardando jornada…', 'info');
 
     // TAREAS DE SINCRONIZACIÓN EN SEGUNDO PLANO
     const backgroundTasks = [];
@@ -13949,13 +14026,13 @@ window.guardarModalGestionJornada = async function () {
     if (esAusenciaCompleta) {
       // Purgar marcaciones huérfanas en Firestore para esa fecha siempre
       if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
-        backgroundTasks.push(window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha).catch(() => {}));
+        backgroundTasks.push(['Limpieza de marcaciones', () => window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha)]);
       }
 
       if (esFechaPasada || yaArchivado) {
         // ACTUALIZAR DIRECTAMENTE EN REGISTROS (SHEETS)
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
-          backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+          backgroundTasks.push(['Ausencia', () => window.FirebaseBackend.actualizarRegistroGeneral({
             empleadoId: empleadoId,
             tipo: mappedTipo,
             fecha: fecha,
@@ -13965,9 +14042,9 @@ window.guardarModalGestionJornada = async function () {
             razon_ausencia: razonFinal,
             quien_justifica: 'Supervisor',
             modo: modalidad
-          }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+          })]);
         } else if (typeof jsonpRequest === 'function') {
-          backgroundTasks.push(jsonpRequest({
+          backgroundTasks.push(['Ausencia', () => jsonpRequest({
             accion: 'actualizarRegistroArchivado',
             empleadoId: empleadoId,
             tipo: mappedTipo,
@@ -13978,27 +14055,27 @@ window.guardarModalGestionJornada = async function () {
             razon_ausencia: razonFinal,
             quien_justifica: 'Supervisor',
             modo: modalidad
-          }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+          })]);
         }
       } else {
         // Fecha actual / futura: guardar en Firestore
         if (window.FirebaseBackend && window.FirebaseBackend.guardarRegistro) {
-          backgroundTasks.push(window.FirebaseBackend.guardarRegistro({
+          backgroundTasks.push(['Ausencia', () => window.FirebaseBackend.guardarRegistro({
             id: empleadoId,
             tipo: mappedTipo,
             fecha_falta: fecha,
             razon_ausencia: razonFinal,
             modo: modalidad
-          }).catch(err => console.warn("Aviso Firestore ausencia:", err)));
+          })]);
         } else if (typeof jsonpRequest === 'function') {
-          backgroundTasks.push(jsonpRequest({
+          backgroundTasks.push(['Ausencia', () => jsonpRequest({
             accion: 'guardarRegistro',
             id: empleadoId,
             tipo: mappedTipo,
             fecha_falta: fecha,
             razon_ausencia: razonFinal,
             modo: modalidad
-          }).catch(err => console.warn("Aviso Sheets ausencia:", err)));
+          })]);
         }
       }
     } else {
@@ -14006,7 +14083,7 @@ window.guardarModalGestionJornada = async function () {
       if (hEntrada && fullTsEntrada) {
         const firestoreDocIdE = (regE && regE.id && !String(regE.id).startsWith('arch_') && !String(regE.id).startsWith('temp_')) ? regE.id : null;
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
-          backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+          backgroundTasks.push(['Entrada', () => window.FirebaseBackend.actualizarRegistroGeneral({
             docId: firestoreDocIdE,
             empleadoId,
             tipo: 'ENTRADA',
@@ -14016,9 +14093,9 @@ window.guardarModalGestionJornada = async function () {
             almuerzo: almuerzoVal,
             modo: modalidad,
             horasExtra: horasExtrasVal
-          }).catch(err => console.warn("Aviso Firestore entrada:", err)));
+          })]);
         } else if (typeof jsonpRequest === 'function') {
-          backgroundTasks.push(jsonpRequest({
+          backgroundTasks.push(['Entrada', () => jsonpRequest({
             accion: 'actualizarRegistroArchivado',
             empleadoId: empleadoId,
             fecha: fecha,
@@ -14028,7 +14105,7 @@ window.guardarModalGestionJornada = async function () {
             modo: modalidad,
             almuerzo: almuerzoVal,
             horasExtra: horasExtrasVal
-          }).catch(err => console.warn("Aviso Sheets entrada:", err)));
+          })]);
         }
       }
 
@@ -14036,7 +14113,7 @@ window.guardarModalGestionJornada = async function () {
       if (hSalida && fullTsSalida) {
         const firestoreDocIdS = (regS && regS.id && !String(regS.id).startsWith('arch_') && !String(regS.id).startsWith('temp_')) ? regS.id : null;
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
-          backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+          backgroundTasks.push(['Salida', () => window.FirebaseBackend.actualizarRegistroGeneral({
             docId: firestoreDocIdS,
             empleadoId,
             tipo: 'SALIDA',
@@ -14044,9 +14121,9 @@ window.guardarModalGestionJornada = async function () {
             campo: 'timestamp',
             valor: fullTsSalida,
             modo: modalidad
-          }).catch(err => console.warn("Aviso Firestore salida:", err)));
+          })]);
         } else if (typeof jsonpRequest === 'function') {
-          backgroundTasks.push(jsonpRequest({
+          backgroundTasks.push(['Salida', () => jsonpRequest({
             accion: 'actualizarRegistroArchivado',
             empleadoId: empleadoId,
             fecha: fecha,
@@ -14054,7 +14131,7 @@ window.guardarModalGestionJornada = async function () {
             campo: 'timestamp',
             valor: fullTsSalida,
             modo: modalidad
-          }).catch(err => console.warn("Aviso Sheets salida:", err)));
+          })]);
         }
       }
 
@@ -14076,9 +14153,9 @@ window.guardarModalGestionJornada = async function () {
             supervisorId
           };
           if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
-            backgroundTasks.push(window.FirebaseBackend.guardarPermisoSupervisor(permParams).catch(err => console.warn(`Aviso permiso ${p.tipo}:`, err)));
+            backgroundTasks.push([`Permiso ${p.tipo}`, () => window.FirebaseBackend.guardarPermisoSupervisor(permParams)]);
           } else if (typeof jsonpRequest === 'function') {
-            backgroundTasks.push(jsonpRequest({ accion: 'guardarPermisoSupervisor', ...permParams }).catch(err => console.warn(`Aviso Sheets permiso ${p.tipo}:`, err)));
+            backgroundTasks.push([`Permiso ${p.tipo}`, () => jsonpRequest({ accion: 'guardarPermisoSupervisor', ...permParams })]);
           }
         }
       }
@@ -14086,9 +14163,9 @@ window.guardarModalGestionJornada = async function () {
       // Modalidad si no se enviaron horas
       if (modalidad !== ctx.modActual && !hEntrada && !hSalida) {
         if (window.FirebaseBackend && window.FirebaseBackend.guardarModalidadSupervisor) {
-          backgroundTasks.push(window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad, supervisorId }).catch(err => console.warn("Aviso Firestore modalidad:", err)));
+          backgroundTasks.push(['Modalidad', () => window.FirebaseBackend.guardarModalidadSupervisor({ empleadoId, fecha, modalidad, supervisorId })]);
         } else if (typeof jsonpRequest === 'function') {
-          backgroundTasks.push(jsonpRequest({ accion: 'guardarModalidadSupervisor', empleadoId, fecha, modalidad, supervisorId }).catch(err => console.warn("Aviso Sheets modalidad:", err)));
+          backgroundTasks.push(['Modalidad', () => jsonpRequest({ accion: 'guardarModalidadSupervisor', empleadoId, fecha, modalidad, supervisorId })]);
         }
       }
 
@@ -14096,29 +14173,26 @@ window.guardarModalGestionJornada = async function () {
       if (!hEntrada) {
         if (almuerzoVal && almuerzoVal !== (ctx.almuerzoActual || 'NO')) {
           if (window.FirebaseBackend && window.FirebaseBackend.actualizarAlmuerzoSupervisor) {
-            backgroundTasks.push(window.FirebaseBackend.actualizarAlmuerzoSupervisor({ empleadoId, almuerzo: almuerzoVal, fecha }).catch(err => console.warn("Aviso almuerzo modal:", err)));
+            backgroundTasks.push(['Almuerzo', () => window.FirebaseBackend.actualizarAlmuerzoSupervisor({ empleadoId, almuerzo: almuerzoVal, fecha })]);
           }
         }
         if (horasExtrasVal && horasExtrasVal !== (ctx.horasExtrasActual || 'NO')) {
           if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
-            backgroundTasks.push(window.FirebaseBackend.actualizarRegistroGeneral({
+            backgroundTasks.push(['Horas extra', () => window.FirebaseBackend.actualizarRegistroGeneral({
               empleadoId,
               fecha,
               tipo: 'ENTRADA',
               campo: 'horasExtra',
               valor: horasExtrasVal
-            }).catch(err => console.warn("Aviso extras modal:", err)));
+            })]);
           }
         }
       }
     }
 
-    Promise.allSettled(backgroundTasks).then(() => {
-      if (bgSync) bgSync.classList.add('hidden');
-    }).catch(err => {
-      console.warn("Aviso en tareas de segundo plano:", err);
-      if (bgSync) bgSync.classList.add('hidden');
-    });
+    // Confirmación real: si algo no se guardó, aviso con Reintentar y la pantalla vuelve a los datos reales
+    const titulo = `Jornada de ${(emp && emp.nombre ? emp.nombre.split(' ').slice(0, 2).join(' ') : empleadoId)} (${fecha})`;
+    ejecutarGuardado(titulo, backgroundTasks, () => cargarDatosCompletos(true, true));
 
   } catch (err) {
     console.error("Error guardando modal jornada:", err);
@@ -14159,7 +14233,7 @@ window.eliminarMarcacionesDiaModal = async function () {
   const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
   mostrarDetalle(empleadoId, idxSel);
   if (typeof filtrarTablaReportes === 'function') filtrarTablaReportes();
-  if (typeof mostrarToast === 'function') mostrarToast('✅ Marcaciones del día eliminadas', 'info');
+  mostrarToast('Eliminando marcaciones del día…', 'info');
 
   const bgSync = $('bgSyncIndicator');
   if (bgSync) bgSync.classList.remove('hidden');
@@ -14169,25 +14243,20 @@ window.eliminarMarcacionesDiaModal = async function () {
 
   // Purgar en Firestore
   if (window.FirebaseBackend && window.FirebaseBackend.eliminarRegistroFirestorePorFecha) {
-    delTasks.push(window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha).catch(e => console.warn("Aviso Firestore eliminar:", e)));
+    delTasks.push(['Firebase', () => window.FirebaseBackend.eliminarRegistroFirestorePorFecha(empleadoId, fecha)]);
   }
 
   // Eliminar en Google Sheets
   if (typeof jsonpRequest === 'function') {
-    delTasks.push(jsonpRequest({
+    delTasks.push(['Histórico', () => jsonpRequest({
       accion: 'eliminarRegistroArchivado',
       empleadoId: empleadoId,
       fecha: fecha,
       tipo: 'TODOS'
-    }).catch(e => console.warn("Aviso Sheets eliminar:", e)));
+    })]);
   }
 
-  Promise.allSettled(delTasks).then(() => {
-    if (bgSync) bgSync.classList.add('hidden');
-  }).catch(e => {
-    console.warn("Aviso eliminar:", e);
-    if (bgSync) bgSync.classList.add('hidden');
-  });
+  ejecutarGuardado(`Eliminar marcaciones del ${fecha}`, delTasks, () => cargarDatosCompletos(true, true), `✅ Marcaciones del ${fecha} eliminadas`);
 };
 
 // ============================================================
