@@ -16,7 +16,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20261021_01"></script>
+  <script src="./JS/firebase_backend.js?v=20261021_02"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -791,6 +791,19 @@
     .live-chip .live-dot { font-size: 7px; animation: blink 1s infinite; }
     .live-chip .live-hora { color: #475569; font-weight: 600; padding-left: 6px; border-left: 1px solid #fecaca; font-variant-numeric: tabular-nums; }
     .live-chip #bgSyncIndicator { color: #0369a1; font-size: 11px; }
+    body.sincronizando-panel .live-chip .live-dot { color: #0369a1; animation: none; }
+    /* Barra superior mientras el panel sincroniza */
+    #barraSync { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 10000; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .3s; }
+    body.sincronizando-panel #barraSync { opacity: 1; }
+    #barraSync::before { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -40%; background: linear-gradient(90deg, transparent, #dc2626, #f97316, transparent); animation: barraSync 1.3s ease-in-out infinite; }
+    @keyframes barraSync { from { left: -40%; } to { left: 100%; } }
+    /* Cifras en espera (primera carga): brillo en lugar de "--" */
+    body.cargando-datos .kpi-value, body.cargando-datos .stat-value, body.cargando-datos .rep2-kpi strong, body.cargando-datos .reporte-value {
+      color: transparent !important; -webkit-text-fill-color: transparent; width: fit-content; min-width: 2.4em; border-radius: 6px;
+      background: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%); background-size: 200% 100%; animation: brilloKpi 1.3s linear infinite;
+    }
+    @keyframes brilloKpi { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) { #barraSync::before, body.cargando-datos .kpi-value, body.cargando-datos .stat-value { animation: none; } }
     .top-bar .btn-breadcrumb-back { margin-right: 4px; }
     .btn-aviso-legal {
       width: 100%; background: transparent; border: none; color: #94a3b8; font-family: inherit; font-size: 11px;
@@ -1213,6 +1226,7 @@
     </div>
   </div>
 
+  <div id="barraSync" aria-hidden="true"></div>
   <div id="loader" class="loader-overlay hidden">
     <div class="loading-card">
       <div class="loader-spinner loading-spinner"></div>
@@ -5249,7 +5263,7 @@
 
   <script src="./JS/openwa_service.js?v=20261006_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261021_01"></script>
+  <script src="./JS/supervisor_core.js?v=20261021_02"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261003_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261013_02"></script>

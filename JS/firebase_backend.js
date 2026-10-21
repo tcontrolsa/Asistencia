@@ -3239,12 +3239,18 @@ window.FirebaseBackend = {
         }
     },
 
+    // Fase de la carga del panel para la interfaz (barra de progreso y textos del loader)
+    _faseCarga(fase, texto) {
+        try { window.dispatchEvent(new CustomEvent('progresoCargaPanel', { detail: { fase, texto } })); } catch (e) { }
+    },
+
     async obtenerDatosSupervisor(params = {}) {
         try {
             const hoy = new Date();
             const hoyStr = this._hoyStr(hoy);
 
             // 1. Empleados (activos e inactivos)
+            this._faseCarga('empleados', 'Cargando colaboradores…');
             const empSnap = await db.collection('empleados').get();
             const empleadosMap = {};
             const empleadosEliminadosMap = {};
@@ -3334,6 +3340,7 @@ window.FirebaseBackend = {
             query = query.where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(new Date(limiteStr + 'T00:00:00')));
             cacheData.registros = {};   // lo leído reemplaza la caché: no quedan copias de registros ya archivados o borrados
 
+            this._faseCarga('registros', 'Cargando marcaciones recientes…');
             const regSnap = await query.get();
 
             // Combinar registros obtenidos con el caché
@@ -3355,6 +3362,7 @@ window.FirebaseBackend = {
             } catch (e) { console.warn("Error guardando caché (posible límite de localStorage):", e); }
 
             // 2.5 Caching y obtención de Registros Archivados en Sheets (Con soporte IndexedDB para > 5MB)
+            this._faseCarga('historico', 'Leyendo el histórico guardado…');
             const CACHE_ARCHIVADOS_KEY = 'tcontrol_archivados_cache_v2';
             let archivadosData = { registros: [], lastSync: null };
 
@@ -3381,7 +3389,21 @@ window.FirebaseBackend = {
             }
 
             const horasArchivados = archivadosData.lastSync ? (new Date() - new Date(archivadosData.lastSync)) / (1000 * 60 * 60) : 999;
-            const _fetchArchivados = async () => {
+            // Una sola descarga completa a la vez (tarda 1-2 min fuera de la oficina): las llamadas
+            // simultáneas (refresco automático, guardados seguidos) esperan la misma
+            const _fetchArchivados = () => {
+                if (!this._promesaArchivados) {
+                    window._sincronizandoHistorico = true;
+                    this._faseCarga('historico_inicio', 'Actualizando histórico…');
+                    this._promesaArchivados = _descargarArchivados().finally(() => {
+                        this._promesaArchivados = null;
+                        window._sincronizandoHistorico = false;
+                        this._faseCarga('historico_fin', '');
+                    });
+                }
+                return this._promesaArchivados;
+            };
+            const _descargarArchivados = async () => {
                 try {
                     // Timeout de 75 segundos con reintentos para soportar respuestas pesadas de Sheets (~12MB)
                     const resJson = await this._obtenerRegistrosArchivados({}, 2, 75000);
@@ -3412,10 +3434,13 @@ window.FirebaseBackend = {
                 }
             };
 
-            // NUNCA congelar la pantalla del supervisor esperando a Sheets: solo esperar si se fuerza expresamente
-            if (params.force || params.forceSheets || params.forceAll) {
-                console.log("📥 Forzando actualización de registros archivados de Sheets...");
-                await _fetchArchivados();
+            // NUNCA congelar la pantalla del supervisor esperando el histórico completo (26 mil registros, hasta
+            // 2 min fuera de la oficina). Tras guardar algo (force) no hace falta: Firestore se lee completo y las
+            // ediciones de archivados ya refrescan la caché de ese colaborador (_refrescarCacheArchivados).
+            // "Actualizar todo" (forceSheets) lo renueva en segundo plano y el panel se redibuja al terminar.
+            if (params.forceSheets || params.forceAll) {
+                console.log("🔄 Actualizando registros archivados en segundo plano...");
+                _fetchArchivados();
             } else if (!archivadosData.registros || archivadosData.registros.length === 0 || horasArchivados > 24) {
                 console.log("🔄 Sincronizando registros archivados de Sheets en segundo plano...");
                 _fetchArchivados(); // En segundo plano, la interfaz abre de inmediato
@@ -3483,9 +3508,12 @@ window.FirebaseBackend = {
             // dentro del histórico también queda vacío y no debe forzar nada)
             const calcUltimoArchivado = () => (archivadosData.registros || []).reduce((m, r) => { const f = this._normFecha(r.fecha); return f && f > m ? f : m; }, '');
             let ultimoArchivado = calcUltimoArchivado();
-            if (huecos.some(f => f > ultimoArchivado) && !(params.force || params.forceSheets || params.forceAll) && horasArchivados > 0.25) {
+            if (huecos.some(f => f > ultimoArchivado) && (horasArchivados > 0.25 || this._promesaArchivados)) {
                 console.warn(`⚠️ Faltan datos de ${huecos.filter(f => f > ultimoArchivado).join(', ')} en la caché del histórico. Actualizando antes de mostrar...`);
+                this._faseCarga('historico_espera', 'Descargando días recién archivados (puede tardar 1-2 min)…');
                 await _fetchArchivados();
+                // La descarga pudo iniciarla otra llamada: tomar lo que dejó en memoria
+                if (Array.isArray(this._cacheArchivadosMemoria) && this._cacheArchivadosMemoria.length) archivadosData.registros = this._cacheArchivadosMemoria;
                 huecos = diasSinDatos();
                 ultimoArchivado = calcUltimoArchivado();
             }
@@ -3720,6 +3748,7 @@ window.FirebaseBackend = {
 
             const ahoraTs = Date.now();
             if (params.force || params.forceSheets || params.forceAll) {
+                this._faseCarga('vacaciones', 'Actualizando vacaciones…');
                 await _fetchVacacionesSheets(false);
             } else if (ahoraTs - (window._lastSheetsVacOk || 0) > 600000 && ahoraTs - (window._lastSheetsVacError || 0) > 300000) {
                 _fetchVacacionesSheets(); // En segundo plano, ¡nunca bloquea el arranque ni dispara el watchdog del loader!

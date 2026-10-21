@@ -277,15 +277,25 @@ function mostrarLoader(show, msg = 'Cargando datos...', subtext = 'Sincronizando
         sub.style.display = subtext ? 'block' : 'none';
       }
       loader.classList.remove('hidden');
-      // Watchdog de seguridad: auto-cerrar si excede 12 segundos para nunca congelar al usuario
+      // Watchdog: a los 12 s avisa que la conexión está lenta; a los 45 s libera la pantalla (la carga
+      // sigue y la barra superior lo indica) para nunca dejar al usuario bloqueado
       _loaderWatchdogTimer = setTimeout(() => {
-        if (loader && !loader.classList.contains('hidden')) {
-          console.warn("⚠️ Loader ocultado automáticamente por temporizador de seguridad.");
-          loader.classList.add('hidden');
+        if (!loader || loader.classList.contains('hidden')) return;
+        if (sub) {
+          sub.textContent = 'La conexión está lenta, seguimos cargando…';
+          sub.style.display = 'block';
         }
+        _loaderWatchdogTimer = setTimeout(() => {
+          if (loader && !loader.classList.contains('hidden')) {
+            console.warn("⚠️ Loader ocultado automáticamente por temporizador de seguridad.");
+            loader.classList.add('hidden');
+            window._loaderDeDatos = false;
+          }
+        }, 33000);
       }, 12000);
     } else {
       loader.classList.add('hidden');
+      window._loaderDeDatos = false;
     }
   }
 }
@@ -8817,8 +8827,59 @@ window.guardarJustificacion = async function () {
 // ============================================================
 // CARGA DE DATOS
 // ============================================================
+// Barra superior y chip "En vivo" mientras el panel trae datos: así nunca parece congelado
+function indicadorSincronizacion(activo, texto) {
+  const historico = !!window._sincronizandoHistorico;
+  document.body.classList.toggle('sincronizando-panel', !!activo || historico);
+  const chip = $('btnRefresh');
+  const txt = chip ? chip.querySelector('.live-txt') : null;
+  const icono = $('bgSyncIndicator');
+  if (txt) txt.textContent = activo ? (texto || 'Actualizando…') : (historico ? 'Histórico…' : 'En vivo');
+  if (icono) icono.classList.toggle('hidden', !activo && !historico);
+  if (chip) chip.title = activo ? (texto || 'Actualizando datos…')
+    : historico ? 'Actualizando el histórico en segundo plano (puede tardar 1-2 min); el panel se redibuja al terminar'
+      : 'Datos en vivo · última sincronización. Clic para actualizar todo ahora';
+}
+
+window.addEventListener('progresoCargaPanel', ev => {
+  const { fase, texto } = (ev && ev.detail) || {};
+  if (fase === 'historico_inicio' || fase === 'historico_fin') {
+    indicadorSincronizacion(estaActualizando);
+    return;
+  }
+  if (!estaActualizando || !texto) return;
+  indicadorSincronizacion(true, texto);
+  const sub = $('loaderSubtext');
+  if (window._loaderDeDatos && sub) {
+    sub.textContent = texto;
+    sub.style.display = 'block';
+  }
+});
+
+// Una recarga pedida mientras otra está en curso no se descarta (antes se perdía y el panel mostraba
+// datos viejos hasta el siguiente refresco): se repite una vez al terminar, con las opciones más fuertes.
+let _recargaPendiente = null;
 async function cargarDatosCompletos(force = false, silencioso = false, forceSheets = false) {
-  if (estaActualizando) return;
+  if (estaActualizando) {
+    const p = _recargaPendiente || (_recargaPendiente = { force: false, forceSheets: false, esperas: [] });
+    p.force = p.force || force;
+    p.forceSheets = p.forceSheets || forceSheets;
+    return new Promise(resolve => p.esperas.push(resolve));
+  }
+  indicadorSincronizacion(true, 'Actualizando…');
+  try {
+    await _cargarDatosCompletos(force, silencioso, forceSheets);
+  } finally {
+    estaActualizando = false;
+    if (Array.isArray(empCache) && empCache.length) document.body.classList.remove('cargando-datos');
+    indicadorSincronizacion(false);
+    const p = _recargaPendiente;
+    _recargaPendiente = null;
+    if (p) cargarDatosCompletos(p.force, true, p.forceSheets).finally(() => p.esperas.forEach(r => r()));
+  }
+}
+
+async function _cargarDatosCompletos(force = false, silencioso = false, forceSheets = false) {
   estaActualizando = true;
 
   // Si ya disponemos de datos en memoria, sincronizar siempre de forma no bloqueante (en segundo plano)
@@ -8826,7 +8887,8 @@ async function cargarDatosCompletos(force = false, silencioso = false, forceShee
   const usarLoaderPantallaCompleta = !silencioso && !tieneDatosPrevios;
 
   if (usarLoaderPantallaCompleta) {
-    mostrarLoader(true);
+    mostrarLoader(true, 'Cargando el panel…', 'Conectando…');
+    window._loaderDeDatos = true;
   } else {
     const bgSync = $('bgSyncIndicator');
     if (bgSync) bgSync.classList.remove('hidden');
@@ -8845,6 +8907,13 @@ async function cargarDatosCompletos(force = false, silencioso = false, forceShee
 
     if (!res || res.error) {
       if (!silencioso && !tieneDatosPrevios) mostrarToast(res?.error || 'Error al cargar datos', 'error');
+      return;
+    }
+    // Sin conexión, Firestore responde vacío desde su caché: no dejar el panel en 0, avisar y reintentar
+    if (!(res.empleados || []).length) {
+      if (!tieneDatosPrevios) mostrarToast('No se pudo conectar con la base de datos. Reintentando en 15 s…', 'error');
+      clearTimeout(window._reintentoCargaPanel);
+      window._reintentoCargaPanel = setTimeout(() => cargarDatosCompletos(false, true), 15000);
       return;
     }
     empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
@@ -9065,6 +9134,7 @@ async function intentarLoginSupervisor() {
 
         mostrarInformacionSupervisor(sessionData);
         $('login-supervisor').classList.add('hidden');
+        document.body.classList.add('cargando-datos');
         cargarDatosCompletos();
       } else {
         mostrarError('El usuario no tiene rango de Supervisor.');
@@ -9576,6 +9646,7 @@ function verificarEstadoSupervisor() {
       if ($('navItemWhatsApp')) $('navItemWhatsApp').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
     } catch (e) { }
     $('login-supervisor').classList.add('hidden');
+    document.body.classList.add('cargando-datos');
     cargarDatosCompletos();
   } else {
     window.isMaster = false;
@@ -9666,11 +9737,13 @@ if ($('btnRefresh')) $('btnRefresh').addEventListener('click', async () => {
   mostrarToast('Sincronizando datos frescos en segundo plano...', 'info');
   try {
     await cargarDatosCompletos(true, true, true);
-    mostrarToast('✅ Datos actualizados correctamente', 'success');
+    mostrarToast(window._sincronizandoHistorico
+      ? '✅ Datos del día actualizados. El histórico sigue descargándose en segundo plano.'
+      : '✅ Datos actualizados correctamente', 'success');
   } catch (err) {
     mostrarToast('Error al sincronizar: ' + err.message, 'error');
   } finally {
-    if (icon) icon.classList.add('hidden');
+    indicadorSincronizacion(estaActualizando);
     if (btn) btn.disabled = false;
   }
 });
