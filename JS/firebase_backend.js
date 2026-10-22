@@ -38,7 +38,7 @@ window.db = db;
 // Versión de los datos del histórico archivado: cuando se corrigen datos ya archivados (p. ej. las horas
 // del 8 y 9/10/2026, archivadas desde un equipo con otra zona horaria) se cambia este valor y cada
 // navegador descarta una vez sus copias en caché del histórico para volver a descargarlo corregido.
-const VERSION_DATOS_HISTORICO = '2026-10-16b';
+const VERSION_DATOS_HISTORICO = '2026-10-22';
 try {
     if (localStorage.getItem('tcontrol_version_historico') !== VERSION_DATOS_HISTORICO) {
         Object.keys(localStorage).filter(k => k.startsWith('tcontrol_archivados_cache')).forEach(k => localStorage.removeItem(k));
