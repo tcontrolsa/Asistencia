@@ -8834,6 +8834,11 @@ window.guardarJustificacion = async function () {
 let _guardadosEnCurso = 0;
 let _recargaTrasGuardados = false;
 
+// Fallos de conexión (túnel del histórico reiniciándose, Sheets sin responder): el texto técnico
+// ("Timeout en la conexión con Sheets") confundía; se explica qué pasó y qué hacer.
+const _esFallaConexion = f => /timeout|tiempo de espera|failed to fetch|networkerror|load failed|abort|postgrest http 5\d\d|conexi[oó]n/i.test(String(f || ''));
+const MSG_SIN_SERVIDOR = 'El servidor no respondió (puede estar reiniciándose). Espera un minuto y pulsa Reintentar.';
+
 function _fallaRespuesta(res) {
   return res && (res.error || res.ok === false) ? String(res.error || res.mensaje || 'el servidor no lo aceptó') : null;
 }
@@ -8881,7 +8886,10 @@ async function ejecutarGuardado(titulo, tareas, alFallar, textoExito) {
     mostrarToast(textoExito || `✅ ${titulo}: guardado`, 'success');
     return true;
   }
-  const detalle = resultados.filter(r => r.falla).map(r => `${r.nombre}: ${r.falla}`).join(' · ');
+  const malas = resultados.filter(r => r.falla);
+  const detalle = malas.every(r => _esFallaConexion(r.falla))
+    ? `${malas.map(r => r.nombre).join(', ')}. ${MSG_SIN_SERVIDOR}`
+    : malas.map(r => `${r.nombre}: ${_esFallaConexion(r.falla) ? 'el servidor no respondió' : r.falla}`).join(' · ');
   avisoGuardadoFallido(`${titulo}: NO se guardó`, detalle,
     () => { mostrarToast(`Reintentando: ${titulo}…`, 'info'); ejecutarGuardado(titulo, fallidas, alFallar, textoExito); });
   if (alFallar) alFallar();
