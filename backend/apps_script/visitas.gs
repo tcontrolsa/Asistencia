@@ -93,13 +93,20 @@ function notificarVisita(p) {
       '. Te avisaremos cuando sea aprobada. Con este enlace privado puedes ver su estado y tu código de ingreso: ' + enlaceVisitante + epp);
   } else if (evento === 'en_porteria') {
     // Visitante sin cita que se registró con el QR de portería: el guardia decide el ingreso
-    campana('visita_llego', 'Visita sin cita en portería', quien + ' está en portería y dice que viene a visitarte. El guardia verificará su identidad.',
+    campana('visita_llego', 'Visita sin cita en portería', quien + ' está en portería y dice que viene a visitarte. El guardia te llamará para que te acerques a recibirlo. La próxima vez, regístralo con anticipación en Visitas → Invitar.',
       visitante + ' está en portería sin cita para visitar a ' + anfitrion + '.', 'vis_llego_' + id);
-    whatsapp('Hola, ' + quien + ' llegó a portería sin cita y dice que viene a visitarte' + tipo + '. El guardia verificará su identidad y registrará su ingreso.',
+    whatsapp('Hola, ' + quien + ' llegó a portería sin cita y dice que viene a visitarte' + tipo + '. El guardia te llamará para que te acerques a recibirlo.' +
+      ' 💡 La próxima vez regístralo con anticipación en la app TCONTROL → Visitas → Invitar (' + NOTIF_URL_APP + '): así entra directo con su código QR.',
       'Aviso de visitas TCONTROL' + tipo + ': ' + visitante + ' llegó a portería sin cita para visitar a ' + anfitrion + '.');
     r.visitante = avisarVisitante_(p, 'Tu registro en portería',
       'Hola ' + (p.visitanteNombre || '') + ', registraste tu visita a TCONTROL. Muestra este código QR (o el código ' + codigoVisita_(p.codigo) +
       ') y tu documento de identidad al guardia. Tu enlace privado: ' + enlaceVisitante + epp, true);
+  } else if (evento === 'urgente_porteria') {
+    // El guardia no logró comunicarse por teléfono: aviso urgente por el bot (botón «Avisar por el bot» en portería)
+    campana('visita_llego', 'Te esperan en portería', quien + ' te espera en portería. El guardia intentó llamarte sin éxito: acércate a recibirlo.',
+      visitante + ' espera en portería a ' + anfitrion + ' (no se logró contactarlo por teléfono).', 'vis_llego_' + id);
+    whatsapp('⚠️ ' + quien + ' te espera en portería de TCONTROL. El guardia intentó llamarte y no pudo comunicarse: por favor acércate a recibirlo o llama a portería.',
+      'Aviso de visitas TCONTROL' + tipo + ': ' + visitante + ' espera en portería a ' + anfitrion + ' y no se logró contactarlo por teléfono.');
   } else if (evento === 'confirmada') {
     campana('visita_confirmada', 'Invitado registrado', 'Tu invitado completó su registro para el ' + fecha + '.',
       visitante + ', invitado de ' + anfitrion + ', confirmó su visita del ' + fecha + '.');
@@ -123,7 +130,7 @@ function notificarVisita(p) {
     campana('visita_llego', sinCita ? 'Visita sin cita ingresó' : 'Tu visita llegó',
       sinCita ? quien + ' llegó sin cita y ya ingresó por portería para visitarte.' : 'Tu visita del ' + fecha + ' ya está en portería.',
       visitante + (sinCita ? ' llegó sin cita e' : '') + ' ingresó por portería para visitar a ' + anfitrion + '.', 'vis_llego_' + id);
-    whatsapp(sinCita ? quien + ' llegó sin cita y ya ingresó por portería para visitarte.' : quien + ' acaba de ingresar por portería para su visita contigo.',
+    whatsapp(sinCita ? quien + ' llegó sin cita y ya ingresó por portería para visitarte.' + (p.recordatorio === false ? '' : ' 💡 La próxima vez regístralo con anticipación en la app TCONTROL → Visitas → Invitar (' + NOTIF_URL_APP + '): así entra directo con su código QR.') : quien + ' acaba de ingresar por portería para su visita contigo.',
       'Aviso de visitas TCONTROL' + tipo + ': ' + visitante + (sinCita ? ' llegó sin cita e' : '') + ' ingresó por portería para visitar a ' + anfitrion + '.' +
       (conEpp ? ' Visita a planta: el guardia verificó su EPP.' : ''));
   } else if (evento === 'concluida') {

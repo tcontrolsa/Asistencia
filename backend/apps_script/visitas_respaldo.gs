@@ -176,6 +176,13 @@ function purgarRespaldoVisitas_() {
 // Estado de la portería en contingencia
 // ---------------------------------------------------------------------
 function hoyEcuador_() { return Utilities.formatDate(new Date(), 'America/Guayaquil', 'yyyy-MM-dd'); }
+// Resultado del contacto con el anfitrión hecho por el guardia (visitantes sin cita): { resultado, intentos } o null
+function contactoRespaldo_(c) {
+  if (typeof c === 'string') { try { c = JSON.parse(c); } catch (e) { c = null; } }
+  if (!c || ['viene', 'espera', 'no_contesto', 'equivocado', 'sin_telefono'].indexOf(String(c.resultado)) === -1) return null;
+  return { resultado: String(c.resultado), intentos: Math.max(1, Number(c.intentos) || 1) };
+}
+
 function normalizarCodigoRespaldo_(c) {
   var t = String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   return t.indexOf('TCV1') === 0 ? t.slice(4) : t;
@@ -270,13 +277,15 @@ function registrarEventoRespaldo_(op, d, puesto) {
     if (!anfId && tipo.anfitrionOpcional) anfId = notificar[0] || '';
     var anf = (copia.anfitriones || []).filter(function (a) { return String(a.id) === anfId; })[0];
     if (!anf) return { ok: false, error: 'Busca y elige a la persona que visita.' };
+    var contactoReg = contactoRespaldo_(d.contacto);
+    if (!contactoReg) return { ok: false, error: 'Llama al anfitrión y registra el resultado de la llamada.' };
     codigo = 'R' + id.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(-7);
     visita = { id: null, codigo: codigo, estado: 'en_curso', origen: 'porteria', contingencia: true, nombre: nombre, empresa: empresa, motivo: motivo,
       anfitrion: anf.nombre, anfitrionId: anf.id, anfitrionNombre: anf.nombreCompleto || anf.nombre, fecha: vista.hoy,
       hora: Utilities.formatDate(en, 'America/Guayaquil', 'HH:mm'), tipo: tipo.id, tipoNombre: tipo.nombre, epp: !!tipo.epp,
       entradaEn: en.toISOString(), salidaEn: null, copias: notificar.filter(function (c) { return c !== String(anf.id); }) };
     datos = { visita: visitaPublicaRespaldo_(visita), codigoLocal: codigo, tipo: tipo.id, anfitrionId: String(anf.id), nombre: nombre, empresa: empresa, motivo: motivo,
-      documentoVerificado: true, aceptaVerbal: true, eppVerificado: String(d.eppVerificado) === 'true' };
+      documentoVerificado: true, aceptaVerbal: true, eppVerificado: String(d.eppVerificado) === 'true', contacto: contactoReg };
     codigo = '';   // el código real lo asigna Postgres al sincronizar
   } else {
     var cod = normalizarCodigoRespaldo_(d.codigo);
@@ -288,6 +297,8 @@ function registrarEventoRespaldo_(op, d, puesto) {
       if (v.fecha !== vista.hoy) return { ok: false, error: 'La visita está programada para el ' + String(v.fecha).split('-').reverse().join('/') + '.' };
       if (String(d.documentoVerificado) !== 'true') return { ok: false, error: 'Confirma que verificaste el documento de identidad.' };
       if (v.epp && String(d.eppVerificado) !== 'true') return { ok: false, error: 'Esta visita exige EPP: confirma que el visitante lo lleva.' };
+      var contactoEnt = contactoRespaldo_(d.contacto);
+      if (v.origen === 'porteria' && !contactoEnt) return { ok: false, error: 'Primero contacta al anfitrión y registra el resultado de la llamada.' };
       v.estado = 'en_curso'; v.entradaEn = en.toISOString();
     } else {
       if (v.estado !== 'en_curso') return { ok: false, error: 'La visita no tiene una entrada registrada.' };
@@ -301,6 +312,7 @@ function registrarEventoRespaldo_(op, d, puesto) {
     } else {
       codigo = cod;
     }
+    if (op === 'entrada' && contactoEnt) datos.contacto = contactoEnt;
   }
 
   var fila = hoja.getLastRow() + 1;

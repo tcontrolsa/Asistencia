@@ -184,6 +184,7 @@
 .vs-chip { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #f1f5f9; color: var(--vs-tx2); }
 .vs-chip-epp { background: #fef3c7; color: #92400e; }
 .vs-chip-sc { background: #ffedd5; color: #9a3412; }
+.vs-chip-alerta { background: #fee2e2; color: #b91c1c; }
 .vs-chip-copia { background: var(--vs-azul-lt); color: var(--vs-azul); }
 .vs-config-h { font-size: 14px; font-weight: 800; margin: 20px 0 6px; display: flex; gap: 8px; align-items: center; }
 .vs-config-h i { color: var(--vs-rojo); }
@@ -271,6 +272,40 @@
 .gv-est small { font-size: 11px; font-weight: 600; color: var(--vs-tx3); }
 .gv-est-dentro { color: #15803d; }
 .gv-est-llegar { color: #b45309; }
+.gv-est-porteria { color: #c2410c; }
+.gv-chip-alerta { background: #fee2e2; color: #b91c1c; }
+.gv-m-aviso-alerta { background: #fef2f2; color: #991b1b; }
+
+/* Contacto con el anfitrión (visitante sin cita) */
+.gv-contacto { margin: 14px 0 4px; border: 2px solid #fdba74; background: #fff7ed; border-radius: 16px; padding: 14px; text-align: left; }
+.gv-contacto.gv-cto-listo { border-color: #6ee7b7; background: var(--vs-ok-lt); }
+.gv-contacto.gv-cto-fallo { border-color: #fca5a5; background: #fef2f2; }
+.gv-cto-cab { display: flex; gap: 10px; align-items: flex-start; }
+.gv-cto-cab > i { font-size: 20px; color: #c2410c; margin-top: 2px; }
+.gv-cto-cab strong { display: block; font-size: 15.5px; color: var(--vs-tx); }
+.gv-cto-cab small { display: block; font-size: 13px; color: var(--vs-tx2); margin-top: 2px; }
+.gv-cto-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 4px; }
+.gv-cto-btn { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; border-radius: 14px; font-weight: 800; font-size: 16px; text-decoration: none; color: #fff; box-shadow: 0 2px 6px rgba(15, 23, 42, .12); transition: transform .1s; }
+.gv-cto-btn:active { transform: scale(.97); }
+.gv-cto-llamar { background: #2563eb; }
+.gv-cto-wa { background: #16a34a; }
+.gv-cto-btn.on { outline: 3px solid rgba(15, 23, 42, .25); outline-offset: 2px; }
+.gv-cto-sin { margin: 10px 0 4px; font-size: 13.5px; color: #991b1b; line-height: 1.45; }
+.gv-cto-preg { margin: 12px 0 8px; font-size: 13.5px; font-weight: 700; color: var(--vs-tx2); }
+.gv-cto-res { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gv-cto-op { display: flex; align-items: center; gap: 8px; text-align: left; min-height: 48px; padding: 8px 10px; border-radius: 12px; border: 2px solid var(--vs-borde); background: #fff; font: inherit; font-size: 13.5px; font-weight: 700; color: var(--vs-tx); cursor: pointer; }
+.gv-cto-op i { width: 18px; text-align: center; color: var(--vs-tx2); }
+.gv-cto-op:disabled { opacity: .45; cursor: not-allowed; }
+.gv-cto-op.on { border-color: var(--vs-tx); }
+.gv-cto-hecho { display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #fff; }
+.gv-cto-hecho.ok i { color: var(--vs-ok); font-size: 20px; }
+.gv-cto-hecho.alerta i { color: #dc2626; font-size: 20px; }
+.gv-cto-hecho strong { display: block; font-size: 14px; }
+.gv-cto-hecho small { display: block; font-size: 12px; color: var(--vs-tx2); }
+.gv-cto-bot { width: 100%; justify-content: center; margin-top: 12px; }
+.gv-btn-bloq, .gv-btn-bloq:hover { background: #e2e8f0 !important; color: #64748b !important; box-shadow: none !important; cursor: not-allowed; }
+.gv-cto-nota { margin: 8px 0 0; font-size: 12.5px; color: var(--vs-tx2); line-height: 1.45; }
+@media (max-width: 380px) { .gv-cto-res { grid-template-columns: 1fr; } }
 .gv-est-pendiente { color: #c2410c; }
 .gv-est-salio { color: #64748b; }
 .gv-est-otro { color: #64748b; flex-direction: row; gap: 4px; }

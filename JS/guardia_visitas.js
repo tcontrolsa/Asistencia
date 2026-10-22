@@ -23,7 +23,7 @@
   const st = { ses: null, lista: [], ficha: null, error: '', escaneando: false, stream: null, cargando: false,
     cargandoLista: false, listaTs: 0, buscando: '', registrando: '', abriendoCamara: false, filtro: 'todas',
     // Visitante sin cita (ventana): modo 'elegir' | 'qr' | 'form' (paso 1-4) | 'listo'
-    sc: null, tipos: [], eppTexto: '' };
+    sc: null, tipos: [], eppTexto: '', cto: {} };
   const tipoDe = id => st.tipos.find(t => t.id === id) || null;
   const SPIN = '<span class="spin-sm" aria-hidden="true"></span>';
   const LENTO = '<p class="cargando-nota lento-6s" style="margin-top:10px">La conexión con la base está lenta, sigue trabajando…</p>';
@@ -198,6 +198,7 @@
 
   function estadoHtml(v) {
     if (v.estado === 'en_curso') return `<span class="gv-est gv-est-dentro"><b><i class="gv-pulso"></i>Dentro</b><small>desde ${horaDe(v.entradaEn)} · ${duracion(minutosDesde(v.entradaEn))}</small></span>`;
+    if (v.estado === 'aprobada' && v.origen === 'porteria') return `<span class="gv-est gv-est-porteria"><b><i class="fas fa-door-open gv-tic"></i> En portería</b><small>${v.llamada && v.llamada.resultado ? esc(TXT_CONTACTO[v.llamada.resultado] || '') : 'llame al anfitrión'}</small></span>`;
     if (v.estado === 'aprobada') return `<span class="gv-est gv-est-llegar"><b><i class="fas fa-clock gv-tic"></i> Por llegar</b><small>${v.hora ? 'a las ' + esc(v.hora) : 'hoy'}</small></span>`;
     if (v.estado === 'pendiente') return `<span class="gv-est gv-est-pendiente"><b><i class="gv-parpadeo"></i>Sin aprobar</b><small>el anfitrión no responde</small></span>`;
     if (v.estado === 'concluida') return `<span class="gv-est gv-est-salio"><b><i class="fas fa-check"></i> Salió</b><small>${horaDe(v.salidaEn)}</small></span>`;
@@ -211,7 +212,7 @@
       <span class="gv-fila-info">
         <strong>${esc(v.nombre || '(sin nombre)')}</strong>
         <small>${esc(v.empresa || 'Particular')} · visita a ${esc(v.anfitrion || 'área encargada')}</small>
-        <span class="gv-fila-chips">${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
+        <span class="gv-fila-chips">${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.sinContacto ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-phone-slash"></i> Sin contacto</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
       </span>
       ${estadoHtml(v)}
     </button>`;
@@ -255,11 +256,80 @@
     const q = window.qrcode(0, 'M'); q.addData(texto); q.make();
     return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
   }
+  // ---------------------------------------------------------------- contacto con el anfitrión (sin cita)
+  // El guardia llama (o escribe por WhatsApp) al anfitrión con un botón —el número no se muestra— y registra
+  // el resultado; sin resultado no se habilita la entrada. Si no contesta, puede avisarle por el bot.
+  const RES_CONTACTO = [
+    ['viene', 'Contestó: viene a recibirlo', 'fa-person-walking'],
+    ['espera', 'Contestó: que espere', 'fa-hourglass-half'],
+    ['no_contesto', 'No contestó', 'fa-phone-slash'],
+    ['equivocado', 'Número equivocado', 'fa-circle-xmark']
+  ];
+  const TXT_CONTACTO = { viene: 'Viene a recibirlo', espera: 'Pidió que espere', no_contesto: 'No contestó', equivocado: 'Número equivocado', sin_telefono: 'Sin celular registrado' };
+  const contactoLogrado = r => r === 'viene' || r === 'espera';
+  const ctoLocal = k => (st.cto[k] = st.cto[k] || { medio: '', intentos: 0, resultado: '', enviando: '' });
+  // Resultado vigente: el del servidor o, en contingencia, el que se anotó en esta terminal
+  function resultadoContacto(k, llamada) { return (llamada && llamada.resultado) || ctoLocal(k).resultado || ''; }
+
+  function contactoHtml(k, o) {
+    const l = ctoLocal(k), llamada = o.llamada || null;
+    const res = resultadoContacto(k, llamada);
+    const intentos = Math.max((llamada && llamada.intentos) || 0, l.intentos);
+    const tel = String(o.tel || '').replace(/\D/g, '');
+    const msg = encodeURIComponent(`Hola, le saluda portería de TCONTROL. ${o.visitante || 'Su visitante'}${o.empresa ? ` (${o.empresa})` : ''} está en portería y viene a visitarle. ¿Puede acercarse a recibirlo?`);
+    const ocupado = !!l.enviando;
+    const botones = tel
+      ? `<div class="gv-cto-botones">
+          <a class="gv-cto-btn gv-cto-llamar ${l.medio === 'llamada' ? 'on' : ''}" href="tel:+${tel}" data-gv="cto-medio" data-k="${esc(k)}" data-medio="llamada"><i class="fas fa-phone"></i> Llamar</a>
+          <a class="gv-cto-btn gv-cto-wa ${l.medio === 'whatsapp' ? 'on' : ''}" href="https://wa.me/${tel}?text=${msg}" target="_blank" rel="noopener" data-gv="cto-medio" data-k="${esc(k)}" data-medio="whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp</a></div>`
+      : `<p class="gv-cto-sin"><i class="fas fa-phone-slash"></i> ${esc(o.anfitrion || 'El anfitrión')} no tiene celular registrado (tampoco le llegan avisos por WhatsApp). Búsquelo por la extensión o pida a alguien de su área que le avise.</p>`;
+    const opciones = tel ? RES_CONTACTO : [['sin_telefono', 'Sin celular: no pude llamarlo', 'fa-phone-slash']];
+    const habilitadas = !tel || !!l.medio;
+    const resultados = `<p class="gv-cto-preg">${habilitadas ? '¿Qué pasó?' : 'Primero toque <b>Llamar</b> o <b>WhatsApp</b>; después elija qué pasó.'}</p>
+      <div class="gv-cto-res">${opciones.map(([id, txt, ico]) => `<button type="button" class="gv-cto-op ${res === id && !l.medio ? 'on' : ''}" data-gv="cto-res" data-k="${esc(k)}" data-res="${id}" ${habilitadas && !ocupado ? '' : 'disabled'}>
+        ${l.enviando === id ? SPIN : `<i class="fas ${ico}"></i>`}<span>${txt}</span></button>`).join('')}</div>`;
+    const hecho = res ? `<div class="gv-cto-hecho ${contactoLogrado(res) ? 'ok' : 'alerta'}"><i class="fas ${contactoLogrado(res) ? 'fa-check-circle' : 'fa-exclamation-triangle'}"></i>
+        <span><strong>${esc(TXT_CONTACTO[res] || res)}</strong><small>${intentos} intento${intentos === 1 ? '' : 's'}${llamada && llamada.en ? ' · ' + horaDe(llamada.en) : ''}${llamada && llamada.bot ? ' · aviso por bot ' + horaDe(llamada.bot) : ''}</small></span></div>` : '';
+    // El bot escribe al mismo celular: sin número no sirve
+    const bot = res && !contactoLogrado(res) && o.puedeBot && tel
+      ? `<button type="button" class="vs-btn gv-cto-bot" data-gv="cto-bot" data-k="${esc(k)}" ${ocupado ? 'disabled' : ''}>${l.enviando === 'bot' ? SPIN : '<i class="fas fa-robot"></i>'} Avisar por el bot de WhatsApp</button>
+         <p class="gv-cto-nota">Le enviamos un WhatsApp urgente desde el número de TCONTROL. Puede volver a llamar cuando quiera.</p>` : '';
+    const sinContacto = res && !contactoLogrado(res)
+      ? '<p class="gv-cto-nota"><i class="fas fa-info-circle"></i> Si decide dejarlo pasar sin hablar con el anfitrión, quedará registrado como <b>«Ingresó sin contacto»</b>.</p>' : '';
+    return `<div class="gv-contacto ${res ? (contactoLogrado(res) ? 'gv-cto-listo' : 'gv-cto-fallo') : ''}">
+      <div class="gv-cto-cab"><i class="fas fa-phone-volume"></i><span><strong>Avise a ${esc(o.anfitrion || 'la persona que visita')}</strong><small>Llámelo para que se acerque a recibir a ${esc(o.visitante || 'su visitante')}.</small></span></div>
+      ${hecho}${botones}${resultados}${bot}${sinContacto}</div>`;
+  }
+
+  async function registrarContacto(k, codigo, medio, resultado) {
+    const l = ctoLocal(k);
+    if (l.enviando) return;
+    // Contingencia o formulario (sin código del servidor): se anota en esta terminal y viaja con el registro
+    if (!codigo || st.contingencia) {
+      l.intentos++; l.resultado = resultado; l.medio = '';
+      return repintarContacto();
+    }
+    l.enviando = medio === 'bot' ? 'bot' : resultado; repintarContacto();
+    try {
+      const r = await rpc({ accion: 'contacto', codigo, medio: medio === 'bot' ? 'bot' : (l.medio || 'llamada'), resultado });
+      if (!r.ok) throw new Error(r.error);
+      l.medio = '';
+      if (st.ficha && st.ficha.visita.codigo === codigo) st.ficha.visita = r.visita;
+      if (st.sc && st.sc.visita && st.sc.visita.codigo === codigo) st.sc.visita = r.visita;
+      if (medio === 'bot' && typeof window.mostrarToast === 'function') window.mostrarToast('Aviso enviado al anfitrión por el bot de WhatsApp.', 'success');
+    } catch (e) {
+      if (typeof window.mostrarToast === 'function') window.mostrarToast(e.message, 'error');
+    }
+    l.enviando = '';
+    repintarContacto();
+  }
+  function repintarContacto() { if (st.sc) pintarModal(); else pintarPrincipal(); }
+
   const PASOS_SC = [
     ['¿Para qué es la visita?', 'Elija la opción que mejor describe a qué viene.'],
     ['¿A quién visita?', 'Pregúntele el nombre de la persona y búsquela.'],
     ['Datos del visitante', 'Tal como aparecen en su documento de identidad.'],
-    ['Revise y confirme', 'Verifique la cédula y léale el aviso de datos.']
+    ['Revise y confirme', 'Verifique la cédula y léale el aviso de datos. Luego llamará al anfitrión.']
   ];
   const ICONOS_TIPO = { oficina: 'fa-building', planta: 'fa-industry', cliente: 'fa-box-open', proveedor: 'fa-truck' };
   const MOTIVOS_RAPIDOS = ['Entrega', 'Retiro de producto', 'Reunión', 'Mantenimiento', 'Consulta'];
@@ -331,6 +401,15 @@
           <p class="gv-reloj"><i class="fas fa-star" style="color:#f59e0b"></i> Atención · Puntualidad · Instalaciones</p>
         </div>`;
       pie = `<button type="button" class="btn-large btn-success gv-m-prim" data-gv="sc-terminar"><i class="fas fa-check"></i> Listo</button>`;
+    } else if (sc.modo === 'contacto') {
+      // Sin cita registrado: ya se avisó al anfitrión; el guardia lo llama y luego registra la entrada
+      const v = sc.visita || {}, res = resultadoContacto(v.codigo, v.llamada);
+      cab = `<h2>Avise al anfitrión</h2>`;
+      cuerpo = `<p class="gv-m-aviso" style="margin-top:0"><i class="fas fa-bell"></i> <b>${esc(v.nombre || '')}</b> quedó registrado en portería y ya se avisó a ${esc(v.anfitrion || 'la persona que visita')} por la app y WhatsApp.</p>
+        ${contactoHtml(v.codigo, { tel: v.anfitrionTel, visitante: v.nombre, empresa: v.empresa, anfitrion: v.anfitrion, llamada: v.llamada, puedeBot: !st.contingencia })}
+        ${sc.error ? `<div class="vs-error" role="alert"><i class="fas fa-exclamation-circle"></i> ${esc(sc.error)}</div>` : ''}${sc.enviando ? LENTO : ''}`;
+      pie = `<button type="button" class="vs-btn" data-gv="sc-terminar" ${sc.enviando ? 'disabled' : ''}>Después</button>
+        <button type="button" class="btn-large btn-success gv-m-prim ${res ? '' : 'gv-btn-bloq'}" data-gv="sc-entrada" ${res && !sc.enviando ? '' : 'disabled'}>${sc.enviando ? SPIN + ' Registrando entrada…' : `<i class="fas fa-sign-in-alt"></i> ${res && !contactoLogrado(res) ? 'Dejar pasar sin contacto' : 'Registrar entrada'}`}</button>`;
     } else if (sc.modo === 'listo') {
       const v = sc.visita || {};
       cab = `<h2>Visitante registrado</h2>`;
@@ -338,6 +417,7 @@
           <p class="gv-m-pregunta">¡Listo! Entrada registrada</p>
           <p class="gv-m-listo-nombre">${esc(v.nombre || '')}</p>
           <p class="vs-muted">${esc(v.empresa || '')} · visita a ${esc(v.anfitrion || 'área encargada')} · ${horaDe(v.entradaEn || Date.now())}</p>
+          ${v.sinContacto ? '<p class="gv-m-aviso gv-m-aviso-alerta"><i class="fas fa-phone-slash"></i> Quedó registrado como «Ingresó sin contacto con el anfitrión».</p>' : ''}
           <p class="gv-m-aviso"><i class="fas fa-bell"></i> Ya se avisó a la persona que visita. Cuando se vaya, busque su nombre en «Visitas de hoy» y registre la salida.</p></div>`;
       pie = `<button type="button" class="vs-btn" data-gv="sc-otro"><i class="fas fa-user-plus"></i> Registrar otro</button>
         <button type="button" class="btn-large btn-success gv-m-prim" data-gv="sc-terminar"><i class="fas fa-check"></i> Terminar</button>`;
@@ -379,8 +459,9 @@
           ${t && t.epp ? check('epp', '<strong>Lleva el EPP</strong> obligatorio para planta') : ''}
           <div class="gv-m-leer"><span class="gv-m-leer-etq"><i class="fas fa-comment-dots"></i> Léale en voz alta</span>
             «Sus datos (nombre, empresa y motivo) se usan solo para gestionar esta visita y la seguridad. Los ven la persona que visita y la administración, y se borran a los 6 meses. Puede ejercer sus derechos escribiendo a informacion@tcontrolsa.com.»</div>
-          ${check('acepta', '<strong>Se lo leí y estuvo de acuerdo</strong>')}`;
-        pie = `<button type="submit" class="btn-large btn-success gv-m-prim" ${sc.enviando ? 'disabled' : ''}>${sc.enviando ? SPIN + ' Registrando…' : '<i class="fas fa-sign-in-alt"></i> Registrar e ingresar'}</button>`;
+          ${check('acepta', '<strong>Se lo leí y estuvo de acuerdo</strong>')}
+          ${st.contingencia ? contactoHtml('form', { tel: f.anfitrion && f.anfitrion.tel, visitante: f.nombre, empresa: f.empresa, anfitrion: f.anfitrion ? f.anfitrion.nombre : 'el área encargada', puedeBot: false }) : ''}`;
+        pie = `<button type="submit" class="btn-large btn-success gv-m-prim" ${sc.enviando ? 'disabled' : ''}>${sc.enviando ? SPIN + ' Registrando…' : st.contingencia ? '<i class="fas fa-sign-in-alt"></i> Registrar e ingresar' : '<i class="fas fa-bell"></i> Registrar y avisar al anfitrión'}</button>`;
       }
       cuerpo = `${progreso}<p class="gv-m-pregunta">${pregunta}</p><p class="gv-m-ayuda">${ayuda}</p>
         ${sc.error ? `<div class="vs-error" role="alert"><i class="fas fa-exclamation-circle"></i> ${esc(sc.error)}</div>` : ''}
@@ -471,15 +552,34 @@
     if (!f.doc) { sc.error = 'Marque que revisó su cédula.'; return pintarModal(); }
     if (t.epp && !f.epp) { sc.error = 'Visita a planta: marque que lleva el EPP.'; return pintarModal(); }
     if (!f.acepta) { sc.error = 'Léale el aviso de datos y marque que estuvo de acuerdo.'; return pintarModal(); }
+    const cto = ctoLocal('form');
+    if (st.contingencia && !cto.resultado) { sc.error = 'Llame al anfitrión y elija qué pasó antes de registrar.'; return pintarModal(); }
     sc.enviando = true; sc.error = ''; pintarModal();
     try {
       sc.idRespaldo = sc.idRespaldo || nuevoId();   // mismo id si se reintenta: el respaldo no lo duplica
       const r = await rpc({ accion: 'registrar', id: sc.idRespaldo, tipo: t.id, anfitrionId: f.anfitrion ? f.anfitrion.id : '', nombre: f.nombre, empresa: f.empresa, motivo: f.motivo,
-        documentoVerificado: true, aceptaVerbal: true, eppVerificado: !!f.epp });
+        documentoVerificado: true, aceptaVerbal: true, eppVerificado: !!f.epp,
+        contacto: cto.resultado ? { resultado: cto.resultado, intentos: cto.intentos } : undefined });
       if (!r.ok) throw new Error(r.error);
-      st.sc = { modo: 'listo', visita: r.visita };
+      delete st.cto.form;
+      // En línea queda en portería: paso de contacto y después la entrada. En contingencia ya ingresó.
+      st.sc = r.visita.estado === 'aprobada' ? { modo: 'contacto', visita: r.visita, f } : { modo: 'listo', visita: r.visita };
       pintarModal();
       cargar();
+    } catch (e) { sc.enviando = false; sc.error = e.message; pintarModal(); }
+  }
+
+  async function entradaTrasContacto() {
+    const sc = st.sc, v = sc.visita, f = sc.f || {};
+    if (sc.enviando) return;
+    sc.enviando = true; sc.error = ''; pintarModal();
+    try {
+      const l = st.cto[v.codigo];
+      const r = await rpc({ accion: 'entrada', codigo: v.codigo, documentoVerificado: true, eppVerificado: !!f.epp,
+        contacto: l && l.resultado ? { resultado: l.resultado, intentos: l.intentos } : undefined });
+      if (!r.ok) throw new Error(r.error);
+      st.sc = { modo: 'listo', visita: r.visita };
+      pintarModal(); cargar();
     } catch (e) { sc.enviando = false; sc.error = e.message; pintarModal(); }
   }
 
@@ -488,9 +588,11 @@
     const hoy = f.hoy;
     let aviso = '', accion = '';
     if (v.estado === 'aprobada' && v.fecha === hoy) {
-      accion = `<label class="vs-check" style="margin-top:12px"><input type="checkbox" id="gvDoc"><span><strong>Verifiqué su documento de identidad</strong> y coincide con el nombre (no se registra el número).</span></label>
+      const sinCita = v.origen === 'porteria', res = sinCita ? resultadoContacto(v.codigo, v.llamada) : 'ok';
+      accion = `${sinCita ? contactoHtml(v.codigo, { tel: v.anfitrionTel, visitante: v.nombre, empresa: v.empresa, anfitrion: v.anfitrion, llamada: v.llamada, puedeBot: !st.contingencia }) : ''}
+        <label class="vs-check" style="margin-top:12px"><input type="checkbox" id="gvDoc"><span><strong>Verifiqué su documento de identidad</strong> y coincide con el nombre (no se registra el número).</span></label>
         ${v.epp ? `<label class="vs-check"><input type="checkbox" id="gvEpp"><span><strong>Lleva el EPP obligatorio</strong> para planta.</span></label>` : ''}
-        <button class="btn-large btn-success" data-gv="entrada" data-cod="${esc(v.codigo)}" ${st.registrando ? 'disabled' : ''}>${st.registrando === 'entrada' ? SPIN + ' Registrando entrada…' : '<i class="fas fa-sign-in-alt"></i> Registrar entrada'}</button>`;
+        <button class="btn-large btn-success ${!res ? 'gv-btn-bloq' : ''}" data-gv="entrada" data-cod="${esc(v.codigo)}" ${st.registrando || !res ? 'disabled' : ''}>${st.registrando === 'entrada' ? SPIN + ' Registrando entrada…' : !res ? '<i class="fas fa-lock"></i> Primero avise al anfitrión' : `<i class="fas fa-sign-in-alt"></i> ${sinCita && !contactoLogrado(res) ? 'Dejar pasar sin contacto' : 'Registrar entrada'}`}</button>`;
     } else if (v.estado === 'en_curso') {
       accion = `<button class="btn-large btn-primary" data-gv="salida" data-cod="${esc(v.codigo)}" ${st.registrando ? 'disabled' : ''}>${st.registrando === 'salida' ? SPIN + ' Registrando salida…' : '<i class="fas fa-sign-out-alt"></i> Registrar salida'}</button>`;
     } else if (v.estado === 'aprobada') {
@@ -685,6 +787,8 @@
       const epp = document.getElementById('gvEpp');
       if (epp && !epp.checked) { st.error = 'Esta visita es a planta: confirma que el visitante lleva el EPP.'; return pintarPrincipal(); }
       if (epp) p.eppVerificado = true;
+      const l = st.cto[codigo];
+      if (l && l.resultado) p.contacto = { resultado: l.resultado, intentos: l.intentos };
     }
     if (st.registrando) return;
     st.registrando = accion; pintarPrincipal();
@@ -746,6 +850,12 @@
       st.sc = st.contingencia ? { modo: 'form', paso: 1, f: {} } : { modo: 'elegir' };
       return pintarModal();
     }
+    if (a === 'cto-medio') { ctoLocal(b.dataset.k).medio = b.dataset.medio; setTimeout(repintarContacto, 300); return; }
+    if (a === 'cto-res' || a === 'cto-bot') {
+      const k = b.dataset.k, cod = k === 'form' ? '' : k;
+      return registrarContacto(k, cod, a === 'cto-bot' ? 'bot' : ctoLocal(k).medio, b.dataset.res || '');
+    }
+    if (a === 'sc-entrada') return entradaTrasContacto();
     if (a === 'sc-qr' || a === 'sc-nuevo') return nuevoQrPorteria();
     if (a === 'sc-form') { st.sc = { modo: 'form', paso: 1, f: {} }; return pintarModal(); }
     if (a === 'sc-cerrar') return cerrarModal();

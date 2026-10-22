@@ -25,6 +25,11 @@
   const fechaCorta = f => { const m = String(f || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
   const fechaLarga = f => { const m = String(f || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('es-EC', { weekday: 'short', day: 'numeric', month: 'short' }) : ''; };
   const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '';
+  // Llamada del guardia al anfitrión (visitante sin cita): resultado, intentos y aviso por el bot
+  const TXT_LLAMADA = { viene: 'contestó: venía a recibirlo', espera: 'contestó: pidió que espere', no_contesto: 'no contestó',
+    equivocado: 'número equivocado', sin_telefono: 'sin celular registrado' };
+  const llamadaTexto = l => `El guardia llamó${l.en ? ' a las ' + horaDe(l.en) : ''}: <b>${esc(TXT_LLAMADA[l.resultado] || l.resultado || 'sin resultado')}</b>` +
+    ` · ${l.intentos || 1} intento${(l.intentos || 1) === 1 ? '' : 's'}${l.bot ? ' · aviso por bot ' + horaDe(l.bot) : ''}`;
   const codigoBonito = c => String(c || '').replace(/^(.{4})(.{4})$/, '$1-$2');
   const estrellas = n => `<span class="vs-estrellas-mini" aria-label="${n} de 5">${'★'.repeat(Math.round(n || 0))}${'☆'.repeat(5 - Math.round(n || 0))}</span>`;
   const ESTADO_TXT = { invitada: 'Invitación enviada', pendiente: 'Por aprobar', aprobada: 'Aprobada', en_curso: 'En las instalaciones', concluida: 'Concluida', rechazada: 'Rechazada', cancelada: 'Cancelada', no_asistio: 'No asistió' };
@@ -196,7 +201,7 @@
           <strong>${esc(nombre)}</strong>
           <small>${esc(v.empresa || (v.nombre ? 'Particular' : ''))}${st.admin || esCopia ? ` · visita a ${esc(v.anfitrion || v.anfitrionNombre)}` : ''}</small>
           <span class="va-cuando"><i class="far fa-calendar"></i> ${cuando(v, hoy)}${v.motivo ? ` · ${esc(v.motivo)}` : ''}</span>
-          <span class="vs-chips">${v.tipoNombre ? `<span class="vs-chip">${esc(v.tipoNombre)}</span>` : ''}${v.epp ? '<span class="vs-chip vs-chip-epp"><i class="fas fa-hard-hat"></i> EPP</span>' : ''}${v.origen === 'porteria' ? '<span class="vs-chip vs-chip-sc">Sin cita</span>' : ''}${v.almuerzo ? '<span class="vs-chip"><i class="fas fa-utensils"></i> Almuerzo</span>' : ''}${esCopia ? '<span class="vs-chip vs-chip-copia"><i class="fas fa-bell"></i> Copia</span>' : ''}</span>
+          <span class="vs-chips">${v.tipoNombre ? `<span class="vs-chip">${esc(v.tipoNombre)}</span>` : ''}${v.epp ? '<span class="vs-chip vs-chip-epp"><i class="fas fa-hard-hat"></i> EPP</span>' : ''}${v.origen === 'porteria' ? '<span class="vs-chip vs-chip-sc">Sin cita</span>' : ''}${v.sinContacto ? '<span class="vs-chip vs-chip-alerta"><i class="fas fa-phone-slash"></i> Ingresó sin contacto</span>' : ''}${v.almuerzo ? '<span class="vs-chip"><i class="fas fa-utensils"></i> Almuerzo</span>' : ''}${esCopia ? '<span class="vs-chip vs-chip-copia"><i class="fas fa-bell"></i> Copia</span>' : ''}</span>
         </span>
         <span class="va-item-der">${estadoHtml(v, hoy)}<i class="fas fa-chevron-down va-flecha"></i></span>
       </div>
@@ -206,7 +211,8 @@
         ${contacto ? `<dt>Contacto</dt><dd>${contacto}</dd>` : ''}
         <dt>Código</dt><dd><code>${esc(codigoBonito(v.codigo))}</code>${v.origen === 'preregistro' ? ' · <span class="vs-muted">se registró solo</span>' : v.origen === 'porteria' ? ' · <span class="vs-muted">registrado en portería</span>' : ''}</dd>
         ${v.almuerzo ? `<dt>Almuerzo</dt><dd><i class="fas fa-utensils"></i> Solicitado</dd>` : ''}
-        ${v.entradaEn ? `<dt>Ingreso</dt><dd>${horaDe(v.entradaEn)}${v.salidaEn ? ' · salida ' + horaDe(v.salidaEn) : ''}</dd>` : ''}
+        ${v.llamada ? `<dt>Portería</dt><dd>${llamadaTexto(v.llamada)}</dd>` : ''}
+        ${v.entradaEn ? `<dt>Ingreso</dt><dd>${horaDe(v.entradaEn)}${v.salidaEn ? ' · salida ' + horaDe(v.salidaEn) : ''}${v.sinContacto ? ' · <b style="color:#b91c1c">sin contacto con el anfitrión</b>' : ''}</dd>` : ''}
         ${v.motivoRechazo ? `<dt>Nota</dt><dd>${esc(v.motivoRechazo)}</dd>` : ''}
         ${cal ? `<dt>Calificación</dt><dd>Atención ${estrellas(cal.atencion)} · Puntualidad ${estrellas(cal.puntualidad)} · Instalaciones ${estrellas(cal.instalaciones)}${cal.comentario ? `<div class="vs-muted">"${esc(cal.comentario)}"</div>` : ''}</dd>` : ''}
       </dl>` : ''}
