@@ -3903,6 +3903,10 @@ function actualizarRegistroArchivado(params) {
     };
     var targetFechaNorm = normFechaStr(fecha);
     var targetTipoNorm = String(tipo || '').trim().toUpperCase();
+    // Hora de ENTRADA/SALIDA: si no hay fila del mismo tipo, el respaldo solo puede ser una ausencia del día
+    // (se convierte al tipo pedido) y si no, se crea la fila. Antes tomaba cualquier fila: la SALIDA pisaba
+    // la hora de la ENTRADA y el día quedaba con una sola "ENTRADA 16:15" (mismo cambio en Postgres, 011).
+    var cambiaHora = (campo === 'timestamp' || campo === 'hora') && !!targetTipoNorm;
     
     // Búsqueda en reversa (de abajo hacia arriba) para encontrar registros recientes al instante
     let dupIndices = [];
@@ -3922,7 +3926,7 @@ function actualizarRegistroArchivado(params) {
           } else if (esAusenciaTipo(rowTipo) || rowTipo === 'FALTA') {
             dupIndices.push(i + 1);
           }
-        } else if (filaFallback === -1) {
+        } else if (filaFallback === -1 && (!cambiaHora || esAusenciaTipo(rowTipo) || rowTipo === 'FALTA')) {
           filaFallback = i + 1;
         } else if (esAusenciaTipo(rowTipo) || rowTipo === 'FALTA') {
           dupIndices.push(i + 1);
@@ -3932,6 +3936,8 @@ function actualizarRegistroArchivado(params) {
     if (filaIndex === -1 && filaFallback !== -1) {
       filaIndex = filaFallback;
     }
+    var tipoFilaObj = filaIndex !== -1 ? String(data[filaIndex - 1][COLUMNAS.TIPO] || '').trim().toUpperCase() : '';
+    var convertirAusencia = cambiaHora && (esAusenciaTipo(tipoFilaObj) || tipoFilaObj === 'FALTA');
     // Eliminar filas duplicadas de ausencia para este empleado y fecha (ej: FALTA previa que fue reemplazada)
     for (let d = 0; d < dupIndices.length; d++) {
       if (dupIndices[d] !== filaIndex) {
@@ -3964,6 +3970,7 @@ function actualizarRegistroArchivado(params) {
         sheet.getRange(filaIndex, COLUMNAS.FECHA + 1).setValue(parsed.fecha);
         sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue(parsed.hora);
         sheet.getRange(filaIndex, COLUMNAS.DIA + 1).setValue(obtenerDiaEcuador(new Date(parsed.fecha + 'T12:00:00')));
+        if (convertirAusencia) sheet.getRange(filaIndex, COLUMNAS.TIPO + 1).setValue(targetTipoNorm);
         if (params.modo) sheet.getRange(filaIndex, COLUMNAS.MODO + 1).setValue(params.modo);
         if (params.almuerzo) sheet.getRange(filaIndex, COLUMNAS.ALMUERZO + 1).setValue(params.almuerzo);
         if (params.horasExtra) sheet.getRange(filaIndex, COLUMNAS.HORAS_EXTRA + 1).setValue(params.horasExtra);
@@ -3983,6 +3990,7 @@ function actualizarRegistroArchivado(params) {
         sheet.getRange(filaIndex, COLUMNAS.FECHA + 1).setValue(fFinal);
         sheet.getRange(filaIndex, COLUMNAS.HORA + 1).setValue(hFinal);
         sheet.getRange(filaIndex, COLUMNAS.DIA + 1).setValue(obtenerDiaEcuador(new Date(fFinal + 'T12:00:00')));
+        if (convertirAusencia) sheet.getRange(filaIndex, COLUMNAS.TIPO + 1).setValue(targetTipoNorm);
         if (params.modo) sheet.getRange(filaIndex, COLUMNAS.MODO + 1).setValue(params.modo);
         if (params.almuerzo) sheet.getRange(filaIndex, COLUMNAS.ALMUERZO + 1).setValue(params.almuerzo);
         if (params.horasExtra) sheet.getRange(filaIndex, COLUMNAS.HORAS_EXTRA + 1).setValue(params.horasExtra);
