@@ -161,7 +161,8 @@
         <h3 class="gv-titulo"><i class="fas fa-qrcode"></i> Visitante con cita</h3>
         ${st.escaneando
           ? `<div class="gv-scan"><video id="gvVideo" playsinline muted></video><div class="gv-marco"></div>
-               ${st.abriendoCamara ? `<div class="gv-scan-cargando">${SPIN} Abriendo cámara…</div>` : ''}</div>
+               ${st.abriendoCamara ? `<div class="gv-scan-cargando">${SPIN} Abriendo cámara…</div>` : ''}
+               <div class="gv-scan-ayuda" hidden><i class="fas fa-lightbulb"></i> ¿No lee? Pida al visitante subir el brillo y acercar el celular al recuadro, o escriba abajo el código de 8 caracteres.</div></div>
              <button class="btn-large btn-secondary" data-gv="detener"><i class="fas fa-stop"></i> Detener cámara</button>`
           : `<button class="btn-large btn-primary" data-gv="escanear"><i class="fas fa-camera"></i> Escanear su código QR</button>`}
         <form id="gvCodigoForm" class="gv-codigo" style="margin-top:12px">
@@ -521,42 +522,115 @@
   }
 
   // ---------------------------------------------------------------- cámara y QR
-  let detector = null, bucle = null;
+  // Lector: BarcodeDetector nativo si existe y funciona; si falla (en varios equipos existe pero no lee
+  // y el error se perdía), jsQR. jsQR viene del propio sitio (JS/vendor); si no llegó, se pide a un CDN. Los cuadros se
+  // reducen (más rápido) y se alterna con un recorte central a más resolución (QR pequeño en la pantalla
+  // de un celular); se prueba también el QR invertido (celulares con modo oscuro forzado).
+  let detector = null, bucle = null, fallosDetector = 0, cargaJsQR = null;
+  const CDN_JSQR = ['https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js', 'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js'];
+  function asegurarJsQR() {
+    if (typeof window.jsQR === 'function') return Promise.resolve(true);
+    if (cargaJsQR) return cargaJsQR;
+    cargaJsQR = (async () => {
+      // El <script async> del HTML puede seguir llegando: se espera un poco antes de pedirlo a otro CDN
+      for (let i = 0; i < 20 && typeof window.jsQR !== 'function'; i++) await new Promise(r => setTimeout(r, 150));
+      for (const src of CDN_JSQR) {
+        if (typeof window.jsQR === 'function') break;
+        await new Promise(res => {
+          const s = document.createElement('script');
+          s.src = src; s.async = true; s.onload = res; s.onerror = res;
+          setTimeout(res, 8000);
+          document.head.appendChild(s);
+        });
+      }
+      return typeof window.jsQR === 'function';
+    })();
+    return cargaJsQR;
+  }
+  async function crearDetector() {
+    if (!('BarcodeDetector' in window)) return null;
+    try {
+      const formatos = await window.BarcodeDetector.getSupportedFormats();
+      if (Array.isArray(formatos) && !formatos.includes('qr_code')) return null;
+      return new window.BarcodeDetector({ formats: ['qr_code'] });
+    } catch (e) { return null; }
+  }
   async function iniciarCamara() {
     const video = document.getElementById('gvVideo');
     if (!video || st.stream || st.abriendoCamara === 'pidiendo') return;
     st.abriendoCamara = 'pidiendo';
     try {
-      st.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      st.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
+      });
+      // Enfoque continuo donde la cámara lo permite (de cerca, la pantalla de un celular se ve borrosa)
+      try {
+        const pista = st.stream.getVideoTracks()[0];
+        const cap = pista.getCapabilities ? pista.getCapabilities() : {};
+        if (cap.focusMode && cap.focusMode.includes('continuous')) await pista.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch (e) { }
       video.srcObject = st.stream;
       await video.play();
       st.abriendoCamara = false;
       const aviso = video.parentNode && video.parentNode.querySelector('.gv-scan-cargando'); if (aviso) aviso.remove();
-      if ('BarcodeDetector' in window) { try { detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { detector = null; } }
+      detector = await crearDetector();
+      fallosDetector = 0;
+      if (!detector) asegurarJsQR();
       const lienzo = document.createElement('canvas');
       const ctx = lienzo.getContext('2d', { willReadFrequently: true });
+      const inicio = Date.now();
+      let cuadro = 0;
+      const leerJsQR = () => {
+        if (typeof window.jsQR !== 'function') return '';
+        const vw = video.videoWidth, vh = video.videoHeight;
+        // Cuadros pares: imagen completa reducida a 640 px; impares: recorte central sin reducir
+        let sx = 0, sy = 0, sw = vw, sh = vh;
+        if (cuadro % 2) { sw = Math.round(vw * 0.6); sh = Math.round(vh * 0.6); sx = Math.round((vw - sw) / 2); sy = Math.round((vh - sh) / 2); }
+        const escala = Math.min(1, 640 / Math.max(sw, sh));
+        lienzo.width = Math.round(sw * escala); lienzo.height = Math.round(sh * escala);
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, lienzo.width, lienzo.height);
+        const img = ctx.getImageData(0, 0, lienzo.width, lienzo.height);
+        const r = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+        return r ? r.data : '';
+      };
       const leer = async () => {
-        if (!st.escaneando || !video.videoWidth) { bucle = requestAnimationFrame(leer); return; }
+        if (!st.escaneando) return;
+        if (!video.videoWidth) { bucle = setTimeout(leer, 150); return; }
+        cuadro++;
         let texto = '';
-        try {
-          if (detector) {
+        if (detector) {
+          try {
             const r = await detector.detect(video);
             if (r && r[0]) texto = r[0].rawValue;
-          } else if (typeof window.jsQR === 'function') {
-            lienzo.width = video.videoWidth; lienzo.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
-            const img = ctx.getImageData(0, 0, lienzo.width, lienzo.height);
-            const r = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-            if (r) texto = r.data;
+            fallosDetector = 0;
+          } catch (e) {
+            // Existe pero no funciona en este equipo: se pasa a jsQR
+            if (++fallosDetector >= 3) { console.warn('BarcodeDetector falla, se usa jsQR:', e && e.message); detector = null; asegurarJsQR(); }
           }
-        } catch (e) { }
+        } else {
+          try { texto = leerJsQR(); } catch (e) { }
+        }
+        if (!st.escaneando) return;
+        if (Date.now() - inicio > 8000) {
+          const ayuda = video.parentNode && video.parentNode.querySelector('.gv-scan-ayuda');
+          if (ayuda) ayuda.hidden = false;
+        }
+        if (!detector && typeof window.jsQR !== 'function' && cargaJsQR && Date.now() - inicio > 12000) {
+          const ok = await cargaJsQR;
+          if (!ok) {
+            detenerCamara();
+            st.error = 'No se pudo cargar el lector de QR en este equipo (revise la conexión). Escriba el código de 8 caracteres del visitante.';
+            pintar();
+            return;
+          }
+        }
         if (texto && /^TCV1:[A-Z0-9]{8}$/i.test(texto.trim())) {
           if (navigator.vibrate) navigator.vibrate(120);
           detenerCamara();
           buscar(texto.trim());
           return;
         }
-        bucle = setTimeout(() => requestAnimationFrame(leer), 180);
+        bucle = setTimeout(leer, detector ? 150 : 90);
       };
       leer();
     } catch (e) {

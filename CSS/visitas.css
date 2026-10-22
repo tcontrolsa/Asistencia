@@ -201,6 +201,8 @@
 .gv-scan { position: relative; width: 100%; max-width: 420px; aspect-ratio: 1; margin: 0 auto 12px; background: #000; border-radius: 18px; overflow: hidden; }
 .gv-scan video { width: 100%; height: 100%; object-fit: cover; }
 .gv-marco { position: absolute; inset: 18%; border: 3px solid rgba(255, 255, 255, .9); border-radius: 18px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .35); }
+.gv-scan-ayuda { position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(15, 23, 42, .82); color: #fff; font-size: 13px; line-height: 1.35; }
+.gv-scan-ayuda i { color: #fbbf24; margin-right: 4px; }
 .gv-scan-cargando { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #fff; font-weight: 600; background: rgba(0, 0, 0, .55); }
 .gv-ficha .sk-bloque, .vs-root .sk-bloque { height: 58px; margin-bottom: 10px; border-radius: 12px; }
 .gv-codigo { display: flex; gap: 8px; }
