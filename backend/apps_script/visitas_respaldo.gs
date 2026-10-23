@@ -262,6 +262,12 @@ function registrarEventoRespaldo_(op, d, puesto) {
   var tipoDe = function (tid) { return (copia.tipos || []).filter(function (t) { return t.id === tid; })[0] || null; };
   var visita, codigo = '', ref = '', datos = {};
 
+  // Horario de visitas (07:30-18:30, o el de la configuración copiada): fuera de él no se registran ingresos
+  if (op === 'registrar' || op === 'entrada') {
+    var hc = (copia.horario || {}), hEn = Utilities.formatDate(en, 'America/Guayaquil', 'HH:mm');
+    var ap = hc.apertura || '07:30', ci = hc.cierre || '18:30';
+    if (hEn < ap || hEn > ci) return { ok: false, error: 'La empresa recibe visitas de ' + ap + ' a ' + ci + '. No se puede registrar el ingreso a esta hora.' };
+  }
   if (op === 'registrar') {
     var nombre = String(d.nombre || '').trim().slice(0, 80), empresa = String(d.empresa || '').trim().slice(0, 80), motivo = String(d.motivo || '').trim().slice(0, 200);
     if (nombre.length < 3) return { ok: false, error: 'Escribe el nombre y apellido del visitante.' };

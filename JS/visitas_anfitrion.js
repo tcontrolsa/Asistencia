@@ -212,7 +212,7 @@
         <dt>Código</dt><dd><code>${esc(codigoBonito(v.codigo))}</code>${v.origen === 'preregistro' ? ' · <span class="vs-muted">se registró solo</span>' : v.origen === 'porteria' ? ' · <span class="vs-muted">registrado en portería</span>' : ''}</dd>
         ${v.almuerzo ? `<dt>Almuerzo</dt><dd><i class="fas fa-utensils"></i> Solicitado</dd>` : ''}
         ${v.llamada ? `<dt>Portería</dt><dd>${llamadaTexto(v.llamada)}</dd>` : ''}
-        ${v.entradaEn ? `<dt>Ingreso</dt><dd>${horaDe(v.entradaEn)}${v.salidaEn ? ' · salida ' + horaDe(v.salidaEn) : ''}${v.sinContacto ? ' · <b style="color:#b91c1c">sin contacto con el anfitrión</b>' : ''}</dd>` : ''}
+        ${v.entradaEn ? `<dt>Ingreso</dt><dd>${horaDe(v.entradaEn)}${v.salidaEn ? ' · salida ' + horaDe(v.salidaEn) + (v.salidaAutomatica ? ' <b style="color:#b91c1c">(automática: portería no registró la salida)</b>' : '') : ''}${v.sinContacto ? ' · <b style="color:#b91c1c">sin contacto con el anfitrión</b>' : ''}</dd>` : ''}
         ${v.motivoRechazo ? `<dt>Nota</dt><dd>${esc(v.motivoRechazo)}</dd>` : ''}
         ${cal ? `<dt>Calificación</dt><dd>Atención ${estrellas(cal.atencion)} · Puntualidad ${estrellas(cal.puntualidad)} · Instalaciones ${estrellas(cal.instalaciones)}${cal.comentario ? `<div class="vs-muted">"${esc(cal.comentario)}"</div>` : ''}</dd>` : ''}
       </dl>` : ''}

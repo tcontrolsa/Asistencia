@@ -303,6 +303,11 @@
 .gv-cto-hecho strong { display: block; font-size: 14px; }
 .gv-cto-hecho small { display: block; font-size: 12px; color: var(--vs-tx2); }
 .gv-cto-bot { width: 100%; justify-content: center; margin-top: 12px; }
+.gv-horario { display: flex; flex-direction: row; gap: 12px; align-items: flex-start; border: 2px solid #fcd34d; background: #fffbeb; color: #78350f; font-size: 13.5px; line-height: 1.45; }
+.gv-horario > i { font-size: 22px; color: #b45309; margin-top: 2px; }
+.gv-horario strong { display: block; font-size: 15px; color: #78350f; }
+.gv-horario-cierre { border-color: #fca5a5; background: #fef2f2; color: #7f1d1d; }
+.gv-horario-cierre > i, .gv-horario-cierre strong { color: #b91c1c; }
 .gv-btn-bloq, .gv-btn-bloq:hover { background: #e2e8f0 !important; color: #64748b !important; box-shadow: none !important; cursor: not-allowed; }
 .gv-cto-nota { margin: 8px 0 0; font-size: 12.5px; color: var(--vs-tx2); line-height: 1.45; }
 @media (max-width: 380px) { .gv-cto-res { grid-template-columns: 1fr; } }

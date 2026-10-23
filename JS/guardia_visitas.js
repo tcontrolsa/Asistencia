@@ -23,7 +23,13 @@
   const st = { ses: null, lista: [], ficha: null, error: '', escaneando: false, stream: null, cargando: false,
     cargandoLista: false, listaTs: 0, buscando: '', registrando: '', abriendoCamara: false, filtro: 'todas',
     // Visitante sin cita (ventana): modo 'elegir' | 'qr' | 'form' (paso 1-4) | 'listo'
-    sc: null, tipos: [], eppTexto: '', cto: {} };
+    sc: null, tipos: [], eppTexto: '', cto: {}, horario: { apertura: '07:30', cierre: '18:30' } };
+  // Horario de visitas (Ecuador): fuera de él no se registran ingresos; a la hora de cierre el servidor cierra
+  // solas las visitas que siguen dentro (salida no registrada por portería)
+  const horaEc = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', hour12: false });
+  const fueraHorario = () => { const h = horaEc(); return h < st.horario.apertura || h > st.horario.cierre; };
+  const msgHorario = () => `La empresa recibe visitas de ${st.horario.apertura} a ${st.horario.cierre}. No se puede registrar el ingreso a esta hora.`;
+  const restaParaCierre = () => { const [h, m] = horaEc().split(':').map(Number), [ch, cm] = st.horario.cierre.split(':').map(Number); return ch * 60 + cm - (h * 60 + m); };
   const tipoDe = id => st.tipos.find(t => t.id === id) || null;
   const SPIN = '<span class="spin-sm" aria-hidden="true"></span>';
   const LENTO = '<p class="cargando-nota lento-6s" style="margin-top:10px">La conexión con la base está lenta, sigue trabajando…</p>';
@@ -157,6 +163,8 @@
     const scanVivo = st.escaneando && (st.stream || st.abriendoCamara === 'pidiendo') ? cont.querySelector('.gv-scan') : null;
     cont.innerHTML = `<div class="vs-root">
       ${st.contingencia ? bannerContingencia() : ''}
+      ${fueraHorario() ? `<div class="card gv-horario" role="status"><i class="fas fa-clock"></i><span><strong>Fuera del horario de visitas</strong>La empresa recibe visitas de ${st.horario.apertura} a ${st.horario.cierre}: no se registran ingresos. Las salidas sí.</span></div>`
+        : restaParaCierre() <= 30 && st.lista.some(v => v.estado === 'en_curso') ? `<div class="card gv-horario gv-horario-cierre" role="status"><i class="fas fa-door-closed"></i><span><strong>Cierre a las ${st.horario.cierre}</strong>Registre la salida de quienes siguen dentro. A las ${st.horario.cierre} se cierran solas como «salida no registrada».</span></div>` : ''}
       <div class="card gv-card-ingreso">
         <h3 class="gv-titulo"><i class="fas fa-qrcode"></i> Visitante con cita</h3>
         ${st.escaneando
@@ -212,7 +220,7 @@
       <span class="gv-fila-info">
         <strong>${esc(v.nombre || '(sin nombre)')}</strong>
         <small>${esc(v.empresa || 'Particular')} · visita a ${esc(v.anfitrion || 'área encargada')}</small>
-        <span class="gv-fila-chips">${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.sinContacto ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-phone-slash"></i> Sin contacto</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
+        <span class="gv-fila-chips">${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.sinContacto ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-phone-slash"></i> Sin contacto</em>' : ''}${v.estado === 'en_curso' && restaParaCierre() <= 30 ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-door-closed"></i> Registre su salida</em>' : ''}${v.salidaAutomatica ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-robot"></i> Salida no registrada</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
       </span>
       ${estadoHtml(v)}
     </button>`;
@@ -552,6 +560,7 @@
     if (!f.doc) { sc.error = 'Marque que revisó su cédula.'; return pintarModal(); }
     if (t.epp && !f.epp) { sc.error = 'Visita a planta: marque que lleva el EPP.'; return pintarModal(); }
     if (!f.acepta) { sc.error = 'Léale el aviso de datos y marque que estuvo de acuerdo.'; return pintarModal(); }
+    if (fueraHorario()) { sc.error = msgHorario(); return pintarModal(); }
     const cto = ctoLocal('form');
     if (st.contingencia && !cto.resultado) { sc.error = 'Llame al anfitrión y elija qué pasó antes de registrar.'; return pintarModal(); }
     sc.enviando = true; sc.error = ''; pintarModal();
@@ -572,6 +581,7 @@
   async function entradaTrasContacto() {
     const sc = st.sc, v = sc.visita, f = sc.f || {};
     if (sc.enviando) return;
+    if (fueraHorario()) { sc.error = msgHorario(); return pintarModal(); }
     sc.enviando = true; sc.error = ''; pintarModal();
     try {
       const l = st.cto[v.codigo];
@@ -587,7 +597,9 @@
     const v = f.visita;
     const hoy = f.hoy;
     let aviso = '', accion = '';
-    if (v.estado === 'aprobada' && v.fecha === hoy) {
+    if (v.estado === 'aprobada' && v.fecha === hoy && fueraHorario()) {
+      aviso = esc(msgHorario());
+    } else if (v.estado === 'aprobada' && v.fecha === hoy) {
       const sinCita = v.origen === 'porteria', res = sinCita ? resultadoContacto(v.codigo, v.llamada) : 'ok';
       accion = `${sinCita ? contactoHtml(v.codigo, { tel: v.anfitrionTel, visitante: v.nombre, empresa: v.empresa, anfitrion: v.anfitrion, llamada: v.llamada, puedeBot: !st.contingencia }) : ''}
         <label class="vs-check" style="margin-top:12px"><input type="checkbox" id="gvDoc"><span><strong>Verifiqué su documento de identidad</strong> y coincide con el nombre (no se registra el número).</span></label>
@@ -759,6 +771,7 @@
         st.lista = r.visitas || []; st.listaTs = Date.now(); st.error = '';
         if (Array.isArray(r.tipos)) st.tipos = r.tipos;
         if (r.eppTexto) st.eppTexto = r.eppTexto;
+        if (r.horario && r.horario.apertura && r.horario.cierre) st.horario = r.horario;
       } catch (e) { st.error = e.message; }
       st.cargandoLista = false; cargaLista = null;
       pintarPrincipal(); pintarLista();
@@ -844,6 +857,7 @@
     const a = b.dataset.gv;
     const m = document.getElementById('gvModal');
     // Ventana de visitante sin cita
+    if (a === 'sc-abrir' && fueraHorario()) { if (typeof window.mostrarToast === 'function') window.mostrarToast(msgHorario(), 'warning'); return; }
     if (a === 'sc-abrir' || a === 'sc-elegir' || a === 'sc-otro') {
       clearInterval(tReloj);
       // En contingencia no hay QR de portería (lo genera el servidor): el guardia lo registra
