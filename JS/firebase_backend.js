@@ -1661,6 +1661,7 @@ window.FirebaseBackend = {
 
                 const emSnap = await db.collection('configuracion').doc('emergencia').get();
                 resultado.emergencia = emSnap.exists ? emSnap.data() : { activa: false, nombre: '', habilitadoPor: '', fecha: '' };
+                await this.cargarAjustesDescanso();
 
                 console.log("🚀 Configuración cargada desde Firebase:", resultado);
                 return resultado;
@@ -1994,6 +1995,32 @@ window.FirebaseBackend = {
 
     async actualizarRegistroArchivado(params) {
         return await this.actualizarRegistroGeneral(params);
+    },
+
+    // Ajuste por día del descuento de receso y almuerzo (Gestionar jornada): un solo documento
+    // configuracion/ajustes_descanso con dias["ID_YYYY-MM-DD"] = { d: 'SI' | 'NO', por, en }. 'AUTO' lo quita.
+    // Vive aparte de las marcaciones para que no dependa del archivado (Firestore → Sheets → Postgres).
+    async cargarAjustesDescanso() {
+        try {
+            const snap = await db.collection('configuracion').doc('ajustes_descanso').get();
+            window._ajustesDescanso = (snap.exists && snap.data().dias) || {};
+        } catch (e) {
+            console.warn('No se pudieron leer los ajustes de descanso:', e.message || e);
+            window._ajustesDescanso = window._ajustesDescanso || {};
+        }
+        return window._ajustesDescanso;
+    },
+
+    async guardarAjusteDescanso({ empleadoId, fecha, valor, supervisor }) {
+        const clave = `${String(empleadoId).trim()}_${fecha}`;
+        const v = String(valor || 'AUTO').toUpperCase();
+        const ref = db.collection('configuracion').doc('ajustes_descanso');
+        const dato = v === 'AUTO' ? firebase.firestore.FieldValue.delete()
+            : { d: v, por: String(supervisor || ''), en: new Date().toISOString() };
+        await ref.set({ dias: { [clave]: dato } }, { merge: true });
+        window._ajustesDescanso = window._ajustesDescanso || {};
+        if (v === 'AUTO') delete window._ajustesDescanso[clave]; else window._ajustesDescanso[clave] = dato;
+        return { ok: true };
     },
 
     async guardarModalidadSupervisor(params) {
@@ -3248,6 +3275,8 @@ window.FirebaseBackend = {
         try {
             const hoy = new Date();
             const hoyStr = this._hoyStr(hoy);
+
+            await this.cargarAjustesDescanso();
 
             // 1. Empleados (activos e inactivos)
             this._faseCarga('empleados', 'Cargando colaboradores…');

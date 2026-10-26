@@ -16,7 +16,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20261022_01"></script>
+  <script src="./JS/firebase_backend.js?v=20261026_01"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -5234,6 +5234,17 @@
             </div>
           </div>
 
+          <!-- Descuento de receso y almuerzo (desde el 26/09/2026, lunes a viernes) -->
+          <div id="modalJornadaDescansoBox" style="display:none; margin-bottom:12px; padding:10px 12px; border:1.5px solid #e2e8f0; border-radius:10px; background:#f8fafc;">
+            <label for="modalJornadaDescansoSelect" style="display:block; font-size:14px; font-weight:700; color:#475569; margin-bottom:5px;">Descuento de receso y almuerzo</label>
+            <select id="modalJornadaDescansoSelect" onchange="window.recalcularTiemposModalJornada()" style="width:100%; font-size:15px; font-weight:700; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; background:#ffffff; height:42px;">
+              <option value="AUTO">⏱️ Automático según el horario</option>
+              <option value="NO">🚫 No descontar (no tomó receso ni almuerzo)</option>
+              <option value="SI">🍽️ Descontar los 45 min completos</option>
+            </select>
+            <div id="modalJornadaDescansoInfo" style="font-size:12.5px; color:#64748b; margin-top:6px; line-height:1.45;">Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30: se descuentan solo si estaba en la empresa a esa hora.</div>
+          </div>
+
           <!-- Comentario / Observación -->
           <div>
             <label style="display:block; font-size:14px; font-weight:700; color:#475569; margin-bottom:5px;">Observación / Comentario del Supervisor</label>
@@ -5269,17 +5280,17 @@
 
   <script src="./JS/openwa_service.js?v=20261006_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261022_01"></script>
+  <script src="./JS/supervisor_core.js?v=20261026_01"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261003_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261013_02"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
-  <script src="./JS/evaluacion_desempeno.js?v=20261007_02"></script>
+  <script src="./JS/evaluacion_desempeno.js?v=20261026_01"></script>
   <script src="./JS/notificaciones.js?v=20261008_01"></script>
   <script src="./JS/visitas_anfitrion.js?v=20261023_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20261006_01"></script>
-  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261007_03"></script>
+  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261026_01"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

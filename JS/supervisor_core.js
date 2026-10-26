@@ -633,7 +633,7 @@ function minutosAHHMMSS(minutos) {
   return String(horas).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ':' + String(segs).padStart(2, '0');
 }
 
-function calcularNetWorkedOrdinario(periodosDia, esFestivo) {
+function calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, empId) {
   if (esFestivo) return 0;
   let ordBruto = 0;
   let hasLunchGap = false;
@@ -665,7 +665,10 @@ function calcularNetWorkedOrdinario(periodosDia, esFestivo) {
   }
 
   let ordNeto = ordBruto;
-  if (!hasLunchGap && ordNeto > 240) {
+  const dsc = descansoDia(fecha, periodosDia, empId, esFestivo, undefined, (!hasLunchGap && ordNeto > 240) ? 45 : 0);
+  if (dsc !== null) {
+    ordNeto -= dsc;
+  } else if (!hasLunchGap && ordNeto > 240) {
     ordNeto -= 45;
   }
   return Math.max(0, ordNeto);
@@ -764,6 +767,46 @@ const ALMUERZO_MIN = 45;
 const EXTRA50_UMBRAL_MIN = 45;
 const EXTRA50_TOPE_MIN = 120;
 const PENALIZACION_SIN_SALIDA_MIN = 15;
+
+// Descansos de lunes a viernes desde el 26/09/2026 (pedido 2026-10-26): receso 10:00–10:15 (15 min) y almuerzo
+// 30 min (turnos 12:30–13:00 y 13:00–13:30; para el cálculo cuenta 12:30). Juntos son los 45 min de siempre,
+// pero cada uno se descuenta solo si la persona estaba en la empresa cuando empezaba: quien sale antes del
+// almuerzo ya no pierde esos 30 min (antes: 45 min fijos si trabajó más de 4 h). Si salió a almorzar (pausa
+// marcada), el almuerzo ya no cuenta como trabajado. Ajuste por día en Gestionar jornada
+// (configuracion/ajustes_descanso): 'NO' no descuenta ninguno, 'SI' descuenta los 45 min.
+// Sábado, domingo, feriado y días anteriores: regla anterior (descansoDia devuelve null).
+const DESCANSOS_DESDE = '2026-09-26';
+const DESCANSOS_LV = [{ id: 'receso', inicio: 600, min: 15 }, { id: 'almuerzo', inicio: 750, min: 30 }];
+function ajusteDescansoDia(empId, fecha) {
+  const a = (window._ajustesDescanso || {})[`${String(empId || '').trim()}_${fecha}`];
+  return a ? String(a.d || '').toUpperCase() : '';
+}
+window.ajusteDescansoDia = ajusteDescansoDia;
+// tope: lo que descontaba la regla anterior en ese cálculo; sin ajuste manual, la regla nueva nunca descuenta
+// más que eso (decisión 2026-10-26: si alguien salió entre las 10:00 y las 11:45 no se le resta el receso).
+function descansoDia(fecha, periodosDia, empId, esFestivo, ajuste, tope) {
+  if (esFestivo || !fecha || fecha < DESCANSOS_DESDE) return null;
+  const aj = ajuste !== undefined && ajuste !== null ? String(ajuste).toUpperCase() : ajusteDescansoDia(empId, fecha);
+  if (aj === 'NO') return 0;
+  if (aj === 'SI') return ALMUERZO_MIN;
+  const tramos = [];
+  let ultS = null, pausaAlmuerzo = false;
+  (periodosDia || []).forEach(p => {
+    if (!p || !p.entrada || !p.salida) return;
+    const mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+    const mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+    if (mE === null || mS === null || mS <= mE) return;
+    if (ultS !== null && ultS >= 690 && ultS <= 870 && mE - ultS >= 30) pausaAlmuerzo = true;
+    ultS = mS;
+    tramos.push([mE, mS]);
+  });
+  const nuevo = DESCANSOS_LV.reduce((t, d) => {
+    if (d.id === 'almuerzo' && pausaAlmuerzo) return t;
+    return tramos.some(([a, b]) => a <= d.inicio && d.inicio < b) ? t + d.min : t;
+  }, 0);
+  return typeof tope === 'number' ? Math.min(nuevo, tope) : nuevo;
+}
+window.descansoDia = descansoDia;
 
 function esAreaTaller(e) {
   return String((e && (e.area || e.departamento)) || '').trim().toUpperCase() === 'TALLER';
@@ -2010,7 +2053,7 @@ function cargarDashboard() {
           });
 
           let netWorked = minutosTrabajadosHoy;
-          if (netWorked > 240) netWorked -= ALMUERZO_MIN;
+          { const dsc = descansoDia(fecha, periodosDia, e.id, esFestivo, undefined, netWorked > 240 ? ALMUERZO_MIN : 0); if (dsc !== null) netWorked -= dsc; else if (netWorked > 240) netWorked -= ALMUERZO_MIN; }
 
           let expectedNet = esFestivo ? 0 : 480;
           let missingMinutes = Math.max(0, expectedNet - netWorked);
@@ -2421,7 +2464,7 @@ window.obtenerFechasPendientesRegularizarEmpleado = function (emp, customInicio 
     }
 
     if (!isJustificado) {
-      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, false) : netWorked;
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, false, f, emp && emp.id) : netWorked;
       let missingMinutes = Math.max(0, 480 - netWorkedOrdinario);
       let totalPermisosHoy = tiempoPersonal + tiempoMedico;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
@@ -4021,7 +4064,7 @@ function cargarReportes() {
       });
 
       let netWorked = minutosTrabajadosHoy;
-      if (netWorked > 240) netWorked -= ALMUERZO_MIN; // también sábado, domingo y feriado
+      { const dsc = descansoDia(fecha, periodosDia, e.id, esFestivo, undefined, netWorked > 240 ? ALMUERZO_MIN : 0); if (dsc !== null) netWorked -= dsc; else if (netWorked > 240) netWorked -= ALMUERZO_MIN; } // regla anterior: sábado, domingo, feriado
 
       // Horas extras independientes (no compensan faltantes): reglas compartidas con el detalle
       let autorizado = Boolean(autorizacionExtrasDia(e, regsDia));
@@ -4090,7 +4133,7 @@ function cargarReportes() {
       if ((isJustificado && !tieneAsistenciaHoy) || esCampoHoy || esHoyOFuturo || esPasanteEmp) {
         tiempoJustificarHoy = 0;
       } else {
-        let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+        let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, e.id) : netWorked;
         let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
         let totalPermisosHoy = tiempoPersonalHoy + tiempoMedicoHoy + tiempoJustificadoHoy;
         let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
@@ -4102,7 +4145,8 @@ function cargarReportes() {
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
       let minsSalidaTempranaHoy = (!esFestivo && !esPasanteEmp && ultimoSalidaMins !== null && ultimoSalidaMins < HORA_SALIDA_REF) ? (HORA_SALIDA_REF - ultimoSalidaMins) : 0;
-      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
+      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, e.id) : netWorked));
+      if (!esFestivo && fecha >= DESCANSOS_DESDE) minsSalidaTempranaHoy = Math.min(minsSalidaTempranaHoy, missingMinutesDia);
       if (!esFestivo && (atrasoMinsHoy + minsSalidaTempranaHoy) > missingMinutesDia) {
         atrasoMinsHoy = Math.max(0, missingMinutesDia - minsSalidaTempranaHoy);
       }
@@ -5013,7 +5057,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   let pE = cE ? Math.round(sE / cE) : null;
   let pS = cS ? Math.round(sS / cS) : null;
 
-  let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0;
+  let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0, totDescanso = 0;
   let totDescontarTarjeta = 0; // la tarjeta muestra lo mismo que el total de la columna T. Descontar
   let thH = 0, thM = 0;
 
@@ -5201,7 +5245,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
     // Mostrar todos los días del período
     // Acumuladores para la fila de totales
-    totTP = 0; totTM = 0; totTJustificado = 0; totTJ = 0; totHoras = 0; totAtrasos = 0;
+    totTP = 0; totTM = 0; totTJustificado = 0; totTJ = 0; totHoras = 0; totAtrasos = 0; totDescanso = 0;
     let totH50 = 0, totH100 = 0, totHCN = 0, totHC50 = 0, totHC100 = 0;
     let totExtra50 = 0, totExtra100 = 0;
     let totEmpresa = 0, totCampo = 0, totSalidaTemprana = 0;
@@ -5323,8 +5367,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const esCumpleDia = beneficioCumpleanosDia(e, f, regsDia, tieneAsistencia);
       if (esCumpleDia) tiempoJustificado = Math.max(tiempoJustificado, 240);
 
-      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : 0;
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, f, e.id) : 0;
       let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
+      if (!esFestivo && f >= DESCANSOS_DESDE) minsSalidaTemprana = Math.min(minsSalidaTemprana, missingMinutesDia);
       if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
         atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
       }
@@ -5399,7 +5444,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         const diaSem = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][new Date(f + 'T12:00:00').getDay()];
         return `<tr id="fila-fecha-${f}" class="fila-verificando">
         <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px;">${diaSem} ${fP[2]}/${fP[1]}</td>
-        <td colspan="8" style="font-size:10.5px; padding:6px 12px; color:#64748b; background:#f8fafc; border-left:3px solid #cbd5e1;">
+        <td colspan="9" style="font-size:10.5px; padding:6px 12px; color:#64748b; background:#f8fafc; border-left:3px solid #cbd5e1;">
           <i class="fas fa-spinner fa-spin" style="font-size:10px;"></i> Verificando historial archivado… <span style="color:#94a3b8;">(sin marcaciones en la copia local)</span>
         </td>
       </tr>`;
@@ -5705,12 +5750,30 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       });
 
       let netWorked = minutosTrabajadosHoy;
-      // 45 min de almuerzo si trabajó más de 4 h (también sábado, domingo y feriado)
-      if (netWorked > 240) {
+      const dscDia = descansoDia(f, periodosDia, e.id, esFestivo, undefined, netWorked > 240 ? ALMUERZO_MIN : 0);
+      if (dscDia !== null) {
+        // Receso y almuerzo según estuvo presente (desde el 26/09/2026): primero de lo trabajado en empresa
+        netWorked -= dscDia;
+        const deEmpresa = Math.min(minsEmpresa, dscDia);
+        minsEmpresa -= deEmpresa;
+        minsCampo -= (dscDia - deEmpresa);
+      } else if (netWorked > 240) {
+        // 45 min de almuerzo si trabajó más de 4 h (sábado, domingo, feriado y días anteriores al 26/09/2026)
         netWorked -= ALMUERZO_MIN;
         if (minsEmpresa > 240) minsEmpresa -= 45;
         else if (minsCampo > 240) minsCampo -= 45;
       }
+      // Columna «Almuerzo / Receso»: lo descontado de las horas trabajadas y por qué
+      const descansoAplicado = dscDia !== null ? dscDia : (minutosTrabajadosHoy > 240 ? ALMUERZO_MIN : 0);
+      const ajusteDsc = dscDia !== null ? ajusteDescansoDia(e.id, f) : '';
+      totDescanso += minutosTrabajadosHoy > 0 ? descansoAplicado : 0;
+      const motivoDsc = ajusteDsc === 'NO' ? 'Ajuste: sin descuento' : ajusteDsc === 'SI' ? 'Ajuste: 45 min'
+        : dscDia === null ? (descansoAplicado ? (esFestivo ? 'Más de 4 h' : 'Regla anterior') : 'Menos de 4 h')
+        : descansoAplicado === 45 ? 'Receso + almuerzo' : descansoAplicado === 15 ? 'Solo receso'
+        : descansoAplicado === 30 ? 'Solo almuerzo' : 'Sin descanso';
+      const colorDsc = ajusteDsc ? '#7c3aed' : (dscDia !== null && descansoAplicado < 45) ? '#15803d' : '#475569';
+      const celdaDescansoHtml = minutosTrabajadosHoy <= 0 ? '<span style="color:#94a3b8;">—</span>'
+        : `<span style="font-weight:800; color:${colorDsc};">${descansoAplicado} min</span><div style="font-size:9.5px; color:#94a3b8; font-weight:600; margin-top:1px;">${motivoDsc}</div>`;
       minsEmpresa = Math.max(0, minsEmpresa);
       minsCampo = Math.max(0, minsCampo);
 
@@ -5817,7 +5880,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
       const esPrevioAlRegistro = Boolean(d.previoAlRegistro);
       const esHoyOFuturo = f >= getLocalHoyStr();
-      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, f, e.id) : netWorked;
       if ((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet) {
         if (esPasanteDet) {
           const tieneEntradaSinSalida = periodosDia.some(p => p.entrada && !p.salida);
@@ -5836,6 +5899,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
       let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
+      if (!esFestivo && f >= DESCANSOS_DESDE) minsSalidaTemprana = Math.min(minsSalidaTemprana, missingMinutesDia);
       if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
         atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
       }
@@ -5979,7 +6043,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
         return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar este día">
         <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
-        <td colspan="8" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
+        <td colspan="9" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
@@ -6064,7 +6128,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
         return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar este día">
         <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
-        <td colspan="8" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
+        <td colspan="9" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
@@ -6130,6 +6194,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
       <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
       <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">${horaE}</td>
+      <td style="font-size:11px; padding:6px 8px; text-align:center; line-height:1.2;" title="Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30 descontados de las horas trabajadas">${celdaDescansoHtml}</td>
       <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">
         ${horaS}
         ${modActual !== 'EMPRESA' ? `<div style="margin-top:2px;">${modalidadCell}</div>` : ''}
@@ -6161,6 +6226,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     const tfootRow = `<tr style="background:var(--g50); border-top:2px solid var(--g300); font-weight:700; font-size:11px;">
         <td style="padding:6px 8px; font-weight:800; color:#1e293b;">TOTALES</td>
         <td style="text-align:center; color:#94a3b8;">—</td>
+        <td style="text-align:center; color:#475569; font-weight:800; padding:6px 8px;" title="Total de receso y almuerzo descontado en el período">${mA(totDescanso)}</td>
         <td style="text-align:center; color:#94a3b8;">—</td>
         <td style="text-align:center; color:#15803d; font-weight:800; padding:6px 8px;">${mA(totHoras)}</td>
         <td style="text-align:center; color:#94a3b8;">—</td>
@@ -6181,7 +6247,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
     const tbody = document.getElementById('tbody-historial-periodo');
     if (tbody) {
-      tbody.innerHTML = filas || '<tr><td colspan="9" class="empty-state">Sin registros</td></tr>';
+      tbody.innerHTML = filas || '<tr><td colspan="10" class="empty-state">Sin registros</td></tr>';
     }
     const tfoot = document.getElementById('tfoot-historial-periodo');
     if (tfoot) {
@@ -6521,16 +6587,17 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
                 <tr>
                   <th style="font-size:11px; padding:6px 8px; text-align:left;">Fecha</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center;">Entrada</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Receso (10:00, 15 min) y almuerzo (12:30, 30 min) descontados de las horas trabajadas; se ajusta por día en Gestionar jornada">Almuerzo / Receso</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center;">Salida</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Total Horas Trabajadas">Horas Trab.</th>
-                  <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Modalidad de Almuerzo (Planta / Fuera)">Almuerzo</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Dónde almorzó: en planta o fuera">Lugar de almuerzo</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Atrasos, Salidas Anticipadas, Justificaciones, Permisos y Observaciones">Novedades & Permisos</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center; color:var(--red);" title="Tiempo neto a descontar">T. Descontar</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center; color:#1d4ed8;" title="Horas Extra 50% con estado de autorización">H.E. 50%</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center; color:#4338ca;" title="Horas Extra 100% con estado de autorización">H.E. 100%</th>
                 </tr>
               </thead>
-              <tbody id="tbody-historial-periodo">${filas || '<tr><td colspan="9" class="empty-state">Sin registros</td></tr>'}</tbody>
+              <tbody id="tbody-historial-periodo">${filas || '<tr><td colspan="10" class="empty-state">Sin registros</td></tr>'}</tbody>
               <tfoot id="tfoot-historial-periodo">${tfootRow}</tfoot>
             </table>
           </div>
@@ -13415,7 +13482,7 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   });
 
   let netWorked = minutosTrabajadosHoy;
-  if (netWorked > 240) netWorked -= ALMUERZO_MIN; // también sábado, domingo y feriado
+  { const dsc = descansoDia(fechaEfectiva, periodosDia, emp && emp.id, esFestivo, undefined, netWorked > 240 ? ALMUERZO_MIN : 0); if (dsc !== null) netWorked -= dsc; else if (netWorked > 240) netWorked -= ALMUERZO_MIN; } // regla anterior: sábado, domingo, feriado
   netWorked = Math.max(0, netWorked);
 
   // Atraso detectado
@@ -13428,7 +13495,7 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   }
 
   // Faltante de jornada ordinaria (8h = 480 min)
-  let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+  let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, fechaEfectiva, emp && emp.id) : netWorked;
   let faltanteJornada = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
 
   // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
@@ -13608,6 +13675,15 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   const heSel = document.getElementById('modalJornadaHorasExtrasSelect');
   if (heSel) heSel.value = heVal;
 
+  // Descuento de receso y almuerzo: solo lunes a viernes desde el 26/09/2026
+  const ctxDsc = window._modalJornadaContexto || {};
+  const boxDsc = document.getElementById('modalJornadaDescansoBox');
+  const selDsc = document.getElementById('modalJornadaDescansoSelect');
+  const aplicaDsc = !ctxDsc.esFestivo && ctxDsc.fecha >= DESCANSOS_DESDE;
+  ctxDsc.ajusteDescanso = aplicaDsc ? (ajusteDescansoDia(ctxDsc.empleadoId, ctxDsc.fecha) || 'AUTO') : 'AUTO';
+  if (boxDsc) boxDsc.style.display = aplicaDsc ? 'block' : 'none';
+  if (selDsc) selDsc.value = ctxDsc.ajusteDescanso;
+
   document.getElementById('modalJornadaObservacionInput').value = comentario;
 
   // Actualizar estado activo/inactivo de la Sección 2
@@ -13703,7 +13779,17 @@ window.recalcularTiemposModalJornada = function () {
       let dur = mS - mE;
       const ctx = window._modalJornadaContexto;
       const esFestivo = ctx?.esFestivo || false;
-      if (dur > 240) dur -= ALMUERZO_MIN; // también sábado, domingo y feriado
+      const periodoModal = [{ entrada: { hora: hE }, salida: { hora: hS } }];
+      const ajusteModal = document.getElementById('modalJornadaDescansoSelect')?.value || '';
+      const dscModal = descansoDia(ctx && ctx.fecha, periodoModal, ctx && ctx.empleadoId, esFestivo, ajusteModal, dur > 240 ? ALMUERZO_MIN : 0);
+      if (dscModal !== null) dur -= dscModal;
+      const infoDsc = document.getElementById('modalJornadaDescansoInfo');
+      if (infoDsc && dscModal !== null) {
+        infoDsc.innerHTML = ajusteModal === 'NO' ? 'No se descuenta receso ni almuerzo este día.'
+          : ajusteModal === 'SI' ? 'Se descuentan los 45 min completos este día.'
+          : `Según el horario se descuentan <b>${dscModal} min</b>${dscModal === 45 ? ' (receso y almuerzo)' : dscModal === 15 ? ' (solo receso: salió antes del almuerzo)' : dscModal === 30 ? ' (solo almuerzo)' : ' (no estaba en la empresa en esos horarios)'}.`;
+      }
+      else if (dur > 240) dur -= ALMUERZO_MIN; // sábado, domingo, feriado y días anteriores al 26/09/2026
       dur = Math.max(0, dur);
 
       let refEntrada = esFestivo ? JORNADA_FIN_SEMANA.entrada : HORA_ENTRADA_REF;
@@ -13711,7 +13797,9 @@ window.recalcularTiemposModalJornada = function () {
       let ordE = Math.max(refEntrada, mE);
       let ordS = Math.min(refSalida, mS);
       let ordDur = (ordS > ordE) ? (ordS - ordE) : 0;
-      if (!esFestivo && ordDur > 240) ordDur -= 45;
+      const dscOrd = descansoDia(ctx && ctx.fecha, periodoModal, ctx && ctx.empleadoId, esFestivo, ajusteModal, ordDur > 240 ? 45 : 0);
+      if (dscOrd !== null) ordDur -= dscOrd;
+      else if (!esFestivo && ordDur > 240) ordDur -= 45;
       ordDur = Math.max(0, ordDur);
       const falt = esFestivo ? 0 : Math.max(0, 480 - ordDur);
 
@@ -14018,6 +14106,16 @@ window.guardarModalGestionJornada = async function () {
       }
     }
 
+    // Ajuste del descuento de receso y almuerzo (se guarda aparte de las marcaciones)
+    const ajusteDsc = document.getElementById('modalJornadaDescansoBox')?.style.display === 'block'
+      ? (document.getElementById('modalJornadaDescansoSelect')?.value || 'AUTO') : (ctx.ajusteDescanso || 'AUTO');
+    const cambiaDsc = ajusteDsc !== (ctx.ajusteDescanso || 'AUTO');
+    if (cambiaDsc) {
+      window._ajustesDescanso = window._ajustesDescanso || {};
+      const claveDsc = `${String(empleadoId).trim()}_${fecha}`;
+      if (ajusteDsc === 'AUTO') delete window._ajustesDescanso[claveDsc]; else window._ajustesDescanso[claveDsc] = { d: ajusteDsc };
+    }
+
     // CIERRE INMEDIATO Y ACTUALIZACIÓN VISUAL INSTANTÁNEA (OPTIMISTIC UI)
     window.cerrarModalGestionJornada();
     const idxSel = parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0');
@@ -14198,6 +14296,9 @@ window.guardarModalGestionJornada = async function () {
       }
     }
 
+    if (cambiaDsc && window.FirebaseBackend && window.FirebaseBackend.guardarAjusteDescanso) {
+      backgroundTasks.push(['Descuento de receso y almuerzo', () => window.FirebaseBackend.guardarAjusteDescanso({ empleadoId, fecha, valor: ajusteDsc, supervisor: supervisorId })]);
+    }
     // Confirmación real: si algo no se guardó, aviso con Reintentar y la pantalla vuelve a los datos reales
     const titulo = `Jornada de ${(emp && emp.nombre ? emp.nombre.split(' ').slice(0, 2).join(' ') : empleadoId)} (${fecha})`;
     ejecutarGuardado(titulo, backgroundTasks, () => cargarDatosCompletos(true, true));

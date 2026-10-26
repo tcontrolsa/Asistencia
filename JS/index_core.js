@@ -5430,6 +5430,21 @@ function renderHistoryPage() {
                 <!-- RESUMEN DE PERÍODO (Estadísticas Generales y Horas Unificadas) -->
                 <div class="glass-card mt-3">
                     <h5 class="fw-bold mb-3" style="font-size: clamp(14px, 4.5vw, 16px);"><i class="fas fa-chart-bar text-primary"></i> Resumen del Período</h5>
+
+                    <!-- Horario, receso y almuerzo (cómo se calculan las horas) -->
+                    <details class="info-jornada" style="margin: -4px 0 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgba(248, 250, 252, 0.85); padding: 10px 12px;">
+                        <summary style="cursor: pointer; font-weight: 750; font-size: 13px; color: #334155; list-style: none; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-mug-hot" style="color: #0ea5e9;"></i> Tu jornada, receso y almuerzo
+                            <i class="fas fa-chevron-down" style="margin-left: auto; font-size: 11px; color: #94a3b8;"></i>
+                        </summary>
+                        <div style="font-size: 12.5px; color: #475569; line-height: 1.55; margin-top: 8px;">
+                            <div><b>Lunes a viernes:</b> 07:30 a 16:15 (8 horas de trabajo).</div>
+                            <div><b>Receso:</b> 10:00 a 10:15 (15 min).</div>
+                            <div><b>Almuerzo:</b> 30 min · primer turno 12:30 a 13:00 o segundo turno 13:00 a 13:30.</div>
+                            <div style="margin-top: 6px;">Receso y almuerzo (45 min) <b>no se cuentan como horas trabajadas</b>, pero solo se descuentan si estabas en la empresa a esa hora: si sales antes del almuerzo, no se te descuenta el almuerzo; si sales antes de las 10:00, tampoco el receso.</div>
+                            <div style="margin-top: 6px;"><b>Sábado, domingo y feriados:</b> 07:00 a 15:15; se descuentan 45 min si trabajas más de 4 horas.</div>
+                        </div>
+                    </details>
                     
                     <div class="row g-3">
                         <!-- Tarjeta 1: Asistencia y Almuerzos -->
@@ -5582,6 +5597,29 @@ function renderHistoryPage() {
 function getVal(reg, key, idx) {
     if (!reg) return null;
     return (typeof reg === 'object' && key in reg) ? reg[key] : (Array.isArray(reg) ? reg[idx] : null);
+}
+
+// Descansos de lunes a viernes desde el 26/09/2026 (mismas reglas que el panel, supervisor_core.js descansoDia):
+// receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30; cada uno se descuenta solo si la persona estaba
+// en la empresa a esa hora. Ajuste por día del supervisor en configuracion/ajustes_descanso ('NO' / 'SI').
+// Devuelve null en sábado, domingo, feriado o días anteriores: ahí sigue la regla de 45 min si trabajó > 4 h.
+const DESCANSOS_DESDE_APP = '2026-09-26';
+function descansoDiaApp(fecha, tramos, empId, esFestivo, tope) {
+    if (esFestivo || !fecha || fecha < DESCANSOS_DESDE_APP) return null;
+    const aj = ((window._ajustesDescanso || {})[`${String(empId || '').trim()}_${fecha}`] || {}).d || '';
+    if (aj === 'NO') return 0;
+    if (aj === 'SI') return 45;
+    let pausaAlmuerzo = false;
+    for (let i = 1; i < tramos.length; i++) {
+        const fin = tramos[i - 1][1];
+        if (fin >= 690 && fin <= 870 && tramos[i][0] - fin >= 30) pausaAlmuerzo = true;
+    }
+    const nuevo = [[600, 15, 'receso'], [750, 30, 'almuerzo']].reduce((t, [inicio, min, id]) => {
+        if (id === 'almuerzo' && pausaAlmuerzo) return t;
+        return tramos.some(([a, b]) => a <= inicio && inicio < b) ? t + min : t;
+    }, 0);
+    // Nunca más que la regla anterior (45 min si trabajó más de 4 h), salvo ajuste del supervisor
+    return typeof tope === 'number' ? Math.min(nuevo, tope) : nuevo;
 }
 
 function obtenerMinutos(valor) {
@@ -5905,6 +5943,7 @@ function calcularEstadisticas() {
         if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
 
         let minutosTrabajadosHoy = 0;
+        const tramosDia = [];
         periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
             let valE = getVal(p.entrada, 'hora', 5) || getVal(p.entrada, 'timestamp', 2) || p.entrada.hora || p.entrada.timestamp || p.entrada[5];
@@ -5913,10 +5952,13 @@ function calcularEstadisticas() {
             let mS = obtenerMinutos(valS);
             if (mE === null || mS === null || mS <= mE) return;
             minutosTrabajadosHoy += (mS - mE);
+            tramosDia.push([mE, mS]);
         });
 
         let netWorked = minutosTrabajadosHoy;
-        if (netWorked > 240) netWorked -= 45; // Restar almuerzo (también sábado, domingo y feriado)
+        const dscDia = descansoDiaApp(fechaKey, tramosDia, empleado && empleado.id, esFestivo, netWorked > 240 ? 45 : 0);
+        if (dscDia !== null) netWorked -= dscDia;   // receso y almuerzo según estuvo presente (mismas reglas que el panel)
+        else if (netWorked > 240) netWorked -= 45; // Restar almuerzo (sábado, domingo, feriado y días anteriores al 26/09/2026)
 
         // Autorización de horas extras (mismas reglas que el panel de supervisor):
         // automática solo para las áreas TALLER y BODEGA (y trabajo de campo); el resto, solo si un supervisor

@@ -867,8 +867,11 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
 
     // Descontar almuerzo
     let netWorked = minutosTrabajadosHoy;
-    if (netWorked > 240) {
-      netWorked -= ALMUERZO_MIN; // también sábado, domingo y feriado
+    const dscDia = (typeof descansoDia === 'function') ? descansoDia(f, periodosDia, e.id, esFestivo, undefined, netWorked > 240 ? ALMUERZO_MIN : 0) : null;
+    if (dscDia !== null) {
+      netWorked -= dscDia;   // receso y almuerzo según estuvo presente (desde el 26/09/2026)
+    } else if (netWorked > 240) {
+      netWorked -= ALMUERZO_MIN; // sábado, domingo, feriado y días anteriores al 26/09/2026
     }
 
     let ultSalReg = [...regsDia].reverse().find(r => {
@@ -955,7 +958,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       const medMins = (regPermiso && regPermiso.permiso_medico_mins) ? Number(regPermiso.permiso_medico_mins) : 0;
       tiempoPersonal += persMins;
       tiempoMedico += medMins;
-      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked;
+      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, f, e.id) : netWorked;
       let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
       let totalPermisosHoy = tiempoPersonal + tiempoMedico + tiempoJustificado + tiempoPorJustificar;
       let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
@@ -965,7 +968,8 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
     }
 
     // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
-    let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo) : netWorked));
+    let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, f, e.id) : netWorked));
+    if (!esFestivo && typeof DESCANSOS_DESDE !== 'undefined' && f >= DESCANSOS_DESDE) minsSalidaTemprana = Math.min(minsSalidaTemprana, missingMinutesDia);
     if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
       atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
     }

@@ -338,7 +338,7 @@
     if (!res || typeof res.status !== 'number') {
       throw new Error((res && res.error) || 'sin respuesta de Apps Script');
     }
-    return interpretar(res.status, res.body);
+    return interpretar(res.status, res.body || res);   // sin body: error de Apps Script con su mensaje
   }
 
   async function rpcDirecto(ses, fn, p) {
