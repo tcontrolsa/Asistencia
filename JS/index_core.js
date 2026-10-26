@@ -341,6 +341,48 @@ async function aplicarActualizacionForzadaTerminal(ts, version, motivo) {
     }
 }
 
+// ========== ACTUALIZACIÓN AUTOMÁTICA AL VOLVER A LA APP ==========
+// Android deja la app instalada días en segundo plano con el código viejo cargado (caso 1046, octubre 2026:
+// seguía con la versión anterior a la confirmación de marcaciones). Al volver al frente, y cada 15 min mientras
+// está visible, se compara la versión de index_core.js cargada con la que publica index.html; si hay una nueva,
+// la app se recarga sola, nunca en medio de una marcación ni con una ventana o un campo abiertos.
+const VERSION_APP_CARGADA = ((document.querySelector('script[src*="index_core.js"]') || {}).src || '').match(/[?&]v=([^&]+)/)?.[1] || '';
+let _revisionVersionEn = 0;
+function appOcupada() {
+    const activo = document.activeElement;
+    return !!document.querySelector('#overlayGuardandoMarcacion, .modal.show, .modal-razones') ||
+        !!(activo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activo.tagName));
+}
+async function revisarVersionApp() {
+    if (!VERSION_APP_CARGADA || !navigator.onLine || document.visibilityState !== 'visible') return;
+    if (Date.now() - _revisionVersionEn < 60000) return;
+    _revisionVersionEn = Date.now();
+    let remota = '';
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 6000);
+        const html = await (await fetch('./index.html?nc=' + Date.now(), { cache: 'no-store', signal: ctrl.signal })).text();
+        clearTimeout(t);
+        remota = (html.match(/index_core\.js\?v=([^"'&\s]+)/) || [])[1] || '';
+    } catch (e) { return; }
+    if (!remota || remota === VERSION_APP_CARGADA) return;
+    if (appOcupada()) {           // se reintenta cuando termine lo que está haciendo
+        _revisionVersionEn = 0;
+        setTimeout(revisarVersionApp, 30000);
+        return;
+    }
+    console.log(`🔄 [PWA] Versión nueva publicada (${VERSION_APP_CARGADA} → ${remota}): recargando.`);
+    if (typeof mostrarToast === 'function') mostrarToast('🔄 Hay una versión nueva de la app. Actualizando…', 'info');
+    setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('v_update', remota);
+        window.location.replace(url.toString());
+    }, 900);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') revisarVersionApp(); });
+setInterval(revisarVersionApp, 15 * 60 * 1000);
+window.revisarVersionApp = revisarVersionApp;
+
 window.forzarActualizacionTerminalManual = async function() {
     if (confirm("¿Deseas descargar la última versión del sistema y limpiar la memoria caché de este dispositivo?\n\nEsta acción descargará todos los archivos actualizados.")) {
         await aplicarActualizacionForzadaTerminal(Date.now(), 'manual', 'Solicitud manual del usuario');

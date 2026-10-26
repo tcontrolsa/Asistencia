@@ -758,6 +758,56 @@ async function verificarActualizacionRemotaGuardia() {
     }
 }
 
+// ============================================================
+//  ACTUALIZACIÓN AUTOMÁTICA (versión publicada)
+// ============================================================
+// La terminal queda abierta días enteros con el código cargado. Cada 15 min y al volver al frente se compara
+// la versión de sus scripts (guardia_core, guardia_visitas, firebase_backend) con la que publica guardia.html;
+// si cambió, se recarga sola cuando no está marcando, con la cámara, una ventana o un campo abiertos.
+const SCRIPTS_VERSIONADOS_GUARDIA = /(guardia_core|guardia_visitas|firebase_backend)\.js\?v=([^"'&\s]+)/g;
+function firmaVersionGuardia(texto) {
+    return [...String(texto).matchAll(SCRIPTS_VERSIONADOS_GUARDIA)].map(m => m[1] + '=' + m[2]).sort().join('|');
+}
+// Se calcula al comprobar (no al cargar este archivo: guardia_visitas.js va después en la página y aún no existiría)
+const firmaGuardiaCargada = () => firmaVersionGuardia([...document.scripts].map(s => s.getAttribute('src') || '').join(' '));
+let _revisionVersionGuardiaEn = 0;
+function terminalOcupada() {
+    const activo = document.activeElement;
+    return !($('loadingOverlay') || { classList: { contains: () => true } }).classList.contains('hidden') ||
+        !!empleadoActual.id ||
+        !!document.querySelector('#gvModal, #gvVideo, .ayuda-modal, .photo-modal') ||
+        !!(activo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activo.tagName));
+}
+async function revisarVersionGuardia() {
+    const cargada = firmaGuardiaCargada();
+    if (!cargada || !navigator.onLine || document.visibilityState !== 'visible') return;
+    if (Date.now() - _revisionVersionGuardiaEn < 60000) return;
+    _revisionVersionGuardiaEn = Date.now();
+    let remota = '';
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 6000);
+        remota = firmaVersionGuardia(await (await fetch('./guardia.html?nc=' + Date.now(), { cache: 'no-store', signal: ctrl.signal })).text());
+        clearTimeout(t);
+    } catch (e) { return; }
+    if (!remota || remota === cargada) return;
+    if (terminalOcupada()) {      // se reintenta cuando termine lo que está haciendo
+        _revisionVersionGuardiaEn = 0;
+        setTimeout(revisarVersionGuardia, 30000);
+        return;
+    }
+    console.log('🔄 [GUARDIA] Versión nueva publicada: recargando.', cargada, '→', remota);
+    mostrarToast('🔄 Hay una versión nueva de la terminal. Actualizando…', 'info');
+    setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('v_update', Date.now());
+        window.location.replace(url.toString());
+    }, 900);
+}
+window.revisarVersionGuardia = revisarVersionGuardia;
+setInterval(revisarVersionGuardia, 15 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') revisarVersionGuardia(); });
+
 // Comprobación inicial y periódica cada 15 min
 setTimeout(verificarActualizacionRemotaGuardia, 3000);
 setInterval(verificarActualizacionRemotaGuardia, 15 * 60 * 1000);
