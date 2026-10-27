@@ -1375,13 +1375,19 @@ window.FirebaseBackend = {
         return desde <= hoy && hoy <= hasta;
     },
 
+    // Hasta este número de días la solicitud se aprueba sola (pedido 2026-10-27); más larga, la revisa un supervisor admin
+    CAMPO_DIAS_AUTOMATICO: 15,
+
+    _diasCampo(desde, hasta) {
+        return Math.round((new Date(hasta + 'T12:00:00') - new Date(desde + 'T12:00:00')) / 86400000) + 1;
+    },
+
     _validarPeriodoCampo(desde, hasta, permitirPasado = false) {
         const re = /^\d{4}-\d{2}-\d{2}$/;
         if (!re.test(desde || '') || !re.test(hasta || '')) return 'Selecciona la fecha de inicio y la de fin';
         if (hasta < desde) return 'La fecha final no puede ser anterior a la inicial';
         if (!permitirPasado && hasta < this._hoyStr()) return 'El período ya terminó';
-        const dias = (new Date(hasta + 'T12:00:00') - new Date(desde + 'T12:00:00')) / 86400000 + 1;
-        if (dias > 62) return 'El período no puede superar 2 meses';
+        if (this._diasCampo(desde, hasta) > 62) return 'El período no puede superar 2 meses';
         return '';
     },
 
@@ -1394,9 +1400,48 @@ window.FirebaseBackend = {
         const err = this._validarPeriodoCampo(desde, hasta);
         if (err) return { error: err };
         if (!motivo) return { error: 'Indica el proyecto o motivo' };
-        const solicitud = { desde, hasta, motivo, estado: 'PENDIENTE', creada: new Date().toISOString() };
-        await db.collection('empleados').doc(id).set({ campo_solicitud: solicitud }, { merge: true });
+        const ahora = new Date().toISOString();
+        const ref = db.collection('empleados').doc(id);
+        // mergeFields: la solicitud nueva reemplaza entera a la anterior (sin arrastrar avisos ni 'automatica')
+        if (this._diasCampo(desde, hasta) <= this.CAMPO_DIAS_AUTOMATICO) {
+            const solicitud = { desde, hasta, motivo, estado: 'APROBADA', creada: ahora, automatica: true, resuelta_por: 'Aprobación automática', resuelta_en: ahora };
+            const datos = { campo_autorizado: true, campo_desde: desde, campo_hasta: hasta, campo_motivo: motivo, campo_solicitud: solicitud };
+            await ref.set(datos, { mergeFields: Object.keys(datos) });
+            return { ok: true, solicitud, automatica: true };
+        }
+        const solicitud = { desde, hasta, motivo, estado: 'PENDIENTE', creada: ahora };
+        await ref.set({ campo_solicitud: solicitud }, { mergeFields: ['campo_solicitud'] });
         return { ok: true, solicitud };
+    },
+
+    // Resultado de los avisos de una solicitud (queda en la ficha para saber si el colaborador fue avisado)
+    async registrarAvisoCampo(empleadoId, avisos) {
+        await db.collection('empleados').doc(String(empleadoId)).set({ campo_solicitud: avisos }, { merge: true });
+    },
+
+    // Supervisores administradores que reciben las solicitudes de campo (ID 1058 y rol con ADMIN)
+    async supAdminsCampo() {
+        const lista = [];
+        const snap = await db.collection('empleados').get();
+        snap.forEach(doc => {
+            const d = doc.data() || {};
+            const id = String(d.id || doc.id).trim();
+            const rol = String(d.supervisor || d.rol || '').trim().toUpperCase();
+            if (String(d.activo || 'SI').toUpperCase() === 'NO') return;
+            if (id === '1058' || rol.includes('ADMIN')) lista.push({ id, nombre: d.nombre || 'Sup. Admin', telefono: d.telefono || '' });
+        });
+        return lista;
+    },
+
+    // Aviso en la campana (colección notificaciones, la lee JS/notificaciones.js); con clave no se repite
+    async crearAvisoCampana({ para, tipo, titulo, texto, enlace, clave }) {
+        const col = db.collection('notificaciones');
+        const ref = clave ? col.doc(String(clave).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140)) : col.doc();
+        await ref.set({
+            para: String(para), tipo: tipo || 'general', titulo: titulo || '', texto: texto || '', enlace: enlace || {},
+            creada: firebase.firestore.Timestamp.now(), leidaPor: [], clave: clave || ''
+        });
+        return { ok: true };
     },
 
     // Aprobar (con el período que fije el supervisor), rechazar o revocar el permiso de campo
@@ -1414,7 +1459,7 @@ window.FirebaseBackend = {
             const motivo = String(params.motivo || '').trim().slice(0, 300);
             await ref.set({
                 campo_autorizado: true, campo_desde: desde, campo_hasta: hasta, campo_motivo: motivo,
-                campo_solicitud: { desde, hasta, motivo, estado: 'APROBADA', resuelta_por: quien, resuelta_en: ahora }
+                campo_solicitud: { desde, hasta, motivo, estado: 'APROBADA', automatica: false, resuelta_por: quien, resuelta_en: ahora }
             }, { merge: true });
         } else if (accion === 'RECHAZAR') {
             await ref.set({

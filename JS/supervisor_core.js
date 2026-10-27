@@ -9447,7 +9447,7 @@ window.abrirPermisoCampo = function (empId) {
         <button onclick="document.getElementById('modalPermisoCampo').remove()" style="background:none; border:none; color:white; font-size:22px; cursor:pointer;">&times;</button>
       </div>
       <div style="padding:16px 18px; font-size:12.5px; color:#334155;">
-        <div style="margin-bottom:12px;">${estado}</div>
+        <div style="margin-bottom:12px;">${estado}${sol && (sol.automatica || sol.aviso_colaborador) ? `<div style="font-size:11px; color:#64748b; margin-top:4px;">${sol.automatica ? 'Aprobado automáticamente (hasta 15 días). ' : ''}${sol.aviso_colaborador ? 'Aviso al colaborador: ' + escapeHtml(sol.aviso_colaborador) : ''}</div>` : ''}</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
           <div><label style="${etiqueta}">Desde</label><input type="date" id="permCampoDesde" value="${desde}" style="${campo}"></div>
           <div><label style="${etiqueta}">Hasta</label><input type="date" id="permCampoHasta" value="${hasta}" min="${hoy}" style="${campo}"></div>
@@ -9493,7 +9493,7 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
     const ahora = new Date().toISOString();
     if (accion === 'APROBAR') {
       Object.assign(emp, { campo_autorizado: true, campo_desde: params.desde, campo_hasta: params.hasta, campo_motivo: params.motivo });
-      emp.campo_solicitud = { ...(emp.campo_solicitud || {}), desde: params.desde, hasta: params.hasta, motivo: params.motivo, estado: 'APROBADA', resuelta_por: quien, resuelta_en: ahora };
+      emp.campo_solicitud = { ...(emp.campo_solicitud || {}), desde: params.desde, hasta: params.hasta, motivo: params.motivo, estado: 'APROBADA', automatica: false, resuelta_por: quien, resuelta_en: ahora };
     } else if (accion === 'RECHAZAR') {
       emp.campo_solicitud = { ...(emp.campo_solicitud || {}), estado: 'RECHAZADA', resuelta_por: quien, resuelta_en: ahora, comentario: params.comentario };
     } else {
@@ -9504,23 +9504,29 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
     const msj = { APROBAR: 'Permiso de campo aprobado', RECHAZAR: 'Solicitud rechazada', REVOCAR: 'Permiso de campo revocado' }[accion];
     mostrarToast(msj, 'success');
 
-    // Respuesta al colaborador por WhatsApp
-    let wa = '';
-    const nombre = String(emp.nombre || '').split(/\s+/);
-    const pila = nombre.length >= 3 ? nombre[2] : (nombre[0] || '');
-    const saludo = `Hola *${pila.charAt(0) + pila.slice(1).toLowerCase()}*, te escribimos de TCONTROL.\n\n`;
-    let texto = '';
-    if (accion === 'APROBAR') {
-      texto = saludo + `Tu permiso para registrar en campo fue *aprobado* del *${fechaCampoCorta(params.desde)}* al *${fechaCampoCorta(params.hasta)}*.\n\n` +
-        'En la app de asistencia elige *CAMPO* y registra tu entrada y salida como siempre. Al terminar el período deberás solicitarlo de nuevo.';
-    } else if (accion === 'RECHAZAR') {
-      texto = saludo + 'Tu solicitud para registrar en campo *no fue aprobada*.' + (params.comentario ? `\nMotivo: ${params.comentario}` : '') +
-        '\n\nSi necesitas aclararlo, consulta con supervisión.';
-    }
-    if (texto && emp.telefono && window.OpenWAService && typeof window.OpenWAService.enviarMensajeTexto === 'function') {
-      const r = await window.OpenWAService.enviarMensajeTexto(emp.telefono, texto).catch(e => ({ ok: false, error: e.message }));
-      wa = r && r.ok !== false ? `${msj}: se le avisó por WhatsApp` : `${msj}, pero no se pudo enviar el WhatsApp`;
-      mostrarToast(wa, r && r.ok !== false ? 'success' : 'warning');
+    // Respuesta al colaborador: campana de su app y WhatsApp; el resultado queda en la ficha
+    if (accion === 'APROBAR' || accion === 'RECHAZAR') {
+      const aprobada = accion === 'APROBAR';
+      const periodo = `del ${fechaCampoCorta(params.desde)} al ${fechaCampoCorta(params.hasta)}`;
+      window.FirebaseBackend.crearAvisoCampana({
+        para: emp.id, tipo: aprobada ? 'campo_aprobado' : 'campo_rechazado',
+        titulo: aprobada ? 'Permiso de campo aprobado' : 'Solicitud de campo no aprobada',
+        texto: aprobada ? `Puedes registrar en campo ${periodo}. Al terminar el período deberás solicitarlo de nuevo.`
+          : 'Tu solicitud para registrar en campo no fue aprobada.' + (params.comentario ? ` Motivo: ${params.comentario}` : ''),
+        clave: `campo_${emp.id}_${params.desde || ahora.slice(0, 10)}_col`
+      }).catch(e => console.warn('Permiso de campo: aviso en la campana no creado', e));
+      const r = !emp.telefono ? { ok: false, error: 'Sin teléfono registrado' }
+        : !window.OpenWAService ? { ok: false, error: 'WhatsApp no disponible' }
+        : await window.OpenWAService.notificarColaboradorCampo({
+          telefono: emp.telefono, nombre: emp.nombre, estado: aprobada ? 'APROBADA' : 'RECHAZADA',
+          desde: params.desde, hasta: params.hasta, comentario: params.comentario
+        }).catch(e => ({ ok: false, error: e.message }));
+      const enviado = r && r.ok !== false;
+      const aviso = { aviso_colaborador: enviado ? 'WhatsApp enviado' : `WhatsApp no enviado: ${(r && r.error) || 'sin respuesta'}`, aviso_en: new Date().toISOString() };
+      emp.campo_solicitud = { ...(emp.campo_solicitud || {}), ...aviso };
+      window.FirebaseBackend.registrarAvisoCampo(emp.id, aviso).catch(() => { });
+      mostrarToast(enviado ? `${msj}: se le avisó por WhatsApp y en la app`
+        : `${msj}. Se le avisó en la app, pero el WhatsApp no salió (${(r && r.error) || 'sin respuesta'})`, enviado ? 'success' : 'warning');
     }
   } catch (err) {
     if (caja) { caja.textContent = 'No se pudo guardar: ' + (err.message || err); caja.style.display = 'block'; }
@@ -9671,6 +9677,7 @@ function montarCampanaPanel(session) {
     rrhh: tienePermisoAdmin(session),
     onAbrir: enlace => {
       if (enlace.modulo === 'visitas') { cambiarPanel('visitas'); return; }
+      if (enlace.modulo === 'campo') { window.abrirPermisoCampo(enlace.empleadoId); return; }
       if (enlace.modulo !== 'desempeno') return;
       cambiarPanel('desempeno');
       const cont = $('evPanelDesempeno');

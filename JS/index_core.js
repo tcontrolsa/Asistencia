@@ -1121,7 +1121,7 @@ window.abrirSolicitudCampo = function () {
             <div style="background: linear-gradient(135deg, #b45309 0%, #f59e0b 100%); padding: 16px 20px; color: white; display: flex; align-items: center; justify-content: space-between;">
                 <div>
                     <h5 style="margin: 0; font-size: 16px; font-weight: 800;">🚗 Solicitar registro en campo</h5>
-                    <div style="font-size: 11px; opacity: 0.9;">Lo aprueba un supervisor administrador</div>
+                    <div style="font-size: 11px; opacity: 0.9;">Hasta 15 días se aprueba al instante</div>
                 </div>
                 <button type="button" onclick="document.getElementById('modalSolicitudCampo').remove()" style="background: none; border: none; color: white; font-size: 22px; cursor: pointer; line-height: 1;">&times;</button>
             </div>
@@ -1148,7 +1148,9 @@ window.abrirSolicitudCampo = function () {
         if (hasta.value < desde.value) hasta.value = desde.value;
         hasta.min = desde.value || hoy;
         const n = Math.round((new Date(hasta.value + 'T12:00:00') - new Date(desde.value + 'T12:00:00')) / 86400000) + 1;
-        document.getElementById('solCampoDias').textContent = n > 0 ? `${n} día(s) en campo. Al terminar el período tendrás que volver a solicitarlo.` : '';
+        const auto = n <= window.FirebaseBackend.CAMPO_DIAS_AUTOMATICO;
+        document.getElementById('solCampoDias').textContent = n > 0
+            ? `${n} día(s) en campo. ${auto ? 'Se aprueba al instante' : 'Más de 15 días: lo revisa un supervisor administrador'}. Al terminar el período tendrás que volver a solicitarlo.` : '';
     };
     desde.addEventListener('change', pintarDias);
     hasta.addEventListener('change', pintarDias);
@@ -1181,23 +1183,60 @@ window.enviarSolicitudCampo = async function () {
         const res = await window.FirebaseBackend.solicitarCampo({ empleadoId: empleado.id, desde, hasta, motivo });
         if (!res || res.error) throw new Error((res && res.error) || 'No se pudo enviar la solicitud');
         empleado.campoSolicitud = res.solicitud;
+        if (res.automatica) {
+            Object.assign(empleado, {
+                campoAutorizado: window.FirebaseBackend._campoVigente({ campo_autorizado: true, campo_desde: desde, campo_hasta: hasta }),
+                campoDesde: desde, campoHasta: hasta
+            });
+        }
 
-        // Guardada: se cierra la ventana; el WhatsApp a supervisión sale en segundo plano
+        // Guardada: se cierra la ventana; los avisos salen en segundo plano
         document.getElementById('modalSolicitudCampo')?.remove();
         renderHomePage();
-        mostrarToast('Solicitud enviada. Te avisaremos cuando la revisen', 'success');
-        if (window.OpenWAService && typeof window.OpenWAService.notificarSupAdminsSolicitudCampo === 'function') {
-            window.OpenWAService.notificarSupAdminsSolicitudCampo({
-                empleadoId: empleado.id, empleadoNombre: empleado.nombre, empleadoArea: empleado.area, desde, hasta, motivo
-            }).then(aviso => {
-                if (!aviso || !aviso.ok) console.warn('Solicitud de campo: WhatsApp a supervisión no enviado', aviso);
-            }).catch(e => console.warn('Solicitud de campo: WhatsApp a supervisión no enviado', e));
-        }
+        mostrarToast(res.automatica ? `Permiso de campo aprobado del ${fechaCortaCampo(desde)} al ${fechaCortaCampo(hasta)}`
+            : 'Solicitud enviada. Te avisaremos cuando la revisen', 'success');
+        avisarSolicitudCampo({ desde, hasta, motivo, automatica: !!res.automatica })
+            .catch(e => console.warn('Solicitud de campo: avisos no enviados', e));
     } catch (e) {
         mensajeSolicitudCampo(e.message || String(e));
         if (btn) { btn.disabled = false; btn.innerHTML = textoBtn; }
     }
 };
+
+// Avisos de una solicitud de campo: campana y WhatsApp a los supervisores administradores (informativo si se
+// aprobó sola) y, si se aprobó, al colaborador. El resultado del WhatsApp queda en la ficha (campo_solicitud.aviso_*).
+async function avisarSolicitudCampo({ desde, hasta, motivo, automatica }) {
+    const FB = window.FirebaseBackend, WA = window.OpenWAService;
+    const periodo = `del ${fechaCortaCampo(desde)} al ${fechaCortaCampo(hasta)}`;
+    const clave = `campo_${empleado.id}_${desde}`;
+    const corto = String(empleado.nombre || '').split(/\s+/).slice(0, 3).join(' ');
+    let admins = [];
+    try { admins = await FB.supAdminsCampo(); } catch (e) { console.warn('Solicitud de campo: supervisores no leídos', e); }
+    await Promise.allSettled([
+        ...admins.map(a => FB.crearAvisoCampana({
+            para: a.id, tipo: automatica ? 'campo_aprobado' : 'campo_solicitud',
+            titulo: automatica ? 'Registro en campo aprobado automáticamente' : 'Solicitud de registro en campo',
+            texto: `${corto} (${empleado.id}) ${periodo} · ${motivo}`,
+            enlace: { modulo: 'campo', empleadoId: String(empleado.id) }, clave: `${clave}_${a.id}`
+        })),
+        automatica ? FB.crearAvisoCampana({
+            para: empleado.id, tipo: 'campo_aprobado', titulo: 'Permiso de campo aprobado',
+            texto: `Puedes registrar en campo ${periodo}. Al terminar el período deberás solicitarlo de nuevo.`, clave: `${clave}_col`
+        }) : null
+    ]);
+    if (!WA) return;
+    const avisos = { aviso_en: new Date().toISOString() };
+    const rAdm = await WA.notificarSupAdminsSolicitudCampo({
+        empleadoId: empleado.id, empleadoNombre: empleado.nombre, empleadoArea: empleado.area, desde, hasta, motivo, automatica,
+        destinatarios: admins.length ? admins : undefined
+    }).catch(e => ({ ok: false, error: e.message }));
+    avisos.aviso_admins = rAdm && rAdm.ok ? `WhatsApp enviado (${rAdm.enviados}/${rAdm.total})` : `WhatsApp no enviado: ${(rAdm && rAdm.error) || 'sin respuesta'}`;
+    if (automatica) {
+        const r = await WA.notificarColaboradorCampo({ telefono: empleado.telefono, nombre: empleado.nombre, estado: 'APROBADA', desde, hasta });
+        avisos.aviso_colaborador = r && r.ok !== false ? 'WhatsApp enviado' : `WhatsApp no enviado: ${(r && r.error) || 'sin respuesta'}`;
+    }
+    await FB.registrarAvisoCampo(empleado.id, avisos).catch(() => { });
+}
 
 // Modo de trabajo automático: con permiso de campo vigente y GPS a más de RADIO_METROS de la
 // empresa se registra en CAMPO; en cualquier otro caso, en OFICINA. El colaborador no elige.

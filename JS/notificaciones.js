@@ -29,6 +29,9 @@
     visita_llego: ['fa-door-open', 'nt-azul'],
     visita_cancelada: ['fa-ban', 'nt-gris'],
     visita_calificada: ['fa-star', 'nt-verde'],
+    campo_solicitud: ['fa-truck-pickup', 'nt-ambar'],
+    campo_aprobado: ['fa-truck-pickup', 'nt-verde'],
+    campo_rechazado: ['fa-ban', 'nt-rojo'],
     general: ['fa-info-circle', 'nt-gris']
   };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

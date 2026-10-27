@@ -1449,43 +1449,25 @@
         },
 
         // Notificar a los Supervisores Administradores que un colaborador pide permiso para registrar en campo
+        // (automatica: ya quedó aprobado y el aviso es informativo, para revocarlo si no corresponde)
         async notificarSupAdminsSolicitudCampo(detalles = {}) {
             try {
-                let destinatarios = [];
-                if (typeof db !== 'undefined' && db) {
-                    try {
-                        const snap = await db.collection('empleados').get();
-                        snap.forEach(doc => {
-                            const d = doc.data() || {};
-                            const id = String(d.id || doc.id).trim();
-                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
-                            if (String(d.activo || 'SI').toUpperCase() === 'NO') return;
-                            if ((id === '1058' || supVal.includes('ADMIN')) && d.telefono) {
-                                destinatarios.push({ id, nombre: d.nombre || 'Sup. Admin', telefono: d.telefono });
-                            }
-                        });
-                    } catch (e) {
-                        console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e);
-                    }
+                let destinatarios = detalles.destinatarios || [];
+                if (!detalles.destinatarios && window.FirebaseBackend && window.FirebaseBackend.supAdminsCampo) {
+                    try { destinatarios = await window.FirebaseBackend.supAdminsCampo(); }
+                    catch (e) { console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e); }
                 }
+                destinatarios = destinatarios.filter(d => d.telefono);
                 if (destinatarios.length === 0) return { ok: false, error: 'Sin destinatarios' };
 
                 const f = s => { const p = String(s || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(s || ''); };
-                const mensaje =
-                    `🚗 *TCONTROL - Solicitud de registro en campo*
-
-` +
-                    `*${detalles.empleadoNombre || 'Colaborador'}* (ID: ${detalles.empleadoId || '--'}, Área: ${detalles.empleadoArea || 'General'}) solicita registrar su asistencia en campo:
-
-` +
-                    `• *Desde:* ${f(detalles.desde)}
-` +
-                    `• *Hasta:* ${f(detalles.hasta)}
-` +
-                    `• *Proyecto / motivo:* ${detalles.motivo || '--'}
-
-` +
-                    `👉 *Acción requerida:* aprobar o rechazar en el panel de Supervisor (aviso *Solicitudes de campo* en Control Diario).`;
+                const quien = `*${detalles.empleadoNombre || 'Colaborador'}* (ID: ${detalles.empleadoId || '--'}, Área: ${detalles.empleadoArea || 'General'})`;
+                const periodo = `• *Desde:* ${f(detalles.desde)}\n• *Hasta:* ${f(detalles.hasta)}\n• *Proyecto / motivo:* ${detalles.motivo || '--'}\n\n`;
+                const mensaje = detalles.automatica
+                    ? `🚗 *TCONTROL - Registro en campo aprobado automáticamente*\n\n${quien} podrá registrar su asistencia en campo:\n\n${periodo}` +
+                      'ℹ️ Se aprobó solo por ser un período de hasta 15 días. Si no corresponde, revócalo en el panel de Supervisor (botón *Campo* en la ficha del colaborador).'
+                    : `🚗 *TCONTROL - Solicitud de registro en campo*\n\n${quien} solicita registrar su asistencia en campo:\n\n${periodo}` +
+                      '👉 *Acción requerida:* aprobar o rechazar en el panel de Supervisor (aviso *Solicitudes de campo* en Control Diario).';
 
                 const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
                 const res = await Promise.allSettled(envios);
@@ -1495,6 +1477,22 @@
                 console.warn("[OpenWA] Error en notificarSupAdminsSolicitudCampo:", err);
                 return { ok: false, error: err.message };
             }
+        },
+
+        // Respuesta al colaborador sobre su permiso de campo (estado APROBADA o RECHAZADA)
+        async notificarColaboradorCampo({ telefono, nombre, estado, desde, hasta, comentario } = {}) {
+            if (!telefono) return { ok: false, error: 'Sin teléfono' };
+            const f = s => { const p = String(s || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}` : String(s || ''); };
+            const partes = String(nombre || '').split(/\s+/);
+            const pila = partes.length >= 3 ? partes[2] : (partes[0] || '');
+            const saludo = `Hola *${pila.charAt(0) + pila.slice(1).toLowerCase()}*, te escribimos de TCONTROL.\n\n`;
+            const texto = estado === 'APROBADA'
+                ? saludo + `Tu permiso para registrar en campo fue *aprobado* del *${f(desde)}* al *${f(hasta)}*.\n\n` +
+                  'Cuando estés fuera de la empresa, la app registrará tu entrada y salida en *CAMPO*. Al terminar el período deberás solicitarlo de nuevo.'
+                : saludo + 'Tu solicitud para registrar en campo *no fue aprobada*.' + (comentario ? `\nMotivo: ${comentario}` : '') +
+                  '\n\nSi necesitas aclararlo, consulta con supervisión.';
+            try { return await this.enviarMensajeTexto(telefono, texto); }
+            catch (e) { return { ok: false, error: e.message }; }
         },
 
         // Enviar recordatorio manual/periódico a Sup. Admins con el resumen de solicitudes pendientes
