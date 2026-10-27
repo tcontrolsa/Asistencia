@@ -3582,10 +3582,19 @@ window.FirebaseBackend = {
             // dentro del histórico también queda vacío y no debe forzar nada)
             const calcUltimoArchivado = () => (archivadosData.registros || []).reduce((m, r) => { const f = this._normFecha(r.fecha); return f && f > m ? f : m; }, '');
             let ultimoArchivado = calcUltimoArchivado();
+            // Para detectar la caché vieja no sirve la fecha máxima: el histórico trae vacaciones y permisos con
+            // fecha futura, y un día archivado a medias tiene algunas filas. Cuenta el último día pasado con
+            // entradas normales (no es hueco): un hueco posterior es un archivado que la caché aún no tiene.
+            const hoyHuecos = this._hoyStr(new Date());
+            const setHuecos = new Set(huecos);
+            const ultimoDiaCompleto = (archivadosData.registros || []).reduce((m, r) => {
+                const f = this._normFecha(r.fecha);
+                return f && f > m && f < hoyHuecos && !setHuecos.has(f) && String(r.tipo || '').toUpperCase() === 'ENTRADA' ? f : m;
+            }, '');
             // No se espera la descarga (1-2 min, o varios si cae al respaldo de Sheets): el panel abre con lo
             // que hay, esos días no cuentan como inasistencia y al terminar 'archivadosActualizados' lo redibuja.
-            if (huecos.some(f => f > ultimoArchivado) && horasArchivados > 0.25) {
-                console.warn(`⚠️ Faltan datos de ${huecos.filter(f => f > ultimoArchivado).join(', ')} en la caché del histórico. Actualizando en segundo plano...`);
+            if (huecos.some(f => f > ultimoDiaCompleto) && horasArchivados > 0.25) {
+                console.warn(`⚠️ Faltan datos de ${huecos.filter(f => f > ultimoDiaCompleto).join(', ')} en la caché del histórico. Actualizando en segundo plano...`);
                 _fetchArchivados();
             }
             // Los días que siguen vacíos no se cuentan como inasistencia de todo el personal (ver supervisor_core)
