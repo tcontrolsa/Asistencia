@@ -170,9 +170,12 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  // Cuerpo JSON: si no lo es (formulario), se atiende como GET. Un error DENTRO de una acción se devuelve como
+  // error; antes caía en doGet(e), que sin apiKey en la URL respondía "API Key inválida o ausente" y confundía.
+  var data = null;
+  try { if (e && e.postData && e.postData.contents) data = JSON.parse(e.postData.contents); } catch (eJson) { data = null; }
   try {
-    if (e && e.postData && e.postData.contents) {
-      var data = JSON.parse(e.postData.contents);
+    if (data) {
       
       // Validación de API Key
       if (!data || data.apiKey !== 'TCONTROL_SECURE_2026_XYZ') {
@@ -591,8 +594,15 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
     }
-  } catch(e) {}
-  
+  } catch (err) {
+    var msg = String((err && err.message) || err);
+    var sinServidor = /DNS|Address unavailable|timed? ?out|Tiempo de espera|no se pudo conectar|Exception: Request failed/i.test(msg);
+    return ContentService.createTextOutput(JSON.stringify({
+      ok: false, status: 503,
+      error: sinServidor && typeof MSG_SIN_SERVIDOR !== 'undefined' ? MSG_SIN_SERVIDOR : 'El servidor no pudo completar la acción: ' + msg.slice(0, 200)
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   return doGet(e);
 }
 

@@ -152,23 +152,42 @@ function proxyEvaluacion(d) {
   var cuerpo = typeof d.p === 'string' ? d.p : JSON.stringify(d.p || {});
   if (cuerpo.length > 20000) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
 
-  var base = urlHistorico_();
-  if (!base) return { status: 503, body: { ok: false, error: 'Servidor de evaluaciones sin dirección publicada' } };
-  var res = UrlFetchApp.fetch(base + '/rpc/' + fn, {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { Authorization: 'Bearer ' + token },
-    payload: '{"p":' + cuerpo + '}'
-  });
-  var texto = res.getContentText();
-  var body;
-  try { body = JSON.parse(texto); } catch (e) { body = { ok: false, error: texto.slice(0, 200) }; }
-  return { status: res.getResponseCode(), body: body };
+  return rpcTunel_(fn, cuerpo, token);
 }
 
-// URL del túnel publicada por el contenedor tunel-historico (caché 5 min)
-function urlHistorico_() {
+var MSG_SIN_SERVIDOR = 'El servidor del histórico no responde (puede estar reiniciándose). Intenta en unos minutos.';
+
+// POST a una función de PostgREST por el túnel. Si la URL ya no existe (DNS) o Cloudflare responde que el túnel
+// no está (530 / 502-504), se olvida la URL guardada y se reintenta una vez con la que publicó el contenedor
+// (antes se seguía usando la vieja hasta 5 minutos). Sin servidor: 503 con mensaje claro.
+function rpcTunel_(fn, cuerpo, token) {
+  for (var intento = 0; intento < 2; intento++) {
+    var base = urlHistorico_(intento > 0);
+    if (!base) break;
+    try {
+      var cab = token ? { Authorization: 'Bearer ' + token } : {};
+      var res = UrlFetchApp.fetch(base + '/rpc/' + fn, {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: cab, payload: '{"p":' + cuerpo + '}'
+      });
+      var code = res.getResponseCode();
+      if (code === 530 || (code >= 502 && code <= 504)) { olvidarUrlHistorico_(); continue; }
+      var texto = res.getContentText();
+      var body;
+      try { body = JSON.parse(texto); } catch (e) { body = { ok: false, error: texto.slice(0, 200) }; }
+      return { status: code, body: body };
+    } catch (e) {
+      olvidarUrlHistorico_();
+    }
+  }
+  return { status: 503, body: { ok: false, error: MSG_SIN_SERVIDOR } };
+}
+
+function olvidarUrlHistorico_() { CacheService.getScriptCache().remove('eval_url_historico'); }
+
+// URL del túnel publicada por el contenedor tunel-historico (caché 5 min; refrescar = leerla de nuevo)
+function urlHistorico_(refrescar) {
   var cache = CacheService.getScriptCache();
-  var url = cache.get('eval_url_historico');
+  var url = refrescar ? null : cache.get('eval_url_historico');
   if (url) return url;
   var res = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/' + EVAL_PROYECTO_FIRESTORE +
     '/databases/(default)/documents/configuracion/historico?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });

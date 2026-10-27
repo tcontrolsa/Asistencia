@@ -271,14 +271,7 @@ function probarQrVisitaWhatsApp() {
 function proxyVisitaPublica(d) {
   var cuerpo = typeof d.p === 'string' ? d.p : JSON.stringify(d.p || {});
   if (cuerpo.length > 6000) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
-  var base = urlHistorico_();
-  if (!base) return { status: 503, body: { ok: false, error: 'Servicio no disponible' } };
-  var res = UrlFetchApp.fetch(base + '/rpc/visita_publica', {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: '{"p":' + cuerpo + '}'
-  });
-  var body;
-  try { body = JSON.parse(res.getContentText()); } catch (e) { body = { ok: false, error: 'Respuesta no válida' }; }
-  return { status: res.getResponseCode(), body: body };
+  return rpcTunel_('visita_publica', cuerpo, '');
 }
 
 /** Ejecutar una vez desde el editor (▶): define la clave de portería de visitas. Cámbiala aquí antes de ejecutar. */
