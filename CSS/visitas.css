@@ -562,3 +562,41 @@ body.gv-modal-abierto { overflow: hidden; }
 .gv-contingencia p { margin: 8px 0 0; font-size: 13px; color: #78350f; line-height: 1.45; }
 .gv-contingencia .gv-cont-meta { font-size: 12px; color: #92400e; opacity: .85; }
 @media (prefers-reduced-motion: reduce) { .gv-contingencia, .gv-cont-punto { animation: none !important; } }
+
+/* Buscadores, historial de portería y confirmaciones de registro (2026-10-27) */
+.gv-vistas { display: flex; gap: 4px; padding: 4px; margin: 4px 0 10px; background: #f1f5f9; border-radius: 12px; }
+.gv-vista { flex: 1; font: inherit; font-size: 13px; font-weight: 700; padding: 8px 10px; border: none; border-radius: 9px; background: transparent; color: var(--vs-tx2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.gv-vista.on { background: #fff; color: var(--vs-tx); box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
+.gv-vista.on i { color: var(--vs-rojo); }
+.gv-buscar { display: flex; align-items: center; gap: 8px; border: 1.5px solid var(--vs-borde); border-radius: 12px; padding: 0 12px; background: #fff; margin-bottom: 10px; transition: border-color .15s, box-shadow .15s; }
+.gv-buscar:focus-within { border-color: var(--vs-rojo); box-shadow: 0 0 0 3px rgba(220, 38, 38, .12); }
+.gv-buscar > i { color: var(--vs-tx3); font-size: 13px; }
+.gv-buscar input { flex: 1; min-width: 0; border: none; outline: none; font: inherit; font-size: 14px; padding: 10px 0; background: transparent; }
+.gv-hist-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.gv-hist-form label { display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.gv-hist-form span { font-size: 11px; font-weight: 800; color: var(--vs-tx2); text-transform: uppercase; letter-spacing: .03em; }
+.gv-hist-form input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1.5px solid var(--vs-borde); border-radius: 10px; background: #fff; min-width: 0; }
+.gv-hist-total { font-size: 12px; color: var(--vs-tx3); margin: 0 0 2px; }
+.gv-fila-fecha { color: var(--vs-tx); font-weight: 800; }
+.gv-chip-ok, .vs-chip-ok { background: var(--vs-ok-lt); color: var(--vs-ok); }
+.gv-exito { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 2px solid #86efac; background: var(--vs-ok-lt); border-radius: 16px; position: relative; animation: gvExitoEntra .35s ease-out; }
+.gv-exito-icono { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; animation: gvExitoPop .45s ease-out; }
+.gv-exito-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 18px; }
+.gv-exito-txt strong { color: #14532d; font-size: 15px; }
+.gv-exito-nombre { font-weight: 800; font-size: 16px; color: var(--vs-tx); }
+.gv-exito-txt small { font-size: 12.5px; color: var(--vs-tx2); line-height: 1.4; }
+.gv-exito-nota { color: #166534 !important; }
+.gv-exito-nota i { margin-right: 3px; }
+.gv-exito-alerta { color: #b91c1c !important; font-weight: 700; }
+.gv-exito-x { position: absolute; top: 6px; right: 8px; border: none; background: none; font-size: 20px; line-height: 1; color: #15803d; cursor: pointer; padding: 4px; }
+.gv-ficha-info { border-color: #86efac; }
+.gv-ficha-nota { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--vs-ok-lt); color: #166534; font-size: 13px; font-weight: 600; }
+.gv-ficha-nota-alerta { background: #fef2f2; color: #991b1b; }
+.gv-m-aviso-ok { background: var(--vs-ok-lt); color: #166534; }
+.gv-m-aviso-ok i { color: #16a34a; }
+.va-buscar { margin-bottom: 4px; }
+.va-buscar-n { font-size: 11.5px; font-weight: 700; color: var(--vs-tx3); white-space: nowrap; }
+.va-ok { color: var(--vs-ok); font-weight: 700; }
+@keyframes gvExitoEntra { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes gvExitoPop { 0% { transform: scale(.4); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .gv-exito, .gv-exito-icono { animation: none !important; } }

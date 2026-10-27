@@ -5201,6 +5201,17 @@ window.mostrarDetalleInsignia = function (titulo, descripcion, icono, colorBg, c
     document.body.insertAdjacentHTML('beforeend', modalHTML);
 };
 
+// Aviso del almuerzo de fin de semana (sábado, domingo o feriado): se muestra donde se elige el almuerzo
+function avisoAlmuerzoFindeHtml() {
+    const hoy = getLocalHoyStr(new Date());
+    const dow = new Date(hoy + 'T12:00:00').getDay();
+    if (!(dow === 0 || dow === 6 || esFeriado(hoy))) return '';
+    const dia = dow === 6 ? 'sábado' : dow === 0 ? 'domingo' : 'feriado';
+    return `<div class="aviso-almuerzo-finde" style="margin: 10px auto 0; max-width: 360px; text-align: left; background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: 12px; padding: 9px 12px; font-size: 12.5px; color: #78350f; line-height: 1.45;">
+        <i class="fas fa-info-circle" style="color: #d97706;"></i> Hoy es <b>${dia}</b>: si almuerzas <b>en planta</b> se descuentan <b>30 min</b> de tus horas trabajadas. Si almuerzas <b>fuera</b>, no se descuenta.</div>`;
+}
+window.avisoAlmuerzoFindeHtml = avisoAlmuerzoFindeHtml;
+
 // ========== POPUP DE ALMUERZO ==========
 window.mostrarPopupAlmuerzo = function (manual = false) {
     if (document.getElementById('almuerzoModal')) return;
@@ -5238,6 +5249,7 @@ window.mostrarPopupAlmuerzo = function (manual = false) {
                             <div class="almuerzo-modal-icon">🍽️</div>
                             <h3>¿Dónde almuerzas hoy?</h3>
                             <p>Selecciona tu opción de almuerzo para registrarla en el sistema.</p>
+                            ${avisoAlmuerzoFindeHtml()}
                         </div>
                         <div class="almuerzo-modal-options">
                             <div class="almuerzo-modal-option-card" onclick="registrarAlmuerzoPopup('SI')">
@@ -5523,7 +5535,7 @@ function renderHistoryPage() {
                             <div><b>Receso:</b> 10:00 a 10:15 (15 min).</div>
                             <div><b>Almuerzo:</b> 30 min · primer turno 12:30 a 13:00 o segundo turno 13:00 a 13:30.</div>
                             <div style="margin-top: 6px;">Receso y almuerzo (45 min) <b>no se cuentan como horas trabajadas</b>, pero solo se descuentan si estabas en la empresa a esa hora: si sales antes del almuerzo, no se te descuenta el almuerzo; si sales antes de las 10:00, tampoco el receso.</div>
-                            <div style="margin-top: 6px;"><b>Sábado, domingo y feriados:</b> 07:00 a 15:15; se descuentan 45 min si trabajas más de 4 horas.</div>
+                            <div style="margin-top: 6px;"><b>Sábado, domingo y feriados:</b> 07:00 a 15:15, sin receso. Se descuentan <b>30 min de almuerzo solo si almuerzas en planta</b> (eliges «En planta» en «¿Dónde almuerzas hoy?»), trabajes las horas que trabajes. Si eliges «Fuera», no se descuenta.</div>
                         </div>
                     </details>
                     
@@ -5685,8 +5697,11 @@ function getVal(reg, key, idx) {
 // en la empresa a esa hora. Ajuste por día del supervisor en configuracion/ajustes_descanso ('NO' / 'SI').
 // Devuelve null en sábado, domingo, feriado o días anteriores: ahí sigue la regla de 45 min si trabajó > 4 h.
 const DESCANSOS_DESDE_APP = '2026-09-26';
-function descansoDiaApp(fecha, tramos, empId, esFestivo, tope) {
-    if (esFestivo || !fecha || fecha < DESCANSOS_DESDE_APP) return null;
+// Sábado, domingo y feriado desde el 26/09/2026: 30 min de almuerzo solo si almorzó en planta (almorzo = true),
+// sin importar las horas; «Fuera» no descuenta. Antes del 26/09/2026: 45 min si trabajó más de 4 h (null).
+function descansoDiaApp(fecha, tramos, empId, esFestivo, tope, almorzo) {
+    if (!fecha || fecha < DESCANSOS_DESDE_APP) return null;
+    if (esFestivo) return almorzo ? 30 : 0;
     const aj = ((window._ajustesDescanso || {})[`${String(empId || '').trim()}_${fecha}`] || {}).d || '';
     if (aj === 'NO') return 0;
     if (aj === 'SI') return 45;
@@ -6037,7 +6052,8 @@ function calcularEstadisticas() {
         });
 
         let netWorked = minutosTrabajadosHoy;
-        const dscDia = descansoDiaApp(fechaKey, tramosDia, empleado && empleado.id, esFestivo, netWorked > 240 ? 45 : 0);
+        const almorzoPlanta = registrosDia.some(r => ['SI', 'PLANTA', 'EXTRA'].includes(String(getVal(r, 'almuerzo', 4) || r.almuerzo || '').trim().toUpperCase()));
+        const dscDia = descansoDiaApp(fechaKey, tramosDia, empleado && empleado.id, esFestivo, netWorked > 240 ? 45 : 0, almorzoPlanta);
         if (dscDia !== null) netWorked -= dscDia;   // receso y almuerzo según estuvo presente (mismas reglas que el panel)
         else if (netWorked > 240) netWorked -= 45; // Restar almuerzo (sábado, domingo, feriado y días anteriores al 26/09/2026)
 
@@ -6102,8 +6118,13 @@ function calcularEstadisticas() {
         });
 
         if (esFestivo) {
-            // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
-            if (extra100Dia + campo100Dia > 240) {
+            // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (mismas reglas que el panel):
+            // desde el 26/09/2026, 30 min si almorzó en planta; antes, 45 min si trabajó más de 4 h
+            if (fechaKey >= DESCANSOS_DESDE_APP) {
+                const alm = almorzoPlanta ? 30 : 0, deEmpresa = Math.min(extra100Dia, alm);
+                extra100Dia -= deEmpresa;
+                campo100Dia = Math.max(0, campo100Dia - (alm - deEmpresa));
+            } else if (extra100Dia + campo100Dia > 240) {
                 if (extra100Dia >= 45) extra100Dia -= 45;
                 else campo100Dia = Math.max(0, campo100Dia - 45);
             }
@@ -7561,10 +7582,11 @@ function renderAlmuerzoPage() {
                                 🏠 Fuera
                             </button>
                         </div>
+                        ${avisoAlmuerzoFindeHtml()}
                     </div>
                     `;
         } else {
-            accionesAlmuerzoHTML = `
+            accionesAlmuerzoHTML = `${avisoAlmuerzoFindeHtml()}
                     <div style="font-size: 11px; text-align: center; color: #64748b; font-weight: 600; margin-bottom: 15px; background: #f8fafc; padding: 8px; border-radius: 10px; border: 1px solid #e2e8f0;">
                         <i class="fas fa-lock"></i> El tiempo límite para cambios (09:30) ha expirado
                     </div>

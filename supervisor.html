@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="./CSS/supervisor.css?v=20260922_02">
   <link rel="stylesheet" href="./CSS/evaluacion.css?v=20261007_01">
-  <link rel="stylesheet" href="./CSS/visitas.css?v=20261023_01">
+  <link rel="stylesheet" href="./CSS/visitas.css?v=20261027_01">
   <link rel="stylesheet" href="./CSS/notificaciones.css?v=20261007_01">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
@@ -5217,7 +5217,7 @@
             <!-- Almuerzo -->
             <div>
               <label style="display:block; font-size:14px; font-weight:700; color:#475569; margin-bottom:5px;">Estado Almuerzo</label>
-              <select id="modalJornadaAlmuerzoSelect" style="width:100%; font-size:15px; font-weight:700; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; background:#ffffff; height:42px;">
+              <select id="modalJornadaAlmuerzoSelect" onchange="window.recalcularTiemposModalJornada()" style="width:100%; font-size:15px; font-weight:700; padding:8px 10px; border:1.5px solid #cbd5e1; border-radius:8px; background:#ffffff; height:42px;">
                 <option value="SI">🏢 Sí (En Planta)</option>
                 <option value="NO">🏠 No (Fuera / No Tomó)</option>
                 <option value="EXTRA">⭐ Almuerzo Extra</option>
@@ -5288,9 +5288,9 @@
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
   <script src="./JS/evaluacion_desempeno.js?v=20261026_01"></script>
   <script src="./JS/notificaciones.js?v=20261027_01"></script>
-  <script src="./JS/visitas_anfitrion.js?v=20261023_01"></script>
+  <script src="./JS/visitas_anfitrion.js?v=20261027_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20261006_01"></script>
-  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261026_01"></script>
+  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261027_01"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil

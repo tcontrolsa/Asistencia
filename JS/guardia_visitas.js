@@ -8,7 +8,9 @@
  *   - Verifica el documento a la vista (no se guarda) y registra la entrada; a la salida, la salida.
  *   - Registra visitantes sin cita en una ventana guiada: con celular (QR de portería) o sin él (4 pasos).
  * La lista "Visitas de hoy" va en #panelVisitasLista (columna derecha en escritorio, debajo en celular),
- * se actualiza sola cada minuto y anima los estados (dentro, por llegar, sin aprobar, salió).
+ * se actualiza sola cada minuto y anima los estados (dentro, por llegar, sin aprobar, salió). Tiene buscador
+ * y una vista "Historial" (acción 'historial': rango de fechas y búsqueda en el servidor).
+ * Cada entrada o salida registrada deja una tarjeta de confirmación hasta la siguiente acción.
  * Datos: PostgREST api.visita_guardia (respaldo de red: Apps Script evalRpc).
  * Si el servidor no responde, la portería pasa sola a MODO CONTINGENCIA: trabaja con la copia que
  * Apps Script guarda cada 10 min (visitas_respaldo.gs, hoja privada), registra entradas, salidas y
@@ -22,6 +24,8 @@
   const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '';
   const st = { ses: null, lista: [], ficha: null, error: '', escaneando: false, stream: null, cargando: false,
     cargandoLista: false, listaTs: 0, buscando: '', registrando: '', abriendoCamara: false, filtro: 'todas',
+    // Lista: vista 'hoy' | 'historial', texto del buscador de hoy, historial consultado y confirmación del último registro
+    vista: 'hoy', busca: '', hist: null, exito: null,
     // Visitante sin cita (ventana): modo 'elegir' | 'qr' | 'form' (paso 1-4) | 'listo'
     sc: null, tipos: [], eppTexto: '', cto: {}, horario: { apertura: '07:30', cierre: '18:30' } };
   // Horario de visitas (Ecuador): fuera de él no se registran ingresos; a la hora de cierre el servidor cierra
@@ -138,7 +142,7 @@
       <p class="gv-cont-meta">${copia ? `Lista de visitas copiada a las ${copia}` : 'Usando la copia de respaldo'}${r.pendientes ? ` · <b>${r.pendientes}</b> registro(s) por enviar` : ''} · Reintentando cada minuto</p>
     </div>`;
   }
-  function salir() { try { localStorage.removeItem(KEY); } catch (e) { } st.ses = null; detenerCamara(); }
+  function salir() { try { localStorage.removeItem(KEY); } catch (e) { } st.ses = null; st.hist = null; st.exito = null; st.busca = ''; st.vista = 'hoy'; detenerCamara(); }
 
   // ---------------------------------------------------------------- vistas
   function pintar() {
@@ -178,6 +182,7 @@
           <button class="vs-btn vs-btn-prim" type="submit" ${st.buscando ? 'disabled' : ''} aria-label="Buscar">${st.buscando ? SPIN : '<i class="fas fa-search"></i>'}</button></form>
         ${st.error ? `<div class="vs-error" style="margin-top:12px"><i class="fas fa-exclamation-circle"></i> ${esc(st.error)}</div>` : ''}
       </div>
+      ${st.exito && !st.buscando && !st.ficha ? exitoHtml(st.exito) : ''}
       ${st.buscando ? `<div class="card gv-ficha"><p class="cargando-nota" style="margin:0 0 12px">${SPIN} Buscando la visita ${esc(codigoBonito(st.buscando))}…</p>
           <div class="sk sk-linea" style="width:45%;height:18px"></div><div class="sk sk-linea" style="width:70%;margin-top:12px"></div>
           <div class="sk sk-linea" style="width:55%;margin-top:8px"></div><div class="sk sk-bloque" style="margin-top:14px"></div>${LENTO}</div>`
@@ -213,28 +218,31 @@
     return `<span class="gv-est gv-est-otro"><i class="fas fa-ban"></i> ${esc(String(v.estado).replace('_', ' '))}</span>`;
   }
 
-  function filaHtml(v, i, cambio) {
+  function filaHtml(v, i, cambio, conFecha) {
     const ini = String(v.nombre || '?').trim().split(/\s+/).slice(0, 2).map(x => x[0] || '').join('').toUpperCase();
+    const completo = v.estado === 'concluida' && v.entradaEn && !v.salidaAutomatica;
     return `<button type="button" class="gv-fila gv-fila-${esc(v.estado)} ${cambio}" data-ver="${esc(v.codigo)}" style="--i:${Math.min(i, 12)}">
       <span class="gv-avatar">${esc(ini)}</span>
       <span class="gv-fila-info">
         <strong>${esc(v.nombre || '(sin nombre)')}</strong>
-        <small>${esc(v.empresa || 'Particular')} · visita a ${esc(v.anfitrion || 'área encargada')}</small>
-        <span class="gv-fila-chips">${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.sinContacto ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-phone-slash"></i> Sin contacto</em>' : ''}${v.estado === 'en_curso' && restaParaCierre() <= 30 ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-door-closed"></i> Registre su salida</em>' : ''}${v.salidaAutomatica ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-robot"></i> Salida no registrada</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
+        <small>${conFecha ? `<b class="gv-fila-fecha">${esc(fechaCorta(v.fecha))}</b> · ` : ''}${esc(v.empresa || 'Particular')} · visita a ${esc(v.anfitrion || 'área encargada')}</small>
+        <span class="gv-fila-chips">${conFecha && completo ? '<em class="gv-chip gv-chip-ok"><i class="fas fa-check-circle"></i> Registro completo</em>' : ''}${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.sinContacto ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-phone-slash"></i> Sin contacto</em>' : ''}${v.estado === 'en_curso' && restaParaCierre() <= 30 ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-door-closed"></i> Registre su salida</em>' : ''}${v.salidaAutomatica ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-robot"></i> Salida no registrada</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
       </span>
       ${estadoHtml(v)}
     </button>`;
   }
 
-  function pintarLista() {
-    const el = listaCont();
-    if (!el) return;
-    if (!st.ses) { el.innerHTML = ''; return; }
+  // Buscador: sin tildes ni mayúsculas, en visitante, empresa, anfitrión, motivo, tipo y código
+  const normal = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const coincide = (v, q) => !q || normal([v.nombre, v.empresa, v.anfitrion, v.motivo, v.tipoNombre, v.codigo, codigoBonito(v.codigo)].join(' ')).includes(normal(q).trim());
+  const fechaCorta = f => String(f || '').split('-').reverse().join('/');
+
+  // Filas de "Hoy" (filtro por estado + buscador)
+  function filasHoyHtml() {
     const L = st.lista;
-    const cuenta = Object.fromEntries(GRUPOS.map(([k, , fn]) => [k, L.filter(fn).length]));
     const orden = { en_curso: 0, aprobada: 1, pendiente: 2, concluida: 3 };
     const filtro = GRUPOS.find(g => g[0] === st.filtro);
-    const visibles = L.filter(v => !filtro || filtro[2](v))
+    const visibles = L.filter(v => (!filtro || filtro[2](v)) && coincide(v, st.busca))
       .sort((a, b) => (orden[a.estado] ?? 9) - (orden[b.estado] ?? 9) || String(a.hora || '').localeCompare(String(b.hora || '')));
     const previos = estadosPrevios;
     const nuevos = {};
@@ -244,17 +252,124 @@
       return filaHtml(v, i, cambio);
     }).join('');
     if (st.listaTs) estadosPrevios = Object.assign({}, estadosPrevios || {}, nuevos, Object.fromEntries(L.map(v => [v.codigo, v.estado])));
-    const chip = (k, t, n) => `<button type="button" class="gv-filtro ${st.filtro === k ? 'gv-filtro-on' : ''} gv-filtro-${k}" data-gv="filtro" data-f="${k}">${t}${n !== undefined ? ` <b>${n}</b>` : ''}</button>`;
-    el.innerHTML = `<div class="card gv-lista">
-      <div class="gv-lista-cab"><h3 class="gv-titulo m-0"><i class="fas fa-calendar-day"></i> Visitas de hoy</h3>
-        <button class="vs-btn vs-btn-sm" data-gv="recargar" ${st.cargandoLista ? 'disabled' : ''} aria-label="Actualizar" title="Actualizar"><i class="fas fa-sync-alt ${st.cargandoLista ? 'fa-spin' : ''}"></i></button></div>
-      <p class="gv-lista-estado">${st.cargandoLista ? `${SPIN} ${st.listaTs ? 'Actualizando…' : 'Cargando visitas de hoy…'}` : st.listaTs ? `<i class="fas fa-circle gv-vivo"></i> Se actualiza sola · ${horaDe(st.listaTs)}` : ''}</p>
-      <div class="gv-filtros">${chip('todas', 'Todas', L.length)}${GRUPOS.map(([k, t]) => chip(k, t, cuenta[k])).join('')}</div>
-      <div class="gv-lista-filas">
-        ${!st.listaTs && st.cargandoLista
-          ? '<div class="sk sk-bloque"></div><div class="sk sk-bloque"></div><div class="sk sk-bloque"></div>' + LENTO
-          : filas || `<div class="gv-vacio"><i class="fas fa-calendar-check"></i><p>${st.listaTs ? (L.length ? 'No hay visitas en este filtro.' : 'No hay visitas para hoy.') : ''}</p></div>`}
-      </div></div>`;
+    if (!st.listaTs && st.cargandoLista) return '<div class="sk sk-bloque"></div><div class="sk sk-bloque"></div><div class="sk sk-bloque"></div>' + LENTO;
+    return filas || `<div class="gv-vacio"><i class="fas ${st.busca ? 'fa-search' : 'fa-calendar-check'}"></i><p>${!st.listaTs ? ''
+      : st.busca ? `Ninguna visita de hoy coincide con «${esc(st.busca)}». Si es de otro día, búsquela en «Historial».`
+      : L.length ? 'No hay visitas en este filtro.' : 'No hay visitas para hoy.'}</p></div>`;
+  }
+
+  // Filas del historial (consulta al servidor)
+  function filasHistorialHtml() {
+    const h = st.hist || {};
+    if (h.cargando && !h.visitas) return `<p class="cargando-nota">${SPIN} Buscando en el historial…</p><div class="sk sk-bloque"></div><div class="sk sk-bloque"></div>${LENTO}`;
+    if (h.error) return `<div class="vs-error"><i class="fas fa-exclamation-circle"></i> ${esc(h.error)}</div>`;
+    const L = h.visitas || [];
+    if (!L.length) return `<div class="gv-vacio"><i class="fas fa-history"></i><p>${h.q ? `Ninguna visita coincide con «${esc(h.q)}» entre esas fechas.` : 'No hay visitas entre esas fechas.'}</p></div>`;
+    return `<p class="gv-hist-total">${L.length >= (h.limite || 300) ? `Se muestran las ${L.length} más recientes: acote las fechas o la búsqueda.` : `${L.length} visita${L.length === 1 ? '' : 's'}`}</p>` +
+      L.map((v, i) => filaHtml(v, i, '', true)).join('');
+  }
+
+  function pintarLista() {
+    const el = listaCont();
+    if (!el) return;
+    if (!st.ses) { el.innerHTML = ''; return; }
+    // Si estaba escribiendo en un buscador, se conserva el foco y el cursor al redibujar
+    const act = document.activeElement && el.contains(document.activeElement) && document.activeElement.dataset.gvl ? document.activeElement : null;
+    const foco = act ? { k: act.dataset.gvl, i: act.selectionStart } : null;
+    const L = st.lista;
+    const hist = st.vista === 'historial';
+    const vistas = `<div class="gv-vistas" role="tablist">
+        <button type="button" role="tab" class="gv-vista ${!hist ? 'on' : ''}" data-gv="vista" data-v="hoy" aria-selected="${!hist}"><i class="fas fa-calendar-day"></i> Hoy</button>
+        <button type="button" role="tab" class="gv-vista ${hist ? 'on' : ''}" data-gv="vista" data-v="historial" aria-selected="${hist}"><i class="fas fa-history"></i> Historial</button></div>`;
+    if (hist) {
+      const h = st.hist || {};
+      el.innerHTML = `<div class="card gv-lista">
+        <div class="gv-lista-cab"><h3 class="gv-titulo m-0"><i class="fas fa-history"></i> Historial de visitas</h3>
+          <button class="vs-btn vs-btn-sm" data-gv="hist-recargar" ${h.cargando ? 'disabled' : ''} aria-label="Actualizar" title="Actualizar"><i class="fas fa-sync-alt ${h.cargando ? 'fa-spin' : ''}"></i></button></div>
+        ${vistas}
+        ${st.contingencia ? '<div class="vs-error" style="margin-bottom:10px"><i class="fas fa-life-ring"></i> En modo contingencia el historial no está disponible: solo las visitas de hoy.</div>' : ''}
+        <form class="gv-hist-form">
+          <label><span>Desde</span><input type="date" data-gvl="desde" value="${esc(h.desde || '')}" max="${esc(h.hasta || '')}"></label>
+          <label><span>Hasta</span><input type="date" data-gvl="hasta" value="${esc(h.hasta || '')}" min="${esc(h.desde || '')}"></label>
+        </form>
+        <div class="gv-buscar"><i class="fas fa-search"></i><input type="search" data-gvl="hq" value="${esc(h.q || '')}" placeholder="Visitante, empresa, anfitrión o código" autocomplete="off" aria-label="Buscar en el historial">${h.cargando && h.visitas ? SPIN : ''}</div>
+        <div class="gv-lista-filas">${filasHistorialHtml()}</div></div>`;
+    } else {
+      const cuenta = Object.fromEntries(GRUPOS.map(([k, , fn]) => [k, L.filter(fn).length]));
+      const chip = (k, t, n) => `<button type="button" class="gv-filtro ${st.filtro === k ? 'gv-filtro-on' : ''} gv-filtro-${k}" data-gv="filtro" data-f="${k}">${t}${n !== undefined ? ` <b>${n}</b>` : ''}</button>`;
+      el.innerHTML = `<div class="card gv-lista">
+        <div class="gv-lista-cab"><h3 class="gv-titulo m-0"><i class="fas fa-calendar-day"></i> Visitas de hoy</h3>
+          <button class="vs-btn vs-btn-sm" data-gv="recargar" ${st.cargandoLista ? 'disabled' : ''} aria-label="Actualizar" title="Actualizar"><i class="fas fa-sync-alt ${st.cargandoLista ? 'fa-spin' : ''}"></i></button></div>
+        ${vistas}
+        <p class="gv-lista-estado">${st.cargandoLista ? `${SPIN} ${st.listaTs ? 'Actualizando…' : 'Cargando visitas de hoy…'}` : st.listaTs ? `<i class="fas fa-circle gv-vivo"></i> Se actualiza sola · ${horaDe(st.listaTs)}` : ''}</p>
+        <div class="gv-buscar"><i class="fas fa-search"></i><input type="search" data-gvl="busca" value="${esc(st.busca)}" placeholder="Buscar visitante, empresa, anfitrión o código" autocomplete="off" aria-label="Buscar en las visitas de hoy"></div>
+        <div class="gv-filtros">${chip('todas', 'Todas', L.length)}${GRUPOS.map(([k, t]) => chip(k, t, cuenta[k])).join('')}</div>
+        <div class="gv-lista-filas">${filasHoyHtml()}</div></div>`;
+    }
+    if (foco) {
+      const i = el.querySelector(`[data-gvl="${foco.k}"]`);
+      if (i) { i.focus(); try { if (foco.i != null) i.setSelectionRange(foco.i, foco.i); } catch (e) { } }
+    }
+  }
+
+  // Historial: por defecto los últimos 7 días; la búsqueda la hace el servidor (en todas las visitas del rango)
+  const diaStr = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  let nHist = 0, tHist = null;
+  async function cargarHistorial() {
+    if (!st.hist) { const d = new Date(); d.setDate(d.getDate() - 7); st.hist = { desde: diaStr(d), hasta: diaStr(new Date()), q: '' }; }
+    const h = st.hist, id = ++nHist;
+    if (st.contingencia) { h.error = 'Sin servidor de visitas el historial no está disponible. Vuelva a intentarlo cuando se restablezca.'; h.cargando = false; return pintarLista(); }
+    h.cargando = true; h.error = ''; pintarLista();
+    try {
+      const r = await rpc({ accion: 'historial', desde: h.desde, hasta: h.hasta, q: h.q });
+      if (id !== nHist) return;
+      if (!r.ok) throw new Error(r.error || 'No se pudo leer el historial.');
+      h.visitas = r.visitas || []; h.limite = r.limite || 300;
+    } catch (e) { if (id !== nHist) return; h.visitas = null; h.error = e.message; }
+    h.cargando = false;
+    if (st.vista === 'historial') pintarLista();
+  }
+  function alEscribirLista(e) {
+    const k = e.target.dataset && e.target.dataset.gvl;
+    if (!k) return;
+    if (k === 'busca') {
+      if (e.type !== 'input') return;
+      st.busca = e.target.value;
+      const filas = listaCont().querySelector('.gv-lista-filas');
+      if (filas) filas.innerHTML = filasHoyHtml();
+      return;
+    }
+    if (!st.hist) return;
+    if (k === 'hq') { if (e.type !== 'input') return; st.hist.q = e.target.value; clearTimeout(tHist); tHist = setTimeout(cargarHistorial, 450); return; }
+    if ((k === 'desde' || k === 'hasta') && e.type === 'change' && e.target.value) { st.hist[k] = e.target.value; cargarHistorial(); }
+  }
+
+  // ---------------------------------------------------------------- confirmación del último registro
+  // Queda a la vista (no solo un aviso que desaparece) hasta la siguiente acción o 2 minutos
+  function exitoHtml(x) {
+    const entrada = x.accion === 'entrada';
+    const v = x.visita || {};
+    const estuvo = !entrada && v.entradaEn && v.salidaEn ? ` · estuvo ${duracion(Math.round((new Date(v.salidaEn) - new Date(v.entradaEn)) / 60000))}` : '';
+    return `<div class="card gv-exito" role="status" aria-live="polite">
+      <div class="gv-exito-icono"><i class="fas fa-check"></i></div>
+      <div class="gv-exito-txt">
+        <strong>${entrada ? 'Entrada registrada correctamente' : 'Salida registrada correctamente'}</strong>
+        <span class="gv-exito-nombre">${esc(v.nombre || '')}</span>
+        <small>${esc(v.empresa || 'Particular')} · visita a ${esc(v.anfitrion || 'área encargada')} · ${horaDe(entrada ? v.entradaEn : v.salidaEn) || horaDe(x.en)}${estuvo}</small>
+        <small class="gv-exito-nota"><i class="fas ${x.respaldo ? 'fa-life-ring' : entrada ? 'fa-bell' : 'fa-history'}"></i> ${x.respaldo
+          ? 'Guardado en el respaldo: se enviará solo al servidor cuando vuelva.'
+          : entrada ? `Quedó en el historial y se avisó a ${esc(v.anfitrion || 'la persona que visita')} que su visitante llegó.`
+          : 'La visita quedó cerrada en el historial.'}</small>
+        ${entrada && v.sinContacto ? '<small class="gv-exito-alerta"><i class="fas fa-phone-slash"></i> Quedó marcado: ingresó sin contacto con el anfitrión.</small>' : ''}
+      </div>
+      <button type="button" class="gv-exito-x" data-gv="exito-cerrar" aria-label="Cerrar confirmación">&times;</button></div>`;
+  }
+  let tExito = null;
+  function mostrarExito(accion, visita) {
+    st.exito = { accion, visita, en: Date.now(), respaldo: !!st.contingencia };
+    clearTimeout(tExito);
+    const actual = st.exito;
+    tExito = setTimeout(() => { if (st.exito === actual) { st.exito = null; pintarPrincipal(); } }, 2 * 60 * 1000);
   }
 
   // ---------------------------------------------------------------- visitante sin cita: ventana guiada
@@ -426,6 +541,7 @@
           <p class="gv-m-listo-nombre">${esc(v.nombre || '')}</p>
           <p class="vs-muted">${esc(v.empresa || '')} · visita a ${esc(v.anfitrion || 'área encargada')} · ${horaDe(v.entradaEn || Date.now())}</p>
           ${v.sinContacto ? '<p class="gv-m-aviso gv-m-aviso-alerta"><i class="fas fa-phone-slash"></i> Quedó registrado como «Ingresó sin contacto con el anfitrión».</p>' : ''}
+          <p class="gv-m-aviso gv-m-aviso-ok"><i class="fas fa-check-circle"></i> ${st.contingencia ? 'Registro guardado en el respaldo: se enviará solo al servidor cuando vuelva.' : 'El registro se guardó correctamente y ya aparece en «Visitas de hoy» y en el historial.'}</p>
           <p class="gv-m-aviso"><i class="fas fa-bell"></i> Ya se avisó a la persona que visita. Cuando se vaya, busque su nombre en «Visitas de hoy» y registre la salida.</p></div>`;
       pie = `<button type="button" class="vs-btn" data-gv="sc-otro"><i class="fas fa-user-plus"></i> Registrar otro</button>
         <button type="button" class="btn-large btn-success gv-m-prim" data-gv="sc-terminar"><i class="fas fa-check"></i> Terminar</button>`;
@@ -573,6 +689,7 @@
       delete st.cto.form;
       // En línea queda en portería: paso de contacto y después la entrada. En contingencia ya ingresó.
       st.sc = r.visita.estado === 'aprobada' ? { modo: 'contacto', visita: r.visita, f } : { modo: 'listo', visita: r.visita };
+      if (st.sc.modo === 'listo') { mostrarExito('entrada', r.visita); pintarPrincipal(); }
       pintarModal();
       cargar();
     } catch (e) { sc.enviando = false; sc.error = e.message; pintarModal(); }
@@ -589,14 +706,15 @@
         contacto: l && l.resultado ? { resultado: l.resultado, intentos: l.intentos } : undefined });
       if (!r.ok) throw new Error(r.error);
       st.sc = { modo: 'listo', visita: r.visita };
-      pintarModal(); cargar();
+      mostrarExito('entrada', r.visita);
+      pintarModal(); pintarPrincipal(); cargar();
     } catch (e) { sc.enviando = false; sc.error = e.message; pintarModal(); }
   }
 
   function fichaHtml(f) {
     const v = f.visita;
     const hoy = f.hoy;
-    let aviso = '', accion = '';
+    let aviso = '', accion = '', info = '';
     if (v.estado === 'aprobada' && v.fecha === hoy && fueraHorario()) {
       aviso = esc(msgHorario());
     } else if (v.estado === 'aprobada' && v.fecha === hoy) {
@@ -613,10 +731,15 @@
       aviso = 'El anfitrión aún no aprueba esta visita. Comunícate con él antes de permitir el ingreso.';
     } else if (v.estado === 'invitada') {
       aviso = 'El visitante no completó su registro ni aceptó los términos. Pídele que lo haga desde su enlace.';
+    } else if (v.estado === 'concluida') {
+      // Abierta desde el historial: confirma cómo quedó registrada
+      info = v.salidaAutomatica
+        ? '<i class="fas fa-robot"></i> Visita concluida: portería no registró la salida y se cerró sola a la hora de cierre.'
+        : '<i class="fas fa-check-circle"></i> Visita concluida: entrada y salida registradas correctamente.';
     } else {
       aviso = `Visita ${esc(v.estado.replace('_', ' '))}: no está habilitada para ingresar.`;
     }
-    return `<div class="card gv-ficha ${accion ? 'gv-ficha-ok' : 'gv-ficha-alerta'}">
+    return `<div class="card gv-ficha ${accion ? 'gv-ficha-ok' : info ? 'gv-ficha-info' : 'gv-ficha-alerta'}">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span class="vs-codigo" style="font-size:18px">${esc(codigoBonito(v.codigo))}</span>
         ${estadoHtml(v)}</div>
       <div class="gv-nombre">${esc(v.nombre || '(sin nombre)')}${v.origen === 'porteria' ? ' <span class="gv-sincita">Sin cita</span>' : ''}</div>
@@ -631,6 +754,7 @@
       </dl>
       ${v.epp && ['aprobada', 'en_curso'].includes(v.estado) ? `<div class="vs-epp" style="margin:12px 0 0"><i class="fas fa-hard-hat"></i><span><strong>Visita a planta: EPP obligatorio.</strong> ${esc(st.eppTexto)}</span></div>` : ''}
       ${aviso ? `<div class="vs-error" style="margin-top:12px"><i class="fas fa-exclamation-triangle"></i> ${aviso}</div>` : ''}
+      ${info ? `<div class="gv-ficha-nota ${v.salidaAutomatica ? 'gv-ficha-nota-alerta' : ''}">${info}</div>` : ''}
       ${accion}${st.registrando ? LENTO : ''}
       <button class="btn-large btn-secondary" data-gv="cerrar-ficha" ${st.registrando ? 'disabled' : ''}><i class="fas fa-times"></i> Cerrar</button></div>`;
   }
@@ -780,7 +904,7 @@
   }
   async function buscar(codigo) {
     if (st.buscando) return;
-    st.error = ''; st.ficha = null; st.buscando = codigo.replace(/^TCV1:/i, ''); pintarPrincipal();
+    st.error = ''; st.ficha = null; st.exito = null; st.buscando = codigo.replace(/^TCV1:/i, ''); pintarPrincipal();
     const f0 = cont.querySelector('.gv-ficha'); if (f0) f0.scrollIntoView({ behavior: 'smooth', block: 'center' });
     try {
       const r = await rpc({ accion: 'buscar', codigo });
@@ -809,6 +933,8 @@
       const r = await rpc(p);
       if (!r.ok) throw new Error(r.error);
       st.ficha = null; st.error = ''; st.registrando = '';
+      mostrarExito(accion, r.visita);
+      pintarPrincipal();
       if (typeof window.mostrarToast === 'function') window.mostrarToast(accion === 'entrada' ? `Entrada registrada: ${r.visita.nombre}` : `Salida registrada: ${r.visita.nombre}`, 'success');
       // Salida: QR para que el visitante califique la visita (enlace nuevo que genera el servidor)
       if (accion === 'salida' && r.calificar) {
@@ -901,6 +1027,13 @@
     }
     // Panel y lista
     if (a === 'filtro') { st.filtro = b.dataset.f; return pintarLista(); }
+    if (a === 'vista') {
+      st.vista = b.dataset.v;
+      if (st.vista === 'historial' && !st.hist) return cargarHistorial();
+      return pintarLista();
+    }
+    if (a === 'hist-recargar') return cargarHistorial();
+    if (a === 'exito-cerrar') { st.exito = null; return pintarPrincipal(); }
     if (a === 'escanear') { st.escaneando = true; st.abriendoCamara = true; st.error = ''; pintarPrincipal(); }
     else if (a === 'detener') { detenerCamara(); pintarPrincipal(); }
     else if (a === 'recargar') cargar();
@@ -923,7 +1056,13 @@
       cont.addEventListener('submit', alEnviar);
       cont.addEventListener('click', alClic);
       const lc = listaCont();
-      if (lc && !lc._gv) { lc._gv = true; lc.addEventListener('click', alClic); }
+      if (lc && !lc._gv) {
+        lc._gv = true;
+        lc.addEventListener('click', alClic);
+        lc.addEventListener('input', alEscribirLista);
+        lc.addEventListener('change', alEscribirLista);
+        lc.addEventListener('submit', e => e.preventDefault());
+      }
     }
     if (st.ses) { pintar(); cargar(); } else pintar();
   }

@@ -11,6 +11,8 @@
  * Quienes reciben copia según el tipo de visita (configuración) la ven en la pestaña "Avisos", sin
  * acciones. En el panel de supervisor, el admin master tiene además la pestaña "Configuración".
  *
+ * Las pestañas de lista (Por aprobar, Hoy, Próximas, Historial, Avisos) tienen buscador por visitante, empresa,
+ * anfitrión, motivo, tipo o código; en Historial las visitas bien cerradas llevan «Registro completo».
  * La lista muestra los estados con indicadores animados y se actualiza cada minuto; invitar,
  * compartir el enlace y rechazar/cancelar se hacen en una ventana guiada (estilos gv-m-* y va-*).
  *
@@ -95,6 +97,9 @@
     return dia + (v.hora ? ' · ' + esc(v.hora) : '');
   }
   const iniciales = n => String(n || '?').trim().split(/\s+/).slice(0, 2).map(x => x[0] || '').join('').toUpperCase() || '?';
+  // Buscador: sin tildes ni mayúsculas
+  const normal = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const coincide = (v, q) => !q || normal([v.nombre, v.empresa, v.anfitrion, v.anfitrionNombre, v.motivo, v.tipoNombre, v.codigo, codigoBonito(v.codigo), fechaCorta(v.fecha)].join(' ')).includes(normal(q).trim());
 
   function pintar(st) {
     const c = st.cont;
@@ -115,6 +120,9 @@
     }
     const hoy = hoyLocal();
     const yo = String(st.ses.empleadoId);
+    // Al redibujar (p. ej. la actualización de cada minuto) el buscador conserva el foco y el cursor
+    const enBuscador = document.activeElement && document.activeElement.hasAttribute && document.activeElement.hasAttribute('data-vs-busca') && c.contains(document.activeElement)
+      ? document.activeElement.selectionStart : null;
     // Las copias informativas (otro anfitrión) van solo a "Avisos"; el admin ve todo en las pestañas normales
     const L = st.admin ? st.visitas : st.visitas.filter(v => String(v.anfitrionId) === yo);
     const copias = st.admin ? [] : st.visitas.filter(v => String(v.anfitrionId) !== yo);
@@ -147,10 +155,16 @@
     if (st.tab === 'resumen') lista = resumenHtml(st);
     else if (st.tab === 'config') lista = configHtml(st);
     else {
-      const items = grupos[st.tab].map((v, i) => itemHtml(st, v, hoy, marca(v), i)).join('');
+      const encontradas = grupos[st.tab].filter(v => coincide(v, st.busca));
+      const items = encontradas.map((v, i) => itemHtml(st, v, hoy, marca(v), i)).join('');
       const [ic, t1, t2] = vacio[st.tab];
-      lista = (st.tab === 'avisos' ? '<p class="vs-muted vs-small" style="margin:0 0 10px"><i class="fas fa-info-circle"></i> Visitas de otros anfitriones que te llegan como copia según su tipo (por ejemplo, planta o clientes). Son solo informativas.</p>' : '') +
-        (items || `<div class="va-vacio"><i class="fas ${ic}"></i><strong>${t1}</strong>${t2 ? `<span>${t2}</span>` : ''}</div>`);
+      const buscador = grupos[st.tab].length ? `<div class="gv-buscar va-buscar"><i class="fas fa-search"></i><input type="search" data-vs-busca value="${esc(st.busca)}"
+          placeholder="Buscar visitante, empresa, anfitrión, motivo o código" autocomplete="off" aria-label="Buscar visitas">
+          ${st.busca ? `<span class="va-buscar-n">${encontradas.length} de ${grupos[st.tab].length}</span>` : ''}</div>` : '';
+      lista = (st.tab === 'avisos' ? '<p class="vs-muted vs-small" style="margin:0 0 10px"><i class="fas fa-info-circle"></i> Visitas de otros anfitriones que te llegan como copia según su tipo (por ejemplo, planta o clientes). Son solo informativas.</p>' : '') + buscador +
+        (items || (st.busca && grupos[st.tab].length
+          ? `<div class="va-vacio"><i class="fas fa-search"></i><strong>Sin resultados</strong><span>Ninguna visita de esta pestaña coincide con «${esc(st.busca)}».</span></div>`
+          : `<div class="va-vacio"><i class="fas ${ic}"></i><strong>${t1}</strong>${t2 ? `<span>${t2}</span>` : ''}</div>`));
     }
     if (st.listaTs) st.estadosPrevios = Object.fromEntries(st.visitas.map(v => [v.id, v.estado]));
     const dentro = L.filter(v => v.estado === 'en_curso').length;
@@ -173,6 +187,10 @@
       <div class="va-lista">${lista}</div>
       <p class="vs-muted vs-small" style="margin-top:12px"><i class="fas fa-shield-alt"></i> Los datos de los visitantes son confidenciales (LOPDP): úsalos solo para gestionar la visita. Se anonimizan 180 días después de concluida.
       Página para visitantes: <a href="${URL_PUBLICA}" target="_blank" rel="noopener">${URL_PUBLICA.replace(/^https?:\/\//, '')}</a></p></div>`;
+    if (enBuscador !== null) {
+      const i = c.querySelector('[data-vs-busca]');
+      if (i) { i.focus(); try { i.setSelectionRange(enBuscador, enBuscador); } catch (x) { } }
+    }
   }
 
   function itemHtml(st, v, hoy, marca, i) {
@@ -194,6 +212,7 @@
     const cal = v.calificacion;
     const abierto = st.abiertos.has(v.id);
     const nombre = v.nombre || (v.estado === 'invitada' ? 'Invitado (aún no llena sus datos)' : '—');
+    const completo = v.estado === 'concluida' && v.entradaEn && !v.salidaAutomatica;
     return `<div class="va-item va-e-${esc(v.estado)} ${v.estado === 'aprobada' && v.fecha === hoy ? 'va-e-llega' : ''} ${marca}" style="--i:${Math.min(i, 10)}">
       <div class="va-item-cab" data-vs="detalle" data-id="${v.id}" role="button" tabindex="0" aria-expanded="${abierto}">
         <span class="gv-avatar va-avatar">${v.nombre ? esc(iniciales(v.nombre)) : '<i class="fas fa-user-clock"></i>'}</span>
@@ -201,7 +220,7 @@
           <strong>${esc(nombre)}</strong>
           <small>${esc(v.empresa || (v.nombre ? 'Particular' : ''))}${st.admin || esCopia ? ` · visita a ${esc(v.anfitrion || v.anfitrionNombre)}` : ''}</small>
           <span class="va-cuando"><i class="far fa-calendar"></i> ${cuando(v, hoy)}${v.motivo ? ` · ${esc(v.motivo)}` : ''}</span>
-          <span class="vs-chips">${v.tipoNombre ? `<span class="vs-chip">${esc(v.tipoNombre)}</span>` : ''}${v.epp ? '<span class="vs-chip vs-chip-epp"><i class="fas fa-hard-hat"></i> EPP</span>' : ''}${v.origen === 'porteria' ? '<span class="vs-chip vs-chip-sc">Sin cita</span>' : ''}${v.sinContacto ? '<span class="vs-chip vs-chip-alerta"><i class="fas fa-phone-slash"></i> Ingresó sin contacto</span>' : ''}${v.almuerzo ? '<span class="vs-chip"><i class="fas fa-utensils"></i> Almuerzo</span>' : ''}${esCopia ? '<span class="vs-chip vs-chip-copia"><i class="fas fa-bell"></i> Copia</span>' : ''}</span>
+          <span class="vs-chips">${completo ? '<span class="vs-chip vs-chip-ok"><i class="fas fa-check-circle"></i> Registro completo</span>' : ''}${v.salidaAutomatica ? '<span class="vs-chip vs-chip-alerta"><i class="fas fa-robot"></i> Salida no registrada</span>' : ''}${v.tipoNombre ? `<span class="vs-chip">${esc(v.tipoNombre)}</span>` : ''}${v.epp ? '<span class="vs-chip vs-chip-epp"><i class="fas fa-hard-hat"></i> EPP</span>' : ''}${v.origen === 'porteria' ? '<span class="vs-chip vs-chip-sc">Sin cita</span>' : ''}${v.sinContacto ? '<span class="vs-chip vs-chip-alerta"><i class="fas fa-phone-slash"></i> Ingresó sin contacto</span>' : ''}${v.almuerzo ? '<span class="vs-chip"><i class="fas fa-utensils"></i> Almuerzo</span>' : ''}${esCopia ? '<span class="vs-chip vs-chip-copia"><i class="fas fa-bell"></i> Copia</span>' : ''}</span>
         </span>
         <span class="va-item-der">${estadoHtml(v, hoy)}<i class="fas fa-chevron-down va-flecha"></i></span>
       </div>
@@ -213,6 +232,7 @@
         ${v.almuerzo ? `<dt>Almuerzo</dt><dd><i class="fas fa-utensils"></i> Solicitado</dd>` : ''}
         ${v.llamada ? `<dt>Portería</dt><dd>${llamadaTexto(v.llamada)}</dd>` : ''}
         ${v.entradaEn ? `<dt>Ingreso</dt><dd>${horaDe(v.entradaEn)}${v.salidaEn ? ' · salida ' + horaDe(v.salidaEn) + (v.salidaAutomatica ? ' <b style="color:#b91c1c">(automática: portería no registró la salida)</b>' : '') : ''}${v.sinContacto ? ' · <b style="color:#b91c1c">sin contacto con el anfitrión</b>' : ''}</dd>` : ''}
+        ${completo ? '<dt>Registro</dt><dd><span class="va-ok"><i class="fas fa-check-circle"></i> Entrada y salida registradas correctamente en portería</span></dd>' : v.estado === 'en_curso' ? '<dt>Registro</dt><dd><span class="va-ok"><i class="fas fa-check-circle"></i> Entrada registrada correctamente en portería</span></dd>' : ''}
         ${v.motivoRechazo ? `<dt>Nota</dt><dd>${esc(v.motivoRechazo)}</dd>` : ''}
         ${cal ? `<dt>Calificación</dt><dd>Atención ${estrellas(cal.atencion)} · Puntualidad ${estrellas(cal.puntualidad)} · Instalaciones ${estrellas(cal.instalaciones)}${cal.comentario ? `<div class="vs-muted">"${esc(cal.comentario)}"</div>` : ''}</dd>` : ''}
       </dl>` : ''}
@@ -567,7 +587,7 @@
 
   function montar(cont, opts) {
     const emp = opts.empleado || {};
-    const st = { cont, emp, admin: !!opts.admin, config: !!opts.config, ses: sesionGuardada(emp.id), visitas: [], tab: '', error: '', cargando: false, listaTs: 0, enlaceAbrir: opts.enlace || null,
+    const st = { cont, emp, admin: !!opts.admin, config: !!opts.config, ses: sesionGuardada(emp.id), visitas: [], tab: '', busca: '', error: '', cargando: false, listaTs: 0, enlaceAbrir: opts.enlace || null,
       abiertos: new Set(), estadosPrevios: null, m: null, tipos: null, cfg: null, cfgEmpleados: {}, cfgError: '', cfgGuardando: false };
     if (st.admin && st.ses && !st.ses.rrhh) st.admin = false;
     if (actual && actual.m) { actual.m = null; pintarModal(actual); }
@@ -621,6 +641,12 @@
     };
     cont.addEventListener('click', alClic);
     cont.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.va-item-cab')) { e.preventDefault(); alClic(e); } });
+    // Buscador: filtra al escribir (pintar devuelve el foco y el cursor al campo)
+    cont.addEventListener('input', e => {
+      if (!e.target.hasAttribute('data-vs-busca')) return;
+      st.busca = e.target.value;
+      pintar(st);
+    });
     if (st.ses) cargar(st); else pintar(st);
     cont._vs = st;
     return st;

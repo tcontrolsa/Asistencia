@@ -926,11 +926,8 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       }
     });
     if (esFestivo) {
-      // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
-      if (h100 + hC100 > 240) {
-        if (h100 >= ALMUERZO_MIN) h100 -= ALMUERZO_MIN;
-        else hC100 = Math.max(0, hC100 - ALMUERZO_MIN);
-      }
+      // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min si almorzó en planta; antes del 26/09/2026, 45 min si > 4 h)
+      ({ h100, hC100 } = descontarAlmuerzo100(f, periodosDia, h100, hC100));
     } else {
       // 50 %: solo si el día supera 45 min; oficina con tope de 120, campo sin tope
       const rep50 = repartirExtra50(h50, hC50);

@@ -782,10 +782,38 @@ function ajusteDescansoDia(empId, fecha) {
   return a ? String(a.d || '').toUpperCase() : '';
 }
 window.ajusteDescansoDia = ajusteDescansoDia;
+// Sábado, domingo y feriado desde el 26/09/2026 (pedido 2026-10-27): se descuentan 30 min de almuerzo solo a
+// quien almorzó EN PLANTA (eligió «En planta»: almuerzo SI, PLANTA o EXTRA), sin importar cuántas
+// horas trabajó. «Fuera» (NO / FUERA) no descuenta. Antes del 26/09/2026: 45 min si trabajó más de 4 h.
+const ALMUERZO_FIN_SEMANA_MIN = 30;
+function almorzoEnPlanta(items) {
+  const si = r => !!r && ['SI', 'PLANTA', 'EXTRA'].includes(String(r.almuerzo || '').trim().toUpperCase());
+  return (items || []).some(x => si(x) || (!!x && (si(x.entrada) || si(x.salida))));
+}
+window.almorzoEnPlanta = almorzoEnPlanta;
+// Minutos de almuerzo de un sábado, domingo o feriado. items: registros o períodos {entrada, salida} del día.
+function almuerzoFinSemana(fecha, items, trabajado) {
+  if (!fecha || fecha < DESCANSOS_DESDE) return trabajado > 240 ? ALMUERZO_MIN : 0;
+  return almorzoEnPlanta(items) ? ALMUERZO_FIN_SEMANA_MIN : 0;
+}
+window.almuerzoFinSemana = almuerzoFinSemana;
+// Horas al 100 % de un sábado, domingo o feriado sin el almuerzo: primero de lo trabajado en empresa
+function descontarAlmuerzo100(fecha, items, h100, hC100) {
+  const min = almuerzoFinSemana(fecha, items, h100 + hC100);
+  if (!min) return { h100, hC100 };
+  if (!fecha || fecha < DESCANSOS_DESDE) {   // regla anterior, sin cambios
+    return h100 >= min ? { h100: h100 - min, hC100 } : { h100, hC100: Math.max(0, hC100 - min) };
+  }
+  const deEmpresa = Math.min(h100, min);
+  return { h100: h100 - deEmpresa, hC100: Math.max(0, hC100 - (min - deEmpresa)) };
+}
+window.descontarAlmuerzo100 = descontarAlmuerzo100;
+
 // tope: lo que descontaba la regla anterior en ese cálculo; sin ajuste manual, la regla nueva nunca descuenta
 // más que eso (decisión 2026-10-26: si alguien salió entre las 10:00 y las 11:45 no se le resta el receso).
 function descansoDia(fecha, periodosDia, empId, esFestivo, ajuste, tope) {
-  if (esFestivo || !fecha || fecha < DESCANSOS_DESDE) return null;
+  if (!fecha || fecha < DESCANSOS_DESDE) return null;
+  if (esFestivo) return almuerzoFinSemana(fecha, periodosDia, 0);   // sábado, domingo y feriado: 30 min si almorzó en planta
   const aj = ajuste !== undefined && ajuste !== null ? String(ajuste).toUpperCase() : ajusteDescansoDia(empId, fecha);
   if (aj === 'NO') return 0;
   if (aj === 'SI') return ALMUERZO_MIN;
@@ -920,10 +948,7 @@ function calcularExtrasDia(e, fecha, registrosDia) {
     }
   });
   if (festivo) {
-    if (res.h100 + res.hC100 > 240) {
-      if (res.h100 >= ALMUERZO_MIN) res.h100 -= ALMUERZO_MIN;
-      else res.hC100 = Math.max(0, res.hC100 - ALMUERZO_MIN);
-    }
+    Object.assign(res, descontarAlmuerzo100(fecha, regs, res.h100, res.hC100));
   } else {
     const rep50 = repartirExtra50(oficina50, campo50);
     res.h50 = rep50.oficina;
@@ -4107,11 +4132,8 @@ function cargarReportes() {
       });
 
       if (esFestivo) {
-        // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
-        if (extra100Dia + campo100Dia > 240) {
-          if (extra100Dia >= ALMUERZO_MIN) extra100Dia -= ALMUERZO_MIN;
-          else campo100Dia = Math.max(0, campo100Dia - ALMUERZO_MIN);
-        }
+        // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min si almorzó en planta; antes del 26/09/2026, 45 min si > 4 h)
+        ({ h100: extra100Dia, hC100: campo100Dia } = descontarAlmuerzo100(fecha, periodosDia, extra100Dia, campo100Dia));
         horasExtra100 += extra100Dia;
         horasCampo100 += campo100Dia;
       } else {
@@ -5765,13 +5787,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
       // Columna «Almuerzo / Receso»: lo descontado de las horas trabajadas y por qué
       const descansoAplicado = dscDia !== null ? dscDia : (minutosTrabajadosHoy > 240 ? ALMUERZO_MIN : 0);
-      const ajusteDsc = dscDia !== null ? ajusteDescansoDia(e.id, f) : '';
+      const ajusteDsc = dscDia !== null && !esFestivo ? ajusteDescansoDia(e.id, f) : '';
       totDescanso += minutosTrabajadosHoy > 0 ? descansoAplicado : 0;
       const motivoDsc = ajusteDsc === 'NO' ? 'Ajuste: sin descuento' : ajusteDsc === 'SI' ? 'Ajuste: 45 min'
         : dscDia === null ? (descansoAplicado ? (esFestivo ? 'Más de 4 h' : 'Regla anterior') : 'Menos de 4 h')
+        : esFestivo ? (descansoAplicado ? 'Almorzó en planta' : 'Almorzó fuera')
         : descansoAplicado === 45 ? 'Receso + almuerzo' : descansoAplicado === 15 ? 'Solo receso'
         : descansoAplicado === 30 ? 'Solo almuerzo' : 'Sin descanso';
-      const colorDsc = ajusteDsc ? '#7c3aed' : (dscDia !== null && descansoAplicado < 45) ? '#15803d' : '#475569';
+      const colorDsc = ajusteDsc ? '#7c3aed' : (dscDia !== null && !esFestivo && descansoAplicado < 45) ? '#15803d' : '#475569';
       const celdaDescansoHtml = minutosTrabajadosHoy <= 0 ? '<span style="color:#94a3b8;">—</span>'
         : `<span style="font-weight:800; color:${colorDsc};">${descansoAplicado} min</span><div style="font-size:9.5px; color:#94a3b8; font-weight:600; margin-top:1px;">${motivoDsc}</div>`;
       minsEmpresa = Math.max(0, minsEmpresa);
@@ -5855,11 +5878,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       });
 
       if (esFestivo) {
-        // Sábado, domingo y feriado: todo al 100 %, menos 45 min de almuerzo si trabajó más de 4 h
-        if (h100 + hC100 > 240) {
-          if (h100 >= ALMUERZO_MIN) h100 -= ALMUERZO_MIN;
-          else hC100 = Math.max(0, hC100 - ALMUERZO_MIN);
-        }
+        // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min si almorzó en planta; antes del 26/09/2026, 45 min si > 4 h)
+        ({ h100, hC100 } = descontarAlmuerzo100(f, periodosDia, h100, hC100));
       } else {
         // 50 %: solo si el día supera 45 min de extra; oficina con tope de 120 min, campo sin tope
         const rep50 = repartirExtra50(extraMins50Acum, hC50);
@@ -6194,7 +6214,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
       <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
       <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">${horaE}</td>
-      <td style="font-size:11px; padding:6px 8px; text-align:center; line-height:1.2;" title="Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30 descontados de las horas trabajadas">${celdaDescansoHtml}</td>
+      <td style="font-size:11px; padding:6px 8px; text-align:center; line-height:1.2;" title="${esFestivo ? 'Sábado, domingo y feriado: 30 min solo si almorzó en planta' : 'Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30 descontados de las horas trabajadas'}">${celdaDescansoHtml}</td>
       <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">
         ${horaS}
         ${modActual !== 'EMPRESA' ? `<div style="margin-top:2px;">${modalidadCell}</div>` : ''}
@@ -13687,9 +13707,19 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   const boxDsc = document.getElementById('modalJornadaDescansoBox');
   const selDsc = document.getElementById('modalJornadaDescansoSelect');
   const aplicaDsc = !ctxDsc.esFestivo && ctxDsc.fecha >= DESCANSOS_DESDE;
+  const finDeSemanaDsc = ctxDsc.esFestivo && ctxDsc.fecha >= DESCANSOS_DESDE;
   ctxDsc.ajusteDescanso = aplicaDsc ? (ajusteDescansoDia(ctxDsc.empleadoId, ctxDsc.fecha) || 'AUTO') : 'AUTO';
-  if (boxDsc) boxDsc.style.display = aplicaDsc ? 'block' : 'none';
-  if (selDsc) selDsc.value = ctxDsc.ajusteDescanso;
+  if (boxDsc) boxDsc.style.display = aplicaDsc || finDeSemanaDsc ? 'block' : 'none';
+  if (boxDsc) boxDsc.dataset.finde = finDeSemanaDsc ? '1' : '';
+  if (selDsc) { selDsc.value = ctxDsc.ajusteDescanso; selDsc.style.display = finDeSemanaDsc ? 'none' : ''; }
+  const lblDsc = boxDsc && boxDsc.querySelector('label');
+  if (lblDsc) lblDsc.textContent = finDeSemanaDsc ? 'Almuerzo de fin de semana o feriado' : 'Descuento de receso y almuerzo';
+  const infoDscIni = document.getElementById('modalJornadaDescansoInfo');
+  if (infoDscIni) infoDscIni.innerHTML = finDeSemanaDsc
+    ? (almorzoEnPlanta([{ almuerzo: ctxDsc.almuerzoActual }])
+      ? 'Sábado, domingo o feriado: almorzó en planta, se descuentan <b>30 min</b>.'
+      : 'Sábado, domingo o feriado: almorzó fuera, <b>no se descuenta</b> almuerzo.')
+    : 'Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30: se descuentan solo si estaba en la empresa a esa hora.';
 
   document.getElementById('modalJornadaObservacionInput').value = comentario;
 
@@ -13786,12 +13816,15 @@ window.recalcularTiemposModalJornada = function () {
       let dur = mS - mE;
       const ctx = window._modalJornadaContexto;
       const esFestivo = ctx?.esFestivo || false;
-      const periodoModal = [{ entrada: { hora: hE }, salida: { hora: hS } }];
+      const periodoModal = [{ entrada: { hora: hE, almuerzo: document.getElementById('modalJornadaAlmuerzoSelect')?.value || '' }, salida: { hora: hS } }];
       const ajusteModal = document.getElementById('modalJornadaDescansoSelect')?.value || '';
       const dscModal = descansoDia(ctx && ctx.fecha, periodoModal, ctx && ctx.empleadoId, esFestivo, ajusteModal, dur > 240 ? ALMUERZO_MIN : 0);
       if (dscModal !== null) dur -= dscModal;
       const infoDsc = document.getElementById('modalJornadaDescansoInfo');
-      if (infoDsc && dscModal !== null) {
+      if (infoDsc && dscModal !== null && esFestivo) {
+        infoDsc.innerHTML = dscModal ? 'Sábado, domingo o feriado: almorzó en planta, se descuentan <b>30 min</b>.'
+          : 'Sábado, domingo o feriado: almorzó fuera, <b>no se descuenta</b> almuerzo.';
+      } else if (infoDsc && dscModal !== null) {
         infoDsc.innerHTML = ajusteModal === 'NO' ? 'No se descuenta receso ni almuerzo este día.'
           : ajusteModal === 'SI' ? 'Se descuentan los 45 min completos este día.'
           : `Según el horario se descuentan <b>${dscModal} min</b>${dscModal === 45 ? ' (receso y almuerzo)' : dscModal === 15 ? ' (solo receso: salió antes del almuerzo)' : dscModal === 30 ? ' (solo almuerzo)' : ' (no estaba en la empresa en esos horarios)'}.`;
@@ -14114,7 +14147,7 @@ window.guardarModalGestionJornada = async function () {
     }
 
     // Ajuste del descuento de receso y almuerzo (se guarda aparte de las marcaciones)
-    const ajusteDsc = document.getElementById('modalJornadaDescansoBox')?.style.display === 'block'
+    const ajusteDsc = document.getElementById('modalJornadaDescansoBox')?.style.display === 'block' && !document.getElementById('modalJornadaDescansoBox')?.dataset.finde
       ? (document.getElementById('modalJornadaDescansoSelect')?.value || 'AUTO') : (ctx.ajusteDescanso || 'AUTO');
     const cambiaDsc = ajusteDsc !== (ctx.ajusteDescanso || 'AUTO');
     if (cambiaDsc) {
