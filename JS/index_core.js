@@ -4102,8 +4102,8 @@ function renderAuthScreen() {
     if (bottomNav) bottomNav.style.display = 'none';
     const fabWhatsApp = document.getElementById('fabWhatsApp');
     if (fabWhatsApp) fabWhatsApp.style.display = 'none';
-    const fabEmergencia = document.getElementById('fabEmergencia');
-    if (fabEmergencia) fabEmergencia.style.display = 'none';
+    const emBarra = document.getElementById('emBarraApp');
+    if (emBarra) { emBarra.hidden = true; emBarra.innerHTML = ''; emBarra.dataset.k = ''; }
 
     const ojo = (id) => `<button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility('${id}', this)" aria-label="Mostrar u ocultar"><i class="fas fa-eye"></i></button>`;
     const mainContent = document.getElementById('mainContent');
@@ -8374,11 +8374,7 @@ async function navigateTo(page) {
         fabWhatsApp.style.display = (page === 'home' && isAuthenticated) ? 'flex' : 'none';
     }
 
-    const fabEmergencia = document.getElementById('fabEmergencia');
-    if (fabEmergencia) {
-        const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
-        fabEmergencia.style.display = (page === 'home' && isAuthenticated && em.activa) ? 'flex' : 'none';
-    }
+    if (typeof emPintarBarra === 'function') emPintarBarra();
 
     // ── Transición orgánica ──
     const mainContent = document.getElementById('mainContent');
@@ -8745,16 +8741,8 @@ function actualizarInterfazSegunCargo() {
         navItemEstado.style.display = 'none';
     }
 
-    // Lógica para el botón flotante de Emergencia (solo visible en Home si está activa)
-    const fabEmergencia = document.getElementById('fabEmergencia');
-    if (fabEmergencia) {
-        const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
-        if (em.activa && currentPage === 'home' && isAuthenticated) {
-            fabEmergencia.style.display = 'flex';
-        } else {
-            fabEmergencia.style.display = 'none';
-        }
-    }
+    // Barra superior de emergencia (visible en todas las páginas mientras la alerta está activa)
+    if (typeof emPintarBarra === 'function') emPintarBarra();
 
     // Forzar ajuste de layout si cambió la visibilidad
     ajustarLayout();
@@ -9173,11 +9161,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     _lastEmActiva = em.activa;
                     actualizarInterfazSegunCargo();
 
-                    // Actualizar tooltip del FAB de emergencias
-                    const tooltip = document.querySelector('.emergencia-tooltip');
-                    if (tooltip) {
-                        tooltip.textContent = em.activa ? `🚨 ${em.nombre || 'Emergencia'}` : '🚨 Reportar mi Estado';
-                    }
 
                     if (currentPage === 'home') {
                         renderHomePage();
@@ -9444,23 +9427,40 @@ window.triggerProfilePhotoUpload = function (event) {
 // ponytail: emergencias y simulacros
 // ========================================================
 let selectedStatusVal = "";
+const EM_SUGERENCIAS = {
+    'A salvo': ['Estoy en el punto de encuentro', 'Sin novedades en mi área', 'Estoy con visitantes', 'Estoy fuera de la planta'],
+    'Requiere ayuda': ['Estoy herido', 'Estoy atrapado', 'Necesito asistencia médica', 'No puedo salir']
+};
 window.selectEmStatus = function (status) {
     selectedStatusVal = status;
-    const btnSalvo = document.getElementById('btnEstSalvo');
-    const btnAyuda = document.getElementById('btnEstAyuda');
-    if (!btnSalvo || !btnAyuda) return;
-
-    if (status === 'A salvo') {
-        btnSalvo.style.borderColor = '#10b981';
-        btnSalvo.style.background = '#ecfdf5';
-        btnAyuda.style.borderColor = '#e2e8f0';
-        btnAyuda.style.background = '#f8fafc';
-    } else {
-        btnAyuda.style.borderColor = '#ef4444';
-        btnAyuda.style.background = '#fef2f2';
-        btnSalvo.style.borderColor = '#e2e8f0';
-        btnSalvo.style.background = '#f8fafc';
+    const ayuda = status === 'Requiere ayuda';
+    [['btnEstSalvo', !ayuda], ['btnEstAyuda', ayuda]].forEach(([id, on]) => {
+        const b = document.getElementById(id);
+        if (b) { b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); }
+    });
+    const sug = document.getElementById('emSug');
+    if (sug) sug.innerHTML = EM_SUGERENCIAS[status].map(t => `<button type="button" class="em-f-chip" onclick="emSugerir('emComments', this.textContent)">${escapeHtml(t)}</button>`).join('');
+    const ta = document.getElementById('emComments');
+    if (ta) ta.placeholder = ayuda ? 'Dónde estás y qué pasa (ej.: bodega 2, me torcí el tobillo)' : 'Ej.: Ya estoy en el punto de encuentro';
+    const enviar = document.getElementById('emBtnEnviar');
+    if (enviar) {
+        enviar.disabled = false;
+        enviar.className = 'em-f-enviar ' + (ayuda ? 'em-f-enviar-ayuda' : 'em-f-enviar-ok');
+        enviar.innerHTML = ayuda ? '<i class="fas fa-hand-paper"></i> Enviar pedido de ayuda' : '<i class="fas fa-paper-plane"></i> Enviar: estoy a salvo';
     }
+};
+// Agrega una sugerencia al comentario (sin repetirla)
+window.emSugerir = function (idCampo, texto) {
+    const ta = document.getElementById(idCampo);
+    if (!ta) return;
+    const actual = ta.value.trim();
+    if (actual.toLowerCase().includes(texto.toLowerCase())) return;
+    ta.value = (actual ? actual + '. ' : '') + texto;
+    ta.dispatchEvent(new Event('input'));
+};
+window.emContar = function (ta) {
+    const c = document.getElementById('emComCont');
+    if (c) c.textContent = ta.value.length;
 };
 
 window.enviarReporteEmergencia = async function () {
@@ -9469,15 +9469,17 @@ window.enviarReporteEmergencia = async function () {
         return;
     }
     const comentarios = document.getElementById('emComments')?.value || '';
-    showLoading(true);
+    const btn = document.getElementById('emBtnEnviar');
+    const htmlBtn = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…'; }
     try {
         await emEnviarEstado(selectedStatusVal, comentarios);
         mostrarToast('Reporte de estado enviado correctamente', 'success');
+        selectedStatusVal = '';
         renderEstadoPage();
     } catch (e) {
         mostrarToast(e.message || 'No se pudo enviar el reporte', 'error');
-    } finally {
-        showLoading(false);
+        if (btn) { btn.disabled = false; btn.innerHTML = htmlBtn; }
     }
 };
 
@@ -9497,6 +9499,7 @@ async function emEnviarEstado(estado, comentario) {
     });
     if (!r || r.error) throw new Error((r && r.error) || 'No se pudo enviar el reporte');
     emReporteActual = { eventoId: r.eventoId, estado: r.estado, consultado: true };
+    emPintarBarra();
     return r;
 }
 
@@ -9525,14 +9528,39 @@ async function emConsultarReporte() {
 async function emRevisarAviso() {
     if (!isAuthenticated || !empleado || !empleado.id) return;
     const em = emEventoActual();
+    emPintarBarra();
     if (!em.activa) { emCerrarAviso(); return; }
     const rep = await emConsultarReporte();
+    emPintarBarra();
     if (rep && rep.estado) { if (!document.querySelector('#emAviso .em-av-listo')) emCerrarAviso(); return; }
     if (Date.now() < emAvisoPospuestoHasta) return;
     // Ya está en pantalla: no se redibuja (perdería lo que la persona está escribiendo o el paso en curso)
     if (document.getElementById('emAviso')) return;
     emMostrarAviso(em);
 }
+
+// Barra superior mientras hay una alerta activa (reemplaza al botón flotante): visible en todas las páginas
+// menos en Estado, que ya muestra el evento arriba
+function emPintarBarra() {
+    const b = document.getElementById('emBarraApp');
+    if (!b) return;
+    const em = emEventoActual();
+    if (!isAuthenticated || !em.activa || currentPage === 'estado') { if (!b.hidden) { b.hidden = true; b.innerHTML = ''; b.dataset.k = ''; } return; }
+    const rep = emReporteActual && emReporteActual.eventoId === emIdActual() ? emReporteActual.estado : null;
+    const k = `${em.nombre}|${rep}|${estado.esSupervisor}`;
+    if (b.dataset.k === k && !b.hidden) return;
+    b.dataset.k = k;
+    b.className = 'em-barra-app' + (rep === 'A salvo' ? ' ok' : '');
+    b.innerHTML = `<span class="em-pulso"></span>
+        <button type="button" class="em-barra-app-txt" onclick="navigateTo('estado')">
+            <strong>${escapeHtml(em.nombre || 'Emergencia')}</strong>
+            <small>${rep === 'A salvo' ? '<i class="fas fa-check"></i> Reportaste: a salvo' : rep ? '<i class="fas fa-hands-helping"></i> Pediste ayuda' : 'Toca para reportar tu estado'}</small>
+        </button>
+        ${estado.esSupervisor ? '<button type="button" class="em-barra-app-btn sec" onclick="abrirTomaLista()" aria-label="Tomar lista" title="Tomar lista"><i class="fas fa-clipboard-check"></i></button>' : ''}
+        ${rep ? '' : `<button type="button" class="em-barra-app-btn" onclick="emMostrarAviso(emEventoActual())">Reportar</button>`}`;
+    b.hidden = false;
+}
+window.emPintarBarra = emPintarBarra;
 
 function emCerrarAviso() {
     const m = document.getElementById('emAviso');
@@ -9556,6 +9584,7 @@ function emMostrarAviso(em, paso) {
     if (paso === 'ayuda') {
         cuerpo = `<h2 style="margin:0 0 6px; font-size:24px; font-weight:900;">Pide ayuda</h2>
             <p style="margin:0 0 14px; font-size:15px; opacity:.95;">Escribe dónde estás o qué pasa (opcional) y envía. La brigada lo verá al instante.</p>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-bottom:10px;">${EM_SUGERENCIAS['Requiere ayuda'].map(t => `<button type="button" onclick="emSugerir('emAvComent', this.textContent)" style="border:1.5px solid rgba(255,255,255,.55); background:rgba(255,255,255,.14); color:#fff; border-radius:999px; padding:8px 12px; font-size:14px; font-weight:700; cursor:pointer;">${t}</button>`).join('')}</div>
             <textarea id="emAvComent" rows="3" maxlength="300" placeholder="Ej.: Estoy en bodega, me torcí el tobillo" style="width:100%; box-sizing:border-box; border:none; border-radius:14px; padding:14px; font-size:16px; font-family:inherit; margin-bottom:14px;"></textarea>
             <button type="button" onclick="emEnviarDesdeAviso('Requiere ayuda')" style="${btn} background:#fff; color:#b91c1c;"><i class="fas fa-hand-paper"></i> Enviar pedido de ayuda</button>
             <button type="button" onclick="emMostrarAviso(emEventoActual())" style="margin-top:14px; background:none; border:none; color:#fff; font-size:15px; text-decoration:underline; cursor:pointer;">Volver</button>`;
@@ -9631,7 +9660,7 @@ window.abrirTomaLista = async function () {
             const snap = await window.firebase.firestore().collection('empleados').get();
             window.empCache = snap.docs.map(d => {
                 const x = d.data() || {};
-                return { id: d.id, nombre: x.nombre || d.id, area: x.area || '', telefono: x.telefono || x.celular || '', activo: x.activo };
+                return { id: d.id, nombre: x.nombre || d.id, area: x.area || '', telefono: x.telefono || x.celular || '', foto_url: x.foto_url || x.fotoUrl || x.foto || '', activo: x.activo };
             }).filter(e => String(e.activo || 'SI').toUpperCase() !== 'NO');
         } catch (e) { console.warn('Toma de lista: no se cargó el personal', e); }
     }
@@ -9668,6 +9697,7 @@ window.toggleAlertaEmergencia = async function (activa) {
         mostrarToast('Por favor, ingresa el nombre de la emergencia o simulacro', 'warning');
         return;
     }
+    if (!confirm(activa ? `¿Iniciar la alerta «${nombre.trim()}»? Todo el personal recibirá el aviso en la app.` : '¿Finalizar la alerta en curso?')) return;
 
     showLoading(true);
     try {
@@ -9701,95 +9731,68 @@ async function renderEstadoPage() {
     } catch (e) { }
 
     const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
+    const ev = escapeHtml(em.nombre || 'Emergencia');
+    const horaIni = em.inicio ? new Date(em.inicio).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '';
+    selectedStatusVal = '';
 
-    let html = `
-            <div class="page">
-                <div class="glass-card mb-4 text-center">
-                    <div style="font-size: 40px; color: ${em.activa ? '#ef4444' : '#10b981'}; margin-bottom: 12px; animation: ${em.activa ? 'pulseGlowRed 2.5s infinite' : 'none'};">
-                        <i class="fas ${em.activa ? 'fa-exclamation-triangle' : 'fa-check-circle'}"></i>
-                    </div>
-                    <h3 class="fw-bold mb-1" style="color: #0f172a; margin:0;">${em.activa ? 'Reporte de Emergencia / Simulacro' : 'Estado del Sistema'}</h3>
-                    <p class="text-muted small" style="margin: 6px 0 0 0;">${em.activa ? `Evento activo: <strong>${em.nombre}</strong>` : 'No hay simulacros ni emergencias activas.'}</p>
-                </div>
-            `;
+    let html = `<div class="page em-f">`;
+    html += em.activa
+        ? `<div class="em-f-hero em-f-hero-activa"><span class="em-pulso"></span><div>
+                <small>Alerta activa${horaIni ? ' · desde las ' + horaIni : ''}</small><h3>${ev}</h3>
+                <p>Reporta tu estado y sigue las indicaciones de la brigada.</p></div></div>`
+        : `<div class="em-f-hero"><i class="fas fa-shield-alt"></i><div>
+                <h3>Todo en orden</h3><p>No hay simulacros ni emergencias activas en este momento.</p></div></div>`;
 
     if (estado.esSupervisor) {
-        html += `
-                <button type="button" onclick="abrirTomaLista()" style="width:100%; margin-bottom:16px; border:none; border-radius:16px; padding:16px; background:${em.activa ? '#0f172a' : '#334155'}; color:#fff; font-size:17px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:10px; cursor:pointer; box-shadow:0 6px 16px rgba(15,23,42,.25);">
-                    <i class="fas fa-clipboard-check"></i> Tomar lista ${em.activa ? '<span style="font-size:12px; font-weight:700; background:#dc2626; border-radius:999px; padding:3px 9px;">EN VIVO</span>' : '<span style="font-size:12px; font-weight:600; opacity:.8;">(último evento)</span>'}
-                </button>
-                <div class="glass-card mb-4">
-                    <h4 class="fw-bold mb-3" style="color: #0f172a; margin:0 0 12px 0;"><i class="fas fa-tools me-2 text-primary"></i>Panel de Control de Emergencias</h4>
-                    <div class="form-group mb-3">
-                        <label class="form-label text-muted small fw-bold" style="display:block; margin-bottom:6px;">Nombre del Evento (Simulacro o Emergencia)</label>
-                        <input type="text" id="emEventName" class="form-control" placeholder="Ej: Simulacro Sismo 2026" value="${em.nombre || ''}" style="border-radius:12px; padding:12px; width:100%; border:1px solid #cbd5e1; box-sizing:border-box;">
-                    </div>
-                    <div style="display:flex; gap:12px;">
-                        <button onclick="toggleAlertaEmergencia(true)" class="btn btn-danger flex-grow-1" style="border-radius:12px; font-weight:700; padding:12px; display: ${em.activa ? 'none' : 'block'}; background:#dc2626; color:white; border:none; cursor:pointer; width:100%;">
-                            🚨 Iniciar Alerta
-                        </button>
-                        <button onclick="toggleAlertaEmergencia(false)" class="btn btn-success flex-grow-1" style="border-radius:12px; font-weight:700; padding:12px; display: ${em.activa ? 'block' : 'none'}; background:#16a34a; color:white; border:none; cursor:pointer; width:100%;">
-                            🟢 Finalizar Alerta
-                        </button>
-                    </div>
-                </div>
-                `;
+        html += `<button type="button" class="em-f-tomar" onclick="abrirTomaLista()">
+                <i class="fas fa-clipboard-check"></i> Tomar lista
+                ${em.activa ? '<span class="em-f-envivo">EN VIVO</span>' : '<span class="em-f-tenue">(último evento)</span>'}</button>`;
     }
 
     if (em.activa) {
         // Ya reportado = hay reporte para ESTE evento (un estado de una prueba anterior del día no cuenta)
         const rep = await emConsultarReporte();
-        const yaReportado = !!(rep && rep.estado);
-
-        if (yaReportado) {
+        if (rep && rep.estado) {
             const ayudaRep = rep.estado === 'Requiere ayuda';
-            html += `
-                    <div class="glass-card text-center p-4">
-                        <div class="text-success mb-2" style="font-size:32px;"><i class="fas ${ayudaRep ? 'fa-hands-helping' : 'fa-check-double'}" style="color:${ayudaRep ? '#dc2626' : '#10b981'};"></i></div>
-                        <h4 class="fw-bold" style="color:${ayudaRep ? '#b91c1c' : '#16a34a'}; margin:0 0 8px 0;">Reporte enviado: ${ayudaRep ? 'requieres ayuda' : 'a salvo'}</h4>
-                        <p class="text-muted small" style="margin:0 0 15px 0;">Tu estado para este evento quedó registrado. Si cambia, repórtalo de nuevo.</p>
-                        <button onclick="emMostrarAviso(emEventoActual())" class="btn w-100" style="border-radius:12px; width:100%; padding:12px; background:#fef2f2; border:1px solid #fecaca; font-weight:700; cursor:pointer; color:#b91c1c; margin-bottom:8px;">Cambiar mi estado</button>
-                        <button onclick="renderHomePage()" class="btn btn-secondary w-100 mt-2" style="border-radius:12px; width:100%; padding:12px; background:#e2e8f0; border:none; font-weight:700; cursor:pointer; color:#475569;">Ir al Inicio</button>
-                    </div>
-                    `;
+            html += `<div class="em-f-card em-f-hecho ${ayudaRep ? 'ayuda' : 'ok'}">
+                    <i class="fas ${ayudaRep ? 'fa-hands-helping' : 'fa-check-circle'}"></i>
+                    <h4>${ayudaRep ? 'Pediste ayuda' : 'Reportaste: a salvo'}</h4>
+                    <p>${ayudaRep ? 'La brigada ya fue avisada. Quédate en un lugar seguro y mantén el teléfono contigo.' : 'Tu estado quedó registrado para este evento. Dirígete o permanece en el punto de encuentro.'}</p>
+                    <button type="button" class="em-f-sec" onclick="emMostrarAviso(emEventoActual())"><i class="fas fa-sync-alt"></i> Cambiar mi estado</button>
+                    <button type="button" class="em-f-link" onclick="navigateTo('home')">Ir al inicio</button>
+                </div>`;
         } else {
-            html += `
-                    <div class="glass-card">
-                        <h4 class="fw-bold mb-3 text-center" style="color: #0f172a; margin:0 0 15px 0;">¿Cuál es tu estado actual?</h4>
-                        <div style="display:flex; gap:12px; margin-bottom:15px;">
-                            <div style="flex:1;">
-                                <button type="button" id="btnEstSalvo" onclick="selectEmStatus('A salvo')" style="width:100%; padding: 20px 12px; text-align:center; border-radius:16px; border:2px solid #e2e8f0; background:#f8fafc; cursor:pointer; transition:all 0.2s;">
-                                    <div style="font-size:28px; margin-bottom:4px;">🟢</div>
-                                    <span class="fw-bold small" style="color:#1e293b; font-weight:700;">A salvo / OK</span>
-                                </button>
-                            </div>
-                            <div style="flex:1;">
-                                <button type="button" id="btnEstAyuda" onclick="selectEmStatus('Requiere ayuda')" style="width:100%; padding: 20px 12px; text-align:center; border-radius:16px; border:2px solid #e2e8f0; background:#f8fafc; cursor:pointer; transition:all 0.2s;">
-                                    <div style="font-size:28px; margin-bottom:4px;">🔴</div>
-                                    <span class="fw-bold small" style="color:#1e293b; font-weight:700;">Requiere Ayuda</span>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group mb-3">
-                            <label class="form-label text-muted small fw-bold" style="display:block; margin-bottom:6px;">Detalles / Comentarios (Opcional)</label>
-                            <textarea id="emComments" class="form-control" rows="2" placeholder="Ej: Sin novedades en el área de taller" style="border-radius:12px; padding:12px; width:100%; border:1px solid #cbd5e1; box-sizing:border-box; font-family:inherit;"></textarea>
-                        </div>
-                        
-                        <button onclick="enviarReporteEmergencia()" class="btn btn-primary" style="width:100%; padding:14px; border-radius:12px; font-weight:700; background:var(--primary); color:white; border:none; cursor:pointer; font-size:15px; box-shadow: 0 4px 12px var(--primary-glow);">
-                            Enviar Reporte de Estado
-                        </button>
+            html += `<div class="em-f-card">
+                    <h4 class="em-f-titulo">¿Cómo estás?</h4>
+                    <div class="em-f-opciones" role="radiogroup" aria-label="Tu estado">
+                        <button type="button" role="radio" aria-checked="false" id="btnEstSalvo" class="em-f-op em-f-op-ok" onclick="selectEmStatus('A salvo')">
+                            <i class="fas fa-check-circle"></i><b>Estoy a salvo</b><small>Estoy bien o ya en el punto de encuentro</small></button>
+                        <button type="button" role="radio" aria-checked="false" id="btnEstAyuda" class="em-f-op em-f-op-ayuda" onclick="selectEmStatus('Requiere ayuda')">
+                            <i class="fas fa-hand-paper"></i><b>Necesito ayuda</b><small>Estoy herido, atrapado o no puedo salir</small></button>
                     </div>
-                    `;
+                    <label for="emComments" class="em-f-label">Comentario <span>(opcional)</span></label>
+                    <div class="em-f-sugs" id="emSug"></div>
+                    <textarea id="emComments" class="em-f-input" rows="2" maxlength="300" placeholder="Primero elige tu estado" oninput="emContar(this)"></textarea>
+                    <div class="em-f-cont"><span id="emComCont">0</span>/300</div>
+                    <button type="button" id="emBtnEnviar" class="em-f-enviar" disabled onclick="enviarReporteEmergencia()">Elige tu estado para enviar</button>
+                </div>`;
         }
-    } else if (!estado.esSupervisor) {
-        html += `
-                <div class="glass-card text-center p-4">
-                    <div class="text-muted mb-2" style="font-size:32px;"><i class="fas fa-shield-alt" style="color:#64748b;"></i></div>
-                    <h4 class="fw-bold text-muted" style="color:#475569; margin:0 0 6px 0;">Todo en Orden</h4>
-                    <p class="text-muted small" style="margin:0;">No hay alertas de simulacro ni emergencias vigentes en este momento.</p>
-                </div>
-                `;
+    }
+
+    if (estado.esSupervisor) {
+        const sugerido = 'Simulacro ' + new Date().toLocaleDateString('es-EC');
+        html += `<div class="em-f-card em-f-control">
+                <h4 class="em-f-titulo"><i class="fas fa-tools"></i> Control de la alerta</h4>
+                ${em.activa ? `
+                <p class="em-f-nota">«${ev}» está en curso${horaIni ? ' desde las ' + horaIni : ''}. Al finalizar, el resultado queda en «Tomar lista».</p>
+                <button type="button" class="em-f-fin" onclick="toggleAlertaEmergencia(false)"><i class="fas fa-flag-checkered"></i> Finalizar alerta</button>` : `
+                <label for="emEventName" class="em-f-label">Nombre del evento</label>
+                <input type="text" id="emEventName" class="em-f-input" maxlength="80" value="${escapeHtml(sugerido)}" placeholder="Ej.: Simulacro de sismo">
+                <div class="em-f-sugs">${['Simulacro de sismo', 'Simulacro de incendio', 'Evacuación', 'Emergencia real'].map(t =>
+                    `<button type="button" class="em-f-chip" onclick="document.getElementById('emEventName').value = this.textContent + ' ${new Date().toLocaleDateString('es-EC')}'">${t}</button>`).join('')}</div>
+                <button type="button" class="em-f-iniciar" onclick="toggleAlertaEmergencia(true)"><i class="fas fa-bullhorn"></i> Iniciar alerta</button>
+                <p class="em-f-nota"><i class="fas fa-info-circle"></i> Todo el personal recibirá un aviso a pantalla completa para reportar su estado.</p>`}
+            </div>`;
     }
 
     html += `</div>`;

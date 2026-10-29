@@ -12,8 +12,34 @@
 //   logs (tipo_log 'emergencia', eventoId) → reportes de estado, inmutables; el último de cada persona manda
 //   registros de hoy          → quién está en planta (ENTRADA hoy y no salió antes del evento)
 // Compatibilidad: un estado escrito en la ENTRADA de hoy después del inicio (apps sin actualizar) también cuenta.
+// Visitantes: los que están dentro (o salieron después del inicio) vienen de Postgres (api.visitas_emergencia, cada
+// 30 s); no tienen app: los marca a salvo quien toma la lista (id 'V-<código>') o cuenta su salida en portería.
 const EM = { config: null, reportes: {}, legacy: {}, hoy: {}, filtro: 'todos', busca: '', subs: {}, eventoSub: '',
-  ultimaAct: 0, avisados: {}, reloj: null, primeraCarga: true };
+  ultimaAct: 0, avisados: {}, reloj: null, primeraCarga: true, visitas: [], visitasTs: 0, visitasError: '', cargandoVisitas: false };
+
+async function emCargarVisitas() {
+  const FB = window.FirebaseBackend;
+  if (EM.cargandoVisitas || !FB || !FB._urlHistorico || !FB._tokenHistorico) return;
+  EM.cargandoVisitas = true;
+  try {
+    const [base, token] = await Promise.all([FB._urlHistorico(), FB._tokenHistorico()]);
+    if (!base) throw new Error('sin dirección del servidor');
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
+    const desde = EM.config && EM.config.inicio ? EM.config.inicio : '';
+    const r = await fetch(`${base}/rpc/visitas_emergencia`, { method: 'POST', signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ p: { desde } }) });
+    clearTimeout(t);
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.message || j.error || ('HTTP ' + r.status));
+    EM.visitas = j.visitas || []; EM.visitasTs = Date.now(); EM.visitasError = '';
+  } catch (e) {
+    console.warn('Emergencias: visitantes', e);
+    EM.visitasError = 'No se pudo leer la lista de visitantes';
+  } finally {
+    EM.cargandoVisitas = false;
+    emPintar();
+  }
+}
 
 function emEventoId(em) {
   return window.FirebaseBackend && window.FirebaseBackend._eventoEmergenciaId ? window.FirebaseBackend._eventoEmergenciaId(em) : '';
@@ -120,15 +146,24 @@ function emPersonas() {
       ms: legacyMs, origen: 'APP (versión anterior)'
     } : null;
     const e = datosEmp(id);
-    porId[id] = { id, nombre: e.nombre || ent.nombre || id, area: e.area || e.departamento || '', telefono: e.telefono || '',
+    porId[id] = { id, nombre: e.nombre || ent.nombre || id, area: e.area || e.departamento || '', telefono: e.telefono || '', foto: e.foto_url || '',
       enPlanta: !salioAntes, salioAntes, modo: String(ent.modo || ''), legacy };
   });
   Object.values(EM.reportes).forEach(r => {
     const id = String(r.empleadoId);
     if (!porId[id]) {
       const e = datosEmp(id);
-      porId[id] = { id, nombre: e.nombre || r.nombre || id, area: e.area || '', telefono: e.telefono || '', enPlanta: false, sinMarcacion: true };
+      porId[id] = { id, nombre: e.nombre || r.nombre || id, area: e.area || '', telefono: e.telefono || '', foto: e.foto_url || '', enPlanta: false, sinMarcacion: true };
     }
+  });
+  const inicioMs = emInicioMs();
+  (EM.visitas || []).forEach(v => {
+    const id = 'V-' + v.codigo;
+    const salidaMs = v.salidaEn ? Date.parse(v.salidaEn) : 0;
+    porId[id] = { id, nombre: v.nombre || 'Visitante', area: `Visitante · ${v.empresa || 'Particular'}`, esVisita: true,
+      visitaA: v.anfitrion || '', tipoVisita: v.tipo || '', epp: !!v.epp, enPlanta: true,
+      // Salida registrada en portería después del inicio: ya salió de las instalaciones
+      legacy: salidaMs && salidaMs >= inicioMs ? { estado: 'A salvo', comentario: 'Salida registrada en portería', ms: salidaMs, origen: 'Portería' } : null };
   });
   return Object.values(porId).map(p => {
     const r = EM.reportes[p.id];
@@ -138,13 +173,34 @@ function emPersonas() {
   }).filter(p => p.enPlanta || p.rep);
 }
 
+// 0984660105 / 984660105 / +593 98 466 0105 → 593984660105
+function emNumeroWa(t) {
+  const d = String(t || '').replace(/\D/g, '');
+  if (d.startsWith('593') && d.length >= 11) return d;
+  if (d.startsWith('0') && d.length === 10) return '593' + d.slice(1);
+  if (d.startsWith('9') && d.length === 9) return '593' + d;
+  return '';
+}
+
+// Foto del colaborador; si no hay o no carga, sus iniciales. Visitantes: ícono de credencial.
+function emAvatar(p) {
+  if (p.esVisita) return '<div class="em-avatar em-avatar-visita"><i class="fas fa-id-card-alt"></i></div>';
+  const ini = String(p.nombre || '?').trim().split(/\s+/).slice(0, 2).map(x => x[0] || '').join('').toUpperCase();
+  const fx = window.fixFotoUrl || window.formatearUrlFoto;
+  const src = p.foto ? (fx ? fx(p.foto, 120) : p.foto) : '';
+  return `<div class="em-avatar"><span>${escapeHtml(ini)}</span>${src ? `<img src="${escapeHtml(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</div>`;
+}
+
 window.cargarEmergenciasSupervisor = async function () {
   if (!emSuscribir()) { mostrarToast('Firestore no está disponible. Recarga la página.', 'error'); return; }
   if (!EM.reloj) EM.reloj = setInterval(() => {
     const panel = document.getElementById('emPanelEnVivo');   // panel del supervisor o toma de lista de la app
-    if (panel && panel.offsetParent && EM.config && EM.config.activa) emPintarReloj();
+    if (!panel || !panel.offsetParent) return;
+    if (EM.config && EM.config.activa) emPintarReloj();
+    if (Date.now() - EM.visitasTs > 30000 && document.visibilityState === 'visible') emCargarVisitas();
   }, 1000);
   emPintar();
+  emCargarVisitas();
 };
 
 function emPintarReloj() {
@@ -167,6 +223,7 @@ function emPintar() {
   const salvo = personas.filter(p => p.rep && p.rep.estado !== 'Requiere ayuda');
   const pendientes = personas.filter(p => !p.rep && p.enPlanta);
   const totalPlanta = personas.filter(p => p.enPlanta).length;
+  const visitantes = personas.filter(p => p.esVisita);
   const reportaronPlanta = personas.filter(p => p.enPlanta && p.rep).length;
   const pct = totalPlanta ? Math.round(reportaronPlanta * 100 / totalPlanta) : 0;
   const activa = !!em.activa;
@@ -174,24 +231,41 @@ function emPintar() {
 
   const q = (EM.busca || '').trim().toLowerCase();
   const enFiltro = p => EM.filtro === 'todos' ? true : EM.filtro === 'ayuda' ? p.rep && p.rep.estado === 'Requiere ayuda'
-    : EM.filtro === 'pendientes' ? !p.rep : EM.filtro === 'salvo' ? p.rep && p.rep.estado !== 'Requiere ayuda' : true;
+    : EM.filtro === 'pendientes' ? !p.rep : EM.filtro === 'salvo' ? p.rep && p.rep.estado !== 'Requiere ayuda'
+    : EM.filtro === 'visitantes' ? p.esVisita : true;
   const orden = p => p.rep && p.rep.estado === 'Requiere ayuda' ? 0 : !p.rep ? 1 : 2;
   const lista = personas.filter(p => enFiltro(p) && (!q || `${p.nombre} ${p.area} ${p.id}`.toLowerCase().includes(q)))
     .sort((a, b) => orden(a) - orden(b) || (b.rep ? b.rep.ms : 0) - (a.rep ? a.rep.ms : 0) || a.nombre.localeCompare(b.nombre));
 
-  const tel = p => p.telefono ? `<a class="em-btn em-btn-llamar" href="tel:${escapeHtml(String(p.telefono).replace(/\s+/g, ''))}" onclick="event.stopPropagation()"><i class="fas fa-phone"></i> Llamar</a>` : '';
+  const tel = p => p.telefono ? `<a class="em-btn em-btn-llamar" href="tel:${escapeHtml(String(p.telefono).replace(/\s+/g, ''))}" onclick="event.stopPropagation()" title="Llamar"><i class="fas fa-phone"></i> Llamar</a>` : '';
+  // WhatsApp con un mensaje listo (lo envía quien toma la lista desde su teléfono)
+  const wa = p => {
+    const num = emNumeroWa(p.telefono);
+    if (!num) return '';
+    // Nombres en formato APELLIDOS NOMBRES: se saluda por el primer nombre
+    const partes = String(p.nombre || '').trim().split(/\s+/);
+    const nom = (partes.length >= 3 ? partes[2] : partes[0] || '').toLowerCase().replace(/^./, c => c.toUpperCase());
+    const ev = em.nombre || 'la emergencia';
+    const msg = p.rep && p.rep.estado === 'Requiere ayuda'
+      ? `Hola ${nom}, vimos tu pedido de ayuda en «${ev}». ¿Dónde estás exactamente? Vamos a ayudarte.`
+      : `Hola ${nom}, estamos en «${ev}». Por favor reporta tu estado en la app TCONTROL o respóndenos dónde estás.`;
+    return `<a class="em-btn em-btn-wa" href="https://wa.me/${num}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Escribir por WhatsApp"><i class="fab fa-whatsapp"></i> WhatsApp</a>`;
+  };
   const fila = p => {
     const r = p.rep;
     const ayudaP = r && r.estado === 'Requiere ayuda';
     const badge = !r ? '<span class="em-badge em-badge-pend"><i class="fas fa-hourglass-half"></i> Pendiente</span>'
       : ayudaP ? '<span class="em-badge em-badge-ayuda"><i class="fas fa-exclamation-triangle"></i> Requiere ayuda</span>'
       : '<span class="em-badge em-badge-ok"><i class="fas fa-check"></i> A salvo</span>';
-    const extra = [p.sinMarcacion ? '<span class="em-chip">Sin marcación hoy</span>' : '', p.modo && p.modo !== 'OFICINA' && p.modo !== 'EMPRESA' ? `<span class="em-chip">${escapeHtml(p.modo)}</span>` : ''].join('');
-    return `<div class="em-fila ${ayudaP ? 'em-fila-ayuda' : !r ? 'em-fila-pend' : ''}">
-      <div class="em-persona"><strong>${escapeHtml(p.nombre)}</strong><small>${escapeHtml(p.area || '—')} · ${escapeHtml(p.id)}</small>${extra ? `<div>${extra}</div>` : ''}</div>
+    const extra = [p.esVisita ? `<span class="em-chip em-chip-visita"><i class="fas fa-id-card-alt"></i> Visitante${p.visitaA ? ' · visita a ' + escapeHtml(p.visitaA) : ''}</span>` : '',
+      p.esVisita && p.epp ? '<span class="em-chip">Planta (EPP)</span>' : '',
+      p.sinMarcacion ? '<span class="em-chip">Sin marcación hoy</span>' : '', p.modo && p.modo !== 'OFICINA' && p.modo !== 'EMPRESA' ? `<span class="em-chip">${escapeHtml(p.modo)}</span>` : ''].join('');
+    return `<div class="em-fila ${ayudaP ? 'em-fila-ayuda' : !r ? 'em-fila-pend' : 'em-fila-ok'}">
+      ${emAvatar(p)}
+      <div class="em-persona"><strong>${escapeHtml(p.nombre)}</strong><small>${escapeHtml(p.area || '—')}${p.esVisita ? '' : ' · ' + escapeHtml(p.id)}</small>${extra ? `<div>${extra}</div>` : ''}</div>
       <div class="em-estado">${badge}${r && r.comentario ? `<div class="em-coment">“${escapeHtml(r.comentario)}”</div>` : ''}</div>
       <div class="em-hora">${r ? `${emHora(r.ms)}<small>${escapeHtml(r.origen)}</small>` : '<small>Sin reporte</small>'}</div>
-      <div class="em-acciones">${ayudaP ? tel(p) : ''}${!r && activa ? `<button class="em-btn em-btn-ok" onclick="emMarcarASalvo('${escapeHtml(p.id)}')"><i class="fas fa-check"></i> Marcar a salvo</button>${tel(p)}` : ''}</div>
+      <div class="em-acciones">${ayudaP ? tel(p) + wa(p) : ''}${!r && activa ? `<button class="em-btn em-btn-ok" onclick="emMarcarASalvo('${escapeHtml(p.id)}')"><i class="fas fa-check"></i> Marcar a salvo</button>${tel(p)}${wa(p)}` : ''}</div>
     </div>`;
   };
   const chip = (k, t, n) => `<button class="em-filtro ${EM.filtro === k ? 'on' : ''}" onclick="emFiltrar('${k}')">${t} <b>${n}</b></button>`;
@@ -216,16 +290,18 @@ function emPintar() {
       <button class="em-kpi em-kpi-pend" onclick="emFiltrar('pendientes')"><span>Pendientes</span><b>${pendientes.length}</b></button>
       <button class="em-kpi em-kpi-ok" onclick="emFiltrar('salvo')"><span>A salvo</span><b>${salvo.length}</b></button>
     </div>
-    <div class="em-progreso"><div class="em-progreso-txt"><span><b>${reportaronPlanta} de ${totalPlanta}</b> personas en planta reportaron (${pct}%)</span>
+    <div class="em-progreso"><div class="em-progreso-txt"><span><b>${reportaronPlanta} de ${totalPlanta}</b> personas en planta reportaron (${pct}%)${visitantes.length ? ` · incluye <b>${visitantes.length}</b> visitante${visitantes.length === 1 ? '' : 's'}` : ''}</span>
         <span class="em-vivo"><i class="fas fa-circle"></i> En vivo · <span id="emUltimaAct">${emHora(EM.ultimaAct)}</span></span></div>
       <div class="em-barra"><div style="width:${pct}%"></div></div></div>
     <div class="em-herramientas">
-      <div class="em-filtros">${chip('todos', 'Todos', personas.length)}${chip('ayuda', 'Ayuda', ayuda.length)}${chip('pendientes', 'Pendientes', pendientes.length)}${chip('salvo', 'A salvo', salvo.length)}</div>
+      <div class="em-filtros">${chip('todos', 'Todos', personas.length)}${chip('ayuda', 'Ayuda', ayuda.length)}${chip('pendientes', 'Pendientes', pendientes.length)}${chip('salvo', 'A salvo', salvo.length)}${chip('visitantes', 'Visitantes', visitantes.length)}</div>
       <div class="em-buscar"><i class="fas fa-search"></i><input type="search" id="emBuscar" value="${escapeHtml(EM.busca)}" placeholder="Buscar nombre, área o ID" oninput="emBuscar(this.value)"></div>
       <button class="em-btn em-btn-sec" onclick="emExportar()"><i class="fas fa-file-download"></i> Exportar</button>
     </div>
+    ${EM.visitasError ? `<p class="em-nota" style="color:#b45309;"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(EM.visitasError)}. Se reintenta solo; si persiste, pide la lista a portería.</p>` : ''}
     <div class="em-lista">${lista.length ? lista.map(fila).join('') : `<div class="em-vacio">${personas.length ? 'Nadie en este filtro.' : 'Aún no hay personas con entrada registrada hoy.'}</div>`}</div>
     <p class="em-nota"><i class="fas fa-info-circle"></i> Pendientes = personas con entrada registrada hoy que aún no reportan. Quien salió antes del inicio no se cuenta.
+      Los visitantes dentro de las instalaciones aparecen con la etiqueta «Visitante»: no tienen la app, así que se marcan a salvo en el punto de encuentro (o cuentan como a salvo si portería registra su salida).
       «Marcar a salvo» sirve para el conteo en el punto de encuentro (queda registrado con tu nombre).</p>` : ''}`;
   if (foco) { const i = document.getElementById(foco.id); if (i) { i.focus(); try { i.setSelectionRange(foco.pos, foco.pos); } catch (e) { } } }
 }
@@ -249,9 +325,9 @@ window.emMarcarASalvo = async function (empId) {
 
 window.emExportar = function () {
   const em = EM.config || {};
-  const filas = [['ID', 'Nombre', 'Área', 'Estado', 'Comentario', 'Hora de reporte', 'Origen', 'En planta']];
-  emPersonas().forEach(p => filas.push([p.id, p.nombre, p.area, p.rep ? p.rep.estado : 'Pendiente', p.rep ? p.rep.comentario : '',
-    p.rep ? emHora(p.rep.ms) : '', p.rep ? p.rep.origen : '', p.enPlanta ? 'SI' : 'NO']));
+  const filas = [['ID', 'Nombre', 'Tipo', 'Área / empresa', 'Visita a', 'Estado', 'Comentario', 'Hora de reporte', 'Origen', 'En planta']];
+  emPersonas().forEach(p => filas.push([p.id, p.nombre, p.esVisita ? 'Visitante' : 'Colaborador', p.area, p.visitaA || '', p.rep ? p.rep.estado : 'Pendiente',
+    p.rep ? p.rep.comentario : '', p.rep ? emHora(p.rep.ms) : '', p.rep ? p.rep.origen : '', p.enPlanta ? 'SI' : 'NO']));
   const csv = '﻿' + filas.map(f => f.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

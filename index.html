@@ -47,7 +47,7 @@
         window.USE_FIREBASE = (storedFirebaseSetting !== 'false'); 
     </script>
     <!-- =================================== -->
-    <link rel="stylesheet" href="./CSS/emergencias.css?v=20261029_02">
+    <link rel="stylesheet" href="./CSS/emergencias.css?v=20261029_03">
 </head>
 
 <body>
@@ -167,6 +167,7 @@
     <div class="app-container">
         <div class="status-bar"></div>
         <div id="notifHostApp" class="nt-host-app" hidden></div>
+        <div id="emBarraApp" class="em-barra-app" role="status" hidden></div>
         <div class="main-content" id="mainContent"></div>
         <div class="bottom-nav" style="display: none;">
             <button class="nav-item active" data-page="home">
@@ -229,14 +230,6 @@
                 <span class="whatsapp-pulse"></span>
             </button>
         </div>
-
-        <div class="fab-emergencia" id="fabEmergencia" style="display: none;">
-            <span class="emergencia-tooltip">🚨 Reportar mi Estado</span>
-            <button class="fab-emergencia-btn" onclick="navigateTo('estado')" aria-label="Reportar mi Estado">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span class="emergencia-pulse"></span>
-            </button>
-        </div>
     </div>
 
     <div id="loadingOverlay" class="loading-overlay hidden">
@@ -254,8 +247,8 @@
     <script src="./JS/visitas_anfitrion.js?v=20261027_01"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
     <script src="./JS/credencial_campo.js?v=20261020_07"></script>
-    <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_02"></script>
-    <script src="./JS/index_core.js?v=20261029_02"></script>
+    <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_03"></script>
+    <script src="./JS/index_core.js?v=20261029_03"></script>
 </body>
 
 </html>
