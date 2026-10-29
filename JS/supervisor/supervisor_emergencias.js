@@ -5,182 +5,284 @@
  */
 
 // ============================================================
-// ponytail: CONTROL DE EMERGENCIAS Y SIMULACROS EN SUPERVISOR
+// CONTROL DE EMERGENCIAS Y SIMULACROS (panel en vivo)
 // ============================================================
-window.cargarEmergenciasSupervisor = async function (silencioso = false) {
-  if (!silencioso) {
-    await cargarDatosCompletos(true, false);
+// Todo llega por listeners de Firestore (sin recargar el panel completo):
+//   configuracion/emergencia  → evento vigente (eventoId, nombre, inicio)
+//   logs (tipo_log 'emergencia', eventoId) → reportes de estado, inmutables; el último de cada persona manda
+//   registros de hoy          → quién está en planta (ENTRADA hoy y no salió antes del evento)
+// Compatibilidad: un estado escrito en la ENTRADA de hoy después del inicio (apps sin actualizar) también cuenta.
+const EM = { config: null, reportes: {}, legacy: {}, hoy: {}, filtro: 'todos', busca: '', subs: {}, eventoSub: '',
+  ultimaAct: 0, avisados: {}, reloj: null, primeraCarga: true };
+
+function emEventoId(em) {
+  return window.FirebaseBackend && window.FirebaseBackend._eventoEmergenciaId ? window.FirebaseBackend._eventoEmergenciaId(em) : '';
+}
+function emInicioMs() {
+  const c = EM.config || {};
+  const t = c.inicio ? Date.parse(c.inicio) : NaN;
+  if (!isNaN(t)) return t;
+  const d = new Date(); d.setHours(0, 0, 0, 0);       // activaciones antiguas sin hora de inicio
+  return d.getTime();
+}
+const emHora = ms => ms ? new Date(ms).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+const emTsMs = v => !v ? 0 : typeof v === 'number' ? v : v.toMillis ? v.toMillis() : v.seconds ? v.seconds * 1000 : Date.parse(v) || 0;
+const emMinutos = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+function emSuscribir() {
+  const firestore = window.firebase && window.firebase.firestore ? window.firebase.firestore() : null;
+  if (!firestore) return false;
+  if (!EM.subs.config) {
+    EM.subs.config = firestore.collection('configuracion').doc('emergencia').onSnapshot(doc => {
+      EM.config = doc.exists ? doc.data() : { activa: false };
+      window.emergencia = EM.config;
+      emSuscribirReportes(firestore);
+      emPintar();
+    }, err => console.warn('Emergencia (config):', err));
   }
-
-  const em = window.emergencia || { activa: false, nombre: '' };
-  const statusDiv = $('statusEmergenciaDetalle');
-  if (statusDiv) {
-    statusDiv.innerHTML = `
-          <div style="padding: 12px; border-radius: 8px; background: ${em.activa ? '#fef2f2' : '#f0fdf4'}; border: 1px solid ${em.activa ? '#fca5a5' : '#bbf7d0'}; color: ${em.activa ? '#991b1b' : '#166534'}; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <span style="font-size: 15px;">📢 Estado del Evento: <strong>${em.activa ? 'ACTIVO' : 'INACTIVO'}</strong></span>
-              ${em.activa ? `<br><span style="font-size: 12.5px; font-weight: normal; color: #7f1d1d; margin-top: 4px; display: inline-block;">Nombre del Evento: <strong>${em.nombre}</strong> (Iniciado el ${em.fecha || 'hoy'})</span>` : ''}
-            </div>
-            <div>
-              <i class="fas ${em.activa ? 'fa-bell fa-beat' : 'fa-shield-alt'}" style="font-size: 20px;"></i>
-            </div>
-          </div>
-        `;
+  if (!EM.subs.hoy) {
+    const hoy = getLocalHoyStr(new Date());
+    EM.subs.hoy = firestore.collection('registros').where('fecha', '==', hoy).onSnapshot(snap => {
+      const porEmp = {};
+      snap.forEach(doc => {
+        const r = doc.data() || {};
+        const id = String(r.empleadoId || '').trim();
+        if (!id) return;
+        (porEmp[id] = porEmp[id] || []).push(r);
+      });
+      EM.hoy = porEmp;
+      EM.ultimaAct = Date.now();
+      emPintar();
+    }, err => console.warn('Emergencia (registros de hoy):', err));
   }
+  return true;
+}
 
-  // Update control panel inputs and buttons
-  const supInput = $('supEmEventName');
-  if (supInput) {
-    supInput.value = em.nombre || '';
-  }
-  const btnStart = $('btnSupEmStart');
-  const btnStop = $('btnSupEmStop');
-  if (btnStart) btnStart.style.display = em.activa ? 'none' : 'flex';
-  if (btnStop) btnStop.style.display = em.activa ? 'flex' : 'none';
-
-  // Group employees by emergency status
-  let aSalvoCount = 0;
-  let requiereAyudaCount = 0;
-  let pendientesCount = 0;
-
-  const hoyStr = getLocalHoyStr(new Date());
-  const reportesHTML = [];
-
-  empCache.forEach(emp => {
-    // Find if this employee registered their status today within their ENTRADA record
-    const regEntrada = (emp.registros || []).find(r => r.tipo === 'ENTRADA' && r.fecha === hoyStr);
-    const hasEstado = regEntrada && regEntrada.estado;
-
-    let statusText = "⚪ PENDIENTE";
-    let statusBadgeColor = "#64748b";
-    let statusBgColor = "#f1f5f9";
-    let detalle = "-";
-    let horaReporte = "-";
-
-    if (hasEstado) {
-      const val = regEntrada.estado || "";
-      if (val.startsWith("A salvo")) {
-        aSalvoCount++;
-        statusText = "🟢 A SALVO / OK";
-        statusBadgeColor = "#0f766e";
-        statusBgColor = "#ccfbf1";
-      } else if (val.startsWith("Requiere ayuda")) {
-        requiereAyudaCount++;
-        statusText = "🔴 REQUIERE AYUDA";
-        statusBadgeColor = "#b91c1c";
-        statusBgColor = "#fee2e2";
-      } else {
-        // General or other status
-        aSalvoCount++;
-        statusText = "🟢 REGISTRADO";
-        statusBadgeColor = "#0f766e";
-        statusBgColor = "#ccfbf1";
+function emSuscribirReportes(firestore) {
+  const id = EM.config && (EM.config.activa || EM.config.eventoId) ? emEventoId(EM.config) : '';
+  if (id === EM.eventoSub) return;
+  if (EM.subs.reportes) { EM.subs.reportes(); EM.subs.reportes = null; }
+  EM.eventoSub = id; EM.reportes = {}; EM.avisados = {}; EM.primeraCarga = true;
+  if (!id) return;
+  EM.subs.reportes = firestore.collection('logs').where('eventoId', '==', id).onSnapshot(snap => {
+    const ult = {};
+    snap.forEach(doc => {
+      const r = doc.data() || {};
+      if (r.tipo_log !== 'emergencia') return;
+      const prev = ult[r.empleadoId];
+      if (!prev || String(r.dispositivo_ts || '') > String(prev.dispositivo_ts || '')) ult[r.empleadoId] = r;
+    });
+    // Aviso visible y sonoro cuando alguien pide ayuda (no en la primera carga)
+    Object.values(ult).forEach(r => {
+      if (r.estado === 'Requiere ayuda' && !EM.avisados[r.empleadoId]) {
+        EM.avisados[r.empleadoId] = true;
+        if (!EM.primeraCarga) emAlertaAyuda(r);
       }
+    });
+    EM.primeraCarga = false;
+    EM.reportes = ult;
+    EM.ultimaAct = Date.now();
+    emPintar();
+  }, err => console.warn('Emergencia (reportes):', err));
+}
 
-      // Split comments if any
-      const dashIdx = val.indexOf(" - ");
-      detalle = dashIdx !== -1 ? val.substring(dashIdx + 3) : "Sin comentarios";
-      // Hora de reporte independiente de la hora de entrada
-      // Prioridad: estado_timestamp (Firebase ms) > estado_hora (Sheets "HH:MM") > "-"
-      if (regEntrada.estado_timestamp) {
-        // Soporta: número ms (Date.now() int64), o Firestore Timestamp {seconds, toMillis}
-        let ms = regEntrada.estado_timestamp;
-        if (typeof ms === 'object') {
-          ms = typeof ms.toMillis === 'function' ? ms.toMillis() : (ms.seconds || 0) * 1000;
-        }
-        const d = new Date(ms);
-        if (!isNaN(d)) {
-          const hh = String(d.getHours()).padStart(2, '0');
-          const mm = String(d.getMinutes()).padStart(2, '0');
-          horaReporte = `${hh}:${mm}`;
-        }
-      } else if (regEntrada.estado_hora) {
-        horaReporte = regEntrada.estado_hora; // viene del GAS como "HH:MM"
-      } else {
-        horaReporte = "-";
-      }
-    } else {
-      pendientesCount++;
-    }
+function emAlertaAyuda(r) {
+  mostrarToast(`🔴 ${r.nombre || r.empleadoId} REQUIERE AYUDA${r.comentario ? ': ' + r.comentario : ''}`, 'error');
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.25, 0.5].forEach(t => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.25, ctx.currentTime + t);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.18);
+    });
+  } catch (e) { }
+}
 
-    reportesHTML.push(`
-          <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 12px; font-size: 13px; font-weight: 600; color: #1e293b;">${emp.nombre || 'Sin nombre'}</td>
-            <td style="padding: 12px; font-size: 13px; color: #475569;">${emp.departamento || emp.cargo || 'Área general'}</td>
-            <td style="padding: 12px;">
-              <span style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 800; color: ${statusBadgeColor}; background: ${statusBgColor}; text-align: center;">
-                ${statusText}
-              </span>
-            </td>
-            <td style="padding: 12px; font-size: 13px; color: #334155; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${detalle}">
-              ${detalle}
-            </td>
-            <td style="padding: 12px; font-size: 13px; color: #64748b;">${horaReporte}</td>
-          </tr>
-        `);
+// Personas del evento: en planta (entrada hoy sin salida antes del inicio) + quien reportó aunque no marcó
+function emPersonas() {
+  const inicio = emInicioMs();
+  const porId = {};
+  const emps = (typeof empCache !== 'undefined' && Array.isArray(empCache)) ? empCache : [];
+  const datosEmp = id => emps.find(e => String(e.id) === String(id)) || {};
+  Object.entries(EM.hoy).forEach(([id, regs]) => {
+    const tipos = regs.map(r => ({ t: String(r.tipo || '').toUpperCase(), ms: emTsMs(r.timestamp) || 0, r }));
+    const entradas = tipos.filter(x => x.t === 'ENTRADA' || x.t === 'RETORNO_CAMPO' || x.t.includes('ENTRADA_CAMPO'));
+    if (!entradas.length) return;
+    const ultEntrada = Math.max(...entradas.map(x => x.ms));
+    const salioAntes = tipos.some(x => x.t.startsWith('SALIDA') && x.ms > ultEntrada && x.ms < inicio);
+    const ent = entradas[0].r;
+    // Estado escrito en la ENTRADA por apps sin actualizar (solo si es posterior al inicio del evento)
+    const legacyMs = emTsMs(ent.estado_timestamp);
+    const legacy = ent.estado && legacyMs >= inicio ? {
+      estado: String(ent.estado).startsWith('Requiere') ? 'Requiere ayuda' : 'A salvo',
+      comentario: String(ent.estado).includes(' - ') ? String(ent.estado).split(' - ').slice(1).join(' - ') : '',
+      ms: legacyMs, origen: 'APP (versión anterior)'
+    } : null;
+    const e = datosEmp(id);
+    porId[id] = { id, nombre: e.nombre || ent.nombre || id, area: e.area || e.departamento || '', telefono: e.telefono || '',
+      enPlanta: !salioAntes, salioAntes, modo: String(ent.modo || ''), legacy };
   });
+  Object.values(EM.reportes).forEach(r => {
+    const id = String(r.empleadoId);
+    if (!porId[id]) {
+      const e = datosEmp(id);
+      porId[id] = { id, nombre: e.nombre || r.nombre || id, area: e.area || '', telefono: e.telefono || '', enPlanta: false, sinMarcacion: true };
+    }
+  });
+  return Object.values(porId).map(p => {
+    const r = EM.reportes[p.id];
+    const rep = r ? { estado: r.estado, comentario: r.comentario || '', ms: Date.parse(r.dispositivo_ts) || 0,
+      origen: r.origen === 'PANEL' ? `Supervisor${r.registradoPor ? ' (' + r.registradoPor + ')' : ''}` : 'APP' } : p.legacy;
+    return Object.assign(p, { rep });
+  }).filter(p => p.enPlanta || p.rep);
+}
 
-  // Update counters
-  const elSalvo = $('numASalvo');
-  const elAyuda = $('numRequiereAyuda');
-  const elPend = $('numPendientes');
-  if (elSalvo) elSalvo.textContent = aSalvoCount;
-  if (elAyuda) elAyuda.textContent = requiereAyudaCount;
-  if (elPend) elPend.textContent = pendientesCount;
+window.cargarEmergenciasSupervisor = async function () {
+  if (!emSuscribir()) { mostrarToast('Firestore no está disponible. Recarga la página.', 'error'); return; }
+  if (!EM.reloj) EM.reloj = setInterval(() => {
+    const panel = document.getElementById('emPanelEnVivo');   // panel del supervisor o toma de lista de la app
+    if (panel && panel.offsetParent && EM.config && EM.config.activa) emPintarReloj();
+  }, 1000);
+  emPintar();
+};
 
-  // Update table body
-  const tbody = $('listaReportesEmergenciaBody');
-  if (tbody) {
-    tbody.innerHTML = reportesHTML.length > 0 ? reportesHTML.join('') : `
-          <tr>
-            <td colspan="5" style="text-align: center; padding: 20px; color: #64748b;">No hay personal activo registrado para mostrar.</td>
-          </tr>
-        `;
-  }
+function emPintarReloj() {
+  const el = document.getElementById('emReloj');
+  if (el && EM.config && EM.config.inicio) el.textContent = emMinutos(Date.now() - emInicioMs());
+  const act = document.getElementById('emUltimaAct');
+  if (act && EM.ultimaAct) act.textContent = emHora(EM.ultimaAct);
+}
+
+function emPintar() {
+  const cont = document.getElementById('emPanelEnVivo');
+  if (!cont) return;
+  // Si se está escribiendo en un campo del panel, se conserva el foco y el cursor al redibujar
+  const act = document.activeElement && cont.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+  const foco = act ? { id: act.id, pos: act.selectionStart } : null;
+  const em = EM.config;
+  if (!em) { cont.innerHTML = '<div class="em-cargando"><i class="fas fa-spinner fa-spin"></i> Conectando en tiempo real…</div>'; return; }
+  const personas = emPersonas();
+  const ayuda = personas.filter(p => p.rep && p.rep.estado === 'Requiere ayuda');
+  const salvo = personas.filter(p => p.rep && p.rep.estado !== 'Requiere ayuda');
+  const pendientes = personas.filter(p => !p.rep && p.enPlanta);
+  const totalPlanta = personas.filter(p => p.enPlanta).length;
+  const reportaronPlanta = personas.filter(p => p.enPlanta && p.rep).length;
+  const pct = totalPlanta ? Math.round(reportaronPlanta * 100 / totalPlanta) : 0;
+  const activa = !!em.activa;
+  const huboEvento = activa || em.eventoId;
+
+  const q = (EM.busca || '').trim().toLowerCase();
+  const enFiltro = p => EM.filtro === 'todos' ? true : EM.filtro === 'ayuda' ? p.rep && p.rep.estado === 'Requiere ayuda'
+    : EM.filtro === 'pendientes' ? !p.rep : EM.filtro === 'salvo' ? p.rep && p.rep.estado !== 'Requiere ayuda' : true;
+  const orden = p => p.rep && p.rep.estado === 'Requiere ayuda' ? 0 : !p.rep ? 1 : 2;
+  const lista = personas.filter(p => enFiltro(p) && (!q || `${p.nombre} ${p.area} ${p.id}`.toLowerCase().includes(q)))
+    .sort((a, b) => orden(a) - orden(b) || (b.rep ? b.rep.ms : 0) - (a.rep ? a.rep.ms : 0) || a.nombre.localeCompare(b.nombre));
+
+  const tel = p => p.telefono ? `<a class="em-btn em-btn-llamar" href="tel:${escapeHtml(String(p.telefono).replace(/\s+/g, ''))}" onclick="event.stopPropagation()"><i class="fas fa-phone"></i> Llamar</a>` : '';
+  const fila = p => {
+    const r = p.rep;
+    const ayudaP = r && r.estado === 'Requiere ayuda';
+    const badge = !r ? '<span class="em-badge em-badge-pend"><i class="fas fa-hourglass-half"></i> Pendiente</span>'
+      : ayudaP ? '<span class="em-badge em-badge-ayuda"><i class="fas fa-exclamation-triangle"></i> Requiere ayuda</span>'
+      : '<span class="em-badge em-badge-ok"><i class="fas fa-check"></i> A salvo</span>';
+    const extra = [p.sinMarcacion ? '<span class="em-chip">Sin marcación hoy</span>' : '', p.modo && p.modo !== 'OFICINA' && p.modo !== 'EMPRESA' ? `<span class="em-chip">${escapeHtml(p.modo)}</span>` : ''].join('');
+    return `<div class="em-fila ${ayudaP ? 'em-fila-ayuda' : !r ? 'em-fila-pend' : ''}">
+      <div class="em-persona"><strong>${escapeHtml(p.nombre)}</strong><small>${escapeHtml(p.area || '—')} · ${escapeHtml(p.id)}</small>${extra ? `<div>${extra}</div>` : ''}</div>
+      <div class="em-estado">${badge}${r && r.comentario ? `<div class="em-coment">“${escapeHtml(r.comentario)}”</div>` : ''}</div>
+      <div class="em-hora">${r ? `${emHora(r.ms)}<small>${escapeHtml(r.origen)}</small>` : '<small>Sin reporte</small>'}</div>
+      <div class="em-acciones">${ayudaP ? tel(p) : ''}${!r && activa ? `<button class="em-btn em-btn-ok" onclick="emMarcarASalvo('${escapeHtml(p.id)}')"><i class="fas fa-check"></i> Marcar a salvo</button>${tel(p)}` : ''}</div>
+    </div>`;
+  };
+  const chip = (k, t, n) => `<button class="em-filtro ${EM.filtro === k ? 'on' : ''}" onclick="emFiltrar('${k}')">${t} <b>${n}</b></button>`;
+
+  cont.innerHTML = `
+    ${activa ? `<div class="em-banner em-banner-activo">
+        <div class="em-banner-txt"><span class="em-pulso"></span><div><strong>${escapeHtml(em.nombre || 'Evento en curso')}</strong>
+          <small>${em.inicio ? `Iniciado a las ${emHora(emInicioMs())} · en curso <b id="emReloj">${emMinutos(Date.now() - emInicioMs())}</b>` : 'Iniciado hoy (hora de inicio no registrada)'}</small></div></div>
+        <button class="em-btn em-btn-fin" onclick="toggleEmergenciaSupervisor(false)"><i class="fas fa-flag-checkered"></i> Finalizar alerta</button>
+      </div>`
+    : `<div class="em-banner">
+        <div class="em-inicio">
+          <label for="supEmEventName">Nombre del evento</label>
+          <input type="text" id="supEmEventName" value="${escapeHtml(EM.nombreBorrador || ('Simulacro ' + new Date().toLocaleDateString('es-EC')))}" oninput="EM.nombreBorrador=this.value" maxlength="80">
+        </div>
+        <button class="em-btn em-btn-iniciar" onclick="toggleEmergenciaSupervisor(true)"><i class="fas fa-bullhorn"></i> Iniciar alerta</button>
+      </div>
+      ${huboEvento ? `<p class="em-nota"><i class="fas fa-history"></i> Último evento: <b>${escapeHtml(em.nombre || '')}</b>${em.inicio ? ` · ${new Date(em.inicio).toLocaleString('es-EC')}` : ''}${em.fin ? ` → ${emHora(Date.parse(em.fin))}` : ''}. Abajo queda su resultado.</p>` : ''}`}
+    ${huboEvento ? `
+    <div class="em-kpis">
+      <button class="em-kpi em-kpi-ayuda ${ayuda.length ? 'alerta' : ''}" onclick="emFiltrar('ayuda')"><span>Requieren ayuda</span><b>${ayuda.length}</b></button>
+      <button class="em-kpi em-kpi-pend" onclick="emFiltrar('pendientes')"><span>Pendientes</span><b>${pendientes.length}</b></button>
+      <button class="em-kpi em-kpi-ok" onclick="emFiltrar('salvo')"><span>A salvo</span><b>${salvo.length}</b></button>
+    </div>
+    <div class="em-progreso"><div class="em-progreso-txt"><span><b>${reportaronPlanta} de ${totalPlanta}</b> personas en planta reportaron (${pct}%)</span>
+        <span class="em-vivo"><i class="fas fa-circle"></i> En vivo · <span id="emUltimaAct">${emHora(EM.ultimaAct)}</span></span></div>
+      <div class="em-barra"><div style="width:${pct}%"></div></div></div>
+    <div class="em-herramientas">
+      <div class="em-filtros">${chip('todos', 'Todos', personas.length)}${chip('ayuda', 'Ayuda', ayuda.length)}${chip('pendientes', 'Pendientes', pendientes.length)}${chip('salvo', 'A salvo', salvo.length)}</div>
+      <div class="em-buscar"><i class="fas fa-search"></i><input type="search" id="emBuscar" value="${escapeHtml(EM.busca)}" placeholder="Buscar nombre, área o ID" oninput="emBuscar(this.value)"></div>
+      <button class="em-btn em-btn-sec" onclick="emExportar()"><i class="fas fa-file-download"></i> Exportar</button>
+    </div>
+    <div class="em-lista">${lista.length ? lista.map(fila).join('') : `<div class="em-vacio">${personas.length ? 'Nadie en este filtro.' : 'Aún no hay personas con entrada registrada hoy.'}</div>`}</div>
+    <p class="em-nota"><i class="fas fa-info-circle"></i> Pendientes = personas con entrada registrada hoy que aún no reportan. Quien salió antes del inicio no se cuenta.
+      «Marcar a salvo» sirve para el conteo en el punto de encuentro (queda registrado con tu nombre).</p>` : ''}`;
+  if (foco) { const i = document.getElementById(foco.id); if (i) { i.focus(); try { i.setSelectionRange(foco.pos, foco.pos); } catch (e) { } } }
+}
+
+window.emFiltrar = function (f) { EM.filtro = EM.filtro === f ? 'todos' : f; emPintar(); };
+window.emBuscar = function (v) { EM.busca = v; emPintar(); };
+
+window.emMarcarASalvo = async function (empId) {
+  const p = emPersonas().find(x => x.id === String(empId));
+  if (!p || !confirm(`¿Confirmas que ${p.nombre} está A SALVO (verificado en el punto de encuentro)?`)) return;
+  let quien = 'Supervisor';
+  try { quien = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').nombre || quien; } catch (e) { }
+  if (window.EM_QUIEN) quien = window.EM_QUIEN;   // app: quien toma la lista desde su celular
+  try {
+    const r = await window.FirebaseBackend.reportarEmergencia({ empleadoId: empId, nombre: p.nombre, estado: 'A salvo',
+      comentario: 'Verificado en el punto de encuentro', origen: 'PANEL', registradoPor: quien });
+    if (!r || r.error) throw new Error((r && r.error) || 'No se guardó');
+    mostrarToast(`${p.nombre}: marcado a salvo`, 'success');
+  } catch (e) { mostrarToast('No se pudo registrar: ' + e.message, 'error'); }
+};
+
+window.emExportar = function () {
+  const em = EM.config || {};
+  const filas = [['ID', 'Nombre', 'Área', 'Estado', 'Comentario', 'Hora de reporte', 'Origen', 'En planta']];
+  emPersonas().forEach(p => filas.push([p.id, p.nombre, p.area, p.rep ? p.rep.estado : 'Pendiente', p.rep ? p.rep.comentario : '',
+    p.rep ? emHora(p.rep.ms) : '', p.rep ? p.rep.origen : '', p.enPlanta ? 'SI' : 'NO']));
+  const csv = '﻿' + filas.map(f => f.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `${(em.nombre || 'emergencia').replace(/[^\w-]+/g, '_')}_${getLocalHoyStr(new Date())}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
 
 window.toggleEmergenciaSupervisor = async function (activa) {
-  const inputEl = $('supEmEventName');
-  const nombre = inputEl ? inputEl.value.trim() : '';
-  if (activa && !nombre) {
-    mostrarToast('Por favor ingrese el nombre del evento/simulacro.', 'warning');
-    return;
+  const nombre = (document.getElementById('supEmEventName')?.value || EM.nombreBorrador || '').trim();
+  if (activa && !nombre) { mostrarToast('Escribe el nombre del evento o simulacro.', 'warning'); return; }
+  if (!window.FirebaseBackend) { mostrarToast('El motor Firebase no está cargado. Recarga la página.', 'error'); return; }
+  if (activa && !confirm(`¿Iniciar la alerta «${nombre}»?\n\nTodos los colaboradores verán en la app el aviso para reportar su estado.`)) return;
+  if (!activa) {
+    const pend = emPersonas().filter(p => !p.rep && p.enPlanta).length;
+    if (!confirm(`¿Finalizar la alerta?${pend ? `\n\nAún hay ${pend} persona(s) en planta sin reportar.` : ''}`)) return;
   }
-
-  // Pre-verificación: ¿está el backend disponible?
-  if (window.USE_FIREBASE && !window.FirebaseBackend) {
-    mostrarToast('Error: El motor Firebase no está cargado. Recarga la página.', 'error');
-    return;
-  }
-
-  mostrarLoader(true);
+  const btns = document.querySelectorAll('.em-btn-iniciar, .em-btn-fin');
+  btns.forEach(b => { b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (activa ? 'Iniciando…' : 'Finalizando…'); });
   try {
-    const res = await jsonpRequest({
-      accion: 'toggleEmergencia',
-      activa: activa,
-      nombre: nombre,
-      empleadoId: (() => {
-        try { return JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').id || ''; }
-        catch (e) { return ''; }
-      })()
-    });
-
-    mostrarLoader(false);
-    if (res.ok) {
-      mostrarToast(activa ? '🚨 Alerta de emergencia iniciada' : '🟢 Alerta de emergencia finalizada', 'success');
-
-      if (!window.emergencia) window.emergencia = {};
-      window.emergencia.activa = activa;
-      window.emergencia.nombre = activa ? nombre : '';
-
-      await cargarEmergenciasSupervisor();
-    } else {
-      mostrarToast(res.error || 'Error al actualizar la alerta', 'error');
-    }
+    let quien = window.EM_QUIEN_ID || '';
+    if (!quien) { try { quien = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').id || ''; } catch (e) { } }
+    const res = await window.FirebaseBackend.toggleEmergencia({ activa, nombre, empleadoId: quien });
+    if (!res || !res.ok) throw new Error((res && res.error) || 'No se guardó');
+    mostrarToast(activa ? '🚨 Alerta iniciada: la app ya la muestra a los colaboradores' : '🟢 Alerta finalizada', 'success');
+    if (!activa) EM.nombreBorrador = '';
+    // El listener de configuracion/emergencia redibuja; por si tarda, se fuerza la lectura
+    emSuscribir();
   } catch (e) {
-    mostrarLoader(false);
-    console.error('toggleEmergenciaSupervisor error:', e);
-    mostrarToast('Error: ' + (e.message || 'No se pudo conectar con el servidor'), 'error');
+    mostrarToast('No se pudo ' + (activa ? 'iniciar' : 'finalizar') + ' la alerta: ' + e.message, 'error');
+    emPintar();
   }
 };
 

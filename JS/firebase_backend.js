@@ -1723,22 +1723,91 @@ window.FirebaseBackend = {
         }
     },
 
+    // Cada activación es un evento nuevo (eventoId): los reportes de estado se ligan a él, así una prueba anterior
+    // del mismo día no cuenta como reporte. Al finalizar se conservan eventoId e inicio para el resumen.
     async toggleEmergencia(params) {
         try {
             const activa = params.activa === 'true' || params.activa === true;
             const nombre = params.nombre || '';
             const empleadoId = params.empleadoId || '';
-            await db.collection('configuracion').doc('emergencia').set({
-                activa: activa,
-                nombre: nombre,
-                habilitadoPor: empleadoId,
-                fecha: this._hoyStr()
-            });
+            const ref = db.collection('configuracion').doc('emergencia');
+            if (activa) {
+                await ref.set({
+                    activa: true,
+                    nombre: nombre,
+                    habilitadoPor: empleadoId,
+                    fecha: this._hoyStr(),
+                    eventoId: String(Date.now()),
+                    inicio: new Date().toISOString(),
+                    fin: ''
+                });
+            } else {
+                await ref.set({ activa: false, finalizadoPor: empleadoId, fin: new Date().toISOString() }, { merge: true });
+            }
             return { ok: true };
         } catch (error) {
             console.error("🔥 Error en toggleEmergencia:", error);
             return { error: error.message };
         }
+    },
+
+    // Evento vigente (o el último): eventoId de configuracion/emergencia; las activaciones antiguas sin eventoId
+    // se identifican por fecha y nombre
+    _eventoEmergenciaId(em) {
+        if (!em) return '';
+        return String(em.eventoId || ('ev_' + (em.fecha || '') + '_' + (em.nombre || ''))).replace(/[^A-Za-z0-9_-]/g, '_');
+    },
+
+    // Reporte de estado en una emergencia o simulacro: evento inmutable en 'logs' (no exige haber marcado entrada).
+    // Además, si hay ENTRADA hoy, se copia el estado ahí (paneles y Sheets de versiones anteriores lo leen de ahí).
+    async reportarEmergencia(params) {
+        const empleadoId = String(params.empleadoId || '').trim();
+        if (!empleadoId) return { error: 'ID faltante' };
+        const emSnap = await db.collection('configuracion').doc('emergencia').get();
+        const em = emSnap.exists ? emSnap.data() : null;
+        if (!em || !em.activa) return { error: 'No hay una emergencia o simulacro activo' };
+        const eventoId = this._eventoEmergenciaId(em);
+        const estado = String(params.estado || '').startsWith('Requiere') ? 'Requiere ayuda' : 'A salvo';
+        const comentario = String(params.comentario || '').trim().slice(0, 300);
+        const doc = {
+            tipo_log: 'emergencia',
+            eventoId,
+            evento: em.nombre || '',
+            empleadoId,
+            nombre: String(params.nombre || ''),
+            estado,
+            comentario,
+            origen: params.origen || 'APP',
+            registradoPor: String(params.registradoPor || ''),
+            fecha: this._hoyStr(),
+            dispositivo_ts: new Date().toISOString(),
+            lat: params.lat || '',
+            lng: params.lng || '',
+            servidor: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        await db.collection('logs').doc(`em_${eventoId}_${empleadoId}_${Date.now()}`).set(doc);
+
+        // Compatibilidad: estado en la ENTRADA de hoy (si existe); un fallo aquí no invalida el reporte
+        try {
+            const hoy = this._hoyStr();
+            const snap = await db.collection('registros').where('empleadoId', '==', empleadoId).where('fecha', '==', hoy).get();
+            const entrada = snap.docs.find(d => String((d.data() || {}).tipo || '').toUpperCase() === 'ENTRADA');
+            if (entrada) {
+                await entrada.ref.update({
+                    estado: comentario ? `${estado} - ${comentario}` : estado,
+                    estado_timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        } catch (e) { console.warn('Emergencia: estado no copiado a la ENTRADA', e); }
+        return { ok: true, eventoId, estado };
+    },
+
+    // Último reporte de un colaborador en el evento vigente (para no pedírselo otra vez)
+    async miReporteEmergencia(empleadoId, eventoId) {
+        const snap = await db.collection('logs').where('empleadoId', '==', String(empleadoId)).where('eventoId', '==', String(eventoId)).get();
+        const lista = snap.docs.map(d => d.data()).filter(x => x.tipo_log === 'emergencia')
+            .sort((a, b) => String(b.dispositivo_ts || '').localeCompare(String(a.dispositivo_ts || '')));
+        return lista[0] || null;
     },
 
     async desvincularDispositivo(params) {

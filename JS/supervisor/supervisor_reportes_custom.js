@@ -7,7 +7,7 @@
 // ============================================================
 // CREADOR INTERACTIVO DE REPORTES CUSTOM
 // ============================================================
-const DEFAULT_COLUMNAS_CUSTOM = ['area', 'asistencias', 'entradas', 'salidas', 'salidasAuto', 'diasCampo', 'faltas', 'diasVacaciones', 'diasJustificados', 'diasExtras', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
+const DEFAULT_COLUMNAS_CUSTOM = ['area', 'diasTrabajados', 'asistencias', 'entradas', 'salidas', 'salidasAuto', 'diasCampo', 'faltas', 'diasVacaciones', 'diasJustificados', 'diasExtras', 'atrasos', 'minutosAtrasos', 'almPlanta', 'puntualidad', 'totalExtras50', 'totalExtras100'];
 
 function obtenerColumnasCustomActivas() {
   const saved = localStorage.getItem('columnasCustomActivasReporte');
@@ -211,7 +211,13 @@ window.obtenerDatosFiltradosReporteCustom = function (q = '', fCargo = '') {
   const esDesv = e => !!e.esDesvinculado || (e.cargo || '').toLowerCase() === 'desvinculado' || (e.area || '').toLowerCase() === 'desvinculado' || (e.estadoBadge && e.estadoBadge.toLowerCase().includes('desvinculado')) || (e.motivo_salida && e.motivo_salida.length > 0);
   const esElim = e => !!e.esEliminado || e.activo === false || (e.area || '').toLowerCase() === 'eliminado' || (e.cargo || '').toLowerCase() === 'eliminado';
 
-  return baseData.filter(e => {
+  // «Solo con datos»: oculta a quien tiene todas las columnas visibles en cero (área y puntualidad no cuentan)
+  const soloConDatos = !!$('chkSoloConDatosRep')?.checked;
+  const colsDatos = (columnasCustomActivas || []).filter(c => c !== 'area' && c !== 'puntualidad');
+  const tieneDatos = e => colsDatos.some(c => (parseFloat(e[c]) || 0) !== 0);
+  let ocultos = 0;
+
+  const filtrados = baseData.filter(e => {
     if (fArea && (e.area || '').toLowerCase() !== fArea) return false;
     if (fEstado === 'solo_desv' && !esDesv(e)) return false;
     if (fEstado === 'solo_elim' && !(esElim(e) && !esDesv(e))) return false;
@@ -226,9 +232,24 @@ window.obtenerDatosFiltradosReporteCustom = function (q = '', fCargo = '') {
     } else if (fCargo) {
       matchCargo = (e.cargo || '').toLowerCase() === fCargo;
     }
-    return matchQ && matchCargo;
+    if (!(matchQ && matchCargo)) return false;
+    if (soloConDatos && colsDatos.length && !tieneDatos(e)) { ocultos++; return false; }
+    return true;
   });
+  window._reporteOcultosSinDatos = soloConDatos ? ocultos : 0;
+  return filtrados;
 };
+
+// Preferencia «Solo con datos» (por navegador); por defecto activada
+window.cambiarSoloConDatosReporte = function () {
+  try { localStorage.setItem('reporteSoloConDatos', $('chkSoloConDatosRep')?.checked ? '1' : '0'); } catch (e) { }
+  filtrarReporteInteractivo();
+};
+document.addEventListener('DOMContentLoaded', () => {
+  const chk = $('chkSoloConDatosRep');
+  if (!chk) return;
+  try { const v = localStorage.getItem('reporteSoloConDatos'); if (v !== null) chk.checked = v === '1'; } catch (e) { }
+});
 
 window.filtrarReporteInteractivo = function () {
   let q = ($('searchReportesCustom')?.value || '').toLowerCase();
@@ -269,6 +290,7 @@ window.filtrarReporteInteractivo = function () {
 
   if (fCargo === 'almuerzos extra') {
     actualizarResumenReporte(window.obtenerDatosFiltradosReporteCustom(q, ''));
+    if ($('rep2FiltrosResumen')) $('rep2FiltrosResumen').innerHTML = '';   // lista de pedidos, no de colaboradores
     // Ocultar personalizador de columnas cuando se muestran almuerzos extra
     if ($('reportsLayoutContainer')) {
       $('reportsLayoutContainer').style.display = 'none';
@@ -351,7 +373,7 @@ window.filtrarReporteInteractivo = function () {
     });
   }
 
-  let headersHtml = `<th onclick="sortReporteCustom('nombre')" style="cursor:pointer; min-width:230px; background:#f8fafc; border-bottom:2.5px solid #2563eb;">
+  let headersHtml = `<th onclick="sortReporteCustom('nombre')" style="cursor:pointer; min-width:200px; background:#f8fafc; border-bottom:2.5px solid #2563eb;">
     <div style="display:flex; align-items:center; gap:6px;">
       <i class="fas fa-user-tie" style="color:#2563eb; font-size:12px;"></i>
       <span style="font-weight:700; color:#1e293b;">COLABORADOR</span>
@@ -363,14 +385,14 @@ window.filtrarReporteInteractivo = function () {
     if (columnasCustomActivas.includes(col.id)) {
       const iconHtml = col.icono ? `<i class="fas ${col.icono}" style="color:${col.color || '#2563eb'}; font-size:11px; margin-right:4px;"></i>` : '';
       if (col.id === 'area') {
-        headersHtml += `<th onclick="sortReporteCustom('area')" style="cursor:pointer; min-width:140px; background:#f8fafc; border-bottom:2.5px solid #64748b;">
+        headersHtml += `<th onclick="sortReporteCustom('area')" style="cursor:pointer; min-width:96px; background:#f8fafc; border-bottom:2.5px solid #64748b;">
           <div style="display:flex; align-items:center; gap:5px;">
             ${iconHtml}<span style="font-weight:700; color:#334155;">ÁREA</span> ${sortIconCustom('area')}
           </div>
         </th>`;
       } else {
-        headersHtml += `<th onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer; min-width:115px; background:${col.colorBg || '#f8fafc'}; border-bottom:2.5px solid ${col.color || '#2563eb'};">
-          <div style="display:flex; align-items:center; justify-content:center; gap:4px;" title="${col.catLabel || col.label}">
+        headersHtml += `<th class="rep-th-compacta" onclick="sortReporteCustom('${col.id}')" style="text-align:center; cursor:pointer; min-width:${col.tipo === 'tiempo' ? 84 : 66}px; max-width:110px; background:${col.colorBg || '#f8fafc'}; border-bottom:2.5px solid ${col.color || '#2563eb'};">
+          <div style="display:flex; align-items:center; justify-content:center; gap:4px;" title="${escapeHtml(col.desc || col.catLabel || col.label)}">
             ${iconHtml}<span style="color:${col.color || '#1e293b'}; font-weight:700;">${col.label}</span> ${sortIconCustom(col.id)}
           </div>
         </th>`;
@@ -409,8 +431,18 @@ window.filtrarReporteInteractivo = function () {
           contenido = `<span style="color:#475569; font-weight:600; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-building" style="font-size:9px; opacity:0.4;"></i> ${escapeHtml(valor || '—')}</span>`;
           rowHtml += `<td>${contenido}</td>`;
         } else {
-          if (col.id === 'asistencias') {
-            contenido = `<span class="rep-badge-pill rep-badge-asis"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
+          if (e.noAplicaAsistencia && ['faltas', 'tiempoPorJustificar', 'tiempoADescontar', 'almSinRegistro'].includes(col.id)) {
+            contenido = `<span style="color:#94a3b8; font-size:10.5px; font-weight:600;" title="Cargo «Sin asistencia»: no registra marcaciones">No aplica</span>`;
+          } else if (col.id === 'asistencias') {
+            contenido = `<span class="rep-badge-pill rep-badge-asis" title="${valor} de lunes a viernes · ${e.diasExtras || 0} sábado/domingo/feriado (columna Sáb/Dom/Fer) · ${e.diasCampo || 0} en campo"><i class="fas fa-check" style="font-size:8.5px;"></i> ${valor}</span>`;
+          } else if (col.id === 'diasTrabajados') {
+            contenido = e.noAplicaAsistencia
+              ? `<span style="color:#94a3b8; font-size:10.5px; font-weight:600;" title="Cargo «Sin asistencia»: no registra marcaciones">No aplica</span>`
+              : `<span class="rep-badge-pill" style="background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4; font-weight:800;" title="${e.asistencias || 0} L-V + ${e.diasExtras || 0} sáb/dom/feriado + días solo en campo (sin repetir)">${valor}</span>`;
+          } else if (col.id === 'almSinRegistro') {
+            contenido = (valor > 0)
+              ? `<span class="rep-badge-pill" style="background:#f8fafc; color:#475569; border:1px dashed #cbd5e1; font-weight:700;" title="${valor} día(s) trabajados sin registro de almuerzo"><i class="fas fa-question" style="font-size:8.5px;"></i> ${valor}</span>`
+              : `<span style="color:#cbd5e1; font-family:'Fira Code',monospace; font-size:11px;">—</span>`;
           } else if (col.id === 'entradas') {
             contenido = `<span class="rep-badge-pill" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;"><i class="fas fa-sign-in-alt" style="font-size:8.5px;"></i> ${valor}</span>`;
           } else if (col.id === 'entradasAuto') {
@@ -452,7 +484,10 @@ window.filtrarReporteInteractivo = function () {
               ? `<span class="rep-badge-pill rep-badge-atraso-alert">${minutosAHHMMSS(valor)}</span>`
               : `<span style="font-family:'Fira Code',monospace; font-size:11px; color:#94a3b8;">00:00:00</span>`;
           } else if (col.id === 'almPlanta' || col.id === 'almFuera') {
-            contenido = `<span class="rep-badge-pill rep-badge-alm"><i class="fas fa-utensils" style="font-size:8.5px;"></i> ${valor}</span>`;
+            const desglose = e.noAplicaAsistencia
+              ? 'Cargo «Sin asistencia»: almuerzos registrados sin marcación'
+              : `De ${e.diasTrabajados || 0} días trabajados: ${e.almPlanta || 0} en planta · ${e.almFuera || 0} fuera · ${e.almSinRegistro || 0} sin registro`;
+            contenido = `<span class="rep-badge-pill rep-badge-alm" title="${desglose}"><i class="fas fa-utensils" style="font-size:8.5px;"></i> ${valor}</span>`;
           } else if (col.id === 'puntualidad') {
             if (valor >= 90) {
               contenido = `<span class="rep-badge-pill rep-badge-pct-hi"><i class="fas fa-star" style="font-size:8.5px;"></i> ${valor}%</span>`;
@@ -555,9 +590,40 @@ window.filtrarReporteInteractivo = function () {
   }
 
   if ($('reporteCustomInfo')) {
-    $('reporteCustomInfo').textContent = `${data.length} de ${empCache.length} colaboradores`;
+    $('reporteCustomInfo').textContent = `${data.length} de ${empCache.length} colaboradores` +
+      (window._reporteOcultosSinDatos ? ` · ${window._reporteOcultosSinDatos} sin datos ocultos` : '');
   }
+  pintarResumenFiltrosReporte(data.length, rango);
 };
+
+// Explica en palabras simples qué muestra la tabla con los filtros actuales
+function pintarResumenFiltrosReporte(visibles, rango) {
+  const caja = $('rep2FiltrosResumen');
+  if (!caja) return;
+  const vista = (document.querySelector('#rep2TabsVista .rep2-tab.active')?.textContent || 'Personalizada').trim();
+  const estadoSel = $('filtroEstadoReporte');
+  const estado = estadoSel ? estadoSel.options[estadoSel.selectedIndex]?.text || '' : '';
+  const area = $('filtroAreaReporte')?.value || '';
+  const q = ($('searchReportesCustom')?.value || '').trim();
+  const cargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
+  const ocultos = window._reporteOcultosSinDatos || 0;
+  const soloDatos = !!$('chkSoloConDatosRep')?.checked;
+  const filtros = [
+    area ? `del área <b>${escapeHtml(area)}</b>` : '',
+    cargo === 'pasante' ? 'solo <b>pasantes</b>' : cargo === 'sin asistencia' ? 'solo quienes <b>no registraron asistencia</b>' : '',
+    q ? `que coinciden con «<b>${escapeHtml(q)}</b>»` : ''
+  ].filter(Boolean).join(', ');
+  let html = `<i class="fas fa-info-circle"></i> Se muestran <b>${visibles}</b> colaboradores (${escapeHtml(estado.toLowerCase())})${filtros ? ' ' + filtros : ''}` +
+    ` en la pestaña <b>${escapeHtml(vista)}</b>${rango && rango.labelRango ? `, período <b>${escapeHtml(rango.labelRango)}</b>` : ''}.`;
+  if (soloDatos && ocultos) {
+    html += ` <span class="rep2-ocultos"><b>${ocultos}</b> ${ocultos === 1 ? 'colaborador no tiene' : 'colaboradores no tienen'} información en estas columnas y ${ocultos === 1 ? 'está oculto' : 'están ocultos'}: desmarca «Solo con datos» para ver${ocultos === 1 ? 'lo' : 'los'}.</span>`;
+  } else if (soloDatos) {
+    html += ' Todos tienen información en estas columnas.';
+  } else {
+    html += ' «Solo con datos» está desmarcado: también aparecen quienes no tienen información (con ceros).';
+  }
+  caja.innerHTML = html;
+}
 
 window.restablecerColumnasDefault = function () {
   // Restablecer el filtro rápido de cargo si estaba en almuerzos extra
@@ -597,10 +663,10 @@ window.cargarPlantillaReporte = function (tipo) {
 // ---------- Navegación de la pestaña Reportes (vistas, filtros, resumen) ----------
 const VISTAS_REPORTE = {
   resumen: () => [...DEFAULT_COLUMNAS_CUSTOM],
-  asistencias: () => ['area', 'asistencias', 'entradas', 'salidas', 'salidasAuto', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'],
+  asistencias: () => ['area', 'diasTrabajados', 'asistencias', 'diasExtras', 'diasCampo', 'entradas', 'salidas', 'salidasAuto', 'faltas', 'atrasos', 'minutosAtrasos', 'puntualidad'],
   extras: () => ['area', 'diasExtras', 'horasExtra50', 'horasExtra100', 'horasCampoNormales', 'horasCampo50', 'horasCampo100', 'totalExtras50', 'totalExtras100'],
   permisos: () => ['area', 'diasVacaciones', 'diasJustificados', 'permisoMedico', 'permisoPersonal', 'tiempoPorJustificar', 'tiempoADescontar'],
-  almuerzos: () => ['area', 'asistencias', 'almPlanta', 'almFuera'],
+  almuerzos: () => ['area', 'diasTrabajados', 'asistencias', 'diasExtras', 'diasCampo', 'almPlanta', 'almFuera', 'almSinRegistro'],
   completo: () => COLUMNAS_DISPONIBLES.map(c => c.id)
 };
 

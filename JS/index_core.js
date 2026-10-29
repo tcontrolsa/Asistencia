@@ -5322,8 +5322,18 @@ window.evaluarPopupAlmuerzo = function () {
 function renderHistoryPage() {
     const mainContent = document.getElementById('mainContent');
 
-    // Calcular estadísticas generales
-    const stats = calcularEstadisticas();
+    // Calcular estadísticas del período elegido (actual o anterior)
+    const stats = calcularEstadisticas(periodoResumenOffset);
+    const fechaPeriodo = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const botonPeriodo = (offset, titulo) => {
+        const p = periodoFiscal(offset), on = periodoResumenOffset === offset;
+        return `<button type="button" onclick="window.cambiarPeriodoResumen(${offset})" aria-pressed="${on}"
+            style="flex: 1; border: none; border-radius: 10px; padding: 8px 6px; font-weight: 750; font-size: 12.5px; line-height: 1.25; cursor: pointer;
+            background: ${on ? '#ffffff' : 'transparent'}; color: ${on ? '#1e293b' : '#64748b'}; box-shadow: ${on ? '0 1px 3px rgba(15,23,42,0.15)' : 'none'};">
+            ${titulo}<br><span style="font-weight: 600; font-size: 11px; color: #94a3b8;">${fechaPeriodo(p.inicio)} al ${fechaPeriodo(p.fin)}</span></button>`;
+    };
+    const selectorPeriodoHTML = `<div role="group" aria-label="Período del resumen" style="display: flex; gap: 4px; padding: 4px; margin: 0 0 14px; background: #f1f5f9; border-radius: 12px;">
+            ${botonPeriodo(0, 'Período actual')}${botonPeriodo(-1, 'Período anterior')}</div>`;
 
     // Formatear fecha/hora actual
     function obtenerFechaHoraActualFormateada() {
@@ -5523,6 +5533,7 @@ function renderHistoryPage() {
                 <!-- RESUMEN DE PERÍODO (Estadísticas Generales y Horas Unificadas) -->
                 <div class="glass-card mt-3">
                     <h5 class="fw-bold mb-3" style="font-size: clamp(14px, 4.5vw, 16px);"><i class="fas fa-chart-bar text-primary"></i> Resumen del Período</h5>
+                    ${selectorPeriodoHTML}
 
                     <!-- Horario, receso y almuerzo (cómo se calculan las horas) -->
                     <details class="info-jornada" style="margin: -4px 0 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgba(248, 250, 252, 0.85); padding: 10px 12px;">
@@ -5858,19 +5869,24 @@ function calcularMinutosAtraso(horaEntrada, fechaEntrada) {
 }
 
 // ========== CALCULAR ESTADÍSTICAS ==========
-function calcularEstadisticas() {
-    // Obtener periodo fiscal (26 al 25)
-    const hoy = new Date();
-    const dia = hoy.getDate();
-    let inicioPeriodo, finPeriodo;
+// Período del resumen: 0 = actual, -1 = anterior (selector de la pestaña Resumen)
+let periodoResumenOffset = 0;
 
-    if (dia >= 26) {
-        inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 26);
-        finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 25);
-    } else {
-        inicioPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 26);
-        finPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 25);
-    }
+// Período fiscal (26 al 25) desplazado 'offset' meses desde el actual
+function periodoFiscal(offset = 0) {
+    const hoy = new Date();
+    const base = hoy.getMonth() + (hoy.getDate() >= 26 ? 0 : -1) + offset;
+    return { inicio: new Date(hoy.getFullYear(), base, 26), fin: new Date(hoy.getFullYear(), base + 1, 25) };
+}
+
+window.cambiarPeriodoResumen = function (offset) {
+    periodoResumenOffset = offset;
+    renderHistoryPage();
+};
+
+function calcularEstadisticas(offset = 0) {
+    // Obtener periodo fiscal (26 al 25): el actual o, con offset -1, el anterior
+    const { inicio: inicioPeriodo, fin: finPeriodo } = periodoFiscal(offset);
 
     function formatearFechaLocal(d) {
         let y = d.getFullYear();
@@ -9146,10 +9162,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 60000);
     }, 10000);
 
-    // Polling rápido de emergencia cada 10 segundos
+    // Polling rápido de emergencia cada 10 segundos (respaldo de la escucha en tiempo real)
     setInterval(() => {
         if (isAuthenticated && empleado.id) {
+            emIniciarEscucha();
             cargarConfiguracionesSistema().then(() => {
+                emRevisarAviso();
                 const em = (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false, nombre: '' };
                 if (em.activa !== _lastEmActiva) {
                     _lastEmActiva = em.activa;
@@ -9451,34 +9469,198 @@ window.enviarReporteEmergencia = async function () {
         return;
     }
     const comentarios = document.getElementById('emComments')?.value || '';
-    const statusMsg = comentarios ? `${selectedStatusVal} - ${comentarios}` : selectedStatusVal;
-
     showLoading(true);
     try {
-        const res = await jsonpRequest({
-            accion: 'guardarRegistro',
-            id: empleado.id,
-            nombre: empleado.nombre,
-            tipo: 'ESTADO',
-            razon_ausencia: statusMsg, // se guarda en columna U (RAZON_AUSENCIA)
-            lat: posicion.lat || '',
-            lng: posicion.lng || '',
-            dispositivo: deviceToken
-        });
-
-        if (res.ok) {
-            mostrarToast('Reporte de estado enviado correctamente', 'success');
-            await obtenerRegistrosEmpleado(true);
-            renderEstadoPage();
-        } else {
-            mostrarToast(res.error || 'Error al enviar reporte', 'error');
-        }
+        await emEnviarEstado(selectedStatusVal, comentarios);
+        mostrarToast('Reporte de estado enviado correctamente', 'success');
+        renderEstadoPage();
     } catch (e) {
-        mostrarToast('Error al procesar el reporte', 'error');
+        mostrarToast(e.message || 'No se pudo enviar el reporte', 'error');
     } finally {
         showLoading(false);
     }
 };
+
+// ========== Emergencia: aviso a pantalla completa y reporte en un toque ==========
+// El aviso aparece apenas se activa la alerta (escucha en tiempo real + sondeo de 10 s) hasta que la persona
+// reporta. El reporte se guarda ligado al evento (FirebaseBackend.reportarEmergencia): no exige haber marcado entrada.
+let emReporteActual = null;       // { eventoId, estado, consultado } del evento vigente
+let emAvisoPospuestoHasta = 0;
+let emEscucha = null;
+const emEventoActual = () => (configuracionesSistema && configuracionesSistema.emergencia) || { activa: false };
+const emIdActual = () => (window.FirebaseBackend && window.FirebaseBackend._eventoEmergenciaId) ? window.FirebaseBackend._eventoEmergenciaId(emEventoActual()) : '';
+
+async function emEnviarEstado(estado, comentario) {
+    const r = await window.FirebaseBackend.reportarEmergencia({
+        empleadoId: empleado.id, nombre: empleado.nombre, estado, comentario,
+        lat: (posicion && posicion.lat) || '', lng: (posicion && posicion.lng) || '', origen: 'APP'
+    });
+    if (!r || r.error) throw new Error((r && r.error) || 'No se pudo enviar el reporte');
+    emReporteActual = { eventoId: r.eventoId, estado: r.estado, consultado: true };
+    return r;
+}
+
+// Consulta (una vez por evento) si la persona ya reportó
+async function emConsultarReporte() {
+    const id = emIdActual();
+    if (!id) return null;
+    if (emReporteActual && emReporteActual.eventoId === id && emReporteActual.consultado) return emReporteActual;
+    emReporteActual = { eventoId: id, estado: null, consultado: false };
+    try {
+        const r = await window.FirebaseBackend.miReporteEmergencia(empleado.id, id);
+        if (emReporteActual.eventoId === id) { emReporteActual.estado = r ? r.estado : null; emReporteActual.consultado = true; }
+    } catch (e) { console.warn('Emergencia: no se pudo consultar el reporte', e); }
+    // Reporte hecho con una versión anterior de la app: estado en la ENTRADA de hoy, posterior al inicio del evento
+    if (emReporteActual.eventoId === id && !emReporteActual.estado) {
+        const em = emEventoActual();
+        const inicio = em.inicio ? Date.parse(em.inicio) : 0;
+        const hoy = getLocalHoyStr(new Date());
+        const ent = (registrosCompletos || []).find(x => getVal(x, 'tipo', 3) === 'ENTRADA' && getVal(x, 'fecha', 0) === hoy && x.estado);
+        const ms = ent && ent.estado_timestamp ? Number(ent.estado_timestamp) || Date.parse(ent.estado_timestamp) || 0 : 0;
+        if (ent && (!inicio || ms >= inicio)) emReporteActual.estado = String(ent.estado).startsWith('Requiere') ? 'Requiere ayuda' : 'A salvo';
+    }
+    return emReporteActual;
+}
+
+async function emRevisarAviso() {
+    if (!isAuthenticated || !empleado || !empleado.id) return;
+    const em = emEventoActual();
+    if (!em.activa) { emCerrarAviso(); return; }
+    const rep = await emConsultarReporte();
+    if (rep && rep.estado) { if (!document.querySelector('#emAviso .em-av-listo')) emCerrarAviso(); return; }
+    if (Date.now() < emAvisoPospuestoHasta) return;
+    // Ya está en pantalla: no se redibuja (perdería lo que la persona está escribiendo o el paso en curso)
+    if (document.getElementById('emAviso')) return;
+    emMostrarAviso(em);
+}
+
+function emCerrarAviso() {
+    const m = document.getElementById('emAviso');
+    if (m) m.remove();
+}
+
+function emMostrarAviso(em, paso) {
+    let m = document.getElementById('emAviso');
+    const nuevo = !m;
+    if (!m) {
+        m = document.createElement('div');
+        m.id = 'emAviso';
+        m.setAttribute('role', 'alertdialog');
+        m.setAttribute('aria-modal', 'true');
+        m.style.cssText = 'position:fixed; inset:0; z-index:100000; background:linear-gradient(160deg,#7f1d1d,#dc2626); color:#fff; display:flex; align-items:center; justify-content:center; padding:20px; overflow:auto;';
+        document.body.appendChild(m);
+    }
+    const nombreEv = escapeHtml(em.nombre || 'Emergencia');
+    const btn = 'width:100%; border:none; border-radius:18px; padding:22px 16px; font-size:21px; font-weight:900; display:flex; align-items:center; justify-content:center; gap:12px; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,.25);';
+    let cuerpo;
+    if (paso === 'ayuda') {
+        cuerpo = `<h2 style="margin:0 0 6px; font-size:24px; font-weight:900;">Pide ayuda</h2>
+            <p style="margin:0 0 14px; font-size:15px; opacity:.95;">Escribe dónde estás o qué pasa (opcional) y envía. La brigada lo verá al instante.</p>
+            <textarea id="emAvComent" rows="3" maxlength="300" placeholder="Ej.: Estoy en bodega, me torcí el tobillo" style="width:100%; box-sizing:border-box; border:none; border-radius:14px; padding:14px; font-size:16px; font-family:inherit; margin-bottom:14px;"></textarea>
+            <button type="button" onclick="emEnviarDesdeAviso('Requiere ayuda')" style="${btn} background:#fff; color:#b91c1c;"><i class="fas fa-hand-paper"></i> Enviar pedido de ayuda</button>
+            <button type="button" onclick="emMostrarAviso(emEventoActual())" style="margin-top:14px; background:none; border:none; color:#fff; font-size:15px; text-decoration:underline; cursor:pointer;">Volver</button>`;
+    } else if (paso === 'enviando') {
+        cuerpo = `<div style="font-size:42px; margin-bottom:10px;"><i class="fas fa-spinner fa-spin"></i></div>
+            <h2 style="margin:0; font-size:22px; font-weight:900;">Enviando tu reporte…</h2>
+            <p style="margin:8px 0 0; opacity:.9;">No cierres la app.</p>`;
+    } else if (paso === 'ok' || paso === 'okAyuda') {
+        const ok = paso === 'ok';
+        m.style.background = ok ? 'linear-gradient(160deg,#065f46,#16a34a)' : 'linear-gradient(160deg,#7f1d1d,#b91c1c)';
+        cuerpo = `<div class="em-av-listo" style="font-size:56px; margin-bottom:6px;"><i class="fas ${ok ? 'fa-check-circle' : 'fa-hands-helping'}"></i></div>
+            <h2 style="margin:0 0 8px; font-size:24px; font-weight:900;">${ok ? 'Reporte enviado: A SALVO' : 'Pedido de ayuda enviado'}</h2>
+            <p style="margin:0 0 18px; font-size:15px; opacity:.95;">${ok ? 'Sigue las indicaciones de la brigada y dirígete al punto de encuentro.' : 'La brigada ya fue avisada. Quédate en un lugar seguro y, si puedes, mantén el teléfono contigo.'}</p>
+            ${estado.esSupervisor ? `<button type="button" onclick="abrirTomaLista()" style="${btn} background:#0f172a; color:#fff; font-size:18px; padding:16px; margin-bottom:12px;"><i class="fas fa-clipboard-check"></i> Tomar lista</button>` : ''}
+            <button type="button" onclick="emCerrarAviso(); if (typeof renderHomePage === 'function' && currentPage === 'home') renderHomePage();" style="${btn} background:#fff; color:#0f172a; font-size:18px; padding:16px;">Entendido</button>`;
+    } else {
+        m.style.background = 'linear-gradient(160deg,#7f1d1d,#dc2626)';
+        cuerpo = `<div style="font-size:52px; margin-bottom:4px;"><i class="fas fa-exclamation-triangle fa-beat" style="--fa-animation-duration:1.4s;"></i></div>
+            <p style="margin:0; font-size:13px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; opacity:.9;">Alerta activa</p>
+            <h2 style="margin:4px 0 6px; font-size:26px; font-weight:900; line-height:1.15;">${nombreEv}</h2>
+            <p style="margin:0 0 22px; font-size:16px; opacity:.95;">Reporta tu estado <b>ahora</b>. Un toque es suficiente.</p>
+            <button type="button" onclick="emEnviarDesdeAviso('A salvo')" style="${btn} background:#fff; color:#15803d; margin-bottom:14px;"><span style="font-size:28px;">🟢</span> ESTOY A SALVO</button>
+            <button type="button" onclick="emMostrarAviso(emEventoActual(), 'ayuda')" style="${btn} background:#1f2937; color:#fff;"><span style="font-size:28px;">🔴</span> NECESITO AYUDA</button>
+            <div id="emAvError" role="alert" style="display:none; margin-top:14px; background:rgba(0,0,0,.25); border-radius:12px; padding:10px 12px; font-size:14px;"></div>
+            <button type="button" onclick="emPosponerAviso()" style="margin-top:18px; background:none; border:none; color:#fff; font-size:14px; opacity:.85; text-decoration:underline; cursor:pointer;">Recordármelo en 2 minutos</button>`;
+    }
+    m.innerHTML = `<div style="width:100%; max-width:420px; text-align:center;">${cuerpo}</div>`;
+    if (nuevo) { try { if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]); } catch (e) { } }
+    if (paso === 'ayuda') { const t = document.getElementById('emAvComent'); if (t) t.focus(); }
+}
+
+window.emMostrarAviso = emMostrarAviso;
+window.emCerrarAviso = emCerrarAviso;
+window.emEventoActual = emEventoActual;
+window.emPosponerAviso = function () { emAvisoPospuestoHasta = Date.now() + 2 * 60 * 1000; emCerrarAviso(); };
+window.emEnviarDesdeAviso = async function (estado) {
+    const comentario = estado === 'Requiere ayuda' ? (document.getElementById('emAvComent')?.value || '') : '';
+    emMostrarAviso(emEventoActual(), 'enviando');
+    try {
+        await emEnviarEstado(estado, comentario);
+        emMostrarAviso(emEventoActual(), estado === 'A salvo' ? 'ok' : 'okAyuda');
+        if (currentPage === 'estado') renderEstadoPage();
+    } catch (e) {
+        emMostrarAviso(emEventoActual(), estado === 'Requiere ayuda' ? 'ayuda' : undefined);
+        const box = document.getElementById('emAvError');
+        if (box) { box.textContent = (e.message || 'No se pudo enviar') + '. Revisa tu conexión e inténtalo otra vez.'; box.style.display = 'block'; }
+        else mostrarToast(e.message || 'No se pudo enviar el reporte', 'error');
+    }
+};
+
+// ========== Toma de lista (supervisores, Sup. Admin y Admin Master) ==========
+// Usa el tablero en vivo del panel (JS/supervisor/supervisor_emergencias.js): reportes al instante,
+// pendientes en planta, «Marcar a salvo» en el punto de encuentro (queda con el nombre de quien toma la lista).
+window.abrirTomaLista = async function () {
+    if (!estado.esSupervisor) return;
+    if (typeof window.cargarEmergenciasSupervisor !== 'function') { mostrarToast('Actualiza la app para usar la toma de lista', 'warning'); return; }
+    emCerrarAviso();
+    window.EM_QUIEN = empleado.nombre || empleado.id;
+    window.EM_QUIEN_ID = empleado.id;
+    let m = document.getElementById('emListaApp');
+    if (!m) {
+        m = document.createElement('div');
+        m.id = 'emListaApp';
+        m.className = 'em-lista-app';
+        m.innerHTML = `<div class="em-lista-app-cab"><h2><i class="fas fa-clipboard-check"></i> Toma de lista</h2>
+            <button type="button" onclick="cerrarTomaLista()" aria-label="Cerrar toma de lista"><i class="fas fa-times"></i> Cerrar</button></div>
+            <div class="em-lista-app-cuerpo"><div id="emPanelEnVivo"><div class="em-cargando"><i class="fas fa-spinner fa-spin"></i> Conectando en tiempo real…</div></div></div>`;
+        document.body.appendChild(m);
+    }
+    // Nombres, áreas y teléfonos del personal (una vez por sesión)
+    if (!Array.isArray(window.empCache) || !window.empCache.length) {
+        try {
+            const snap = await window.firebase.firestore().collection('empleados').get();
+            window.empCache = snap.docs.map(d => {
+                const x = d.data() || {};
+                return { id: d.id, nombre: x.nombre || d.id, area: x.area || '', telefono: x.telefono || x.celular || '', activo: x.activo };
+            }).filter(e => String(e.activo || 'SI').toUpperCase() !== 'NO');
+        } catch (e) { console.warn('Toma de lista: no se cargó el personal', e); }
+    }
+    window.cargarEmergenciasSupervisor();
+};
+window.cerrarTomaLista = function () {
+    const m = document.getElementById('emListaApp');
+    if (m) m.remove();
+};
+
+// Escucha en tiempo real de configuracion/emergencia (además del sondeo de 10 s)
+function emIniciarEscucha() {
+    if (emEscucha || !window.firebase || !window.firebase.firestore || !isAuthenticated) return;
+    try {
+        emEscucha = window.firebase.firestore().collection('configuracion').doc('emergencia').onSnapshot(doc => {
+            if (!configuracionesSistema) configuracionesSistema = {};
+            const antes = !!(configuracionesSistema.emergencia && configuracionesSistema.emergencia.activa);
+            configuracionesSistema.emergencia = doc.exists ? doc.data() : { activa: false };
+            const ahora = !!configuracionesSistema.emergencia.activa;
+            if (antes !== ahora) {
+                _lastEmActiva = ahora;
+                actualizarInterfazSegunCargo();
+                if (currentPage === 'home') renderHomePage();
+                else if (currentPage === 'estado') renderEstadoPage();
+            }
+            emRevisarAviso();
+        }, err => { console.warn('Emergencia (escucha):', err); emEscucha = null; });
+    } catch (e) { emEscucha = null; }
+}
 
 window.toggleAlertaEmergencia = async function (activa) {
     const nombre = document.getElementById('emEventName')?.value || '';
@@ -9533,6 +9715,9 @@ async function renderEstadoPage() {
 
     if (estado.esSupervisor) {
         html += `
+                <button type="button" onclick="abrirTomaLista()" style="width:100%; margin-bottom:16px; border:none; border-radius:16px; padding:16px; background:${em.activa ? '#0f172a' : '#334155'}; color:#fff; font-size:17px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:10px; cursor:pointer; box-shadow:0 6px 16px rgba(15,23,42,.25);">
+                    <i class="fas fa-clipboard-check"></i> Tomar lista ${em.activa ? '<span style="font-size:12px; font-weight:700; background:#dc2626; border-radius:999px; padding:3px 9px;">EN VIVO</span>' : '<span style="font-size:12px; font-weight:600; opacity:.8;">(último evento)</span>'}
+                </button>
                 <div class="glass-card mb-4">
                     <h4 class="fw-bold mb-3" style="color: #0f172a; margin:0 0 12px 0;"><i class="fas fa-tools me-2 text-primary"></i>Panel de Control de Emergencias</h4>
                     <div class="form-group mb-3">
@@ -9552,20 +9737,18 @@ async function renderEstadoPage() {
     }
 
     if (em.activa) {
-        const hoyStrLocal = getLocalHoyStr(new Date());
-        const yaReportado = registrosCompletos.some(r => {
-            const rFecha = getVal(r, 'fecha', 0);
-            const rTipo = getVal(r, 'tipo', 3);
-            const rEstado = r.estado; // propiedad estado en ENTRADA
-            return rTipo === 'ENTRADA' && rFecha === hoyStrLocal && rEstado;
-        });
+        // Ya reportado = hay reporte para ESTE evento (un estado de una prueba anterior del día no cuenta)
+        const rep = await emConsultarReporte();
+        const yaReportado = !!(rep && rep.estado);
 
         if (yaReportado) {
+            const ayudaRep = rep.estado === 'Requiere ayuda';
             html += `
                     <div class="glass-card text-center p-4">
-                        <div class="text-success mb-2" style="font-size:32px;"><i class="fas fa-check-double" style="color:#10b981;"></i></div>
-                        <h4 class="fw-bold text-success" style="color:#16a34a; margin:0 0 8px 0;">Reporte Enviado</h4>
-                        <p class="text-muted small" style="margin:0 0 15px 0;">Tu estado para este evento ha sido registrado correctamente.</p>
+                        <div class="text-success mb-2" style="font-size:32px;"><i class="fas ${ayudaRep ? 'fa-hands-helping' : 'fa-check-double'}" style="color:${ayudaRep ? '#dc2626' : '#10b981'};"></i></div>
+                        <h4 class="fw-bold" style="color:${ayudaRep ? '#b91c1c' : '#16a34a'}; margin:0 0 8px 0;">Reporte enviado: ${ayudaRep ? 'requieres ayuda' : 'a salvo'}</h4>
+                        <p class="text-muted small" style="margin:0 0 15px 0;">Tu estado para este evento quedó registrado. Si cambia, repórtalo de nuevo.</p>
+                        <button onclick="emMostrarAviso(emEventoActual())" class="btn w-100" style="border-radius:12px; width:100%; padding:12px; background:#fef2f2; border:1px solid #fecaca; font-weight:700; cursor:pointer; color:#b91c1c; margin-bottom:8px;">Cambiar mi estado</button>
                         <button onclick="renderHomePage()" class="btn btn-secondary w-100 mt-2" style="border-radius:12px; width:100%; padding:12px; background:#e2e8f0; border:none; font-weight:700; cursor:pointer; color:#475569;">Ir al Inicio</button>
                     </div>
                     `;

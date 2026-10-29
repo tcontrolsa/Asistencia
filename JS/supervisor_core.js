@@ -3,6 +3,7 @@
 // ============================================================
 const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
 const HORA_ENTRADA_REF = 450; // 7:30
+const TOLERANCIA_ENTRADA_MIN = 5; // hasta 07:35 no cuenta como atraso ni como faltante
 const HORA_SALIDA_REF = 975;  // 16:15
 const LAT_EMPRESA = -0.1288771313385675;
 const LNG_EMPRESA = -78.47896772889067;
@@ -640,11 +641,15 @@ function calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, empId) {
   let ultimoSalidaMins = null;
 
   if (Array.isArray(periodosDia)) {
+    let primerTramo = true;
     periodosDia.forEach(p => {
       if (!p || !p.entrada || !p.salida) return;
       let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
       let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
       if (mE === null || mS === null || mS <= mE) return;
+      // Tolerancia de entrada (pedido 2026-10-27): llegar hasta 5 min tarde no es atraso ni faltante
+      if (primerTramo && mE > HORA_ENTRADA_REF && mE <= HORA_ENTRADA_REF + TOLERANCIA_ENTRADA_MIN) mE = HORA_ENTRADA_REF;
+      primerTramo = false;
 
       if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
         if (!hasLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870) {
@@ -767,6 +772,27 @@ const ALMUERZO_MIN = 45;
 const EXTRA50_UMBRAL_MIN = 45;
 const EXTRA50_TOPE_MIN = 120;
 const PENALIZACION_SIN_SALIDA_MIN = 15;
+
+// Texto del desglose de «T. Descontar» de un día (columna del historial del período)
+function desgloseDescontarTexto(b, aDescontar) {
+  if (!b || b.rawDescuento === undefined) return 'Tiempo a descontar después de permisos y de la bolsa de 4 h del período';
+  const t = m => minutosAHHMMSS(m || 0).slice(0, 5);
+  const sinJustificar = Math.max(0, (b.rawTJ || 0) - (b.penalSinSalida || 0));
+  const lineas = [];
+  if (b.faltante) lineas.push(`Faltó ${t(b.faltante)} de la jornada de 8 h`);
+  if (b.tiempoMedico) lineas.push(`Permiso médico ${t(b.tiempoMedico)} (no se descuenta)`);
+  if (b.tiempoJustificado) lineas.push(`Tiempo justificado ${t(b.tiempoJustificado)} (no se descuenta)`);
+  if (b.tiempoPersonal) lineas.push(`Permiso personal ${t(b.tiempoPersonal)} (sí se descuenta)`);
+  if (sinJustificar) lineas.push(`Sin justificar ${t(sinJustificar)}`);
+  if (b.atrasoMinsDia && b.atrasoMinsDia > (b.rawTJ || 0)) lineas.push(`Atraso ${t(b.atrasoMinsDia)}`);
+  if (b.penalSinSalida) lineas.push(`No registró salida +${t(b.penalSinSalida)}`);
+  lineas.push(`Descuento del día ${t(b.rawDescuento)}`);
+  if (b.consumo4h) lineas.push(`Bolsa de 4 h usada hoy −${t(b.consumo4h)} (quedan ${t(b.saldoBolsa)} para el resto del período)`);
+  else if (b.rawDescuento) lineas.push('Bolsa de 4 h ya agotada en días anteriores');
+  lineas.push(`A descontar ${t(aDescontar)}`);
+  return lineas.join(' · ');
+}
+window.desgloseDescontarTexto = desgloseDescontarTexto;
 
 // Descansos de lunes a viernes desde el 26/09/2026 (pedido 2026-10-26): receso 10:00–10:15 (15 min) y almuerzo
 // 30 min (turnos 12:30–13:00 y 13:00–13:30; para el cálculo cuenta 12:30). Juntos son los 45 min de siempre,
@@ -3560,7 +3586,8 @@ window.sortAsistencia = sortAsistencia;
 // ============================================================
 const COLUMNAS_DISPONIBLES = [
   { id: 'area', label: 'Área', tipo: 'texto', cat: 'general', catLabel: 'Datos Generales', icono: 'fa-building', color: '#475569', colorBg: '#f8fafc', colorHeader: '#334155' },
-  { id: 'asistencias', label: 'Asistencias', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-user-check', color: '#047857', colorBg: '#ecfdf5', colorHeader: '#047857' },
+  { id: 'asistencias', label: 'Asist. L-V', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-user-check', color: '#047857', colorBg: '#ecfdf5', colorHeader: '#047857', desc: 'Días de lunes a viernes con asistencia en planta (sin sábados, domingos, feriados ni días solo en campo)' },
+  { id: 'diasTrabajados', label: 'Días Trab.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-calendar-check', color: '#0f766e', colorBg: '#f0fdfa', colorHeader: '#0f766e', desc: 'Total de días trabajados: lunes a viernes, sábados/domingos/feriados y días en campo (sin repetir)' },
   { id: 'entradas', label: 'Entradas Reg.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-sign-in-alt', color: '#059669', colorBg: '#ecfdf5', colorHeader: '#059669' },
   { id: 'entradasAuto', label: 'Entradas Auto.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-robot', color: '#d97706', colorBg: '#fffbeb', colorHeader: '#d97706' },
   { id: 'salidas', label: 'Salidas Reg.', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-sign-out-alt', color: '#0284c7', colorBg: '#f0f9ff', colorHeader: '#0284c7' },
@@ -3569,11 +3596,12 @@ const COLUMNAS_DISPONIBLES = [
   { id: 'faltas', label: 'Faltas', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-calendar-times', color: '#b91c1c', colorBg: '#fef2f2', colorHeader: '#b91c1c' },
   { id: 'diasVacaciones', label: 'Vacaciones', tipo: 'numero', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-umbrella-beach', color: '#059669', colorBg: '#ecfdf5', colorHeader: '#059669' },
   { id: 'diasJustificados', label: 'Días Justificados', tipo: 'numero', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-shield-alt', color: '#7c3aed', colorBg: '#f5f3ff', colorHeader: '#7c3aed' },
-  { id: 'diasExtras', label: 'Días Extras', tipo: 'numero', cat: 'extras', catLabel: 'Horas Extraordinarias', icono: 'fa-calendar-plus', color: '#4338ca', colorBg: '#eef2ff', colorHeader: '#4338ca' },
+  { id: 'diasExtras', label: 'Sáb/Dom/Fer', tipo: 'numero', cat: 'extras', catLabel: 'Horas Extraordinarias', icono: 'fa-calendar-plus', color: '#4338ca', colorBg: '#eef2ff', colorHeader: '#4338ca', desc: 'Días trabajados en sábado, domingo o feriado (no se cuentan en Asist. L-V)' },
   { id: 'atrasos', label: 'Nº Atrasos', tipo: 'numero', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-clock', color: '#d97706', colorBg: '#fffbeb', colorHeader: '#d97706' },
   { id: 'minutosAtrasos', label: 'Tiempo Atrasos', tipo: 'tiempo', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-hourglass-half', color: '#b45309', colorBg: '#fffbeb', colorHeader: '#b45309' },
-  { id: 'almPlanta', label: 'Alm. Planta', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-utensils', color: '#0284c7', colorBg: '#f0f9ff', colorHeader: '#0284c7' },
-  { id: 'almFuera', label: 'Alm. Fuera', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-box', color: '#0369a1', colorBg: '#f0f9ff', colorHeader: '#0369a1' },
+  { id: 'almPlanta', label: 'Alm. Planta', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-utensils', color: '#0284c7', colorBg: '#f0f9ff', colorHeader: '#0284c7', desc: 'Días que almorzó en planta, todos los días trabajados (incluye sábados, domingos y feriados)' },
+  { id: 'almFuera', label: 'Alm. Fuera', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-box', color: '#0369a1', colorBg: '#f0f9ff', colorHeader: '#0369a1', desc: 'Días que almorzó fuera (o salió antes de las 09:30)' },
+  { id: 'almSinRegistro', label: 'Alm. sin reg.', tipo: 'numero', cat: 'almuerzos', catLabel: 'Almuerzos', icono: 'fa-question-circle', color: '#64748b', colorBg: '#f8fafc', colorHeader: '#64748b', desc: 'Días trabajados sin registro de almuerzo (no eligió planta ni fuera, o solo trabajo en campo sin marcar entrada). Planta + Fuera + Sin reg. = Días Trab.' },
   { id: 'puntualidad', label: 'Puntualidad', tipo: 'pct', cat: 'asistencia', catLabel: 'Asistencia y Puntualidad', icono: 'fa-chart-pie', color: '#15803d', colorBg: '#f0fdf4', colorHeader: '#15803d' },
   { id: 'permisoMedico', label: 'Permiso Médico', tipo: 'tiempo', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-notes-medical', color: '#0d9488', colorBg: '#f0fdfa', colorHeader: '#0d9488' },
   { id: 'permisoPersonal', label: 'Permiso Personal', tipo: 'tiempo', cat: 'permisos', catLabel: 'Permisos y Descuentos', icono: 'fa-user-clock', color: '#7c3aed', colorBg: '#f5f3ff', colorHeader: '#7c3aed' },
@@ -4221,6 +4249,10 @@ function cargarReportes() {
       }
     });
 
+    // Días trabajados sin repetir (L-V en planta, fin de semana/feriado y campo) y almuerzos sin registrar
+    const diasTrabajadosSet = new Set([...diasAsistidosPlantaSet, ...diasExtrasSet, ...diasCampoSet]);
+    // Cargo «Sin asistencia»: no marca, así que no tiene faltas ni tiempo por justificar o descontar
+    const noAplicaAsistencia = String(e.cargo || '').trim().toUpperCase() === 'SIN ASISTENCIA';
     let diasTotalesTrabajados = diasAsistidosPlantaSet.size + diasCampoSet.size;
     puntualidad = diasTotalesTrabajados ? (esPasanteEmp ? 100 : Math.round((1 - atrasos / diasTotalesTrabajados) * 100)) : 0;
 
@@ -4232,19 +4264,22 @@ function cargarReportes() {
       esEliminado: !!e.esEliminado,
       foto_url: e.foto_url,
       asistencias: diasAsistidosPlantaSet.size,
+      diasTrabajados: diasTrabajadosSet.size,
+      noAplicaAsistencia,
       diasCampo: diasCampoSet.size,
-      faltas: diasFaltasSet.size,
+      faltas: noAplicaAsistencia ? 0 : diasFaltasSet.size,
       diasVacaciones: diasVacacionesSet.size,
       diasJustificados: diasJustificadosSet.size,
       diasExtras: diasExtrasSet.size,
       permisoMedico: totalTiempoMedico,
       permisoPersonal: totalTiempoPersonal,
-      tiempoPorJustificar: esPasanteEmp ? totalTiempoPorJustificar : Math.max(0, totalTiempoPorJustificar - 240),
-      tiempoADescontar: esPasanteEmp ? totalDescuentoBruto : Math.max(0, totalDescuentoBruto - 240),
+      tiempoPorJustificar: noAplicaAsistencia ? 0 : esPasanteEmp ? totalTiempoPorJustificar : Math.max(0, totalTiempoPorJustificar - 240),
+      tiempoADescontar: noAplicaAsistencia ? 0 : esPasanteEmp ? totalDescuentoBruto : Math.max(0, totalDescuentoBruto - 240),
       atrasos: atrasos,
       minutosAtrasos: minutosAtrasos,
       almPlanta: almPlanta,
       almFuera: almFuera,
+      almSinRegistro: noAplicaAsistencia ? 0 : Math.max(0, diasTrabajadosSet.size - almPlanta - almFuera),
       puntualidad: puntualidad,
       horasExtra50: horasExtra50,
       horasExtra100: horasExtra100,
@@ -4569,7 +4604,7 @@ function filtrarTablaReportes() {
         </th>`;
       } else {
         headerHtml += `<th onclick="sortarTablaReportes('${col.id}')" style="text-align:center; cursor:pointer; min-width:115px; background:${col.colorBg || '#f8fafc'}; border-bottom:2.5px solid ${col.color || '#2563eb'};">
-          <div style="display:flex; align-items:center; justify-content:center; gap:4px;" title="${col.catLabel || col.label}">
+          <div style="display:flex; align-items:center; justify-content:center; gap:4px;" title="${col.desc || col.catLabel || col.label}">
             ${iconHtml}<span style="color:${col.color || '#1e293b'}; font-weight:700;">${col.label}</span> ${sortIcon(col.id)}
           </div>
         </th>`;
@@ -5455,7 +5490,12 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         rawTJ,
         rawDescuento,
         atrasoMinsDia,
-        salidaTempMinsDia
+        salidaTempMinsDia,
+        // Desglose para la columna T. Descontar
+        faltante: (isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet || esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario),
+        tiempoPersonal, tiempoMedico, tiempoJustificado,
+        penalSinSalida: (!esFestivo && !((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet)) ? PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia) : 0,
+        saldoBolsa: saldoBeneficio4h
       };
     });
 
@@ -6223,7 +6263,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       <td style="font-size:11px; padding:6px 8px; text-align:center;">${aBadge}</td>
       <td style="text-align:center; font-size:10.5px; padding:6px 8px;">${celdaNovedadesHtml}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;">
-        ${descuentoDiaVis > 0 ? `<span style="color:#dc2626; font-weight:800; background:#fee2e2; padding:2px 7px; border-radius:6px; border:1px solid #fca5a5;" title="Tiempo por justificar (después de permisos y de la bolsa de 4 h del período)">${minutosAHHMMSS(descuentoDiaVis)}</span>` : '<span style="color:#94a3b8;">—</span>'}
+        ${descuentoDiaVis > 0 ? `<span style="color:#dc2626; font-weight:800; background:#fee2e2; padding:2px 7px; border-radius:6px; border:1px solid #fca5a5; cursor:help;" title="${escapeHtml(desgloseDescontarTexto(infoBeneficio, descuentoDiaVis))}">${minutosAHHMMSS(descuentoDiaVis)}</span>`
+          : consumo4h > 0 ? `<span style="color:#64748b; font-size:10px; font-weight:700; cursor:help;" title="${escapeHtml(desgloseDescontarTexto(infoBeneficio, 0))}"><i class="fas fa-piggy-bank" style="font-size:9px;"></i> Bolsa −${minutosAHHMMSS(consumo4h)}</span>`
+          : '<span style="color:#94a3b8;">—</span>'}
       </td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}">${celdaH50Html}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}">${celdaH100Html}</td>
@@ -6599,6 +6641,18 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         <div id="contenedorBannerRegularizarDetalle">
           ${bannerDetalleHTML(fechasARegularizar)}
         </div>
+
+        <details class="ayuda-descontar" style="margin:0 0 10px; font-size:12px; color:#475569;">
+          <summary style="cursor:pointer; font-weight:700; color:#2563eb; display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-question-circle"></i> ¿Cómo se calcula «T. Descontar»?</summary>
+          <div style="margin-top:8px; padding:10px 14px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; line-height:1.55;">
+            <div>1. <b>Faltante del día</b> = 8 horas de jornada − horas trabajadas de 07:30 a 16:15 (sin receso ni almuerzo). Entrar hasta las <b>07:35</b> no cuenta (tolerancia).</div>
+            <div>2. Al faltante se le restan los <b>permisos</b>: médico, personal y tiempo justificado. Lo que queda es <b>tiempo sin justificar</b>.</div>
+            <div>3. Se suman <b>15 min</b> por cada día sin registrar la salida.</div>
+            <div>4. <b>El permiso personal sí se descuenta</b> (el médico y el tiempo justificado no). Descuento del día = permiso personal + tiempo sin justificar (o el atraso, si es mayor).</div>
+            <div>5. Cada período hay una <b>bolsa de 4 horas</b>: se usa en orden de fecha y cubre los primeros descuentos (atrasos, faltantes, permiso personal y penalizaciones). Cuando se acaba, lo demás se descuenta. Los días cubiertos por la bolsa muestran <i class="fas fa-piggy-bank"></i> «Bolsa −tiempo».</div>
+            <div style="margin-top:6px; color:#64748b;">Pasa el cursor sobre un valor de la columna T. Descontar para ver su desglose.</div>
+          </div>
+        </details>
 
         <div class="table-wrapper">
           <div class="table-scroll-wrap">

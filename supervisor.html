@@ -16,7 +16,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20261027_02"></script>
+  <script src="./JS/firebase_backend.js?v=20261029_01"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -552,7 +552,8 @@
       overflow-x: auto;
     }
     #reporteCustomScroll table.employee-table {
-      width: 100%;
+      width: auto;          /* columnas al ancho de su contenido (antes se estiraban al 100 %) */
+      min-width: 0;
       border-collapse: separate;
       border-spacing: 0;
       font-size: 12px;
@@ -748,6 +749,22 @@
       border-radius: 8px; padding: 7px 8px; background: #fff; cursor: pointer; max-width: 210px;
     }
     .rep2-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+    .rep2-filtros-resumen { margin: 8px 0 0; padding: 8px 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12.5px; color: #334155; line-height: 1.5; }
+    .rep2-filtros-resumen:empty { display: none; }
+    .rep2-filtros-resumen i { color: #2563eb; margin-right: 4px; }
+    .rep2-filtros-resumen .rep2-ocultos { color: #92400e; }
+    .rep2-ayuda-filtros { margin: 6px 0 0; font-size: 12.5px; color: #475569; }
+    .rep2-ayuda-filtros summary { cursor: pointer; font-weight: 700; color: #2563eb; display: inline-flex; align-items: center; gap: 6px; list-style: none; }
+    .rep2-ayuda-filtros summary::-webkit-details-marker { display: none; }
+    .rep2-ayuda-filtros ul { margin: 8px 0 4px; padding: 10px 14px 10px 28px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; line-height: 1.55; }
+    .rep2-ayuda-filtros li { margin-bottom: 4px; }
+    /* Reportes: columnas compactas (el encabezado puede ir en dos líneas) */
+    #reporteCustomHeaders th.rep-th-compacta { padding: 6px 6px !important; white-space: normal; line-height: 1.15; }
+    #reporteCustomHeaders th.rep-th-compacta span { font-size: 10.5px; }
+    #reporteCustomBody td { padding-left: 6px; padding-right: 6px; }
+    .rep2-solo-datos { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #334155; background: #fff; border: 1px solid var(--g200, #e2e8f0); border-radius: 999px; padding: 6px 12px; cursor: pointer; white-space: nowrap; margin: 0; }
+    .rep2-solo-datos input { accent-color: #2563eb; width: 15px; height: 15px; margin: 0; cursor: pointer; }
     .rep2-pills .btn-filter-pill {
       font-family: inherit; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
       border: 1px solid var(--g200) !important; background: #fff !important; color: var(--g600) !important; cursor: pointer;
@@ -1129,6 +1146,7 @@
       transform: translateX(22px);
     }
   </style>
+  <link rel="stylesheet" href="./CSS/emergencias.css?v=20261029_02">
 </head>
 
 <body>
@@ -1645,6 +1663,9 @@
               <option value="solo_desv">Solo desvinculados</option>
               <option value="solo_elim">Solo eliminados</option>
             </select>
+            <label class="rep2-solo-datos" title="Oculta a quienes tienen todas las columnas visibles en cero en este período">
+              <input type="checkbox" id="chkSoloConDatosRep" checked onchange="cambiarSoloConDatosReporte()"> Solo con datos
+            </label>
             <div class="rep2-pills" id="filtrosRapidosCargo">
               <button type="button" class="btn-filter-pill active" data-cargo="" onclick="setFiltroRapidoReporte('', this)">Todos</button>
               <button type="button" class="btn-filter-pill" data-cargo="pasante" onclick="setFiltroRapidoReporte('pasante', this)">Pasantes</button>
@@ -1655,6 +1676,22 @@
             <input type="checkbox" id="chkIncluirDesvinculadosRep" hidden>
             <input type="checkbox" id="chkIncluirEliminadosRep" hidden>
           </div>
+
+          <!-- Qué se está mostrando (se actualiza con cada filtro) y ayuda de los filtros -->
+          <div id="rep2FiltrosResumen" class="rep2-filtros-resumen" role="status" aria-live="polite"></div>
+          <details class="rep2-ayuda-filtros">
+            <summary><i class="fas fa-question-circle"></i> ¿Qué hace cada filtro?</summary>
+            <ul>
+              <li><b>Buscar:</b> escribe parte del nombre, el ID o el área del colaborador.</li>
+              <li><b>Áreas:</b> muestra solo a las personas de un área.</li>
+              <li><b>Activos / desvinculados / eliminados:</b> elige qué colaboradores incluir. Por defecto, solo los activos.</li>
+              <li><b>Solo con datos:</b> si está marcado, <b>solo aparecen los colaboradores que tienen información en las columnas de la pestaña elegida</b>. Por ejemplo, en «Horas extra» solo quienes hicieron horas extra; en «Permisos», solo quienes tuvieron vacaciones o permisos. Los demás no se borran, solo se ocultan: desmárcalo para ver a todos.</li>
+              <li><b>Todos / Pasantes / Sin asistencia:</b> «Pasantes» muestra solo pasantes; «Sin asistencia», a quienes no registraron asistencia de lunes a viernes en el período.</li>
+              <li><b>Pestañas (Resumen, Asistencia, Horas extra…):</b> cambian las columnas que se ven. Pasa el cursor sobre el título de una columna para ver qué cuenta.</li>
+              <li><b>Período y fechas</b> (arriba): todo el reporte se calcula para ese rango.</li>
+              <li><b>Totales de arriba</b> (H.E. 50 %, 100 %, faltas…): suman solo a los colaboradores que se ven en la tabla.</li>
+            </ul>
+          </details>
 
           <!-- FILA 4: VISTAS (PESTAÑAS) -->
           <div class="rep2-tabs-row">
@@ -2825,84 +2862,16 @@
           </button>
         </div>
 
-        <!-- SUBPANEL 1: CONTROL DE SIMULACROS Y EMERGENCIAS -->
+        <!-- SUBPANEL 1: CONTROL DE SIMULACROS Y EMERGENCIAS (en vivo: JS/supervisor/supervisor_emergencias.js) -->
         <div id="subpanel-servicios-emergencias" class="subpanel active">
-          <div style="background:#ffffff; border:1px solid var(--g200); border-radius:12px; padding:20px; margin-bottom:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+          <div class="em-card">
+            <div class="em-cab">
               <div>
-                <h2 style="font-size:20px; font-weight:800; color:#0f172a; margin:0; display:flex; align-items:center; gap:8px;">
-                  <i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i> Control de Simulacros y Emergencias
-                </h2>
-                <p style="font-size:13px; color:#64748b; margin:5px 0 0 0;">Monitoreo en tiempo real de reportes de estado del personal.</p>
-              </div>
-              <div style="display:flex; gap:10px;">
-                <button class="btn" id="btnRecargarEmergencia" onclick="cargarEmergenciasSupervisor()" style="background:#ffffff; border:1px solid #cbd5e1; border-radius:8px; padding:8px 16px; font-weight:600; font-size:13px; color:#334155; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                  <i class="fas fa-sync-alt"></i> Actualizar
-                </button>
+                <h2><i class="fas fa-exclamation-triangle"></i> Control de Simulacros y Emergencias</h2>
+                <p>Los reportes del personal llegan en tiempo real: no hace falta actualizar.</p>
               </div>
             </div>
-
-            <!-- Panel de Activación/Desactivación de Alerta -->
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px; margin-bottom:20px;">
-              <h3 style="font-size:14px; font-weight:700; color:#1e293b; margin:0 0 10px 0;"><i class="fas fa-bullhorn me-2 text-primary"></i>Panel de Activación de Alerta</h3>
-              <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
-                <div style="flex:1; min-width:250px;">
-                  <label style="display:block; font-size:11px; font-weight:600; color:#64748b; margin-bottom:6px;">Nombre del Evento (Ej. Simulacro de Sismo 2026)</label>
-                  <input type="text" id="supEmEventName" placeholder="Ingrese nombre del evento..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
-                </div>
-                <div style="display:flex; gap:10px;">
-                  <button id="btnSupEmStart" onclick="toggleEmergenciaSupervisor(true)" style="background:#dc2626; color:white; border:none; border-radius:8px; padding:9px 16px; font-weight:700; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                    🚨 Iniciar Alerta
-                  </button>
-                  <button id="btnSupEmStop" onclick="toggleEmergenciaSupervisor(false)" style="background:#16a34a; color:white; border:none; border-radius:8px; padding:9px 16px; font-weight:700; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                    🟢 Finalizar Alerta
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Event status summary -->
-            <div id="statusEmergenciaDetalle" style="margin-bottom:20px;"></div>
-
-            <!-- Split stats: A salvo vs Requiere Ayuda vs Sin Reportar -->
-            <div class="row" style="display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
-              <div style="flex:1; min-width:200px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:12px; padding:15px; text-align:center;">
-                <div style="font-size:24px; margin-bottom:4px;">🟢</div>
-                <div style="font-size:12px; font-weight:700; color:#065f46;">A SALVO / SIN NOVEDADES</div>
-                <div style="font-size:28px; font-weight:800; color:#047857; margin-top:5px;" id="numASalvo">0</div>
-              </div>
-              <div style="flex:1; min-width:200px; background:#fef2f2; border:1px solid #fca5a5; border-radius:12px; padding:15px; text-align:center;">
-                <div style="font-size:24px; margin-bottom:4px;">🔴</div>
-                <div style="font-size:12px; font-weight:700; color:#991b1b;">REQUIEREN ASISTENCIA</div>
-                <div style="font-size:28px; font-weight:800; color:#b91c1c; margin-top:5px;" id="numRequiereAyuda">0</div>
-              </div>
-              <div style="flex:1; min-width:200px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px; text-align:center;">
-                <div style="font-size:24px; margin-bottom:4px;">⚪</div>
-                <div style="font-size:12px; font-weight:700; color:#475569;">PENDIENTES (SIN REPORTAR)</div>
-                <div style="font-size:28px; font-weight:800; color:#334155; margin-top:5px;" id="numPendientes">0</div>
-              </div>
-            </div>
-
-            <!-- Tables/Lists of users -->
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px;">
-              <h3 style="font-size:15px; font-weight:700; color:#1e293b; margin:0 0 12px 0;">Detalle de Reportes por Empleado</h3>
-              <div class="table-wrapper" style="overflow: auto; max-height: 480px; border-radius: 8px;">
-                <table class="employee-table" style="width:100%; border-collapse:collapse;">
-                  <thead style="position: sticky; top: 0; z-index: 10; background: #f1f5f9; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
-                    <tr style="background:#f1f5f9; border-bottom:2px solid #e2e8f0;">
-                      <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Empleado</th>
-                      <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Área</th>
-                      <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Estado</th>
-                      <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Detalle / Observación</th>
-                      <th style="padding:12px; text-align:left; font-size:12px; font-weight:700; color:#475569;">Hora de Reporte</th>
-                    </tr>
-                  </thead>
-                  <tbody id="listaReportesEmergenciaBody">
-                    <!-- Row items rendered dynamically -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <div id="emPanelEnVivo"><div class="em-cargando"><i class="fas fa-spinner fa-spin"></i> Conectando en tiempo real…</div></div>
           </div>
         </div>
 
@@ -5280,17 +5249,17 @@
 
   <script src="./JS/openwa_service.js?v=20261027_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261027_01"></script>
+  <script src="./JS/supervisor_core.js?v=20261027_04"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261003_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261013_02"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
-  <script src="./JS/supervisor/supervisor_emergencias.js?v=20260923_01"></script>
+  <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_02"></script>
   <script src="./JS/evaluacion_desempeno.js?v=20261026_01"></script>
   <script src="./JS/notificaciones.js?v=20261027_01"></script>
   <script src="./JS/visitas_anfitrion.js?v=20261027_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20261006_01"></script>
-  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261027_01"></script>
+  <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261027_04"></script>
 
   <script>
     // Lógica para colapsar barra lateral y recordar su estado + menú de hamburguesa en móvil
