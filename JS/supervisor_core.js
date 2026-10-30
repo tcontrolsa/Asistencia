@@ -7378,6 +7378,7 @@ function cambiarPanel(panel) {
     detalle: 'Detalle de Empleado',
     opciones: 'Opciones adicionales',
     whatsapp: 'Notificaciones WhatsApp',
+    soporte: 'Soporte WhatsApp',
     desempeno: 'Evaluación de desempeño'
   };
   const titleText = titles[panel] || 'Supervisor';
@@ -7410,6 +7411,9 @@ function cambiarPanel(panel) {
     else if (panel === 'visitas') {
       cargarPanelVisitas();
     }
+    else if (panel === 'soporte') {
+      if (typeof window.cargarPanelSoporte === 'function') window.cargarPanelSoporte();
+    }
     else if (panel === 'opciones') {
       if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
       if (window.poblarTablaRolesActuales) window.poblarTablaRolesActuales();
@@ -7420,6 +7424,13 @@ function cambiarPanel(panel) {
   }
 }
 window.cambiarPanel = cambiarPanel;
+
+// Soporte WhatsApp: solo el Admin Master ve el menú (el puente además exige su token)
+function mostrarSoporteSegunRol(rol) {
+  const ok = rol === 'ADMIN_MASTER';
+  if ($('navItemSoporte')) $('navItemSoporte').style.display = ok ? 'flex' : 'none';
+  if (ok && typeof window.iniciarContadorSoporte === 'function') window.iniciarContadorSoporte();
+}
 
 // ============================================================
 // SECCIÓN PLANIFICADOR DE MENÚ SEMANAL
@@ -9226,6 +9237,7 @@ async function _cargarDatosCompletos(force = false, silencioso = false, forceShe
         if ($('navItemSimulador')) $('navItemSimulador').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
         if ($('waAvanzado')) $('waAvanzado').style.display = (rol === 'ADMIN_MASTER') ? 'block' : 'none';
         if ($('navItemWhatsApp')) $('navItemWhatsApp').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
+        mostrarSoporteSegunRol(rol);
 
         mostrarInformacionSupervisor(session);
       } catch (e) { }
@@ -9364,6 +9376,7 @@ async function intentarLoginSupervisor() {
         if ($('navItemSimulador')) $('navItemSimulador').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
         if ($('waAvanzado')) $('waAvanzado').style.display = (rol === 'ADMIN_MASTER') ? 'block' : 'none';
         if ($('navItemWhatsApp')) $('navItemWhatsApp').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
+        mostrarSoporteSegunRol(rol);
 
         mostrarInformacionSupervisor(sessionData);
         $('login-supervisor').classList.add('hidden');
@@ -9884,6 +9897,7 @@ function verificarEstadoSupervisor() {
       if ($('navItemSimulador')) $('navItemSimulador').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';
       if ($('waAvanzado')) $('waAvanzado').style.display = (rol === 'ADMIN_MASTER') ? 'block' : 'none';
       if ($('navItemWhatsApp')) $('navItemWhatsApp').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
+      mostrarSoporteSegunRol(rol);
     } catch (e) { }
     $('login-supervisor').classList.add('hidden');
     document.body.classList.add('cargando-datos');

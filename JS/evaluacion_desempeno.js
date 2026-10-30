@@ -2009,6 +2009,6 @@
   window.EvaluacionDesempeno = {
     get ITEMS() { return ITEMS; }, get DIMENSIONES() { return DIMENSIONES; }, get ESCALA() { return ESCALA; }, get META() { return META; },
     ROLES, calcular, nivelDe, rolDe, esEvaluador, esEvaluado, etapa,
-    montar, montarPanel, cerrarSesion, abrirEnlace: (cont, enlace) => { if (cont && cont._ev) { cont._ev.enlace = enlace; aplicarEnlace(cont._ev); } }
+    montar, montarPanel, cerrarSesion, sesion: sesionGuardada, iniciarSesion, abrirEnlace: (cont, enlace) => { if (cont && cont._ev) { cont._ev.enlace = enlace; aplicarEnlace(cont._ev); } }
   };
 })();
