@@ -7378,7 +7378,6 @@ function cambiarPanel(panel) {
     detalle: 'Detalle de Empleado',
     opciones: 'Opciones adicionales',
     whatsapp: 'Notificaciones WhatsApp',
-    soporte: 'Soporte WhatsApp',
     desempeno: 'Evaluación de desempeño'
   };
   const titleText = titles[panel] || 'Supervisor';
@@ -7411,9 +7410,6 @@ function cambiarPanel(panel) {
     else if (panel === 'visitas') {
       cargarPanelVisitas();
     }
-    else if (panel === 'soporte') {
-      if (typeof window.cargarPanelSoporte === 'function') window.cargarPanelSoporte();
-    }
     else if (panel === 'opciones') {
       if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
       if (window.poblarTablaRolesActuales) window.poblarTablaRolesActuales();
@@ -7425,11 +7421,9 @@ function cambiarPanel(panel) {
 }
 window.cambiarPanel = cambiarPanel;
 
-// Soporte WhatsApp: solo el Admin Master ve el menú (el puente además exige su token)
+// Portal de soporte (soporte.html): solo el Admin Master ve el acceso (el puente además exige su token)
 function mostrarSoporteSegunRol(rol) {
-  const ok = rol === 'ADMIN_MASTER';
-  if ($('navItemSoporte')) $('navItemSoporte').style.display = ok ? 'flex' : 'none';
-  if (ok && typeof window.iniciarContadorSoporte === 'function') window.iniciarContadorSoporte();
+  if ($('navItemSoporte')) $('navItemSoporte').style.display = rol === 'ADMIN_MASTER' ? 'flex' : 'none';
 }
 
 // ============================================================

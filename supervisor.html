@@ -1147,7 +1147,6 @@
     }
   </style>
   <link rel="stylesheet" href="./CSS/emergencias.css?v=20261029_03">
-  <link rel="stylesheet" href="./CSS/soporte.css?v=20261030_01">
 </head>
 
 <body>
@@ -1282,7 +1281,7 @@
         </div>
         <div class="nav-item" data-panel="desempeno" id="navItemDesempeno"><i class="fas fa-seedling" style="color:#dc2626;"></i><span>Desempeño</span></div>
         <div class="nav-item" data-panel="visitas" id="navItemVisitas"><i class="fas fa-id-card-alt" style="color:#0ea5e9;"></i><span>Visitas</span></div>
-        <div class="nav-item" data-panel="soporte" id="navItemSoporte" style="display:none"><i class="fas fa-comments" style="color:#16a34a;"></i><span>Soporte WhatsApp</span><span id="badgeSoporte" style="display:none; background:#16a34a; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:10px; margin-left:6px;">0</span></div>
+        <div class="nav-item" id="navItemSoporte" style="display:none" onclick="window.open('soporte.html', 'tcontrol_soporte')" title="Abre el portal de soporte en otra pestaña"><i class="fas fa-headset" style="color:#16a34a;"></i><span>Portal de soporte</span><i class="fas fa-external-link-alt" style="font-size:10px; margin-left:6px; opacity:.6;"></i></div>
         <div class="nav-item" data-panel="whatsapp" id="navItemWhatsApp" style="display:none"><i class="fab fa-whatsapp" style="color:#22c55e;"></i><span>Notificaciones WhatsApp</span></div>
         <div class="nav-item" data-panel="opciones" id="navItemOpciones" style="display:none"><i
             class="fas fa-sliders-h" style="color:#64748b;"></i><span>Opciones adicionales</span></div>
@@ -3633,13 +3632,6 @@
       <!-- PANEL VISITAS (JS/visitas_anfitrion.js) -->
       <div id="panel-visitas" class="panel"><div id="vsPanelVisitas"></div></div>
 
-      <!-- PANEL SOPORTE WHATSAPP (JS/supervisor/supervisor_soporte.js, solo Admin Master) -->
-      <div id="panel-soporte" class="panel"><div class="so-card">
-        <div class="so-cab"><div><h2><i class="fab fa-whatsapp"></i> Soporte WhatsApp</h2>
-          <p>Mensajes que la gente escribe al número del bot. Tus respuestas salen desde ese número.</p></div></div>
-        <div id="soPanel"></div>
-      </div></div>
-
       <div id="panel-detalle" class="panel">
         <div id="detalleContent"></div>
       </div>
@@ -5258,14 +5250,13 @@
 
   <script src="./JS/openwa_service.js?v=20261027_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261030_01"></script>
+  <script src="./JS/supervisor_core.js?v=20261030_02"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261003_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261013_02"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_03"></script>
   <script src="./JS/evaluacion_desempeno.js?v=20261030_01"></script>
-  <script src="./JS/supervisor/supervisor_soporte.js?v=20261030_01"></script>
   <script src="./JS/notificaciones.js?v=20261027_01"></script>
   <script src="./JS/visitas_anfitrion.js?v=20261027_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20261006_01"></script>
