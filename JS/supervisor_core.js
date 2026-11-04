@@ -9537,6 +9537,7 @@ window.abrirPermisoCampo = function (empId) {
           <input type="text" id="permCampoMotivo" value="${escapeHtml(motivo)}" maxlength="300" style="${campo}"></div>
         ${pendiente ? `<div style="margin-bottom:10px;"><label style="${etiqueta}">Comentario si se rechaza</label>
           <input type="text" id="permCampoComentario" maxlength="300" placeholder="Opcional" style="${campo}"></div>` : ''}
+        ${pendiente && desde < hoy ? `<div style="font-size:11px; color:#92400e; background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:7px 9px; margin-bottom:10px;">La aprobación cubre desde la fecha pedida: los días laborables ya pasados sin registro quedarán como trabajo en campo.</div>` : ''}
         <div style="font-size:11px; color:#64748b; margin-bottom:12px;">Al vencer la fecha final, el colaborador deberá volver a solicitarlo. Se le avisa por WhatsApp.</div>
         <div id="permCampoMensaje" role="alert" style="display:none; margin-bottom:10px; padding:8px 10px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:12px; font-weight:600;"></div>
         <div id="permCampoBotones" style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
@@ -9550,6 +9551,41 @@ window.abrirPermisoCampo = function (empId) {
     </div>`;
   document.body.appendChild(modal);
 };
+
+// La aprobación cubre desde la fecha pedida (decisión 2026-11-04): los días laborables entre el inicio pedido y ayer
+// que no tienen ningún registro quedan como trabajo en campo. Solo al aprobar una solicitud pendiente: ajustar un
+// permiso vigente no debe justificar días que el colaborador no marcó. Mismo camino que el registro por rango.
+async function cubrirDiasCampoPasados(emp, desde, hasta, motivo, quien) {
+  const FB = window.FirebaseBackend;
+  const hoy = FB._hoyStr();
+  const salida = { cubiertos: [], fallidos: [] };
+  try {
+    const conRegistro = new Set((emp.registros || []).map(r => r.fecha));
+    const snap = await db.collection('registros').where('empleadoId', '==', String(emp.id)).get();
+    snap.docs.forEach(d => { const r = FB._processDoc(d.id, d.data()); if (r && r.fecha) conRegistro.add(r.fecha); });
+    const razon = `Salida a Campo${motivo ? ': ' + motivo : ''}`;
+    for (let d = new Date(desde + 'T12:00:00'); ; d.setDate(d.getDate() + 1)) {
+      const f = FB._hoyStr(d);
+      if (f >= hoy || f > hasta) break;
+      if (esDiaNoLaborable(f) || conRegistro.has(f)) continue;
+      const res = await FB.actualizarRegistroGeneral({
+        empleadoId: String(emp.id), tipo: 'TRABAJO_DE_CAMPO', fecha: f, campo: 'justificado', valor: 'SI',
+        razon_justificac: razon, razon_ausencia: razon, quien_justifica: quien, modo: 'CAMPO'
+      }).catch(e => ({ error: e.message }));
+      if (!res || res.error || res.ok === false) { salida.fallidos.push(f); continue; }
+      salida.cubiertos.push(f);
+      (emp.registros = emp.registros || []).push({
+        id: `${emp.id}_TRABAJO_DE_CAMPO_${f}_000000`, empleadoId: String(emp.id), nombre: emp.nombre || '', fecha: f, hora: '00:00:00',
+        tipo: 'TRABAJO_DE_CAMPO', modo: 'CAMPO', justificado: 'SI', razon_ausencia: razon, razon_justificac: razon, quien_justifica: quien
+      });
+    }
+    if (salida.cubiertos.length && typeof limpiarCachesLocales === 'function') limpiarCachesLocales();
+  } catch (e) {
+    console.warn('Permiso de campo: días anteriores sin cubrir', e);
+    salida.error = e.message || String(e);
+  }
+  return salida;
+}
 
 window.resolverPermisoCampoUI = async function (empId, accion) {
   const emp = (empCache || []).find(x => String(x.id) === String(empId));
@@ -9569,6 +9605,7 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
   if (caja) caja.style.display = 'none';
   botones.forEach(b => { b.disabled = true; b.style.opacity = '0.6'; });
   try {
+    const eraPendiente = (emp.campo_solicitud || {}).estado === 'PENDIENTE';
     const res = await window.FirebaseBackend.resolverPermisoCampo(params);
     if (!res || res.error) throw new Error((res && res.error) || 'No se pudo guardar');
     const ahora = new Date().toISOString();
@@ -9608,6 +9645,11 @@ window.resolverPermisoCampoUI = async function (empId, accion) {
       window.FirebaseBackend.registrarAvisoCampo(emp.id, aviso).catch(() => { });
       mostrarToast(enviado ? `${msj}: se le avisó por WhatsApp y en la app`
         : `${msj}. Se le avisó en la app, pero el WhatsApp no salió (${(r && r.error) || 'sin respuesta'})`, enviado ? 'success' : 'warning');
+    }
+    if (accion === 'APROBAR' && eraPendiente && params.desde < window.FirebaseBackend._hoyStr()) {
+      const c = await cubrirDiasCampoPasados(emp, params.desde, params.hasta, params.motivo, quien);
+      if (c.fallidos.length || c.error) mostrarToast(`Permiso aprobado, pero faltó cubrir ${c.error ? 'los días anteriores' : c.fallidos.join(', ')}. Regístralo desde Control Diario.`, 'warning');
+      else if (c.cubiertos.length) mostrarToast(`Días anteriores cubiertos como campo: ${c.cubiertos.map(fechaCampoCorta).join(', ')}`, 'success');
     }
   } catch (err) {
     if (caja) { caja.textContent = 'No se pudo guardar: ' + (err.message || err); caja.style.display = 'block'; }
