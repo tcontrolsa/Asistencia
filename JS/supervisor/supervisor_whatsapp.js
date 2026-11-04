@@ -559,6 +559,53 @@ async function revisarRecordatorioAutomatico() {
 setInterval(revisarRecordatorioAutomatico, 120000);
 setTimeout(revisarRecordatorioAutomatico, 45000);
 
+// Avisos de permiso de campo al colaborador que no salieron por WhatsApp (servicio caído): cualquier panel
+// abierto los reintenta cada 15 min, hasta 8 veces y por 48 h. Una transacción evita que dos supervisores
+// envíen el mismo aviso. Los fallos anteriores a AVISO_CAMPO_DESDE no se reenvían solos.
+const AVISO_CAMPO_DESDE = '2026-11-05';
+const AVISO_CAMPO_MAX_INTENTOS = 8;
+const AVISO_CAMPO_ESPERA_MS = 15 * 60 * 1000;
+const AVISO_CAMPO_VIGENCIA_MS = 48 * 3600 * 1000;
+function avisoCampoPorReintentar(sol, ahora) {
+  if (!sol || !['APROBADA', 'RECHAZADA'].includes(sol.estado)) return false;
+  if (!String(sol.aviso_colaborador || '').startsWith('WhatsApp no enviado')) return false;
+  if (/sin tel/i.test(sol.aviso_colaborador)) return false;
+  if (String(sol.aviso_en || '') < AVISO_CAMPO_DESDE) return false;
+  if (ahora - (Date.parse(sol.aviso_en) || 0) > AVISO_CAMPO_VIGENCIA_MS) return false;
+  if (Number(sol.aviso_reintentos || 0) >= AVISO_CAMPO_MAX_INTENTOS) return false;
+  return ahora - (Date.parse(sol.aviso_reintento_en) || 0) >= AVISO_CAMPO_ESPERA_MS;
+}
+let _avisosCampoEnCurso = false;
+async function reintentarAvisosCampo() {
+  if (_avisosCampoEnCurso || !window.OpenWAService || !window.OpenWAService._esSitioProduccion()) return;
+  if (!localStorage.getItem('SUPERVISOR_SESSION')) return;
+  _avisosCampoEnCurso = true;
+  try {
+    const snap = await db.collection('empleados').get();
+    for (const doc of snap.docs) {
+      if (!avisoCampoPorReintentar((doc.data() || {}).campo_solicitud, Date.now())) continue;
+      const reservado = await db.runTransaction(async tx => {
+        const actual = await tx.get(doc.ref);
+        const sol = (actual.data() || {}).campo_solicitud;
+        if (!avisoCampoPorReintentar(sol, Date.now())) return null;
+        tx.set(doc.ref, { campo_solicitud: { aviso_reintento_en: new Date().toISOString(), aviso_reintentos: Number(sol.aviso_reintentos || 0) + 1 } }, { merge: true });
+        return sol;
+      });
+      if (!reservado) continue;
+      const d = doc.data();
+      const r = await window.OpenWAService.notificarColaboradorCampo({ telefono: d.telefono || d.celular, nombre: d.nombre, estado: reservado.estado,
+        desde: reservado.desde, hasta: reservado.hasta, comentario: reservado.comentario }).catch(e => ({ ok: false, error: e.message }));
+      if (!r || r.ok === false) break;   // el servicio sigue caído: no se gastan los intentos de los demás
+      await window.FirebaseBackend.registrarAvisoCampo(doc.id, { aviso_colaborador: 'WhatsApp enviado (reintento)' });
+    }
+  } catch (e) {
+    console.warn('[OpenWA] Reintento de avisos de campo:', e);
+  } finally {
+    _avisosCampoEnCurso = false;
+  }
+}
+setInterval(reintentarAvisosCampo, 5 * 60 * 1000);
+
 window.restablecerConfiguracionWhatsApp = function () {
   if (!confirm('¿Deseas restablecer la plantilla activa a su texto predeterminado?')) return;
   if (!window.OpenWAService) return;

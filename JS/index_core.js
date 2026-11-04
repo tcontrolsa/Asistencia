@@ -978,6 +978,8 @@ function abrirPanelAdmin() {
 // Solo quien tiene un permiso de campo vigente (período aprobado por un supervisor admin) ve el
 // selector OFICINA/CAMPO. En CAMPO registra entrada y salida fuera de la geocerca de la empresa y
 // se guarda su ubicación GPS. Al vencer el período debe volver a solicitarlo desde la app.
+const distanciaLegible = d => d >= 1000 ? `${Math.round(d / 100) / 10} km` : `${d} m`;
+
 function esCampoAutorizado() {
     if (typeof empleado === 'undefined' || !empleado || empleado.campoAutorizado !== true) return false;
     return !empleado.campoHasta || getLocalHoyStr(new Date()) <= empleado.campoHasta;
@@ -1545,12 +1547,17 @@ function verificarDistanciaEmpresa(silencioso = false) {
         }
         window._estaFueraArea = true;
         mostrarCard(false); // En CAMPO se registra con Entrada/Salida: el reporte de "fuera de área" no aplica
+        const indCampo = document.getElementById('distanceIndicator');
+        if (indCampo) {
+            indCampo.textContent = `🚗 En campo · a ${distanciaLegible(u.dist)} de la empresa`;
+            indCampo.classList.remove('hidden');
+        }
         return true;
     }
 
     const indicator = document.getElementById('distanceIndicator');
     if (indicator) {
-        indicator.textContent = `📍 ${u.dist}m ±${u.acc}m / ${RADIO_METROS}m`;
+        indicator.textContent = `📍 ${distanciaLegible(u.dist)} ±${u.acc} m / ${RADIO_METROS} m`;
         indicator.classList.remove('hidden');
     }
 
@@ -2500,27 +2507,11 @@ async function procederConRegistro() {
         }
     }
 
-    let latRegistro = posicion.lat;
-    let lngRegistro = posicion.lng;
+    // El GPS entrega grados decimales: solo se valida el rango (el personal en campo marca desde otros países)
+    let latRegistro = typeof posicion.lat === 'string' ? parseFloat(posicion.lat.replace(',', '.')) : posicion.lat;
+    let lngRegistro = typeof posicion.lng === 'string' ? parseFloat(posicion.lng.replace(',', '.')) : posicion.lng;
 
-    if (typeof latRegistro === 'string') {
-        latRegistro = parseFloat(latRegistro.replace(/\./g, '').replace(',', '.'));
-    }
-    if (typeof lngRegistro === 'string') {
-        lngRegistro = parseFloat(lngRegistro.replace(/\./g, '').replace(',', '.'));
-    }
-
-    if (!isNaN(latRegistro) && !isNaN(lngRegistro)) {
-        if (Math.abs(latRegistro) > 10 && Math.abs(latRegistro) < 1000) {
-            latRegistro = latRegistro / 1000;
-        }
-        if (Math.abs(lngRegistro) > 180 && Math.abs(lngRegistro) < 1000) {
-            lngRegistro = lngRegistro / 1000;
-        }
-        if (Math.abs(latRegistro) > 10 && Math.abs(latRegistro) < 100) {
-            latRegistro = latRegistro / 10;
-        }
-
+    if (Number.isFinite(latRegistro) && Number.isFinite(lngRegistro) && Math.abs(latRegistro) <= 90 && Math.abs(lngRegistro) <= 180) {
         latRegistro = Math.round(latRegistro * 1000000) / 1000000;
         lngRegistro = Math.round(lngRegistro * 1000000) / 1000000;
     } else {
@@ -2818,8 +2809,8 @@ async function iniciarRegistro(tipo) {
             return;
         }
 
-        if (currentMode === 'TELETRABAJO') {
-            // En teletrabajo no almuerza en planta: no se pregunta
+        if (currentMode === 'TELETRABAJO' || currentMode === 'CAMPO') {
+            // En teletrabajo y en campo no almuerza en planta: no se pregunta
             empleado.almuerzo = 'NO';
             registrar();
             return;
@@ -3143,6 +3134,12 @@ window.procesarRazonEntradaJustificada = function () {
         quien_justifica: nombre
     };
 
+    if (currentMode === 'TELETRABAJO' || currentMode === 'CAMPO') {
+        empleado.almuerzo = 'NO';
+        registrar();
+        return;
+    }
+
     // Verificar si la hora de almuerzo ya pasó
     if (horaLimiteAlmuerzoPasada()) {
         empleado.almuerzo = 'NO';
@@ -3159,6 +3156,12 @@ window.procesarRazonEntrada = function (razon, label) {
         razon: razon,
         quien_justifica: ''
     };
+
+    if (currentMode === 'TELETRABAJO' || currentMode === 'CAMPO') {
+        empleado.almuerzo = 'NO';
+        registrar();
+        return;
+    }
 
     // Verificar si la hora de almuerzo ya pasó
     if (horaLimiteAlmuerzoPasada()) {
@@ -4819,6 +4822,7 @@ function renderHomePage() {
     let tipoEstadoHoy = null;
     let detalleEstadoHoy = '';
     let configEstado = null;
+    let estadoAutorreportado = false;   // lo reportó el colaborador (debe regularizarlo); si no, lo registró supervisión
 
     // Solo evaluar reporte de estado o ausencia si NO tiene marcación presencial de Entrada ni Salida hoy
     if (!tieneEntrada && !tieneSalida) {
@@ -4838,13 +4842,17 @@ function renderHomePage() {
             tipoEstadoHoy = reporteFueraHoy.tipo.toUpperCase();
             detalleEstadoHoy = reporteFueraHoy.observacion || reporteFueraHoy.texto || '';
             configEstado = tiposAusenciaMap[tipoEstadoHoy] || { label: reporteFueraHoy.texto || tipoEstadoHoy, badge: 'Reportado', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' };
+            estadoAutorreportado = true;
         } else if (regAusenciaHoy) {
             const rt = String(getVal(regAusenciaHoy, 'tipo', 3) || regAusenciaHoy.tipo || regAusenciaHoy[3] || '').toUpperCase();
             tipoEstadoHoy = rt;
             detalleEstadoHoy = getVal(regAusenciaHoy, 'razon_ausencia', 10) || regAusenciaHoy.razon_ausencia || '';
             configEstado = tiposAusenciaMap[tipoEstadoHoy] || { label: tipoEstadoHoy, badge: 'Ausencia', bg: '#f8fafc', color: '#334155', border: '#cbd5e1' };
+            estadoAutorreportado = String(regAusenciaHoy.quien_justifica || '').toUpperCase().includes('COLABORADOR');
         }
     }
+    const esEstadoCampo = tipoEstadoHoy === 'TRABAJO_DE_CAMPO' || tipoEstadoHoy === 'CAMPO';
+    const campoConPermiso = esEstadoCampo && esCampoAutorizado();
 
     // Detectar puntualidad del empleado según registros del mes
     function calcularInsigniaPersonal() {
@@ -5038,7 +5046,7 @@ function renderHomePage() {
                                 <i class="fas fa-check-circle"></i> ESTADO DE HOY REPORTADO
                             </span>
                             <span style="font-size: 10.5px; font-weight: 700; background: white; color: ${configEstado.color}; padding: 2px 8px; border-radius: 10px; border: 1px solid ${configEstado.border};">
-                                ${configEstado.badge} • Jornada Completa
+                                ${configEstado.badge}${esEstadoCampo ? '' : ' • Jornada Completa'}
                             </span>
                         </div>
                         
@@ -5048,18 +5056,27 @@ function renderHomePage() {
                         
                         ${detalleEstadoHoy ? `<div style="font-size: 12px; color: #475569; margin-bottom: 8px; font-style: italic;">“${escapeHtml(detalleEstadoHoy)}”</div>` : ''}
 
+                        ${campoConPermiso ? `
+                        <div style="background: #f0fdf4; border-left: 3.5px solid #16a34a; border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 11.5px; color: #166534; line-height: 1.45;">
+                            <div style="font-weight: 800; margin-bottom: 2px;"><i class="fas fa-check-circle" style="color: #16a34a;"></i> Permiso de campo vigente${empleado.campoHasta ? ` hasta el ${fechaCortaCampo(empleado.campoHasta)}` : ''}</div>
+                            <div>No necesitas regularizar nada. Registra tu entrada y tu salida desde aquí, como siempre.</div>
+                        </div>` : estadoAutorreportado ? `
                         <!-- ALERTA INSTITUCIONAL OBLIGATORIA -->
                         <div style="background: #fff7ed; border-left: 3.5px solid #ea580c; border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 11.5px; color: #9a3412; line-height: 1.45;">
                             <div style="font-weight: 800; margin-bottom: 2px;"><i class="fas fa-exclamation-triangle" style="color: #ea580c;"></i> Regularización Obligatoria:</div>
                             <div>Debe regularizar este evento con su supervisor tal como ya está establecido institucionalmente.</div>
                             <div style="font-weight: 700; color: #c2410c; margin-top: 2px;">Recuerde que las faltas injustificadas son tomadas como vacaciones.</div>
-                        </div>
+                        </div>` : `
+                        <div style="background: #f8fafc; border-left: 3.5px solid #94a3b8; border-radius: 8px; padding: 9px 12px; margin-top: 8px; font-size: 11.5px; color: #475569; line-height: 1.45;">
+                            <i class="fas fa-user-check" style="color: #64748b;"></i> Registrado por supervisión. No necesitas hacer nada más.
+                        </div>`}
 
+                        ${estadoAutorreportado ? `
                         <div style="margin-top: 10px; text-align: right;">
                             <button type="button" onclick="window.abrirModalReporteFueraArea()" style="background: none; border: none; color: #2563eb; font-size: 11.5px; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 0;">
                                 <i class="fas fa-sync-alt"></i> Actualizar o cambiar estado reportado
                             </button>
-                        </div>
+                        </div>` : ''}
                     </div>
                 ` : `<div id="panelUbicacion">${panelUbicacionHtml()}</div>`}
 

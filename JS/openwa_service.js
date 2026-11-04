@@ -1259,6 +1259,13 @@
         },
 
         // ¿Corresponde y falta el recordatorio de hoy? Solo lee: no envía ni toma el candado.
+        // Tras un intento sin envíos (servicio caído) se espera 15 min; hasta 8 intentos cubren unas 2 horas de caída
+        _recordatorioEnPausa(d, fechaHoy) {
+            if (!d || d.fallidoFecha !== fechaHoy) return false;
+            if (Number(d.intentosFallidos || 0) >= 8) return true;
+            return Date.now() - (Date.parse(d.fallidoEn) || 0) < 15 * 60 * 1000;
+        },
+
         async chequeoAutomaticoPendiente() {
             const reglas = this._reglasChequeoHoy();
             if (!reglas.ok || localStorage.getItem(reglas.checkKey)) return false;
@@ -1268,6 +1275,7 @@
                     localStorage.setItem(reglas.checkKey, new Date().toISOString());
                     return false;
                 }
+                if (snap.exists && this._recordatorioEnPausa(snap.data(), reglas.fechaHoyStr)) return false;
             } catch (e) {
                 console.warn('[OpenWA] No se pudo consultar el candado del recordatorio:', e);
                 return false;
@@ -1293,14 +1301,15 @@
                         const snap = await tx.get(ref);
                         const previo = snap.exists ? snap.data() : {};
                         if (previo.fecha === reglas.fechaHoyStr) return false;
+                        if (this._recordatorioEnPausa(previo, reglas.fechaHoyStr)) return 'pausa';
                         const fallidosHoy = previo.fallidoFecha === reglas.fechaHoyStr ? Number(previo.intentosFallidos || 0) : 0;
-                        if (fallidosHoy >= 3) return false;
                         tx.set(ref, {
                             fecha: reglas.fechaHoyStr,
                             inicio: firebase.firestore.FieldValue.serverTimestamp(),
                             por: quien,
                             destinatarios: listaEmpleadosSinMarcar.length,
                             fallidoFecha: previo.fallidoFecha || '',
+                            fallidoEn: previo.fallidoEn || '',
                             intentosFallidos: fallidosHoy
                         });
                         return true;
@@ -1309,6 +1318,7 @@
                     // Sin candado no se envía (se reintenta en el siguiente chequeo)
                     return { ejecutado: false, motivo: 'No se pudo tomar el candado del recordatorio: ' + (e.message || e) };
                 }
+                if (ganado === 'pausa') return { ejecutado: false, motivo: 'Esperando para reintentar el recordatorio de hoy' };
                 localStorage.setItem(reglas.checkKey, new Date().toISOString());
                 if (!ganado) return { ejecutado: false, motivo: 'Otro supervisor ya envió los recordatorios de hoy' };
             }
@@ -1325,7 +1335,7 @@
                         const d = snap.exists ? snap.data() : {};
                         if (d.fecha !== reglas.fechaHoyStr) return;
                         tx.set(ref, {
-                            ...d, fecha: '', fallidoFecha: reglas.fechaHoyStr,
+                            ...d, fecha: '', fallidoFecha: reglas.fechaHoyStr, fallidoEn: new Date().toISOString(),
                             intentosFallidos: (d.fallidoFecha === reglas.fechaHoyStr ? Number(d.intentosFallidos || 0) : 0) + 1
                         });
                     });
