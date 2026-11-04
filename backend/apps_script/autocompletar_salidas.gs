@@ -7,9 +7,8 @@
  * 
  * Funciones Principales:
  * 1. autoCompletarSalidasFaltantesSheets():
- *    - Ejecuta la regularización automática de toda la hoja REGISTROS.
  *    - Revisa los últimos 7 días e inserta salidas pendientes (15:15:00 en fines de semana, 16:15:00 entre semana).
- * 2. regularizarSalidasFinDeSemana():
+ * 2. regularizarSalidasFinDeSemana(): solo a mano, ya no corre a diario (ver PASO 1 de autoCompletarSalidasFaltantesSheets).
  *    - Escanea toda la hoja REGISTROS y regulariza automáticamente todas las salidas autocompletadas
  *      o del sistema en fines de semana que no cumplan el criterio de 15:15:00 (ej. aquellas en 16:15:00).
  *    - Limpia autorizaciones automáticas de horas extras generadas artificialmente por la hora anterior.
@@ -280,10 +279,8 @@ function autoCompletarSalidasFaltantesSheets() {
 
   console.log("🚀 [Auto-completar] Iniciando proceso diario...");
 
-  // PASO 1: Regularizar automáticamente registros de fin de semana existentes que no cumplan el criterio
-  console.log("🔄 [Auto-completar - PASO 1] Ejecutando regularización automática de fines de semana...");
-  const resultadoReg = regularizarSalidasFinDeSemana(ss);
-  console.log(`ℹ️ [Auto-completar - PASO 1] Registros regularizados: ${resultadoReg.totalRegularizados}`);
+  // PASO 1 retirado (2026-11-04): regularizarSalidasFinDeSemana() ya no corre a diario. Las salidas nuevas nacen a las
+  // 15:15 en fin de semana y editar la hora no cambia el dispositivo, así que solo deshacía correcciones de supervisores.
 
   // PASO 2: Obtener la lista de los últimos 7 días (excluyendo hoy para no cerrar turnos activos)
   const fechasAProcesar = [];
