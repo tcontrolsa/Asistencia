@@ -3348,7 +3348,8 @@ function filtrarAsistenciaTabla() {
   let html = `<table class="employee-table table-compact"><thead><tr>${headersHtml}</tr></thead><tbody>`;
 
   html += data.map(e => {
-    let cellsHtml = activeCols.map(c => colDefs[c].body(e)).join('');
+    // data-label: en móvil cada fila se muestra como tarjeta y la celda lleva su propio título
+    let cellsHtml = activeCols.map(c => colDefs[c].body(e).replace('<td', `<td data-label="${c}"`)).join('');
     const pAct = (typeof periodos !== 'undefined' && Array.isArray(periodos) && periodos[0]) ? periodos[0] : null;
     const fechasPeriodoAct = (e._fechasRegularizar || []).filter(f => !pAct || (f.fecha >= pAct.inicio && f.fecha <= pAct.fin));
     const targetFecha = fechasPeriodoAct.length > 0 ? fechasPeriodoAct[0].fecha : '';

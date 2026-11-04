@@ -1019,6 +1019,63 @@
       color: #b45309;
     }
 
+    /* Móvil: nada ensancha la página y Control Diario se lee en tarjetas (la columna fija ocupaba toda la pantalla) */
+    @media (max-width: 768px) {
+      .search-bar-container { flex-wrap: wrap; }
+      .search-bar-container .search-input-box { flex: 1 1 0; min-width: 0; }
+      .search-bar-container > div:not(.search-input-box):not(.search-count-badge) { flex: 1 1 100%; min-width: 0; }
+      .search-bar-container > div:not(.search-input-box):not(.search-count-badge) > .btn { width: 100%; justify-content: center; }
+
+      .metricas-row { grid-template-columns: minmax(0, 1fr) !important; }
+      .metric-card, .ranking-list, .ranking-item, .ranking-info { min-width: 0; }
+
+      #asistenciaTableScrollWrap { max-height: none; min-height: 0; overflow: visible; }
+      #asistenciaTablaContainer table.employee-table,
+      #asistenciaTablaContainer tbody,
+      #asistenciaTablaContainer tfoot { display: block; width: 100%; }
+      #asistenciaTablaContainer thead { display: none; }
+      #asistenciaTablaContainer tbody tr {
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px;
+        padding: 12px; border-bottom: 1px solid #e2e8f0; background: #fff;
+      }
+      #asistenciaTablaContainer tbody tr:nth-child(even) { background: #fff; }
+      #asistenciaTablaContainer tbody td,
+      #asistenciaTablaContainer tbody td:first-child,
+      #asistenciaTablaContainer tbody tr:nth-child(even) td:first-child,
+      #asistenciaTablaContainer tbody tr:hover td:first-child {
+        position: static; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+        min-width: 0; padding: 0; border: 0; background: transparent; box-shadow: none; text-align: left !important;
+      }
+      #asistenciaTablaContainer tbody td::before {
+        content: attr(data-label); font-size: 10px; font-weight: 700; letter-spacing: .03em;
+        text-transform: uppercase; color: #64748b;
+      }
+      #asistenciaTablaContainer tbody td[data-label="Empleado"]::before,
+      #asistenciaTablaContainer tbody td[data-label="Área"]::before { content: none; }
+      #asistenciaTablaContainer tbody td[data-label="Almuerzo"] { flex-direction: row; align-items: center; justify-content: space-between; }
+      #asistenciaTablaContainer tbody td[data-label="Empleado"],
+      #asistenciaTablaContainer tbody td[data-label="Área"],
+      #asistenciaTablaContainer tbody td[data-label="Regularización"],
+      #asistenciaTablaContainer tbody td[data-label="Almuerzo"] { grid-column: 1 / -1; }
+      #asistenciaTablaContainer .employee-cell { width: 100%; min-width: 0; }
+      #asistenciaTablaContainer .employee-cell strong { white-space: normal; overflow-wrap: anywhere; }
+      #asistenciaTablaContainer .rep-asis-chip { max-width: 100%; white-space: normal; }
+      #asistenciaTablaContainer tfoot tr { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+      #asistenciaTablaContainer tfoot td { padding: 0; border: 0; }
+      #asistenciaTablaContainer tfoot td:not(:has(strong, .rep-badge-pill)) { display: none; }
+    }
+    /* Teléfonos: las cuadrículas con mínimo fijo (escrito en el HTML) eran más anchas que la pantalla */
+    @media (max-width: 480px) {
+      .main-content [style*="minmax(280px"], .main-content [style*="minmax(285px"], .main-content [style*="minmax(300px"],
+      .main-content [style*="minmax(320px"], .main-content [style*="minmax(340px"], .main-content [style*="minmax(360px"] {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+      .rep2-periodo { min-width: 0; max-width: 100%; }
+      .rep2-select-periodo { flex: 1 1 0; width: 0; }
+      div:has(> #mapaFiltroArea) { flex: 1 1 100%; width: 100%; min-width: 0; box-sizing: border-box; }
+      #mapaFiltroArea { flex: 1 1 0; width: 0; min-width: 0; }
+    }
+
     @media print {
       body * {
         visibility: hidden !important;
@@ -5250,7 +5307,7 @@
 
   <script src="./JS/openwa_service.js?v=20261104_01"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261104_01"></script>
+  <script src="./JS/supervisor_core.js?v=20261104_02"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261104_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261013_02"></script>
