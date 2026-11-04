@@ -8,6 +8,7 @@
  * 4. verificarConflictosVacaciones() - Informa si hay fechas coincidentes para un empleado en REGISTROS y VACACIONES.
  * 5. crearHojaReporte() - Vuelca los resultados del mantenimiento en la hoja "REPORTE_MANTENIMIENTO" con un formato profesional.
  * 6. ejecutarMantenimiento() - Ejecuta secuencialmente todas las acciones anteriores y muestra un reporte interactivo.
+ * 7. eliminarFilasEnBlanco() - Quita de REGISTROS las filas totalmente vacías. instalarLimpiezaFilasEnBlanco() la programa a diario.
  */
 
 // Mapeo oficial de columnas de REGISTROS (0-based)
@@ -317,6 +318,62 @@ function eliminarDuplicados() {
   filasAEliminar.reverse().forEach(row => sheet.deleteRow(row));
 
   Logger.log(`🗑️ Se eliminaron directamente ${filasAEliminar.length} filas duplicadas de REGISTROS.`);
+}
+
+/**
+ * 7. Quita de REGISTROS las filas sin ningún dato, de abajo hacia arriba. Una fila con cualquier celda escrita no
+ *    se toca. Si aparecen más de MAX_FILAS_EN_BLANCO no borra nada: un bloque así de grande merece revisión.
+ *    Usa el mismo bloqueo que el archivado para no moverle las filas mientras escribe.
+ */
+var MAX_FILAS_EN_BLANCO = 50;
+
+function eliminarFilasEnBlanco() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
+  if (!sheet) {
+    Logger.log('❌ Hoja REGISTROS no encontrada.');
+    return;
+  }
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    Logger.log('⏳ Otro proceso está escribiendo en el libro: las filas en blanco se revisan en la próxima ejecución.');
+    return;
+  }
+  try {
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return;
+    const values = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    const filas = [];
+    values.forEach((fila, i) => {
+      if (fila.every(c => c === '' || c === null)) filas.push(i + 2);
+    });
+    if (filas.length === 0) {
+      Logger.log('✅ REGISTROS no tiene filas en blanco.');
+      return;
+    }
+    if (filas.length > MAX_FILAS_EN_BLANCO) {
+      Logger.log(`⚠️ ${filas.length} filas en blanco en REGISTROS (primera: ${filas[0]}): no se borró ninguna, revisar la hoja.`);
+      return;
+    }
+    filas.slice().reverse().forEach(row => sheet.deleteRow(row));
+    filas.forEach(row => logsMantenimiento.push({
+      tipo: 'FILA_EN_BLANCO', hoja: 'REGISTROS', fila: row, id: '', nombre: '', fecha: '',
+      detalle: `Fila ${row} eliminada: no tenía ningún dato.`
+    }));
+    Logger.log(`🗑️ Se eliminaron ${filas.length} filas en blanco de REGISTROS: ${filas.join(', ')}.`);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Programa eliminarFilasEnBlanco() todos los días a las 04:00. Se ejecuta una sola vez a mano; repetirla no duplica.
+ */
+function instalarLimpiezaFilasEnBlanco() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'eliminarFilasEnBlanco') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('eliminarFilasEnBlanco').timeBased().everyDays(1).atHour(4).inTimezone('America/Guayaquil').create();
+  Logger.log('✅ Limpieza diaria de filas en blanco programada a las 04:00.');
 }
 
 /**
@@ -773,6 +830,7 @@ function ejecutarMantenimiento() {
 
   Logger.log("\n--- PASO 2: Eliminando registros duplicados directamente ---");
   eliminarDuplicados();
+  eliminarFilasEnBlanco();
 
   Logger.log("\n--- PASO 3: Autorizando horas extras automáticas (>45 min pos-jornada) ---");
   autorizarHorasExtrasAutomaticas();
