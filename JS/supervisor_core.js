@@ -6485,11 +6485,11 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           <div class="detail-actions-toolbar">
             ${badgeWhatsAppHtml}
             ${badgeCulturaHtml}
-            <button type="button" class="btn-action-detail btn-action-edit" onclick="window.abrirModalEditarEmpleado('${e.id}')" title="Abrir ficha completa para editar datos del colaborador (Nombre, Área, Cargo, PIN, Rol, WhatsApp, etc.)">
+            <button type="button" class="btn-action-detail btn-action-edit" onclick="window.abrirModalEditarEmpleado('${e.id}')" title="Abrir ficha completa para editar datos del colaborador (Nombre, Área, Cargo, Contraseña, Rol, WhatsApp, etc.)">
               <i class="fas fa-user-pen"></i> <span>Editar Datos</span>
             </button>
             <button type="button" class="btn-action-detail btn-action-reset" onclick="window.resetearPasswordEmpleado(${jsAttr(e.id)}, ${jsAttr(e.nombre)})" title="Resetear contraseña para permitir que el colaborador vuelva a vincular su dispositivo">
-              <i class="fas fa-key"></i> <span>Resetear PIN</span>
+              <i class="fas fa-key"></i> <span>Resetear contraseña</span>
             </button>
           </div>
         </div>
@@ -9381,7 +9381,7 @@ async function intentarLoginSupervisor() {
         mostrarError('El usuario no tiene rango de Supervisor.');
       }
     } else {
-      mostrarError('PIN o Contraseña incorrecta.');
+      mostrarError('Contraseña incorrecta.');
     }
   } catch (e) {
     mostrarError('Error de conexión');
@@ -10762,7 +10762,7 @@ window.agregarEmpleadoDesdeFormulario = function () {
   }
 
   if (pin.length !== 4 || isNaN(pin)) {
-    mostrarToast('El PIN debe tener exactamente 4 dígitos numéricos.', 'warning');
+    mostrarToast('La contraseña debe tener exactamente 4 dígitos numéricos.', 'warning');
     return;
   }
 

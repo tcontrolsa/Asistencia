@@ -451,7 +451,7 @@ async function intentarLoginCatering() {
     const pin = $('supPin').value.trim();
     
     if (!id || !pin) {
-        mostrarError('Ingrese ID y PIN');
+        mostrarError('Ingrese ID y contraseña');
         return;
     }
     
@@ -484,7 +484,7 @@ async function intentarLoginCatering() {
                 mostrarError('Rango insuficiente.');
             }
         } else {
-            mostrarError('PIN incorrecto.');
+            mostrarError('Contraseña incorrecta.');
         }
     } catch(e) {
         mostrarError('Error de conexión');

@@ -42,7 +42,7 @@ var EVAL_ADMIN_MASTER = '1058';
 function emitirTokenEvaluacion(p) {
   var id = String(p.empleadoId || '').trim();
   var pin = String(p.pin || '').trim();
-  if (!id || !pin) return { ok: false, error: 'Ingresa tu PIN.' };
+  if (!id || !pin) return { ok: false, error: 'Ingresa tu contraseña.' };
 
   var cache = CacheService.getScriptCache();
   var claveIntentos = 'eval_intentos_' + id;
@@ -60,7 +60,7 @@ function emitirTokenEvaluacion(p) {
   var hash = sha256Hex_(pin);
   if (!guardado || (guardado !== hash && guardado !== pin)) {
     cache.put(claveIntentos, String(intentos + 1), EVAL_BLOQUEO_SEG);
-    return { ok: false, error: 'PIN incorrecto.' };
+    return { ok: false, error: 'Contraseña incorrecta.' };
   }
   cache.remove(claveIntentos);
 

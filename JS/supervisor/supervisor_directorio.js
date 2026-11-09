@@ -696,7 +696,7 @@ window.renderDirectorioCards = function (lista) {
 
             <!-- Barra de Acciones Rápidas -->
             <div class="dir-card-actions">
-              <button type="button" class="dir-btn-action btn-edit" onclick="window.abrirModalEditarEmpleado('${emp.id}')" title="Editar ficha completa del usuario (Área, Cargo, PIN, Rol, WhatsApp)">
+              <button type="button" class="dir-btn-action btn-edit" onclick="window.abrirModalEditarEmpleado('${emp.id}')" title="Editar ficha completa del usuario (Área, Cargo, Contraseña, Rol, WhatsApp)">
                 <i class="fas fa-user-edit"></i> Editar
               </button>
               <button type="button" class="dir-btn-action btn-detail" onclick="mostrarDetalle('${emp.id}')" title="Ver expediente de asistencia 360 y registros">
@@ -705,7 +705,7 @@ window.renderDirectorioCards = function (lista) {
               <button type="button" class="dir-btn-action btn-wp" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" title="Enviar WhatsApp directo">
                 <i class="fab fa-whatsapp"></i>
               </button>
-              <button type="button" class="dir-btn-action btn-key" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear contraseña / PIN de vinculación">
+              <button type="button" class="dir-btn-action btn-key" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear contraseña de vinculación">
                 <i class="fas fa-key"></i>
               </button>
               <button type="button" class="dir-btn-action" onclick="window.mostrarModalFuturos('${emp.id}')" title="Programar evento o ausencia (permiso, vacación)" style="background:#faf5ff; border-color:#e9d5ff; color:#7e22ce;">
@@ -863,7 +863,7 @@ window.renderDirectorioTabla = function (lista) {
                 <button type="button" class="dir-table-btn" onclick="window.abrirModalMensajeIndividualWhatsApp('${emp.id}')" title="Enviar WhatsApp" style="color:#16a34a; border-color:#bbf7d0; background:#f0fdf4;">
                   <i class="fab fa-whatsapp"></i>
                 </button>
-                <button type="button" class="dir-table-btn" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear Contraseña / PIN" style="color:#be123c; border-color:#fecdd3; background:#fff1f2;">
+                <button type="button" class="dir-table-btn" onclick="window.resetearPasswordEmpleado(${jsAttr(emp.id)}, ${jsAttr(emp.nombre)})" title="Resetear contraseña" style="color:#be123c; border-color:#fecdd3; background:#fff1f2;">
                   <i class="fas fa-key"></i>
                 </button>
                 <button type="button" class="dir-table-btn" onclick="window.mostrarModalFuturos('${emp.id}')" title="Programar Ausencia o Permiso" style="color:#7c3aed; border-color:#ddd6fe; background:#f5f3ff;">
@@ -980,7 +980,7 @@ window.exportarDirectorioExcel = async function () {
       "WhatsApp / Teléfono",
       "Fecha de Nacimiento",
       "Edad",
-      "PIN / Contraseña",
+      "Contraseña",
       "Rol en el Sistema",
       "Estado Nómina",
       "Cultura Tcontrol",
@@ -1170,7 +1170,7 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
   if (!pinFinal && empActual) {
     pinFinal = empActual.pin || '';
   } else if (pinFinal && (pinFinal.length !== 4 || isNaN(pinFinal))) {
-    mostrarToast('Si ingresas un PIN, debe tener exactamente 4 dígitos numéricos', 'warning');
+    mostrarToast('Si ingresas una contraseña, debe tener exactamente 4 dígitos numéricos', 'warning');
     return;
   }
 

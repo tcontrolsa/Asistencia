@@ -30,7 +30,7 @@ function enviarRegistro(p) {
       'Si no pediste registrarte, ignora este mensaje.';
   } else if (p.tipo === 'registrado') {
     texto = saludo + 'Este número ya está registrado en la app de asistencia. Ingresa aquí con tu ID:\n' + REGISTRO_URL_APP + '\n\n' +
-      'Si olvidaste tu ID o tu PIN, consulta con tu supervisor.';
+      'Si olvidaste tu ID o tu contraseña, consulta con tu supervisor.';
   } else if (p.tipo === 'pendiente') {
     texto = saludo + 'Tu solicitud de registro ya está en revisión. Te avisaremos por aquí cuando tu cuenta esté activa.';
   } else if (p.tipo === 'rechazada') {

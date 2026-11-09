@@ -12,7 +12,7 @@
     <!-- FIREBASE SDKS -->
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-    <script src="./JS/firebase_backend.js?v=20261029_01"></script>
+    <script src="./JS/firebase_backend.js?v=20261109_03"></script>
     <script>window.USE_FIREBASE = true;</script>
 </head>
 <body>
@@ -22,7 +22,7 @@
         <div class="login-header">
             <i class="bi bi-shield-lock-fill"></i>
             <h2>Acceso Catering</h2>
-            <p>ID y PIN de Supervisor</p>
+            <p>ID y contraseña de supervisor</p>
         </div>
         <div class="login-body">
             <div class="mb-3">
@@ -30,8 +30,8 @@
                 <input type="text" id="supId" class="form-control" placeholder="Ej: 123">
             </div>
             <div class="mb-3">
-                <label class="form-label">PIN</label>
-                <input type="password" id="supPin" class="form-control" placeholder="••••" maxlength="4">
+                <label class="form-label">Contraseña</label>
+                <input type="password" id="supPin" class="form-control" placeholder="••••">
             </div>
             <button class="btn-login" onclick="intentarLoginCatering()">Ingresar</button>
             <div id="login-error" class="error-msg hidden"></div>
@@ -82,6 +82,6 @@
 </div>
 
 <script src="./JS/tcontrol_core.js?v=20260825_10"></script>
-<script src="./JS/catering_core.js?v=20260928_01"></script>
+<script src="./JS/catering_core.js?v=20261109_03"></script>
 </body>
 </html>

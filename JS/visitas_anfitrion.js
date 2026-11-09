@@ -48,7 +48,7 @@
   }
   async function iniciarSesion(id, pin) {
     const r = await window.FirebaseBackend._post({ accion: 'tokenEvaluacion', empleadoId: String(id), pin: String(pin) });
-    if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu PIN.');
+    if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu contraseña.');
     const s = { token: r.token, exp: r.exp, empleadoId: String(id), equipo: r.equipo || [], rrhh: !!r.rrhh, master: !!r.master };
     try { sessionStorage.setItem(KEY_SESION, JSON.stringify(s)); } catch (e) { }
     return s;
@@ -62,14 +62,14 @@
       const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 9000);
       try {
         const r = await fetch(`${b}/rpc/visita_anfitrion`, { method: 'POST', headers: { Authorization: 'Bearer ' + st.ses.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ p }), signal: ctrl.signal });
-        if (r.status === 401) { cerrarSesion(st); throw Object.assign(new Error('Tu sesión venció. Ingresa tu PIN de nuevo.'), { sesion: true }); }
+        if (r.status === 401) { cerrarSesion(st); throw Object.assign(new Error('Tu sesión venció. Ingresa tu contraseña de nuevo.'), { sesion: true }); }
         if (r.ok) return await r.json();
         causa = 'HTTP ' + r.status;
       } catch (e) { if (e.sesion) throw e; causa = e.message; } finally { clearTimeout(t); }
     }
     const r = await fb._post({ accion: 'evalRpc', token: st.ses.token, fn: 'visita_anfitrion', p: JSON.stringify(p) });
     if (!r || typeof r.status !== 'number') throw new Error('Sin conexión con la base de visitas (' + causa + ')');
-    if (r.status === 401) { cerrarSesion(st); throw Object.assign(new Error('Tu sesión venció. Ingresa tu PIN de nuevo.'), { sesion: true }); }
+    if (r.status === 401) { cerrarSesion(st); throw Object.assign(new Error('Tu sesión venció. Ingresa tu contraseña de nuevo.'), { sesion: true }); }
     return r.body;
   }
   function cerrarSesion(st) { try { sessionStorage.removeItem(KEY_SESION); } catch (e) { } st.ses = null; }
@@ -105,10 +105,10 @@
     const c = st.cont;
     if (!st.ses) {
       c.innerHTML = `<div class="vs-root"><div class="vs-card va-pin">
-        <div class="va-pin-icono"><i class="fas fa-lock"></i></div><h3>Confirma tu PIN</h3>
-        <p class="vs-muted">Las visitas incluyen datos de personas externas. Ingresa el PIN con el que entras a la app.</p>
+        <div class="va-pin-icono"><i class="fas fa-lock"></i></div><h3>Confirma tu contraseña</h3>
+        <p class="vs-muted">Las visitas incluyen datos de personas externas. Ingresa la contraseña con la que entras a la app.</p>
         ${st.error ? `<div class="vs-error">${esc(st.error)}</div>` : ''}
-        <form data-vs="pin" class="va-pin-form"><input class="vs-input" type="password" inputmode="numeric" maxlength="12" placeholder="PIN" required autocomplete="off">
+        <form data-vs="pin" class="va-pin-form"><input class="vs-input" type="password" maxlength="40" placeholder="Contraseña" required autocomplete="off">
         <button class="vs-btn vs-btn-prim" type="submit">Continuar</button></form></div></div>`;
       return;
     }

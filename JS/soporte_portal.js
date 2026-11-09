@@ -111,11 +111,11 @@
   async function ingresar() {
     const id = ($('spId').value || '').trim(), pin = ($('spPin').value || '').trim();
     const msg = $('spLoginMsg');
-    if (!id || !pin) { msg.textContent = 'Ingresa tu ID y tu PIN.'; return; }
+    if (!id || !pin) { msg.textContent = 'Ingresa tu ID y tu contraseña.'; return; }
     msg.textContent = 'Verificando…';
     try {
       const r = await window.FirebaseBackend._post({ accion: 'tokenEvaluacion', empleadoId: id, pin });
-      if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu PIN');
+      if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu contraseña');
       if (!r.master) { msg.textContent = 'El portal de soporte es solo para el Admin Master.'; return; }
       SP.ses = { token: r.token, exp: r.exp, empleadoId: id };
       try { sessionStorage.setItem(KEY_SES, JSON.stringify(SP.ses)); } catch (e) { }
@@ -489,7 +489,7 @@
       <div class="sp-logo"><i class="fas fa-headset"></i></div>
       <h1>Soporte TCONTROL</h1><p>Reportes de incidente y pedidos de ayuda que los colaboradores envían desde la app.</p>
       <label for="spId">ID</label><input id="spId" inputmode="numeric" autocomplete="username" placeholder="Tu ID">
-      <label for="spPin">PIN</label><input id="spPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="••••" onkeydown="if(event.key==='Enter') spIngresar()">
+      <label for="spPin">Contraseña</label><input id="spPin" type="password" autocomplete="current-password" placeholder="••••" onkeydown="if(event.key==='Enter') spIngresar()">
       <button type="button" onclick="spIngresar()"><i class="fas fa-unlock"></i> Ingresar</button>
       <div id="spLoginMsg" class="sp-login-msg">${esc(msg || '')}</div>
       <small><i class="fas fa-lock"></i> Solo Admin Master · la sesión dura 8 horas.</small></div></div>`;

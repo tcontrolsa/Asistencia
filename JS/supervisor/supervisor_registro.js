@@ -33,14 +33,14 @@
       try {
         const r = await fetch(`${b}/rpc/registro_admin`, { method: 'POST', signal: ctrl.signal,
           headers: { Authorization: 'Bearer ' + st.ses.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ p }) });
-        if (r.status === 401) { salir(); throw new Error('Tu sesión venció. Ingresa tu PIN de nuevo.'); }
+        if (r.status === 401) { salir(); throw new Error('Tu sesión venció. Ingresa tu contraseña de nuevo.'); }
         if (r.ok) return await r.json();
         causa = 'HTTP ' + r.status;
       } catch (e) { if (/sesión/.test(e.message)) throw e; causa = e.message; } finally { clearTimeout(t); }
     }
     const r = await fb._post({ accion: 'evalRpc', token: st.ses.token, fn: 'registro_admin', p: JSON.stringify(p) });
     if (!r || typeof r.status !== 'number') throw new Error('Sin conexión con la base de registros (' + causa + ')');
-    if (r.status === 401) { salir(); throw new Error('Tu sesión venció. Ingresa tu PIN de nuevo.'); }
+    if (r.status === 401) { salir(); throw new Error('Tu sesión venció. Ingresa tu contraseña de nuevo.'); }
     return r.body;
   }
   async function llamar(p) {
@@ -122,7 +122,7 @@
           <div><label style="${etiqueta}">Área</label><select name="area" required style="${estiloInput}"><option value="">Elige…</option>${areas.map(a => `<option>${esc(a)}</option>`).join('')}</select></div>
           <div><label style="${etiqueta}">Cargo</label><input name="cargo" list="registroCargos" maxlength="80" required style="${estiloInput}"><datalist id="registroCargos">${cargos.map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>
         </div>
-        <p style="font-size:11.5px; color:#64748b; margin:8px 0 10px;">Se crea la ficha, se le envía la bienvenida por WhatsApp con su ID y crea su PIN al primer ingreso.</p>
+        <p style="font-size:11.5px; color:#64748b; margin:8px 0 10px;">Se crea la ficha, se le envía la bienvenida por WhatsApp con su ID y crea su contraseña al primer ingreso.</p>
         <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
           <button type="button" data-a="cerrarForm" style="${boton('#fff', '#334155', '#cbd5e1')}">Cancelar</button>
           <button type="submit" style="${boton('#059669', '#fff')}"><i class="fas fa-check"></i> Aprobar y crear ficha</button>
@@ -138,8 +138,8 @@
     let cuerpo;
     if (!st.ses) {
       cuerpo = `<form data-pin style="max-width:320px; margin:8px auto; text-align:center;">
-        <p style="font-size:13px; color:#475569;">Las solicitudes tienen datos personales. Confirma tu PIN.</p>
-        <input name="pin" type="password" inputmode="numeric" maxlength="12" required autocomplete="off" style="${estiloInput} text-align:center; font-size:16px;">
+        <p style="font-size:13px; color:#475569;">Las solicitudes tienen datos personales. Confirma tu contraseña.</p>
+        <input name="pin" type="password" maxlength="40" required autocomplete="off" style="${estiloInput} text-align:center; font-size:16px;">
         ${st.error ? `<p style="color:#b91c1c; font-size:12.5px; font-weight:600;">${esc(st.error)}</p>` : ''}
         <button type="submit" style="${boton('#0f172a', '#fff')} margin-top:10px; width:100%;">Continuar</button></form>`;
     } else if (st.cargando && !st.lista.length) {
@@ -212,7 +212,7 @@
       st.error = '';
       try {
         const r = await window.FirebaseBackend._post({ accion: 'tokenEvaluacion', empleadoId: supervisorId(), pin: f.pin.value });
-        if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu PIN.');
+        if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu contraseña.');
         st.ses = { token: r.token, exp: r.exp, empleadoId: supervisorId(), equipo: r.equipo || [], rrhh: !!r.rrhh, master: !!r.master };
         try { sessionStorage.setItem(KEY_SESION, JSON.stringify(st.ses)); } catch (e) { }
         await cargar();

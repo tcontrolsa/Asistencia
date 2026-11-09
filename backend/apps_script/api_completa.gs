@@ -1394,7 +1394,7 @@ function registrarDispositivoConPIN(empleadoId, pin, deviceToken, rawPin) {
     const rawPinLimpio = rawPin ? rawPin.toString().trim() : "";
     
     if (!empleadoLimpio) return { error: "ID de empleado no válido" };
-    if (!pinLimpio) return { error: "Contraseña/PIN no válido" };
+    if (!pinLimpio) return { error: "Contraseña no válida" };
     
     const infoEmpleado = obtenerInfoEmpleado(empleadoLimpio);
     if (!infoEmpleado.encontrado) return { error: "Empleado no encontrado" };

@@ -138,7 +138,7 @@
         if (r.invalido) return pantallaInvalido(r.error);
         if (!r.ok) throw new Error(r.error);
         app.innerHTML = `${cabecera('fa-circle-check', 'Recibimos tu registro', `Tu número de solicitud es <b>${esc(r.codigo)}</b>.`)}
-          <ul class="rg-pasos"><li>Un supervisor revisará tus datos.</li><li>Cuando se apruebe te llegará un WhatsApp con tu ID para ingresar a la app.</li><li>Ese día crearás tu PIN de acceso.</li></ul>`;
+          <ul class="rg-pasos"><li>Un supervisor revisará tus datos.</li><li>Cuando se apruebe te llegará un WhatsApp con tu ID para ingresar a la app.</li><li>Ese día crearás tu contraseña de acceso.</li></ul>`;
       } catch (e) {
         enviando(f, false);
         error(f, e.message || 'No se pudo enviar. Intenta de nuevo.');

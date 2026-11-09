@@ -413,7 +413,7 @@
 
         // ========== RESTABLECER PINES DE TODOS LOS EMPLEADOS ==========
         window.ejecutarReseteoPinesAdmin = async function() {
-            if (!confirm("⚠️ ADVERTENCIA DE SEGURIDAD:\n\n¿Estás seguro de que deseas BORRAR los PINs/Contraseñas de TODOS los empleados?\n\nAl ejecutar esta acción, ninguna cuenta tendrá contraseña guardada y cada usuario deberá ingresar a la app para registrar su nueva contraseña personal.")) {
+            if (!confirm("⚠️ ADVERTENCIA DE SEGURIDAD:\n\n¿Estás seguro de que deseas BORRAR las contraseñas de TODOS los empleados?\n\nAl ejecutar esta acción, ninguna cuenta tendrá contraseña guardada y cada usuario deberá ingresar a la app para registrar su nueva contraseña personal.")) {
                 return;
             }
 

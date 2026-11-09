@@ -16,7 +16,7 @@
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20261109_02"></script>
+  <script src="./JS/firebase_backend.js?v=20261109_03"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -2517,7 +2517,7 @@
                   <input type="text" id="frmEmpTelefono" class="form-input" placeholder="Ej: 0984660105">
                 </div>
                 <div class="form-group" style="margin:0;">
-                  <label class="form-label" style="font-size:11px; font-weight:700;">PIN / Contraseña *</label>
+                  <label class="form-label" style="font-size:11px; font-weight:700;">Contraseña *</label>
                   <input type="text" id="frmEmpPin" class="form-input" placeholder="Ej: 1234" maxlength="4">
                 </div>
                 <div class="form-group" style="margin:0;">
@@ -2547,7 +2547,7 @@
             <div class="form-group" style="margin-bottom:12px;">
               <label class="form-label" style="font-weight:700; font-size:12px; margin-bottom:4px;">Copia y pega las columnas directamente desde Excel o Google Sheets:</label>
               <div style="font-size:11px; color:var(--g500); margin-bottom:8px; background:#f8fafc; padding:6px 10px; border-radius:6px; border:1px solid #e2e8f0;">
-                <strong>Formato sugerido:</strong> ID/Cédula | Nombre | Área | Cargo | PIN | Supervisor (SI/NO/SUPERVISOR ADMIN) | Activo (SI/NO)
+                <strong>Formato sugerido:</strong> ID/Cédula | Nombre | Área | Cargo | Contraseña | Supervisor (SI/NO/SUPERVISOR ADMIN) | Activo (SI/NO)
               </div>
               <textarea id="txtMasivoEmpleados" class="form-input" style="width:100%; font-family:'Fira Code', monospace; font-size:11.5px; min-height:140px; resize:vertical; padding:10px;" placeholder="Ejemplo:&#10;1712345678&#9;Juan Pérez&#9;PRODUCCION&#9;Operario&#9;1234&#9;NO&#9;SI"></textarea>
             </div>
@@ -2885,7 +2885,7 @@
                   <th>Nombre completo</th>
                   <th>Área</th>
                   <th>Cargo</th>
-                  <th>PIN</th>
+                  <th>Contraseña</th>
                   <th style="text-align:center">Supervisor</th>
                   <th style="text-align:center">Activo</th>
                   <th>URL Foto</th>
@@ -3713,7 +3713,7 @@
           <input type="text" id="supUser" class="form-input" placeholder="Ej: 1058" required>
         </div>
         <div class="form-group" style="position:relative">
-          <label for="supPin" class="form-label">Contraseña / PIN</label>
+          <label for="supPin" class="form-label">Contraseña</label>
           <input type="password" id="supPin" class="form-input" placeholder="••••••••" maxlength="20"
             style="padding-right: 40px;" autocomplete="new-password" required>
           <i class="fas fa-eye" id="togglePin"
@@ -3871,7 +3871,7 @@
                 </div>
               </div>
               <div class="form-group-modern">
-                <label for="editDirPin" class="form-label-modern">PIN de Marcación</label>
+                <label for="editDirPin" class="form-label-modern">Contraseña</label>
                 <div class="input-with-icon">
                   <i class="fas fa-key input-icon"></i>
                   <input type="text" id="editDirPin" class="input-modern" maxlength="4" placeholder="••••" style="letter-spacing: 2px; font-weight: 700;" title="4 dígitos numéricos para marcar">
@@ -4058,7 +4058,7 @@
           <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:11.5px; color:#166534; display:flex; align-items:flex-start; gap:8px;">
             <i class="fab fa-whatsapp" style="font-size:16px; color:#16a34a; margin-top:2px;"></i>
             <div>
-              <strong>Notificación y clave automática:</strong> Al registrar al colaborador se le enviará un mensaje de bienvenida con sus credenciales a su WhatsApp y podrá crear su propio PIN en su primer inicio de sesión.
+              <strong>Notificación y clave automática:</strong> Al registrar al colaborador se le enviará un mensaje de bienvenida con sus credenciales a su WhatsApp y podrá crear su propia contraseña en su primer inicio de sesión.
             </div>
           </div>
 
@@ -5309,19 +5309,19 @@
     </div>
   </div>
 
-  <script src="./JS/openwa_service.js?v=20261104_01"></script>
+  <script src="./JS/openwa_service.js?v=20261109_03"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261104_02"></script>
+  <script src="./JS/supervisor_core.js?v=20261109_03"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261104_01"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261013_02"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_03"></script>
-  <script src="./JS/evaluacion_desempeno.js?v=20261030_01"></script>
+  <script src="./JS/evaluacion_desempeno.js?v=20261109_03"></script>
   <script src="./JS/notificaciones.js?v=20261027_01"></script>
-  <script src="./JS/visitas_anfitrion.js?v=20261027_01"></script>
-  <script src="./JS/supervisor/supervisor_directorio.js?v=20261006_01"></script>
-  <script src="./JS/supervisor/supervisor_registro.js?v=20261109_01"></script>
+  <script src="./JS/visitas_anfitrion.js?v=20261109_03"></script>
+  <script src="./JS/supervisor/supervisor_directorio.js?v=20261109_03"></script>
+  <script src="./JS/supervisor/supervisor_registro.js?v=20261109_03"></script>
   <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261027_04"></script>
 
   <script>

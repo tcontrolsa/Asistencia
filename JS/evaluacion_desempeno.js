@@ -294,7 +294,7 @@
     if (!res || !res.ok || !res.token) {
       const err = (res && res.error) || '';
       if (/API Key|Acción no reconocida|No autorizado/i.test(err)) throw new Error('La evaluación de desempeño aún no está habilitada en el servidor.');
-      throw new Error(err || 'No se pudo verificar tu PIN.');
+      throw new Error(err || 'No se pudo verificar tu contraseña.');
     }
     const s = { token: res.token, exp: res.exp, empleadoId: String(empleadoId), equipo: res.equipo || [], rrhh: !!res.rrhh, master: !!res.master };
     try { sessionStorage.setItem(KEY_SESION, JSON.stringify(s)); } catch (e) { }
@@ -303,7 +303,7 @@
 
   // Respuesta de PostgREST (directa o reenviada por Apps Script) → resultado o error claro
   function interpretar(status, r) {
-    if (status === 401) { cerrarSesion(); throw Object.assign(new Error('Tu sesión venció. Vuelve a ingresar tu PIN.'), { sesion: true }); }
+    if (status === 401) { cerrarSesion(); throw Object.assign(new Error('Tu sesión venció. Vuelve a ingresar tu contraseña.'), { sesion: true }); }
     if (status < 200 || status >= 300) {
       const det = r && (r.message || r.hint || r.error) || '';
       throw Object.assign(new Error(`HTTP ${status}${det ? ': ' + det : ''}`), { servidor: true });
@@ -418,10 +418,10 @@
   const pinHtml = (error = '') => `
     <div class="ev-card ev-pin">
       <div class="ev-pin-ico"><i class="fas fa-lock"></i></div>
-      <h3>Confirma tu PIN</h3>
-      <p class="ev-muted">Las evaluaciones son información personal. Ingresa el PIN con el que entras a la app.</p>
+      <h3>Confirma tu contraseña</h3>
+      <p class="ev-muted">Las evaluaciones son información personal. Ingresa la contraseña con la que entras a la app.</p>
       <form class="ev-pin-form" data-ev="pin">
-        <input type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" placeholder="PIN" required>
+        <input type="password" autocomplete="current-password" maxlength="40" placeholder="Contraseña" required>
         <button type="submit" class="ev-btn ev-btn-primary">Continuar</button>
       </form>
       <div class="ev-error" ${error ? '' : 'hidden'}>${esc(error)}</div>
@@ -547,7 +547,7 @@
       return true; // sin conexión con Firestore no se bloquea al evaluador
     }
   }
-  const AVISO_EQUIPO = 'Tu equipo de evaluación cambió. Ingresa tu PIN de nuevo para actualizarlo.';
+  const AVISO_EQUIPO = 'Tu equipo de evaluación cambió. Ingresa tu contraseña de nuevo para actualizarlo.';
 
   async function cargar(st) {
     st.cargando = true; st.error = '';
@@ -655,7 +655,7 @@
         ${limiteEvaluar(st.mes) ? `<strong>Plazo: ${hoyLocal() > limiteEvaluar(st.mes) ? 'venció el' : 'hasta el'} ${fechaCorta(limiteEvaluar(st.mes))}.</strong>` : ''}
         Califica en los últimos días del ${textoPeriodo()} y conversa el resultado la semana siguiente. Meta de cumplimiento: ${pct(META)}.</p>
       ${filas}
-      <p class="ev-muted ev-small">¿Falta alguien? Pide a Psicología Organizacional que lo asigne y <button class="ev-link" data-ev="salir">vuelve a ingresar tu PIN</button>.</p>
+      <p class="ev-muted ev-small">¿Falta alguien? Pide a Psicología Organizacional que lo asigne y <button class="ev-link" data-ev="salir">vuelve a ingresar tu contraseña</button>.</p>
     </div>`;
   }
 
@@ -1668,7 +1668,7 @@
             </tr>`;
           }).join('') || '<tr><td colspan="4" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>'}</tbody>
         </table></div>
-        <p class="ev-muted ev-small">El evaluador verá los cambios la próxima vez que ingrese su PIN en Desarrollo.</p>
+        <p class="ev-muted ev-small">El evaluador verá los cambios la próxima vez que ingrese su contraseña en Desarrollo.</p>
       </div></div>`;
     };
     cont.addEventListener('change', ev => {
@@ -1866,7 +1866,7 @@
     if (!st.ses || st.cargando) return pintarGenerico(st);
     if (!st.ses.master) {
       c.innerHTML = `<div class="ev-root"><div class="ev-card"><h3 class="ev-h3"><i class="fas fa-lock"></i> Configuración</h3>
-        <p class="ev-muted">Solo el administrador puede editar el cuestionario. Si acabas de recibir el permiso, <button class="ev-link" data-ev="salir">vuelve a ingresar tu PIN</button>.</p></div></div>`;
+        <p class="ev-muted">Solo el administrador puede editar el cuestionario. Si acabas de recibir el permiso, <button class="ev-link" data-ev="salir">vuelve a ingresar tu contraseña</button>.</p></div></div>`;
       return;
     }
     if (!st.cfg) {

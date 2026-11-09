@@ -3087,7 +3087,7 @@ window.FirebaseBackend = {
             console.log(`✅ Contraseñas/PINs restablecidos para ${totalActualizados} empleados.`);
             return {
                 ok: true,
-                mensaje: `Se restablecieron los PINs de ${totalActualizados} empleados exitosamente. Ahora cada empleado podrá registrar su nueva contraseña personal.`,
+                mensaje: `Se restablecieron las contraseñas de ${totalActualizados} empleados exitosamente. Ahora cada empleado podrá registrar su nueva contraseña personal.`,
                 empleadosAfectados: totalActualizados
             };
         } catch (error) {
@@ -4938,7 +4938,7 @@ function parsearTimestamp(tsString) {
 console.log("🚀 Motor de Firebase inicializado y listo para usar.");
 
 window.resetearPinesTodosLosEmpleados = async function (desvincularDispositivos = false) {
-    if (!confirm("⚠️ ADVERTENCIA:\n\n¿Estás seguro de que deseas BORRAR los PINs/Contraseñas de TODOS los empleados?\n\nAl hacerlo, ningún empleado tendrá contraseña guardada y cada usuario deberá ingresar a la app para registrar y confirmar su nueva contraseña personal.")) {
+    if (!confirm("⚠️ ADVERTENCIA:\n\n¿Estás seguro de que deseas BORRAR las contraseñas de TODOS los empleados?\n\nAl hacerlo, ningún empleado tendrá contraseña guardada y cada usuario deberá ingresar a la app para registrar y confirmar su nueva contraseña personal.")) {
         return;
     }
     const confirmacion = prompt("Para confirmar la eliminación masiva de contraseñas, escribe exactamente la palabra: BORRAR");
@@ -4959,7 +4959,7 @@ window.resetearPinesTodosLosEmpleados = async function (desvincularDispositivos 
         }
 
         if (res && res.ok) {
-            alert("✅ " + (res.mensaje || "PINs restablecidos correctamente."));
+            alert("✅ " + (res.mensaje || "Contraseñas restablecidas correctamente."));
         } else {
             alert("❌ Error: " + (res?.error || "No se pudo completar la operación."));
         }

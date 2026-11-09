@@ -3700,7 +3700,7 @@ async function verificarEstadoCuentaEmpleado() {
                         <div class="mt-2 pt-2 border-top" style="font-size:10.5px; color:#64748b;">
                             <div style="font-weight:700; color:#0369a1; margin-bottom:2px;"><i class="fas fa-info-circle me-1"></i> Requisitos y Restricciones:</div>
                             <ul style="margin:0; padding-left:16px; line-height:1.4;">
-                                <li>Mínimo <strong>4 caracteres</strong> (letras, números o PIN fácil de recordar).</li>
+                                <li>Mínimo <strong>4 caracteres</strong> (letras o números fáciles de recordar).</li>
                                 <li><strong>Dispositivo único:</strong> Solo podrás registrar asistencia desde este equipo vinculado.</li>
                                 <li>El registro es <strong>personal e intransferible</strong> con verificación GPS.</li>
                             </ul>

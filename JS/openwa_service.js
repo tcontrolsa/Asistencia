@@ -1635,7 +1635,7 @@
                         `📱 *Instrucciones para tu primer ingreso:*\n` +
                         `1. Abre el enlace arriba desde tu teléfono o computador.\n` +
                         `2. Digita tu número de ID (${id}).\n` +
-                        `3. El sistema te solicitará crear y registrar tu contraseña o PIN personal de 4 dígitos.\n\n` +
+                        `3. El sistema te solicitará crear y registrar tu contraseña personal (mínimo 4 caracteres).\n\n` +
                         `_¡Muchos éxitos y bienvenido/a al equipo!_ ✨`;
 
                     resColaborador = await this.enviarMensajeTexto(telefono, msgBienvenida);
