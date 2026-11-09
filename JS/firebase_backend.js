@@ -433,6 +433,7 @@ window.FirebaseBackend = {
                 campoAutorizado: window.FirebaseBackend._campoVigente(empData),
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
+                tipoPersonal: empData.tipo_personal || '',
                 campoSolicitud: empData.campo_solicitud || null,
                 teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
                 teletrabajoAviso: window.FirebaseBackend._teletrabajoAvisoAceptado(empData),
@@ -560,6 +561,7 @@ window.FirebaseBackend = {
                 campoAutorizado: window.FirebaseBackend._campoVigente(empData),
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
+                tipoPersonal: empData.tipo_personal || '',
                 campoSolicitud: empData.campo_solicitud || null,
                 teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
                 teletrabajoAviso: window.FirebaseBackend._teletrabajoAvisoAceptado(empData),
@@ -884,11 +886,14 @@ window.FirebaseBackend = {
             campoAutorizado: window.FirebaseBackend._campoVigente(empData),
             campoDesde: empData.campo_desde || '',
             campoHasta: empData.campo_hasta || '',
+            tipoPersonal: empData.tipo_personal || '',
             campoSolicitud: empData.campo_solicitud || null,
             teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
             teletrabajoAviso: window.FirebaseBackend._teletrabajoAvisoAceptado(empData),
             authExtras: empData.authExtras || 'NO',
-            esSupervisor: empData.supervisor === 'SI' || empData.esSupervisor === true || empData.cargo?.toUpperCase().includes("SUPERVISOR"),
+            // Mismo criterio que el inicio de sesión: SI, SUPERVISOR y SUPERVISOR ADMIN ven el acceso al panel
+            esSupervisor: ['SI', 'SUPERVISOR', 'SUPERVISOR ADMIN', 'SUPERVISOR_ADMIN', 'ADMIN_SUPERVISOR', 'ADMIN'].includes(String(empData.supervisor || empData.rol || '').trim().toUpperCase())
+                || empData.esSupervisor === true || empData.cargo?.toUpperCase().includes("SUPERVISOR"),
             tieneEntrada: tieneEntrada,
             tieneSalida: tieneSalida,
             horaEntrada: horaEntrada,
@@ -1402,6 +1407,10 @@ window.FirebaseBackend = {
         if (!motivo) return { error: 'Indica el proyecto o motivo' };
         const ahora = new Date().toISOString();
         const ref = db.collection('empleados').doc(id);
+        const ficha = await ref.get();
+        if (String((ficha.data() || {}).tipo_personal || '').toUpperCase() === 'EXTERNO') {
+            return { error: 'El permiso de campo no aplica al personal de servicios externos.' };
+        }
         // mergeFields: la solicitud nueva reemplaza entera a la anterior (sin arrastrar avisos ni 'automatica')
         if (this._diasCampo(desde, hasta) <= this.CAMPO_DIAS_AUTOMATICO) {
             const solicitud = { desde, hasta, motivo, estado: 'APROBADA', creada: ahora, automatica: true, resuelta_por: 'Aprobación automática', resuelta_en: ahora };
