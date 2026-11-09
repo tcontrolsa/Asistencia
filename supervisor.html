@@ -2095,6 +2095,10 @@
                 <button type="button" onclick="abrirModalNuevoEmpleadoDirectorio()" class="btn btn-primary" style="height:38px; padding:0 14px; border-radius:10px; font-size:12px; font-weight:700; background:var(--blue); border:none; color:white; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 5px rgba(37,99,235,0.22); transition:transform 0.15s;" title="Registrar un nuevo colaborador">
                   <i class="fas fa-user-plus"></i> Nuevo Usuario
                 </button>
+                <button type="button" id="btnRegistrosPendientes" onclick="abrirRegistrosPendientes()" class="btn" style="display:none; position:relative; height:38px; padding:0 14px; border-radius:10px; font-size:12px; font-weight:700; background:#fff; border:1.5px solid #bfdbfe; color:#1d4ed8; align-items:center; gap:6px;">
+                  <i class="fas fa-user-clock"></i> Solicitudes de registro
+                  <span id="badgeRegistros" hidden style="min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:#dc2626; color:#fff; font-size:10.5px; line-height:18px;">0</span>
+                </button>
               </div>
             </div>
 
@@ -5317,6 +5321,7 @@
   <script src="./JS/notificaciones.js?v=20261027_01"></script>
   <script src="./JS/visitas_anfitrion.js?v=20261027_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20261006_01"></script>
+  <script src="./JS/supervisor/supervisor_registro.js?v=20261109_01"></script>
   <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261027_04"></script>
 
   <script>

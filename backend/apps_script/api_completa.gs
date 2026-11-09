@@ -581,6 +581,11 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(proxyVisitaPublica(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Registro propio de colaboradores (registro.gs): respaldo de la página pública
+      if (data.accion === 'registroRpc' && typeof proxyRegistroPublico === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(proxyRegistroPublico(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
 
       // Acceso seguro (acceso_seguro.gs): solo por POST, el PIN nunca viaja en la URL
       if (typeof ACCIONES_ACCESO !== 'undefined' && ACCIONES_ACCESO.indexOf(data.accion) !== -1) {
@@ -894,6 +899,12 @@ function procesarAccion(params) {
     // Registro de visitas (visitas.gs): avisos desde la cola de Postgres
     case 'notificarVisita':
       return typeof notificarVisita === 'function' ? notificarVisita(params) : { ok: false, error: 'visitas.gs no publicado' };
+
+    // Registro propio de colaboradores (registro.gs): avisos desde la cola de Postgres
+    case 'enviarRegistro':
+      return typeof enviarRegistro === 'function' ? enviarRegistro(params) : { ok: false, error: 'registro.gs no publicado' };
+    case 'avisoRegistro':
+      return typeof avisoRegistro === 'function' ? avisoRegistro(params) : { ok: false, error: 'registro.gs no publicado' };
 
     default:
       return { error: `Acción no reconocida: ${accion}` };

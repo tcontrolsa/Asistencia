@@ -4134,6 +4134,9 @@ function renderAuthScreen() {
                             Continuar <i class="fas fa-arrow-right ms-1"></i>
                         </button>
                         <p class="text-muted text-center mt-3 mb-0" style="font-size: 11.5px;">¿No sabes tu ID? Pregúntale a tu supervisor o a RR.HH.</p>
+                        <a href="./registro.html" class="btn btn-outline-secondary w-100 mt-3" style="border-radius: 12px; font-weight: 700; font-size: 13.5px;">
+                            <i class="fas fa-user-plus me-1"></i> ¿Eres nuevo? Regístrate
+                        </a>
                     </div>
 
                     <!-- Paso 2: tarjeta del usuario (común a 2a, 2b y recuperar) -->
