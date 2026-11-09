@@ -1086,7 +1086,7 @@ function campoPermisoHtml() {
     const caja = (bg, borde, color, html) => `<div style="margin: 12px auto 0; max-width: 340px; text-align: left; background: ${bg}; border: 1.5px solid ${borde}; border-radius: 12px; padding: 10px 12px; font-size: 12px; color: ${color}; line-height: 1.4;">${html}</div>`;
     const boton = (txt) => `<button onclick="abrirSolicitudCampo()" style="margin-top: 8px; width: 100%; padding: 8px 12px; border-radius: 10px; background: #0369a1; color: white; border: none; font-weight: 700; font-size: 11.5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><i class="fas fa-calendar-plus"></i> ${txt}</button>`;
 
-    if (esCampoAutorizado()) return '';
+    if (esCampoAutorizado() || esPersonalExternoApp()) return '';
     if (sol && sol.estado === 'PENDIENTE' && String(sol.hasta || '') >= hoy) {
         return caja('#eff6ff', '#bfdbfe', '#1e3a8a', `
             <strong><i class="fas fa-hourglass-half"></i> Solicitud de campo enviada</strong><br>
@@ -1110,7 +1110,11 @@ function campoPermisoHtml() {
     return caja('#f8fafc', '#e2e8f0', '#334155', `${previo}<span style="color:#475569;">¿Vas a trabajar fuera de la empresa? Pide permiso para registrar en campo.</span>${boton('SOLICITAR REGISTRO EN CAMPO')}`);
 }
 
+// El personal de servicios externos no usa permiso de campo (decisión 2026-11-09)
+const esPersonalExternoApp = () => String((empleado && empleado.tipoPersonal) || '').toUpperCase() === 'EXTERNO';
+
 window.abrirSolicitudCampo = function () {
+    if (esPersonalExternoApp()) { mostrarToast('El permiso de campo no aplica al personal de servicios externos', 'info'); return; }
     document.getElementById('modalSolicitudCampo')?.remove();
     const hoy = getLocalHoyStr(new Date());
     const modal = document.createElement('div');
@@ -1432,7 +1436,7 @@ window.abrirOpcionesFuera = function (tipo) {
         opciones.push(puOpcion(`window.elegirTeletrabajo(${sigue})`, 'fa-laptop', '#f5f3ff', '#6d28d9', conEntrada ? 'Trabajé desde casa' : 'Trabajo desde casa',
             conEntrada ? 'Registrar mi salida en teletrabajo' : 'Registrar mi jornada en teletrabajo'));
     }
-    if (!conEntrada) {
+    if (!conEntrada && !esPersonalExternoApp()) {
         if (sol && sol.estado === 'PENDIENTE' && String(sol.hasta || '') >= hoy) {
             opciones.push(puOpcion('', 'fa-hourglass-half', '#eff6ff', '#2563eb', 'Trabajo en campo: solicitud enviada', `Del ${fechaCortaCampo(sol.desde)} al ${fechaCortaCampo(sol.hasta)} · esperando aprobación. Te avisaremos por WhatsApp.`, true));
         } else if (sol && sol.estado === 'APROBADA' && String(sol.desde || '') > hoy) {
@@ -3336,6 +3340,7 @@ async function verificarPIN() {
                 campoAutorizado: res.empleado.campoAutorizado === true,
                 campoDesde: res.empleado.campoDesde || '',
                 campoHasta: res.empleado.campoHasta || '',
+                tipoPersonal: res.empleado.tipoPersonal || '',
                 campoSolicitud: res.empleado.campoSolicitud || null,
                 teletrabajoHabilitado: res.empleado.teletrabajoHabilitado === true || (typeof estadoRes !== 'undefined' && estadoRes && estadoRes.teletrabajoHabilitado === true),
                 teletrabajoAviso: res.empleado.teletrabajoAviso === true || (typeof estadoRes !== 'undefined' && estadoRes && estadoRes.teletrabajoAviso === true),
@@ -3578,6 +3583,7 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
                 campoAutorizado: estadoRes.campoAutorizado === true,
                 campoDesde: estadoRes.campoDesde || '',
                 campoHasta: estadoRes.campoHasta || '',
+                tipoPersonal: estadoRes.tipoPersonal || '',
                 campoSolicitud: estadoRes.campoSolicitud || null,
                 teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
                 teletrabajoAviso: estadoRes.teletrabajoAviso === true,
@@ -3814,6 +3820,7 @@ async function confirmarRegistroInicial() {
                     campoAutorizado: estadoRes.campoAutorizado === true,
                     campoDesde: estadoRes.campoDesde || '',
                     campoHasta: estadoRes.campoHasta || '',
+                    tipoPersonal: estadoRes.tipoPersonal || '',
                     campoSolicitud: estadoRes.campoSolicitud || null,
                     teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
                     teletrabajoAviso: estadoRes.teletrabajoAviso === true,
@@ -8635,6 +8642,7 @@ async function verificarEstadoInicial() {
                         campoAutorizado: estadoRes.campoAutorizado === true,
                         campoDesde: estadoRes.campoDesde || '',
                         campoHasta: estadoRes.campoHasta || '',
+                        tipoPersonal: estadoRes.tipoPersonal || '',
                         campoSolicitud: estadoRes.campoSolicitud || null,
                         teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
                         teletrabajoAviso: estadoRes.teletrabajoAviso === true,

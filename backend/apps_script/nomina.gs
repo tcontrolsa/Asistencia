@@ -177,7 +177,10 @@ function leerEmpleadosFirestoreNomina_() {
     if (res.getResponseCode() !== 200) throw new Error('Firestore respondió ' + res.getResponseCode());
     var cuerpo = JSON.parse(res.getContentText());
     (cuerpo.documents || []).forEach(function (d) {
-      out[d.name.split('/').pop()] = camposFirestore_(d.fields || {});
+      var f = camposFirestore_(d.fields || {});
+      // Personal de servicios externos: no entra en nómina ni en vacaciones
+      if (String(f.tipo_personal || '').toUpperCase() === 'EXTERNO') return;
+      out[d.name.split('/').pop()] = f;
     });
     token = cuerpo.nextPageToken || '';
   } while (token);
@@ -284,6 +287,8 @@ function revisarFormulasVacaciones() {
 }
 
 // ---------------------------------------------------------------- tomadas solo del año en curso
+// OBSOLETO (2026-10-29): las fórmulas de CALCULAR_vacaciones las pone vacaciones_auto.gs (período 1/dic–30/nov y
+// año en VAC_ANIO). No ejecutar actualizarTomadasDelAnio: cambiaría la columna I con otra regla.
 // La columna I contaba todos los días de VACACIONES hasta hoy, también los de años anteriores,
 // que ya están descontados en F (restantes del año anterior, valor manual de RR.HH.).
 // La nueva fórmula cuenta solo desde el 1 de enero del año de la columna G.

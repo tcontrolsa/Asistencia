@@ -10,6 +10,36 @@ const LNG_EMPRESA = -78.47896772889067;
 const RADIO_METROS = 250;
 
 let empCache = [];
+
+// Personal de servicios externos (tipo_personal EXTERNO, serie 9000): grupo aparte. Control Diario, Dashboard,
+// Reportes, Directorio y Mapa muestran un grupo a la vez; los demás usos de empCache (búsquedas, sesión) ven a todos.
+window.esPersonalExterno = e => String((e && e.tipo_personal) || '').toUpperCase() === 'EXTERNO';
+function grupoPersonal() {
+  try { return localStorage.getItem('tcontrol_grupo_personal') === 'EXTERNOS' ? 'EXTERNOS' : 'EMPRESA'; } catch (e) { return 'EMPRESA'; }
+}
+function personalDelGrupo() {
+  const externos = grupoPersonal() === 'EXTERNOS';
+  return (empCache || []).filter(e => window.esPersonalExterno(e) === externos);
+}
+window.personalDelGrupo = personalDelGrupo;
+function actualizarSelectorGrupo() {
+  const caja = document.getElementById('selectorGrupoPersonal');
+  if (!caja) return;
+  const n = (empCache || []).filter(window.esPersonalExterno).length;
+  // Sin personal externo no hay nada que elegir: se vuelve a Empresa
+  if (!n) { caja.hidden = true; if (grupoPersonal() !== 'EMPRESA') { try { localStorage.removeItem('tcontrol_grupo_personal'); } catch (e) { } } return; }
+  const g = grupoPersonal();
+  const b = (val, txt) => `<button type="button" onclick="cambiarGrupoPersonal('${val}')" aria-pressed="${g === val}" style="border:0; padding:5px 11px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; ${g === val ? 'background:#0f172a; color:#fff;' : 'background:transparent; color:#475569;'}">${txt}</button>`;
+  caja.hidden = false;
+  caja.innerHTML = b('EMPRESA', 'Empresa') + b('EXTERNOS', `Servicios externos (${n})`);
+}
+window.cambiarGrupoPersonal = function (g) {
+  try { localStorage.setItem('tcontrol_grupo_personal', g === 'EXTERNOS' ? 'EXTERNOS' : 'EMPRESA'); } catch (e) { }
+  actualizarSelectorGrupo();
+  if (typeof cargarPanelActual === 'function') cargarPanelActual();
+  if (typeof window.cargarDirectorio === 'function') window.cargarDirectorio();
+  if (typeof window.renderMapaAsistencia === 'function' && document.querySelector('#panel-asistencia.active')) window.renderMapaAsistencia();
+};
 let periodos = (typeof generarPeriodos === 'function') ? generarPeriodos() : [];
 let _reportesCustomData = [];
 let panelActual = 'asistencia';
@@ -1559,6 +1589,7 @@ async function cambiarEstadoAlmuerzo(id, estado, fecha) {
 // DASHBOARD
 // ============================================================
 function cargarDashboard() {
+  const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   let hoy = getLocalHoyStr();
   let circ = 2 * Math.PI * 54;
   let dc = document.getElementById('donutCircle');
@@ -2262,6 +2293,7 @@ function filtrarResumenMensual() {
 }
 
 function cargarAnalisisTardanzas() {
+  const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   if (!$('tarTotal')) return;
   let periodo = periodos[parseInt($('periodoTardanzas')?.value || 0)];
   if (!periodo || !empCache.length) return;
@@ -2792,6 +2824,7 @@ window.obtenerInfoAusenciaPermisoHoy = function (e, fechaEvaluada) {
 };
 
 function cargarAsistencia() {
+  const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   hoy = getLocalHoyStr();
   const canEditAttendance = tienePermisoAdmin();
   // Ordenar empleados alfabéticamente
@@ -3715,11 +3748,12 @@ window.obtenerListaEmpleadosReportes = function () {
   const fCargo = ($('filtroCargoReporte')?.value || '').toLowerCase();
   const verBajas = incluirDesv || incluirElim || fCargo === 'desvinculados' || fCargo === 'eliminados';
 
-  const baseEmps = (empCache && empCache.length) ? empCache : (window.empCache || []);
+  const baseEmps = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   let lista = [...baseEmps];
   if (verBajas) {
     const mapaBajas = new Map();
     (window.empEliminadosCache || []).forEach(emp => {
+      if (emp.migrado_a) return;   // ficha vieja pasada a otro ID (p. ej. personal externo a la serie 9000): no es una baja
       const k = String(emp.id || emp.nombre || '').trim();
       if (k) mapaBajas.set(k, { ...emp });
     });
@@ -3847,6 +3881,7 @@ window.obtenerRangoFechasReportes = function () {
 };
 
 function cargarReportes() {
+  const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   const rango = window.obtenerRangoFechasReportes();
   const R_INI = rango.R_INI;
   const R_FIN = rango.R_FIN;
@@ -9156,6 +9191,7 @@ async function _cargarDatosCompletos(force = false, silencioso = false, forceShe
       return;
     }
     empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+    actualizarSelectorGrupo();
     empCache.forEach(emp => {
       if (emp.registros && emp.registros.length) {
         emp.registros.forEach(r => {
@@ -10120,6 +10156,7 @@ window.addEventListener('archivadosActualizados', async () => {
         });
 
         empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+    actualizarSelectorGrupo();
         empCache.forEach(emp => {
           const empIdKey = String(emp.id).trim();
           if (mapHistCargado.has(empIdKey)) {
@@ -11951,6 +11988,7 @@ window.exportarExcelDesvinculados = async function () {
 // MODAL DESGLOSE HISTÓRICO DE ASISTENCIA Y DIFERENCIAS
 // ==========================================
 window.abrirModalDesgloseHistoricoBase = function (periodoPreseleccionado) {
+  const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   try {
     const modal = document.getElementById('modalDesgloseHistoricoBase');
     const tbody = document.getElementById('tbodyModalHistoricoBase');
@@ -12089,6 +12127,7 @@ window.cambiarPeriodoModalHistorico = function (val) {
 };
 
 window.procesarYRenderizarHistoricoBase = function (opcionPeriodo) {
+  const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   try {
     const tbody = document.getElementById('tbodyModalHistoricoBase');
     if (!tbody) return;
@@ -13224,6 +13263,7 @@ window.exportarTablaVacacionesExcel = async function () {
 // DETALLE DE KPIS POR COLABORADOR
 // ==========================================
 window.renderDetailedKPIs = function () {
+  const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   const tbody = document.getElementById('tbodyKpiDetalle');
   if (!tbody) return;
 

@@ -138,6 +138,7 @@ window.renderBannerCumpleanosDirectorio = function (listaCumples) {
 };
 
 window.cargarDirectorio = function () {
+  const empCache = window.personalDelGrupo ? window.personalDelGrupo() : (window.empCache || []);   // grupo elegido
   if (!empCache || empCache.length === 0) {
     return;
   }
@@ -243,6 +244,7 @@ window.cargarDirectorio = function () {
 };
 
 window.filtrarDirectorio = function () {
+  const empCache = window.personalDelGrupo ? window.personalDelGrupo() : (window.empCache || []);   // grupo elegido
   if (!empCache) return;
 
   const srchEl = $('srchDirectorio');

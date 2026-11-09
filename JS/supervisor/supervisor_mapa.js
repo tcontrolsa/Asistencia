@@ -499,6 +499,7 @@ window.recargarDatosMapa = async function () {
 };
 
 window.renderMapaAsistencia = function () {
+  const empCache = window.personalDelGrupo ? window.personalDelGrupo() : (window.empCache || []);   // grupo elegido
   const rangoInfo = window.obtenerRangoFechasMapa();
   if ($('mapaRangoLabel')) $('mapaRangoLabel').textContent = rangoInfo.label;
 
@@ -940,6 +941,7 @@ window.renderCoberturaMapa = function (empleados, rangoInfo) {
 };
 
 window.exportarExcelMapaAsistencia = function () {
+  const empCache = window.personalDelGrupo ? window.personalDelGrupo() : (window.empCache || []);   // grupo elegido
   const rangoInfo = window.obtenerRangoFechasMapa();
   if (!empCache || empCache.length === 0) {
     mostrarToast('No hay datos disponibles para exportar', 'error');
