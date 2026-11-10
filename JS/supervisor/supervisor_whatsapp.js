@@ -181,7 +181,7 @@ window._onSubirImagenPlantillaWA = function (e) {
 
 window.cambiarSubtabWhatsApp = function (tab) {
   window._waActiveSubtab = tab;
-  const tabs = ['servidor', 'automatico', 'plantillas', 'logs'];
+  const tabs = ['servidor', 'automatico', 'plantillas', 'logs', 'almuerzos'];
   tabs.forEach(t => {
     const btn = $(`btnWaSub${t.charAt(0).toUpperCase() + t.slice(1)}`);
     const sec = $(`waSec${t.charAt(0).toUpperCase() + t.slice(1)}`);
@@ -195,6 +195,8 @@ window.cambiarSubtabWhatsApp = function (tab) {
     window.actualizarPreviewImagenPruebaWA();
   } else if (tab === 'logs') {
     window.cargarLogsWhatsApp();
+  } else if (tab === 'almuerzos' && typeof window.cargarAvisoAlmuerzos === 'function') {
+    window.cargarAvisoAlmuerzos();
   }
 };
 
