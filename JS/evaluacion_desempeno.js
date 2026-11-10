@@ -1205,14 +1205,18 @@
     aplicarEnlace(st);
   }
 
-  // ¿La fecha (YYYY-MM-DD) cae en el período? Mes 'YYYY-MM' o trimestre 'YYYY-Tn'
-  function fechaEnPeriodo(fecha, per) {
+  // Período de la RONDA en que se aplicó una evaluación (pedido 2026-11-10): lo aplicado hasta el día límite
+  // (plazos.evaluarDia) del mes siguiente al cierre cuenta para el período anterior, igual que las demás
+  // evaluaciones de esa ronda. Ej.: Día 75 del 06/11 → octubre (o el trimestre jul–sep si es trimestral).
+  function periodoDeRonda(fecha) {
     const f = normFecha(fecha);
-    if (!f || !per) return false;
-    const t = String(per).match(/^(\d{4})-T([1-4])$/);
-    if (t) { const mes = Number(f.slice(5, 7)); return f.slice(0, 4) === t[1] && Math.ceil(mes / 3) === Number(t[2]); }
-    return f.slice(0, 7) === per;
+    if (!f) return '';
+    const mes = Number(f.slice(5, 7));
+    const per = trimestral() ? `${f.slice(0, 4)}-T${Math.ceil(mes / 3)}` : f.slice(0, 7);
+    const ant = periodoAnterior(per);
+    return ant && f <= limiteEvaluar(ant) ? ant : per;
   }
+  const fechaEnPeriodo = (fecha, per) => !!per && periodoDeRonda(fecha) === per;
 
   // Resultados (pedido 2026-11-10): en cada mes o trimestre aparecen TODOS los EVALUADO activos, una fila por persona,
   // también quienes están en período de prueba (se les marca el día de prueba en que van). Si en ese período tienen
