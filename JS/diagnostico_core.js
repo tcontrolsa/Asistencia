@@ -152,7 +152,7 @@ async function testConexion() {
     
     try {
         log('Enviando solicitud de prueba...', 'info');
-        const res = await jsonpRequest({ accion: 'verificarClaveGuardia', clave: 'TCONTROL2026' });
+        const res = await jsonpRequest({ accion: 'verificarClaveGuardia', clave: '' });   // solo prueba la conexión
         
         if (res) {
             log(`✓ Respuesta recibida del servidor`, 'success');
@@ -200,7 +200,7 @@ async function testConexion() {
     
     try {
         log('Enviando solicitud de prueba...', 'info');
-        const res = await jsonpRequest({ accion: 'verificarClaveGuardia', clave: 'TCONTROL2026' });
+        const res = await jsonpRequest({ accion: 'verificarClaveGuardia', clave: '' });   // solo prueba la conexión
         
         if (res) {
             log(`✓ Respuesta recibida del servidor`, 'success');

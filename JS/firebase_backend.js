@@ -2296,12 +2296,13 @@ window.FirebaseBackend = {
         return query.docs.map(doc => this._processDoc(doc.id, doc.data())).filter(Boolean);
     },
 
+    // La clave del terminal se valida en el servidor (sesion_firebase.gs); ya no está escrita en la página
     async verificarClaveGuardia(params) {
-        const clave = params.clave || params.pin;
-        if (clave === "TCONTROL2026") {
-            return { ok: true };
-        }
-        return { error: "Contraseña incorrecta" };
+        const clave = String(params.clave || params.pin || '');
+        if (!clave) return { error: "Ingresa la clave del terminal." };
+        if (!window.SesionFirebase) return { error: "Servicio no disponible" };
+        const r = await window.SesionFirebase.abrirTerminal(clave);
+        return r.ok ? { ok: true } : { error: r.motivo || "Clave incorrecta" };
     },
 
     async eliminarRegistro(params) {

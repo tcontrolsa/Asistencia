@@ -2,7 +2,6 @@
 //  CONFIGURACIÓN
 // ============================================================
 const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
-const CLAVE_GUARDIA = 'TCONTROL2026';
 
 // Estado
 let lat = null, lng = null, gpsOk = false, watchId = null;
@@ -461,15 +460,14 @@ async function login() {
     showLoading(true, 'Verificando clave…');
     try {
         const deviceToken = generarDeviceToken();
-        // Usar verificarClaveGuardia que valida contra TCONTROL2026
-        const res = await jsonpRequest({ accion: 'verificarClaveGuardia', pin: pin, deviceToken: deviceToken });
-        
+        // Seguridad: la clave se valida en el servidor (ya no está escrita en la página) y abre la sesión del terminal
+        const r = window.SesionFirebase ? await window.SesionFirebase.abrirTerminal(pin) : { ok: false, motivo: 'Servicio no disponible' };
+        const res = r.ok ? { ok: true } : { error: /incorrecta|intentos/i.test(r.motivo || '') ? r.motivo : 'No se pudo verificar la clave. Revisa la conexión e intenta de nuevo.' };
+
         showLoading(false);
         if (res.error) {
             mostrarToast(res.error, 'error');
         } else if (res.ok) {
-            // Seguridad etapa 1: sesión de Firebase del terminal (en segundo plano; si falla, el terminal sigue igual)
-            if (window.SesionFirebase) window.SesionFirebase.abrirTerminal(pin);
             // Guardar sesión genérica para el terminal de guardia
             const sessionData = { id: 'GUARDIA', token: deviceToken, timestamp: new Date().getTime() };
             localStorage.setItem('GUARDIA_SESSION', JSON.stringify(sessionData));

@@ -3524,7 +3524,9 @@ function verificarClaveGuardia(params) {
   try {
     const clave = params.clave?.toString().trim();
     if (!clave) return { ok: false, error: "Clave no proporcionada" };
-    if (clave === CLAVE_GUARDIA) return { ok: true };
+    // Seguridad etapa 1: la clave vigente es la propiedad CLAVE_TERMINAL_GUARDIA (sesion_firebase.gs); sin ella, la antigua
+    var vigente = typeof claveTerminalGuardia_ === 'function' ? claveTerminalGuardia_() : CLAVE_GUARDIA;
+    if (clave === vigente) return { ok: true };
     return { ok: false, error: "Clave incorrecta" };
   } catch (error) {
     console.error("Error en verificarClaveGuardia:", error);

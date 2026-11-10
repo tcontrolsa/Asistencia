@@ -62,7 +62,7 @@ function emitirSesionFirebaseGuardia(p) {
   var intentos = parseInt(cache.get('sfb_guardia_int') || '0', 10);
   if (intentos >= SESION_FB_MAX_INTENTOS * 4) return { ok: false, error: 'Demasiados intentos. Espera 15 minutos.' };
   var propia = PropertiesService.getScriptProperties().getProperty('CLAVE_TERMINAL_GUARDIA');
-  var valida = propia || (typeof CLAVE_GUARDIA !== 'undefined' ? CLAVE_GUARDIA : '');
+  var valida = claveTerminalGuardia_();
   if (!valida || clave !== valida) {
     cache.put('sfb_guardia_int', String(intentos + 1), SESION_FB_BLOQUEO_SEG);
     if (typeof registrarAcceso_ === 'function') registrarAcceso_('TERMINAL', 'sesionFirebaseGuardia', 'rechazado', 'clave incorrecta');
@@ -72,6 +72,12 @@ function emitirSesionFirebaseGuardia(p) {
   var token = firmarTokenFirebase_('terminal_guardia', { empleadoId: '', rol: 'guardia', externo: false });
   if (typeof registrarAcceso_ === 'function') registrarAcceso_('TERMINAL', 'sesionFirebaseGuardia', 'ok', propia ? 'clave propia' : 'clave antigua');
   return { ok: true, customToken: token, rol: 'guardia', clavePropia: !!propia };
+}
+
+// Clave vigente del terminal: la propiedad CLAVE_TERMINAL_GUARDIA; sin ella, la antigua (pública) de api_completa.gs
+function claveTerminalGuardia_() {
+  var propia = PropertiesService.getScriptProperties().getProperty('CLAVE_TERMINAL_GUARDIA');
+  return propia || (typeof CLAVE_GUARDIA !== 'undefined' ? CLAVE_GUARDIA : '');
 }
 
 // master (1058) · admin (Supervisor Admin) · supervisor · colaborador
@@ -91,6 +97,18 @@ function probarSesionFirebase() {
     payload: JSON.stringify({ token: token, returnSecureToken: true })
   });
   Logger.log('Firebase acepta el permiso firmado: ' + (res.getResponseCode() === 200 ? 'SÍ' : 'NO → ' + res.getContentText().slice(0, 300)));
+}
+
+/** Ejecutar una vez (▶): define la clave NUEVA del terminal del guardia. Escríbela abajo, ejecuta y bórrala de aquí.
+ *  Desde ese momento la clave antigua (TCONTROL2026, visible en el código público) deja de servir. El terminal que
+ *  ya está activo sigue funcionando; la clave nueva solo se pide al volver a activarlo. */
+function configurarClaveTerminalGuardia() {
+  var nueva = ''; // ← escribe aquí la clave nueva (mínimo 8 caracteres, no la uses en otro lado) y ejecuta
+  if (String(nueva).length < 8) throw new Error('Escribe una clave de al menos 8 caracteres en la variable "nueva".');
+  if (nueva === 'TCONTROL2026') throw new Error('Esa es la clave antigua, que es pública. Elige otra.');
+  PropertiesService.getScriptProperties().setProperty('CLAVE_TERMINAL_GUARDIA', nueva);
+  if (typeof registrarAcceso_ === 'function') registrarAcceso_('TERMINAL', 'configurarClaveTerminalGuardia', 'ok', Session.getActiveUser().getEmail());
+  Logger.log('Clave del terminal del guardia guardada. Bórrala de este archivo.');
 }
 
 function resumenSesionesFirebase() {
