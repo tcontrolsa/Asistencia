@@ -3,7 +3,7 @@
  *
  * Todos los días, a la hora configurada (09:30 por defecto), envía el número de almuerzos del día a los
  * Supervisores Administradores (1058 y supervisor/rol con ADMIN, activos y con teléfono) y a los contactos
- * extra (p. ej. encargados del catering) que se agregan en el panel: WhatsApp → 5. Aviso de almuerzos.
+ * extra (p. ej. encargados del catering) que se agregan en el panel: WhatsApp → 2. Automatizaciones (Aviso diario de almuerzos).
  *
  * Configuración en Firestore `configuracion/aviso_almuerzos`:
  *   activo (bool), hora ('HH:mm'), incluir_admins (bool), contactos [{nombre, telefono}]

@@ -1,5 +1,5 @@
 // =====================================================================
-// WhatsApp → 5. Aviso de almuerzos
+// WhatsApp → 2. Automatizaciones (Aviso diario de almuerzos)
 // Configura el mensaje diario con el número de almuerzos (lo envía Apps Script, aviso_almuerzos.gs, a la
 // hora fijada): activar, hora, incluir a los Sup. Admin y contactos extra (p. ej. encargados del catering).
 // Se guarda en Firestore configuracion/aviso_almuerzos. Solo Admin Master y Supervisores Admin.

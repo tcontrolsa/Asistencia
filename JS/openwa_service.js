@@ -1308,6 +1308,8 @@
                             inicio: firebase.firestore.FieldValue.serverTimestamp(),
                             por: quien,
                             destinatarios: listaEmpleadosSinMarcar.length,
+                            // IDs enviados: se comparan con la simulación de Apps Script (recordatorio_auto.gs)
+                            ids: listaEmpleadosSinMarcar.map(e => String(e.id)),
                             fallidoFecha: previo.fallidoFecha || '',
                             fallidoEn: previo.fallidoEn || '',
                             intentosFallidos: fallidosHoy
