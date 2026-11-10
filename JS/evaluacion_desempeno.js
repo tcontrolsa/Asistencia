@@ -177,6 +177,7 @@
   const ORDINAL_T = ['1.er', '2.º', '3.er', '4.º'];
   const etiquetaPeriodo = per => {
     if (per === 'DIA75') return 'Seguimiento Día 75';
+    if (per === 'TODAS') return 'Todas las evaluaciones';
     const t = String(per || '').match(/^(\d{4})-T([1-4])$/);
     if (t) return `${ORDINAL_T[Number(t[2]) - 1]} trimestre ${t[1]} (${MESES[(Number(t[2]) - 1) * 3].slice(0, 3).toLowerCase()}–${MESES[Number(t[2]) * 3 - 1].slice(0, 3).toLowerCase()})`;
     const m = String(per || '').match(/^(\d{4})-(\d{2})$/);
@@ -1193,7 +1194,7 @@
       if (!r.ok) throw new Error(r.error);
       st.todas = r.evaluaciones || [];
       st.error = '';
-      if (st.filtro.periodo !== 'DIA75' && !periodoValido(st.filtro.periodo)) st.filtro.periodo = periodoPorDefecto();
+      if (!['DIA75', 'TODAS'].includes(st.filtro.periodo) && !periodoValido(st.filtro.periodo)) st.filtro.periodo = periodoPorDefecto();
     } catch (e) {
       if (e.sesion) st.ses = null;
       st.error = e.message || String(e);
@@ -1204,14 +1205,27 @@
     aplicarEnlace(st);
   }
 
+  // ¿La fecha (YYYY-MM-DD) cae en el período? Mes 'YYYY-MM' o trimestre 'YYYY-Tn'
+  function fechaEnPeriodo(fecha, per) {
+    const f = normFecha(fecha);
+    if (!f || !per) return false;
+    const t = String(per).match(/^(\d{4})-T([1-4])$/);
+    if (t) { const mes = Number(f.slice(5, 7)); return f.slice(0, 4) === t[1] && Math.ceil(mes / 3) === Number(t[2]); }
+    return f.slice(0, 7) === per;
+  }
+
+  // Resultados: se muestran TODAS las evaluaciones (pedido 2026-11-10). En un mes o trimestre aparecen además las
+  // Día 75 aplicadas en ese período; 'TODAS' lista cada evaluación existente sin filtrar por período.
   function filasResultados(st, opts) {
     const per = st.filtro.periodo;
     const emps = (opts.empleados() || []).filter(e => String(e.activo || 'SI').toUpperCase() !== 'NO' && !e.esEliminado);
     const porId = new Map(emps.map(e => [String(e.id), e]));
-    const evals = st.todas.filter(e => per === 'DIA75' ? e.tipo === 'DIA75' : (e.tipo !== 'DIA75' && e.periodo === per));
+    const evals = per === 'TODAS' ? st.todas.slice()
+      : st.todas.filter(e => per === 'DIA75' ? e.tipo === 'DIA75'
+        : (e.tipo !== 'DIA75' ? e.periodo === per : fechaEnPeriodo(e.fechaAplicacion || e.creadoEn, per)));
     const filas = new Map();
     // Esperados: EVALUADO activos (mensual si pasó prueba; Día 75 si está entre los días 60 y 120)
-    emps.forEach(emp => {
+    if (per !== 'TODAS') emps.forEach(emp => {
       if (!esEvaluado(emp)) return;
       const et = etapa(emp);
       if (per === 'DIA75' ? !et.dia75 : !et.mensual) return;
@@ -1219,7 +1233,9 @@
     });
     evals.forEach(ev => {
       const id = String(ev.empleadoId);
-      filas.set(id, { emp: porId.get(id) || { id, nombre: ev.empleadoNombre, area: ev.area, cargo: ev.cargo }, ev });
+      // Cada evaluación es su propia fila (una Día 75 no reemplaza a la del período ni viceversa)
+      const clave = per === 'TODAS' || (per !== 'DIA75' && ev.tipo === 'DIA75') ? 'ev_' + ev.id : id;
+      filas.set(clave, { emp: porId.get(id) || { id, nombre: ev.empleadoNombre, area: ev.area, cargo: ev.cargo }, ev });
     });
     const evaluadorNombre = id => { const x = porId.get(String(id || '')); return x ? x.nombre : ''; };
     const unidad = st.filtro && st.filtro.unidad;
@@ -1257,7 +1273,8 @@
     const unidades = [...new Set((opts.empleados() || []).map(unidadDe).filter(Boolean))].sort();
     const promDim = k => conEval.length ? conEval.reduce((s, x) => s + Number((x.ev.dimensiones[k] || {}).porcentaje || 0), 0) / conEval.length : 0;
     const opcionesPer = periodosDisponibles(trimestral() ? 8 : 12).map(m => `<option value="${m}" ${m === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')
-      + `<option value="DIA75" ${f.periodo === 'DIA75' ? 'selected' : ''}>Seguimiento Día 75 (nuevos ingresos)</option>`;
+      + `<option value="DIA75" ${f.periodo === 'DIA75' ? 'selected' : ''}>Seguimiento Día 75 (nuevos ingresos)</option>`
+      + `<option value="TODAS" ${f.periodo === 'TODAS' ? 'selected' : ''}>Todas las evaluaciones</option>`;
     const etiquetaEstado = { 'pendiente': '<span class="ev-chip ev-chip-pend">Pendiente</span>', 'vencida': '<span class="ev-chip ev-chip-warn"><i class="fas fa-lock"></i> Plazo vencido</span>', 'sin-evaluador': '<span class="ev-chip ev-chip-warn">Sin evaluador</span>' };
     const barra = `<div class="ev-card ev-barra-r">
         <select class="ev-select" data-ev="r-periodo">${opcionesPer}</select>
@@ -1302,14 +1319,14 @@
         <div class="ev-tabla-wrap"><table class="ev-tabla">
           <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th>Resultado</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
           <tbody>${filas.map(x => `<tr ${evalsDe(st, x.emp.id).length ? `data-ev="persona" data-emp="${esc(x.emp.id)}" class="ev-fila-click" title="Ver dashboard del colaborador"` : ''}>
-            <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong><div class="ev-muted ev-small">${esc(subtituloEmp(x.emp))}</div></td>
+            <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong>${x.ev && (f.periodo === 'TODAS' || (f.periodo !== 'DIA75' && x.ev.tipo === 'DIA75')) ? ` <span class="ev-chip ev-chip-pend">${esc(x.ev.tipo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(x.ev.periodo))}</span>` : ''}<div class="ev-muted ev-small">${esc(subtituloEmp(x.emp))}</div></td>
             <td>${esc(x.evaluador || '—')}</td>
             <td>${x.ev ? chipEstado(x.ev) : etiquetaEstado[x.estado]}</td>
             <td>${x.ev ? chipNivel(x.ev) : '<span class="ev-muted">—</span>'}</td>
             ${DIMENSIONES.map(d => `<td class="ev-num">${x.ev ? pct((x.ev.dimensiones[d.k] || {}).porcentaje) : '—'}</td>`).join('')}
           </tr>`).join('') || `<tr><td colspan="8" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>`}</tbody>
         </table></div>
-        <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'superaron los 90 días de prueba (o no tienen fecha de ingreso)'}.</p>
+        <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'TODAS' ? 'tienen alguna evaluación registrada (todas, de cualquier período)' : f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'superaron los 90 días de prueba (o no tienen fecha de ingreso); también se listan las evaluaciones Día 75 aplicadas en el período'}.</p>
       </div>
       ${pieMedicion()}
     </div>`;
@@ -1450,7 +1467,7 @@
       return ev.length ? { t: etiquetaCorta(m), v: promedio(ev.map(e => Number(e.porcentaje))), n: `${ev.length} eval.` } : null;
     }).filter(Boolean);
     let deltaMes = null;
-    if (f.periodo !== 'DIA75') {
+    if (f.periodo !== 'DIA75' && f.periodo !== 'TODAS') {
       const prev = st.todas.filter(e => e.tipo !== 'DIA75' && e.periodo === periodoAnterior(f.periodo));
       if (prev.length && prom !== null) deltaMes = prom - promedio(prev.map(e => Number(e.porcentaje)));
     }
@@ -1578,7 +1595,8 @@
     const cuerpo = filas.map(x => {
       const e = x.ev;
       const r = e && e.reunion;
-      return '<tr>' + [x.emp.id, x.emp.nombre, x.emp.area, x.emp.cargo, x.evaluador, etiquetaPeriodo(st.filtro.periodo),
+      return '<tr>' + [x.emp.id, x.emp.nombre, x.emp.area, x.emp.cargo, x.evaluador,
+        e ? (e.tipo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(e.periodo)) : etiquetaPeriodo(st.filtro.periodo),
         e ? (e.estado === 'confirmada' ? 'Confirmada' : (e.confirmacionVencida ? 'No confirmada' : 'Enviada'))
           : ({ pendiente: 'Pendiente', vencida: 'Plazo vencido' }[x.estado] || 'Sin evaluador'),
         e ? e.puntaje : '', e ? Math.round(Number(e.porcentaje) * 1000) / 10 : '', e ? e.nivel : '',
