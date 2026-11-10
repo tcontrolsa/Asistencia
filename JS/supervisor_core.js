@@ -9994,6 +9994,8 @@ function verificarEstadoSupervisor() {
       window.isSupervisorAdmin = (rol === 'SUPERVISOR_ADMIN');
 
       mostrarInformacionSupervisor(session);
+      // Seguridad etapa 1: sesión guardada sin sesión de Firebase → se pide la contraseña una sola vez
+      if (window.SesionFirebase) setTimeout(() => window.SesionFirebase.asegurar(session.id), 3000);
 
       if ($('navItemReportes')) $('navItemReportes').style.display = (rol === 'ADMIN_MASTER' || rol === 'SUPERVISOR_ADMIN') ? 'flex' : 'none';
       if ($('navItemOpciones')) $('navItemOpciones').style.display = (rol === 'ADMIN_MASTER') ? 'flex' : 'none';

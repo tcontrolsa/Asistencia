@@ -8664,6 +8664,8 @@ async function verificarEstadoInicial() {
 
                     actualizarInterfazSegunCargo();
                     isAuthenticated = true;
+                    // Seguridad etapa 1: sin sesión de Firebase en este teléfono, se pide la contraseña una sola vez
+                    if (window.SesionFirebase) setTimeout(() => window.SesionFirebase.asegurar(estadoRes.id || data.empleadoId), 2500);
 
                     // Cargar registros históricos en segundo plano
                     obtenerRegistrosEmpleado();
