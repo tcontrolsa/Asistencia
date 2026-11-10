@@ -81,7 +81,7 @@ function crearNotificacion_(n) {
   } else if (n.clave) {
     url += '&documentId=' + encodeURIComponent(idNotificacion_(n.clave));
   }
-  var res = UrlFetchApp.fetch(url, {
+  var res = fetchFirestore_(url, {
     method: metodo, contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({ fields: campos })
   });
@@ -95,7 +95,7 @@ function crearNotificacion_(n) {
 function borrarNotificaciones_(claves) {
   if (!claves || !claves.length) return;
   var nombreBase = 'projects/' + EVAL_PROYECTO_FIRESTORE + '/databases/(default)/documents/' + NOTIF_COLECCION + '/';
-  UrlFetchApp.fetch(notifBaseFirestore_().replace(/\/documents$/, '/documents:commit') + '?key=' + EVAL_API_KEY_FIREBASE, {
+  fetchFirestore_(notifBaseFirestore_().replace(/\/documents$/, '/documents:commit') + '?key=' + EVAL_API_KEY_FIREBASE, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({ writes: claves.map(function (c) { return { delete: nombreBase + idNotificacion_(c) }; }) })
   });
@@ -401,7 +401,7 @@ function listarEmpleadosFirestore_() {
   var lista = [], token = '';
   do {
     var url = notifBaseFirestore_() + '/empleados?pageSize=300&key=' + EVAL_API_KEY_FIREBASE + (token ? '&pageToken=' + encodeURIComponent(token) : '');
-    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var res = fetchFirestore_(url, { muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error('No se pudo leer empleados: ' + res.getContentText().slice(0, 200));
     var d = JSON.parse(res.getContentText());
     (d.documents || []).forEach(function (doc) {
@@ -460,7 +460,7 @@ function configEvaluacionSistema_() {
 
 function borrarNotificacionesViejas_() {
   var limite = new Date(Date.now() - NOTIF_DIAS_RETENCION * 86400000).toISOString();
-  var res = UrlFetchApp.fetch(notifBaseFirestore_() + ':runQuery?key=' + EVAL_API_KEY_FIREBASE, {
+  var res = fetchFirestore_(notifBaseFirestore_() + ':runQuery?key=' + EVAL_API_KEY_FIREBASE, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({ structuredQuery: {
       from: [{ collectionId: NOTIF_COLECCION }],
@@ -471,7 +471,7 @@ function borrarNotificacionesViejas_() {
   if (res.getResponseCode() !== 200) return 0;
   var nombres = JSON.parse(res.getContentText()).filter(function (r) { return r.document; }).map(function (r) { return r.document.name; });
   if (!nombres.length) return 0;
-  UrlFetchApp.fetch(notifBaseFirestore_().replace(/\/documents$/, '/documents:commit') + '?key=' + EVAL_API_KEY_FIREBASE, {
+  fetchFirestore_(notifBaseFirestore_().replace(/\/documents$/, '/documents:commit') + '?key=' + EVAL_API_KEY_FIREBASE, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({ writes: nombres.map(function (n) { return { delete: n }; }) })
   });

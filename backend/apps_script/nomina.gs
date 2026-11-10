@@ -173,7 +173,7 @@ function leerEmpleadosFirestoreNomina_() {
   var out = {}, token = '';
   do {
     var url = notifBaseFirestore_() + '/empleados?pageSize=300&key=' + EVAL_API_KEY_FIREBASE + (token ? '&pageToken=' + encodeURIComponent(token) : '');
-    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var res = fetchFirestore_(url, { muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error('Firestore respondió ' + res.getResponseCode());
     var cuerpo = JSON.parse(res.getContentText());
     (cuerpo.documents || []).forEach(function (d) {

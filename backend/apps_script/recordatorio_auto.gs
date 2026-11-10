@@ -135,7 +135,7 @@ function regsHojasHoyRec_(hoy) {
 
 // ---------------------------------------------------------------- Firestore
 function leerDocRec_(ruta) {
-  var res = UrlFetchApp.fetch(notifBaseFirestore_() + '/' + ruta + '?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
+  var res = fetchFirestore_(notifBaseFirestore_() + '/' + ruta + '?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) return null;
   return valorAvisoAlm_({ mapValue: { fields: JSON.parse(res.getContentText()).fields || {} } });   // aviso_almuerzos.gs
 }
@@ -143,7 +143,7 @@ function leerDocRec_(ruta) {
 function guardarDocRec_(ruta, datos) {
   var fields = {};
   Object.keys(datos).forEach(function (k) { fields[k] = valorFirestore_(datos[k]); });   // notificaciones.gs
-  UrlFetchApp.fetch(notifBaseFirestore_() + '/' + ruta + '?key=' + EVAL_API_KEY_FIREBASE, {
+  fetchFirestore_(notifBaseFirestore_() + '/' + ruta + '?key=' + EVAL_API_KEY_FIREBASE, {
     method: 'patch', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ fields: fields })
   });
 }

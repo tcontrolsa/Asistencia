@@ -85,7 +85,7 @@ function emitirTokenEvaluacion(p) {
 function leerEmpleadoFirestore_(id) {
   var url = 'https://firestore.googleapis.com/v1/projects/' + EVAL_PROYECTO_FIRESTORE +
     '/databases/(default)/documents/empleados/' + encodeURIComponent(id) + '?key=' + EVAL_API_KEY_FIREBASE;
-  var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  var res = fetchFirestore_(url, { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) return null;
   return camposFirestore_(JSON.parse(res.getContentText()).fields || {});
 }
@@ -100,7 +100,7 @@ function equipoDeEvaluador_(id) {
       where: { fieldFilter: { field: { fieldPath: 'evaluador_id' }, op: 'EQUAL', value: { stringValue: id } } }
     }
   };
-  var res = UrlFetchApp.fetch(url, {
+  var res = fetchFirestore_(url, {
     method: 'post', contentType: 'application/json', payload: JSON.stringify(consulta), muteHttpExceptions: true
   });
   if (res.getResponseCode() !== 200) throw new Error('No se pudo leer el equipo: ' + res.getContentText().slice(0, 200));
@@ -191,7 +191,7 @@ function urlHistorico_(refrescar) {
   var cache = CacheService.getScriptCache();
   var url = refrescar ? null : cache.get('eval_url_historico');
   if (url) return url;
-  var res = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/' + EVAL_PROYECTO_FIRESTORE +
+  var res = fetchFirestore_('https://firestore.googleapis.com/v1/projects/' + EVAL_PROYECTO_FIRESTORE +
     '/databases/(default)/documents/configuracion/historico?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) return '';
   var campos = JSON.parse(res.getContentText()).fields || {};

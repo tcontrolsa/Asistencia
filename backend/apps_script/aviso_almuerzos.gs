@@ -158,7 +158,7 @@ function minutosAvisoAlm_(hm) {
 
 // ---------------------------------------------------------------- Firestore
 function consultaAvisoAlm_(coleccion, campo, valor) {
-  var res = UrlFetchApp.fetch(notifBaseFirestore_() + ':runQuery?key=' + EVAL_API_KEY_FIREBASE, {
+  var res = fetchFirestore_(notifBaseFirestore_() + ':runQuery?key=' + EVAL_API_KEY_FIREBASE, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({ structuredQuery: {
       from: [{ collectionId: coleccion }],
@@ -171,7 +171,7 @@ function consultaAvisoAlm_(coleccion, campo, valor) {
 }
 
 function leerConfigAvisoAlm_() {
-  var res = UrlFetchApp.fetch(notifBaseFirestore_() + '/' + AVISO_ALM_DOC + '?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
+  var res = fetchFirestore_(notifBaseFirestore_() + '/' + AVISO_ALM_DOC + '?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) return { activo: false };
   return valorAvisoAlm_({ mapValue: { fields: JSON.parse(res.getContentText()).fields || {} } });
 }
@@ -197,7 +197,7 @@ function guardarEstadoAvisoAlm_(campos) {
   var mask = Object.keys(campos).map(function (k) { return 'updateMask.fieldPaths=' + k; }).join('&');
   var fields = {};
   Object.keys(campos).forEach(function (k) { fields[k] = valorFirestore_(campos[k]); });
-  UrlFetchApp.fetch(notifBaseFirestore_() + '/' + AVISO_ALM_DOC + '?' + mask + '&key=' + EVAL_API_KEY_FIREBASE, {
+  fetchFirestore_(notifBaseFirestore_() + '/' + AVISO_ALM_DOC + '?' + mask + '&key=' + EVAL_API_KEY_FIREBASE, {
     method: 'patch', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ fields: fields })
   });
 }

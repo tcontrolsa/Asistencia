@@ -562,6 +562,11 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebase(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Servidor de la oficina (sincronización con Postgres): lectura de 'empleados' con la cuenta de servicio
+      if (data.accion === 'leerColeccionServidor' && typeof leerColeccionServidor === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(leerColeccionServidor(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
       if (data.accion === 'sesionFirebaseGuardia' && typeof emitirSesionFirebaseGuardia === 'function') {
         return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebaseGuardia(data)))
           .setMimeType(ContentService.MimeType.JSON);
