@@ -521,7 +521,8 @@ window.renderMapaAsistencia = function () {
   let kpiAlmPlanta = 0;
   let kpiAlmFuera = 0;
 
-  empCache.forEach(e => {
+  // Almuerzo: un solo pedido para Empresa y Servicios externos → se cuenta a todo el personal
+  (window.todoElPersonal ? window.todoElPersonal() : empCache).forEach(e => {
     // Almuerzo (incluye al personal solo almuerzo)
     const esPresenteOAlm = e.entradaHoy || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
     if (esPresenteOAlm && (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA')) kpiAlmPlanta++;
@@ -565,6 +566,7 @@ window.renderMapaAsistencia = function () {
   if ($('mapaKpiFuturos')) $('mapaKpiFuturos').textContent = kpiFuturos;
   if ($('mapaKpiAlmPlanta')) $('mapaKpiAlmPlanta').textContent = kpiAlmPlanta;
   if ($('mapaKpiAlmFuera')) $('mapaKpiAlmFuera').textContent = kpiAlmFuera;
+  if (window.marcarCifraConjunta) { window.marcarCifraConjunta('mapaKpiAlmPlanta'); window.marcarCifraConjunta('mapaKpiAlmFuera'); }
 
   // 2. FILTRADO DE EMPLEADOS
   let filtrados = conAsistencia.filter(e => {

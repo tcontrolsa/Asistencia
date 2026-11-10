@@ -590,7 +590,7 @@ window.filtrarReporteInteractivo = function () {
   }
 
   if ($('reporteCustomInfo')) {
-    $('reporteCustomInfo').textContent = `${data.length} de ${empCache.length} colaboradores` +
+    $('reporteCustomInfo').textContent = `${data.length} de ${(window.personalDelGrupo ? window.personalDelGrupo() : empCache).length} colaboradores` +
       (window._reporteOcultosSinDatos ? ` · ${window._reporteOcultosSinDatos} sin datos ocultos` : '');
   }
   pintarResumenFiltrosReporte(data.length, rango);

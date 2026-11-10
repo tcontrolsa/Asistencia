@@ -22,6 +22,18 @@ function personalDelGrupo() {
   return (empCache || []).filter(e => window.esPersonalExterno(e) === externos);
 }
 window.personalDelGrupo = personalDelGrupo;
+// Almuerzos: el pedido de comida es uno solo para Empresa y Servicios externos, así que se cuentan siempre juntos
+function todoElPersonal() { return empCache || []; }
+window.todoElPersonal = todoElPersonal;
+// Marca en la tarjeta que la cifra suma a los dos grupos (solo si hay personal externo)
+window.marcarCifraConjunta = function (idValor) {
+  const lab = document.getElementById(idValor)?.closest('.kpi-card, .stat-card')?.querySelector('.kpi-label, .stat-label');
+  if (!lab) return;
+  if (!lab.dataset.base) lab.dataset.base = lab.textContent;
+  const conj = (empCache || []).some(window.esPersonalExterno);
+  lab.textContent = lab.dataset.base + (conj ? ' · todos' : '');
+  lab.title = conj ? 'Suma Empresa y Servicios externos: el pedido de almuerzo es uno solo' : '';
+};
 function actualizarSelectorGrupo() {
   const caja = document.getElementById('selectorGrupoPersonal');
   if (!caja) return;
@@ -1644,7 +1656,15 @@ function cargarDashboard() {
     });
     let aPct = calcularPct(asist, totalPos);
     let pPct = asist ? Math.round((1 - tard / asist) * 100) : 0;
-    let almPct = asist ? calcularPct(almP, asist) : 0;
+    // Almuerzo: un solo pedido para los dos grupos → tasa y totales con todo el personal
+    almP = 0;
+    let asistAlm = 0;
+    todoElPersonal().forEach(e => {
+      asistAlm += new Set((e.registros || []).filter(r => r.tipo === 'ENTRADA' && r.fecha >= periodo.inicio && r.fecha <= hoy_).map(r => r.fecha)).size;
+      almP += calcularAlmuerzosPeriodo(e, periodo.inicio, hoy_).almPlanta;
+    });
+    let almPct = asistAlm ? calcularPct(almP, asistAlm) : 0;
+    window.marcarCifraConjunta('dashAlmPlanta');
     if ($('dashAsistencia')) $('dashAsistencia').textContent = aPct + '%';
     if ($('dashPuntualidad')) $('dashPuntualidad').textContent = pPct + '%';
     if ($('dashAlmPlanta')) $('dashAlmPlanta').textContent = almPct + '%';
@@ -2853,11 +2873,12 @@ function cargarAsistencia() {
   let extrasHoy = window.obtenerAlmuerzosExtraConsolidados(hoy, hoy);
   let totalExtrasHoy = extrasHoy.reduce((acc, ae) => acc + (parseInt(ae.cantidad, 10) || 1), 0);
 
-  let almPlanta = empCache.filter(e => {
+  // Almuerzo: un solo pedido para Empresa y Servicios externos → se cuenta a todo el personal
+  let almPlanta = todoElPersonal().filter(e => {
     const esPresenteOAlm = e.entradaHoy || (typeof esEmpleadoSoloAlmuerzo === 'function' && esEmpleadoSoloAlmuerzo(e)) || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
     return esPresenteOAlm && (e.almuerzoHoy === 'SI' || e.almuerzoHoy === 'PLANTA');
   }).length + totalExtrasHoy;
-  let almFuera = empCache.filter(e => {
+  let almFuera = todoElPersonal().filter(e => {
     const esPresenteOAlm = e.entradaHoy || (typeof esEmpleadoSoloAlmuerzo === 'function' && esEmpleadoSoloAlmuerzo(e)) || (e.cargo || '').toUpperCase() === 'SIN ASISTENCIA';
     return esPresenteOAlm && (e.almuerzoHoy === 'NO' || e.almuerzoHoy === 'FUERA');
   }).length;
@@ -2944,6 +2965,8 @@ function cargarAsistencia() {
   if ($('asisVisitantes')) $('asisVisitantes').textContent = totalExtrasHoy;
   if ($('asisAlmuerzoPlanta')) $('asisAlmuerzoPlanta').textContent = almPlanta;
   if ($('asisAlmuerzoFuera')) $('asisAlmuerzoFuera').textContent = almFuera;
+  window.marcarCifraConjunta('asisAlmuerzoPlanta');
+  window.marcarCifraConjunta('asisAlmuerzoFuera');
   if ($('asisAlmuerzoPlantaSub')) {
     $('asisAlmuerzoPlantaSub').textContent = totalExtrasHoy > 0 ? `Incluye ${totalExtrasHoy} extras` : '';
   }
@@ -3803,7 +3826,9 @@ window.obtenerListaEmpleadosReportes = function () {
       }).catch(() => { window._cargandoHistorialDesvinculadosBg = false; });
     }
 
-    lista = lista.concat(Array.from(mapaBajas.values()));
+    // Las bajas también van con su grupo (las de Sheets no traen tipo_personal: son de la empresa)
+    const externos = grupoPersonal() === 'EXTERNOS';
+    lista = lista.concat(Array.from(mapaBajas.values()).filter(b => window.esPersonalExterno(b) === externos));
   }
   return lista;
 };
