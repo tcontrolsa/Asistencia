@@ -562,6 +562,10 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebase(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      if (data.accion === 'sesionFirebaseGuardia' && typeof emitirSesionFirebaseGuardia === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebaseGuardia(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
 
       // Evaluación de desempeño (evaluacion_desempeno.gs): token tras verificar el PIN, solo por POST
       if (data.accion === 'tokenEvaluacion' && typeof emitirTokenEvaluacion === 'function') {

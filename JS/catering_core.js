@@ -476,6 +476,7 @@ async function intentarLoginCatering() {
             mostrarError(res.error);
         } else if (res && res.valido) {
             if (res.empleado.esSupervisor) {
+                if (window.SesionFirebase) window.SesionFirebase.abrir(res.empleado.id, passHash);   // seguridad etapa 1
                 const sessionData = { id: res.empleado.id, token: deviceToken, timestamp: new Date().getTime() };
                 localStorage.setItem('CATERING_SESSION', JSON.stringify(sessionData));
                 $('login-catering').classList.add('hidden');

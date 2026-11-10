@@ -6,7 +6,9 @@
  * persona y abren sesión en Firebase Auth. En esta etapa las reglas de Firestore NO cambian: si este paso
  * falla, la app funciona igual. Sirve para que, cuando todos tengan sesión, se puedan cerrar las reglas.
  *
- * Acción (solo POST, por doPost en api_completa.gs): sesionFirebase { empleadoId, pin }
+ * Acciones (solo POST, por doPost en api_completa.gs): sesionFirebase { empleadoId, pin } y
+ * sesionFirebaseGuardia { clave } (terminal del guardia, rol 'guardia').
+ * sesionFirebase { empleadoId, pin }
  *   pin = SHA-256 de la contraseña (lo que la app ya calcula) o la contraseña en claro (respaldo).
  *   → { ok, customToken, rol } o { ok:false, error }
  * Intentos fallidos: 5 por ID y luego 15 min de espera. Cada emisión queda en la hoja ACCESOS.
@@ -50,6 +52,28 @@ function emitirSesionFirebase(p) {
   return { ok: true, customToken: token, rol: rol };
 }
 
+// Terminal del guardia (guardia.html): no es una persona; entra con la clave del terminal. Rol 'guardia', uid fijo.
+// La clave sale de la propiedad CLAVE_TERMINAL_GUARDIA; mientras no se configure, se acepta la clave actual
+// (CLAVE_GUARDIA de api_completa.gs), que está en el código público: cambiarla antes de cerrar las reglas.
+function emitirSesionFirebaseGuardia(p) {
+  var clave = String(p.clave || '').trim();
+  if (!clave) return { ok: false, error: 'Ingresa la clave del terminal.' };
+  var cache = CacheService.getScriptCache();
+  var intentos = parseInt(cache.get('sfb_guardia_int') || '0', 10);
+  if (intentos >= SESION_FB_MAX_INTENTOS * 4) return { ok: false, error: 'Demasiados intentos. Espera 15 minutos.' };
+  var propia = PropertiesService.getScriptProperties().getProperty('CLAVE_TERMINAL_GUARDIA');
+  var valida = propia || (typeof CLAVE_GUARDIA !== 'undefined' ? CLAVE_GUARDIA : '');
+  if (!valida || clave !== valida) {
+    cache.put('sfb_guardia_int', String(intentos + 1), SESION_FB_BLOQUEO_SEG);
+    if (typeof registrarAcceso_ === 'function') registrarAcceso_('TERMINAL', 'sesionFirebaseGuardia', 'rechazado', 'clave incorrecta');
+    return { ok: false, error: 'Clave incorrecta.' };
+  }
+  cache.remove('sfb_guardia_int');
+  var token = firmarTokenFirebase_('terminal_guardia', { empleadoId: '', rol: 'guardia', externo: false });
+  if (typeof registrarAcceso_ === 'function') registrarAcceso_('TERMINAL', 'sesionFirebaseGuardia', 'ok', propia ? 'clave propia' : 'clave antigua');
+  return { ok: true, customToken: token, rol: 'guardia', clavePropia: !!propia };
+}
+
 // master (1058) · admin (Supervisor Admin) · supervisor · colaborador
 function rolSesionFirebase_(id, emp) {
   if (id === SESION_FB_MASTER) return 'master';
@@ -75,8 +99,8 @@ function resumenSesionesFirebase() {
   var filas = hoja.getRange(2, 1, hoja.getLastRow() - 1, 5).getValues();
   var personas = {}, rechazos = 0;
   filas.forEach(function (f) {
-    if (f[2] !== 'sesionFirebase') return;
-    if (f[3] === 'ok') personas[String(f[1])] = f[4]; else rechazos++;
+    if (f[2] !== 'sesionFirebase' && f[2] !== 'sesionFirebaseGuardia') return;
+    if (f[3] === 'ok') personas[String(f[1])] = f[2] === 'sesionFirebaseGuardia' ? 'terminal guardia' : f[4]; else rechazos++;
   });
   var porRol = {};
   Object.keys(personas).forEach(function (id) { porRol[personas[id]] = (porRol[personas[id]] || 0) + 1; });

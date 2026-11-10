@@ -468,6 +468,8 @@ async function login() {
         if (res.error) {
             mostrarToast(res.error, 'error');
         } else if (res.ok) {
+            // Seguridad etapa 1: sesión de Firebase del terminal (en segundo plano; si falla, el terminal sigue igual)
+            if (window.SesionFirebase) window.SesionFirebase.abrirTerminal(pin);
             // Guardar sesión genérica para el terminal de guardia
             const sessionData = { id: 'GUARDIA', token: deviceToken, timestamp: new Date().getTime() };
             localStorage.setItem('GUARDIA_SESSION', JSON.stringify(sessionData));
@@ -499,6 +501,7 @@ function generarDeviceToken() {
 
 function logout() {
     localStorage.removeItem('GUARDIA_SESSION');
+    if (window.SesionFirebase) window.SesionFirebase.cerrar();
     document.body.classList.remove('terminal-activa');
     $('vTerm').classList.add('hidden');
     $('vLogin').classList.remove('hidden');

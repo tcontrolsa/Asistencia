@@ -118,6 +118,7 @@
       if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu contraseña');
       if (!r.master) { msg.textContent = 'El portal de soporte es solo para el Admin Master.'; return; }
       SP.ses = { token: r.token, exp: r.exp, empleadoId: id };
+      if (window.SesionFirebase) window.SesionFirebase.abrir(id, pin);   // seguridad etapa 1 (en segundo plano)
       try { sessionStorage.setItem(KEY_SES, JSON.stringify(SP.ses)); } catch (e) { }
       iniciar();
     } catch (e) { msg.textContent = e.message; }
@@ -723,4 +724,5 @@
 
   SP.ses = sesionGuardada();
   if (SP.ses) iniciar(); else pantallaLogin();
+  if (SP.ses && window.SesionFirebase) setTimeout(() => window.SesionFirebase.asegurar(SP.ses.empleadoId), 2500);
 })();
