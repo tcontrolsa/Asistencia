@@ -6452,4 +6452,5 @@
   transform: translateY(-1px);
 }
 
-
+/* Acceso a pestañas por rol (JS/supervisor/supervisor_accesos.js): gana al display:flex !important del menú en celular */
+.sidebar-nav .nav-item.acceso-oculto, .btn-subtab.acceso-oculto { display: none !important; }

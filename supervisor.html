@@ -9,14 +9,16 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./CSS/supervisor.css?v=20260922_02">
+  <link rel="stylesheet" href="./CSS/supervisor.css?v=20261110_05">
   <link rel="stylesheet" href="./CSS/evaluacion.css?v=20261007_01">
   <link rel="stylesheet" href="./CSS/visitas.css?v=20261027_01">
   <link rel="stylesheet" href="./CSS/notificaciones.css?v=20261007_01">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-auth-compat.js"></script>
   <script src="./JS/firebase_backend.js?v=20261110_01"></script>
+  <script src="./JS/sesion_firebase.js?v=20261110_01"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
   <style>
@@ -2453,6 +2455,9 @@
           <button onclick="cambiarSeccionOpciones('sistema')" id="btnSecSistema" class="btn-sec-opc">
             <i class="fas fa-tools"></i> 4. Operaciones & Mantenimiento
           </button>
+          <button onclick="cambiarSeccionOpciones('accesos')" id="btnSecAccesos" class="btn-sec-opc">
+            <i class="fas fa-user-lock"></i> 5. Acceso a pestañas
+          </button>
         </div>
 
         <!-- ============================================================ -->
@@ -2870,6 +2875,15 @@
               <strong>Zona de Operaciones de Alto Impacto:</strong> Todas las modificaciones realizadas en este panel quedan registradas con la firma del usuario <strong>1058 (Admin Master)</strong>.
             </div>
           </div>
+        </div>
+
+        <!-- 5. ACCESO A PESTAÑAS POR TIPO DE USUARIO (JS/supervisor/supervisor_accesos.js) -->
+        <div id="secOpcAccesos" class="opc-section-card" style="display:none;">
+          <div style="margin-bottom:16px;">
+            <h3 style="font-size:16px; font-weight:800; color:var(--g800); margin:0 0 2px 0;"><i class="fas fa-user-lock" style="color:#0f766e; margin-right:6px;"></i> Acceso a pestañas</h3>
+            <p style="font-size:12px; color:var(--g500); margin:0;">Marca qué secciones y subpestañas del panel ve cada tipo de usuario. El Admin Master siempre ve todo. Los cambios llegan al instante a los paneles abiertos.</p>
+          </div>
+          <div id="accesosPestanasCont"></div>
         </div>
 
         <!-- Vista Previa de Carga de Empleados (Tabla Flotante/Expandible) -->
@@ -5324,10 +5338,11 @@
 
   <script src="./JS/openwa_service.js?v=20261110_04"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261110_02"></script>
+  <script src="./JS/supervisor_core.js?v=20261110_09"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261110_04"></script>
   <script src="./JS/supervisor/supervisor_aviso_almuerzos.js?v=20261110_04"></script>
+  <script src="./JS/supervisor/supervisor_accesos.js?v=20261110_05"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261110_02"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_03"></script>

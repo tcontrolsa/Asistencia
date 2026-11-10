@@ -3296,6 +3296,8 @@ async function verificarPIN() {
         }
 
         if (res.valido) {
+            // Seguridad etapa 1: sesión de Firebase Auth en segundo plano (si falla, no cambia nada)
+            if (window.SesionFirebase) window.SesionFirebase.abrir(res.empleado.id, passHash);
             localStorage.setItem('SESSION_DATA', JSON.stringify({
                 empleadoId: res.empleado.id,
                 token: deviceToken,
@@ -3774,6 +3776,7 @@ async function confirmarRegistroInicial() {
         }
 
         if (res.ok) {
+            if (window.SesionFirebase) window.SesionFirebase.abrir(empleadoId, passHash);   // seguridad etapa 1
             const esVinculacion = res.esVinculacionExistente;
             localStorage.setItem('SESSION_DATA', JSON.stringify({
                 empleadoId,
@@ -8374,6 +8377,7 @@ async function cerrarSesion() {
                 await desvincularDispositivoAPI(empleado.id, deviceToken);
             } catch (e) { }
         }
+        if (window.SesionFirebase) await window.SesionFirebase.cerrar();
         localStorage.clear();
         sessionStorage.removeItem('justificar_popup_saltado');
         sessionStorage.removeItem('tcontrol_sesion_eval');

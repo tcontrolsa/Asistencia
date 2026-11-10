@@ -557,6 +557,12 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
       }
 
+      // Seguridad etapa 1 (sesion_firebase.gs): permiso de Firebase Auth tras verificar la contraseña, solo por POST
+      if (data.accion === 'sesionFirebase' && typeof emitirSesionFirebase === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebase(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Evaluación de desempeño (evaluacion_desempeno.gs): token tras verificar el PIN, solo por POST
       if (data.accion === 'tokenEvaluacion' && typeof emitirTokenEvaluacion === 'function') {
         return ContentService.createTextOutput(JSON.stringify(emitirTokenEvaluacion(data)))

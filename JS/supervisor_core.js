@@ -7485,6 +7485,8 @@ window.cambiarPanel = cambiarPanel;
 // Portal de soporte (soporte.html): solo el Admin Master ve el acceso (el puente además exige su token)
 function mostrarSoporteSegunRol(rol) {
   if ($('navItemSoporte')) $('navItemSoporte').style.display = rol === 'ADMIN_MASTER' ? 'flex' : 'none';
+  // Acceso a pestañas configurable (supervisor_accesos.js): se aplica después de los valores fijos de arriba
+  if (typeof window.aplicarAccesosPestanas === 'function') window.aplicarAccesosPestanas(rol);
 }
 
 // ============================================================
@@ -9411,6 +9413,8 @@ async function intentarLoginSupervisor() {
     } else if (res && res.valido) {
       const rol = getSupervisorRole(res.empleado);
       if (res.empleado.esSupervisor || rol !== 'EMPLEADO') {
+        // Seguridad etapa 1: sesión de Firebase Auth en segundo plano (si falla, el panel funciona igual)
+        if (window.SesionFirebase) window.SesionFirebase.abrir(res.empleado.id, passHash);
         const sessionData = {
           id: res.empleado.id,
           nombre: res.empleado.nombre || '',
@@ -9470,7 +9474,8 @@ function cerrarSesionSupervisor() {
   if (confirm("¿Estás seguro de que deseas cerrar sesión del panel de supervisión?")) {
     localStorage.removeItem('SUPERVISOR_SESSION');
     if (window.EvaluacionDesempeno) window.EvaluacionDesempeno.cerrarSesion();
-    location.reload();
+    if (window.SesionFirebase) window.SesionFirebase.cerrar().finally(() => location.reload());
+    else location.reload();
   }
 }
 window.cerrarSesionSupervisor = cerrarSesionSupervisor;
@@ -10266,6 +10271,9 @@ window.cambiarSeccionOpciones = function (seccion) {
   const secPersonal = $('secOpcPersonal');
   const secRoles = $('secOpcRoles');
   const secSistema = $('secOpcSistema');
+  const secAccesos = $('secOpcAccesos');
+  if (secAccesos) secAccesos.style.display = seccion === 'accesos' ? 'block' : 'none';
+  if (seccion === 'accesos' && typeof window.cargarAccesosPestanas === 'function') window.cargarAccesosPestanas();
 
   if (seccion === 'desvincular') {
     if (secPersonal) secPersonal.style.display = 'block';
