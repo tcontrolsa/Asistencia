@@ -1214,8 +1214,9 @@
     return f.slice(0, 7) === per;
   }
 
-  // Resultados: se muestran TODAS las evaluaciones (pedido 2026-11-10). En un mes o trimestre aparecen además las
-  // Día 75 aplicadas en ese período; 'TODAS' lista cada evaluación existente sin filtrar por período.
+  // Resultados (pedido 2026-11-10): en cada mes o trimestre aparecen TODOS los EVALUADO activos, una fila por persona,
+  // también quienes están en período de prueba (se les marca el día de prueba en que van). Si en ese período tienen
+  // su evaluación Día 75, esa es su resultado. 'TODAS' lista cada evaluación existente sin filtrar por período.
   function filasResultados(st, opts) {
     const per = st.filtro.periodo;
     const emps = (opts.empleados() || []).filter(e => String(e.activo || 'SI').toUpperCase() !== 'NO' && !e.esEliminado);
@@ -1224,17 +1225,21 @@
       : st.todas.filter(e => per === 'DIA75' ? e.tipo === 'DIA75'
         : (e.tipo !== 'DIA75' ? e.periodo === per : fechaEnPeriodo(e.fechaAplicacion || e.creadoEn, per)));
     const filas = new Map();
-    // Esperados: EVALUADO activos (mensual si pasó prueba; Día 75 si está entre los días 60 y 120)
+    // Esperados: todos los EVALUADO activos (en el filtro Día 75, solo quienes están entre los días 60 y 120)
+    // Último mes del período ('YYYY-MM'): quien ingresó después no aparece en ese período
+    const tri = String(per).match(/^(\d{4})-T([1-4])$/);
+    const ultimoMes = tri ? `${tri[1]}-${String(Number(tri[2]) * 3).padStart(2, '0')}` : (/^\d{4}-\d{2}$/.test(per) ? per : null);
     if (per !== 'TODAS') emps.forEach(emp => {
       if (!esEvaluado(emp)) return;
-      const et = etapa(emp);
-      if (per === 'DIA75' ? !et.dia75 : !et.mensual) return;
+      if (per === 'DIA75' && !etapa(emp).dia75) return;
+      const ing = normFecha(emp.fecha_ingreso || emp.fechaIngreso);
+      if (ultimoMes && ing && ing.slice(0, 7) > ultimoMes) return;
       filas.set(String(emp.id), { emp, ev: null });
     });
-    evals.forEach(ev => {
+    // Una fila por persona: la Día 75 va primero para que, si hubiera también la del período, gane esta última
+    evals.slice().sort((a, b) => (a.tipo === 'DIA75' ? 0 : 1) - (b.tipo === 'DIA75' ? 0 : 1)).forEach(ev => {
       const id = String(ev.empleadoId);
-      // Cada evaluación es su propia fila (una Día 75 no reemplaza a la del período ni viceversa)
-      const clave = per === 'TODAS' || (per !== 'DIA75' && ev.tipo === 'DIA75') ? 'ev_' + ev.id : id;
+      const clave = per === 'TODAS' ? 'ev_' + ev.id : id;
       filas.set(clave, { emp: porId.get(id) || { id, nombre: ev.empleadoNombre, area: ev.area, cargo: ev.cargo }, ev });
     });
     const evaluadorNombre = id => { const x = porId.get(String(id || '')); return x ? x.nombre : ''; };
@@ -1243,9 +1248,11 @@
       ...f,
       evaluador: f.ev ? (f.ev.evaluadorNombre || evaluadorNombre(f.ev.evaluadorId)) : evaluadorNombre(f.emp.evaluador_id),
       sinEvaluador: !f.ev && !f.emp.evaluador_id,
+      prueba: (() => { const d = etapa(f.emp).dias; return d !== null && d >= 0 && d < 90 ? d : null; })(),
       estado: f.ev ? f.ev.estado
         : (!f.emp.evaluador_id ? 'sin-evaluador'
-          : (per !== 'DIA75' && limiteEvaluar(per) && hoyLocal() > limiteEvaluar(per) && !reabierta(f.emp.id, per) ? 'vencida' : 'pendiente'))
+          : (per !== 'DIA75' && per !== 'TODAS' && !etapa(f.emp).mensual ? 'en-prueba'
+            : (per !== 'DIA75' && limiteEvaluar(per) && hoyLocal() > limiteEvaluar(per) && !reabierta(f.emp.id, per) ? 'vencida' : 'pendiente')))
     })).sort((a, b) => String(a.emp.nombre || '').localeCompare(String(b.emp.nombre || ''), 'es'));
   }
 
@@ -1275,7 +1282,7 @@
     const opcionesPer = periodosDisponibles(trimestral() ? 8 : 12).map(m => `<option value="${m}" ${m === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')
       + `<option value="DIA75" ${f.periodo === 'DIA75' ? 'selected' : ''}>Seguimiento Día 75 (nuevos ingresos)</option>`
       + `<option value="TODAS" ${f.periodo === 'TODAS' ? 'selected' : ''}>Todas las evaluaciones</option>`;
-    const etiquetaEstado = { 'pendiente': '<span class="ev-chip ev-chip-pend">Pendiente</span>', 'vencida': '<span class="ev-chip ev-chip-warn"><i class="fas fa-lock"></i> Plazo vencido</span>', 'sin-evaluador': '<span class="ev-chip ev-chip-warn">Sin evaluador</span>' };
+    const etiquetaEstado = { 'en-prueba': '<span class="ev-chip ev-chip-pend">En período de prueba</span>', 'pendiente': '<span class="ev-chip ev-chip-pend">Pendiente</span>', 'vencida': '<span class="ev-chip ev-chip-warn"><i class="fas fa-lock"></i> Plazo vencido</span>', 'sin-evaluador': '<span class="ev-chip ev-chip-warn">Sin evaluador</span>' };
     const barra = `<div class="ev-card ev-barra-r">
         <select class="ev-select" data-ev="r-periodo">${opcionesPer}</select>
         ${unidades.length ? `<select class="ev-select" data-ev="r-unidad">${opcionesSelect(unidades, f.unidad, 'Todas las unidades')}</select>` : ''}
@@ -1313,20 +1320,20 @@
           <select class="ev-select" data-ev="r-area">${opcionesSelect(areas, f.area, 'Todas las áreas')}</select>
           <select class="ev-select" data-ev="r-estado">
             <option value="">Todos los estados</option>
-            ${[['pendiente', 'Pendientes'], ['vencida', 'Plazo vencido'], ['enviada', 'Enviadas'], ['confirmada', 'Confirmadas'], ['sin-evaluador', 'Sin evaluador']].map(([v, t]) => `<option value="${v}" ${v === f.estado ? 'selected' : ''}>${t}</option>`).join('')}
+            ${[['pendiente', 'Pendientes'], ['en-prueba', 'En período de prueba'], ['vencida', 'Plazo vencido'], ['enviada', 'Enviadas'], ['confirmada', 'Confirmadas'], ['sin-evaluador', 'Sin evaluador']].map(([v, t]) => `<option value="${v}" ${v === f.estado ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
         </div>
         <div class="ev-tabla-wrap"><table class="ev-tabla">
           <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th>Resultado</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
           <tbody>${filas.map(x => `<tr ${evalsDe(st, x.emp.id).length ? `data-ev="persona" data-emp="${esc(x.emp.id)}" class="ev-fila-click" title="Ver dashboard del colaborador"` : ''}>
-            <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong>${x.ev && (f.periodo === 'TODAS' || (f.periodo !== 'DIA75' && x.ev.tipo === 'DIA75')) ? ` <span class="ev-chip ev-chip-pend">${esc(x.ev.tipo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(x.ev.periodo))}</span>` : ''}<div class="ev-muted ev-small">${esc(subtituloEmp(x.emp))}</div></td>
+            <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong>${x.prueba !== null ? ` <span class="ev-chip ev-chip-warn" title="Ingresó el ${esc(fechaCorta(x.emp.fecha_ingreso || x.emp.fechaIngreso))}">Prueba · día ${x.prueba}</span>` : ''}${x.ev && x.ev.tipo === 'DIA75' && f.periodo !== 'DIA75' ? ' <span class="ev-chip ev-chip-pend">Día 75</span>' : ''}${x.ev && f.periodo === 'TODAS' && x.ev.tipo !== 'DIA75' ? ` <span class="ev-chip ev-chip-pend">${esc(etiquetaPeriodo(x.ev.periodo))}</span>` : ''}<div class="ev-muted ev-small">${esc(subtituloEmp(x.emp))}</div></td>
             <td>${esc(x.evaluador || '—')}</td>
             <td>${x.ev ? chipEstado(x.ev) : etiquetaEstado[x.estado]}</td>
             <td>${x.ev ? chipNivel(x.ev) : '<span class="ev-muted">—</span>'}</td>
             ${DIMENSIONES.map(d => `<td class="ev-num">${x.ev ? pct((x.ev.dimensiones[d.k] || {}).porcentaje) : '—'}</td>`).join('')}
           </tr>`).join('') || `<tr><td colspan="8" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>`}</tbody>
         </table></div>
-        <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'TODAS' ? 'tienen alguna evaluación registrada (todas, de cualquier período)' : f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'superaron los 90 días de prueba (o no tienen fecha de ingreso); también se listan las evaluaciones Día 75 aplicadas en el período'}.</p>
+        <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'TODAS' ? 'tienen alguna evaluación registrada (todas, de cualquier período)' : f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'están activos, incluidos quienes están en período de prueba (se indica el día en que van; su resultado es la evaluación Día 75 si la tienen en este período)'}.</p>
       </div>
       ${pieMedicion()}
     </div>`;
@@ -1598,7 +1605,7 @@
       return '<tr>' + [x.emp.id, x.emp.nombre, x.emp.area, x.emp.cargo, x.evaluador,
         e ? (e.tipo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(e.periodo)) : etiquetaPeriodo(st.filtro.periodo),
         e ? (e.estado === 'confirmada' ? 'Confirmada' : (e.confirmacionVencida ? 'No confirmada' : 'Enviada'))
-          : ({ pendiente: 'Pendiente', vencida: 'Plazo vencido' }[x.estado] || 'Sin evaluador'),
+          : ({ pendiente: 'Pendiente', vencida: 'Plazo vencido', 'en-prueba': `En período de prueba (día ${x.prueba})` }[x.estado] || 'Sin evaluador'),
         e ? e.puntaje : '', e ? Math.round(Number(e.porcentaje) * 1000) / 10 : '', e ? e.nivel : '',
         e ? Math.round(metaDe(e) * 1000) / 10 : '', e ? (cumpleMeta(e) ? 'Sí' : 'No') : '',
         ...DIMENSIONES.map(d => e && e.dimensiones[d.k] ? Math.round(Number(e.dimensiones[d.k].porcentaje || 0) * 1000) / 10 : ''),
