@@ -8620,6 +8620,10 @@ async function verificarEstadoInicial() {
                 }
 
                 if (estadoRes && !estadoRes.error) {
+                    // La ficha cambió de ID (migración): la sesión pasa al ID nuevo con el mismo dispositivo
+                    if (estadoRes.id && String(estadoRes.id) !== String(data.empleadoId)) {
+                        try { localStorage.setItem('SESSION_DATA', JSON.stringify({ ...data, empleadoId: String(estadoRes.id) })); } catch (e) { }
+                    }
                     estado = {
                         tieneEntrada: estadoRes.tieneEntrada || false,
                         tieneSalida: estadoRes.tieneSalida || false,

@@ -574,8 +574,20 @@ window.FirebaseBackend = {
         };
     },
 
+    // Ficha pasada a otro ID (p. ej. personal externo a la serie 9000): la app que aún guarda el ID viejo sigue a la nueva
+    async _idVigente(empleadoId) {
+        const id = String(empleadoId || '').trim();
+        if (!id) return id;
+        try {
+            const doc = await db.collection('empleados').doc(id).get();
+            const d = doc.exists ? (doc.data() || {}) : {};
+            if (d.migrado_a && String(d.activo || '').toUpperCase() === 'NO') return String(d.migrado_a).trim();
+        } catch (e) { console.warn('No se pudo revisar si la ficha cambió de ID:', e); }
+        return id;
+    },
+
     async verificarEmpleadoTienePin(params) {
-        const empleadoId = (params.empleadoId || params.id || "").toString().trim();
+        const empleadoId = await this._idVigente((params.empleadoId || params.id || "").toString().trim());
         if (!empleadoId) return { error: "ID de empleado no proporcionado" };
 
         let empDoc = await db.collection('empleados').doc(empleadoId).get();
@@ -808,7 +820,7 @@ window.FirebaseBackend = {
     // 2. ESTADO Y REGISTROS
     // ==========================================
     async obtenerEstado(params) {
-        const empleadoId = params.id?.toString();
+        const empleadoId = await this._idVigente(params.id?.toString());
         if (!empleadoId) return { error: "ID no proporcionado" };
 
         const empDoc = await db.collection('empleados').doc(empleadoId).get();
@@ -1104,6 +1116,9 @@ window.FirebaseBackend = {
         }
         if (!empDoc || !empDoc.exists) return { error: "Empleado no encontrado" };
         const infoEmpleado = empDoc.data();
+        if (infoEmpleado.migrado_a && infoEmpleado.activo !== 'SI') {
+            return { error: `Tu ID cambió al ${infoEmpleado.migrado_a}. Cierra y vuelve a abrir la app para marcar.`, migradoA: String(infoEmpleado.migrado_a) };
+        }
         if (infoEmpleado.activo && infoEmpleado.activo !== 'SI') return { error: "Empleado inactivo" };
 
         // Desde la app del colaborador, el modo CAMPO solo lo usan los autorizados por el supervisor
