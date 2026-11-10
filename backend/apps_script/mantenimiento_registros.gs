@@ -377,6 +377,106 @@ function instalarLimpiezaFilasEnBlanco() {
 }
 
 /**
+ * 8. Pasa a la hoja VACACIONES toda fila de REGISTROS con TIPO = VACACIONES (o VACACION). La fila se copia tal cual
+ *    (las dos hojas tienen las mismas columnas) y se borra de REGISTROS. Si ese día ya está en VACACIONES para ese
+ *    colaborador, no se duplica: solo se quita de REGISTROS. Usa el mismo bloqueo que el archivado.
+ */
+function moverVacacionesAHojaVacaciones() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const regs = ss.getSheetByName('REGISTROS');
+  const vacs = ss.getSheetByName('VACACIONES');
+  if (!regs || !vacs) {
+    Logger.log('❌ Falta la hoja REGISTROS o VACACIONES.');
+    return;
+  }
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    Logger.log('⏳ Otro proceso está escribiendo en el libro: las vacaciones se mueven en la próxima ejecución.');
+    return;
+  }
+  try {
+    const lastRow = regs.getLastRow();
+    if (lastRow <= 1) return;
+    const values = regs.getRange(2, 1, lastRow - 1, regs.getLastColumn()).getValues();
+    const esVac = t => { const s = String(t || '').trim().toUpperCase(); return s === 'VACACIONES' || s === 'VACACION'; };
+    const clave = (fecha, id) => normalizarFechaClave(fecha) + '|' + String(id || '').trim();
+
+    const filas = [];
+    values.forEach((fila, i) => { if (esVac(fila[3])) filas.push({ row: i + 2, datos: fila }); });
+    if (filas.length === 0) {
+      Logger.log('✅ REGISTROS no tiene filas de VACACIONES.');
+      return;
+    }
+
+    const existentes = {};
+    const lastVac = vacs.getLastRow();
+    if (lastVac > 1) {
+      vacs.getRange(2, 1, lastVac - 1, 4).getValues().forEach(f => { if (esVac(f[3])) existentes[clave(f[0], f[1])] = true; });
+    }
+
+    const anchoVac = Math.max(vacs.getLastColumn(), 25);
+    const nuevas = [];
+    filas.forEach(f => {
+      const k = clave(f.datos[0], f.datos[1]);
+      f.yaEstaba = !!existentes[k];
+      if (f.yaEstaba) return;
+      existentes[k] = true;
+      const copia = f.datos.slice(0, anchoVac);
+      while (copia.length < anchoVac) copia.push('');
+      nuevas.push(copia);
+    });
+
+    // Primero se escribe en VACACIONES; solo si eso funcionó se borra de REGISTROS
+    if (nuevas.length) {
+      vacs.getRange(vacs.getLastRow() + 1, 1, nuevas.length, anchoVac).setValues(nuevas);
+      SpreadsheetApp.flush();
+    }
+
+    // Borrado de abajo hacia arriba, agrupando filas seguidas
+    const rows = filas.map(f => f.row).sort((a, b) => b - a);
+    let i = 0;
+    while (i < rows.length) {
+      const fin = rows[i];
+      let ini = fin;
+      while (i + 1 < rows.length && rows[i + 1] === ini - 1) { ini = rows[i + 1]; i++; }
+      regs.deleteRows(ini, fin - ini + 1);
+      i++;
+    }
+
+    filas.forEach(f => logsMantenimiento.push({
+      tipo: 'VACACIONES_MOVIDAS', hoja: 'REGISTROS', fila: f.row, id: String(f.datos[1] || ''), nombre: String(f.datos[2] || ''),
+      fecha: normalizarFechaClave(f.datos[0]),
+      detalle: f.yaEstaba ? 'Ya estaba en VACACIONES: solo se quitó de REGISTROS.' : 'Movida a la hoja VACACIONES.'
+    }));
+    Logger.log(`🏖️ ${filas.length} filas de VACACIONES salieron de REGISTROS: ${nuevas.length} copiadas a VACACIONES, ${filas.length - nuevas.length} ya estaban.`);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Mantenimiento diario (04:00): filas en blanco y vacaciones que quedaron en REGISTROS.
+ */
+function mantenimientoDiario() {
+  logsMantenimiento = [];
+  eliminarFilasEnBlanco();
+  moverVacacionesAHojaVacaciones();
+}
+
+/**
+ * Programa mantenimientoDiario() todos los días a las 04:00 (reemplaza al disparador anterior de filas en blanco).
+ * Se ejecuta una sola vez a mano; repetirla no duplica.
+ */
+function instalarMantenimientoDiario() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    const h = t.getHandlerFunction();
+    if (h === 'eliminarFilasEnBlanco' || h === 'mantenimientoDiario') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('mantenimientoDiario').timeBased().everyDays(1).atHour(4).inTimezone('America/Guayaquil').create();
+  Logger.log('✅ Mantenimiento diario programado a las 04:00: filas en blanco y vacaciones a su hoja.');
+}
+
+/**
  * Función de compatibilidad: redirige directamente a eliminarDuplicados()
  */
 function subrayarDuplicados() {
@@ -831,6 +931,7 @@ function ejecutarMantenimiento() {
   Logger.log("\n--- PASO 2: Eliminando registros duplicados directamente ---");
   eliminarDuplicados();
   eliminarFilasEnBlanco();
+  moverVacacionesAHojaVacaciones();
 
   Logger.log("\n--- PASO 3: Autorizando horas extras automáticas (>45 min pos-jornada) ---");
   autorizarHorasExtrasAutomaticas();
