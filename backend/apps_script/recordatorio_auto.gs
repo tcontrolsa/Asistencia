@@ -42,8 +42,8 @@ function simulacionRecordatorioDiario() {
     var lista = calcularSinMarcarHoyRec_(hoy);
     guardarDocRec_('configuracion/recordatorio_sim_' + hoy, {
       fecha: hoy, calculado_en: new Date().toISOString(), hora_corte: regla.horaCorte,
-      total: lista.length, ids: lista.map(function (e) { return e.id; }),
-      nombres: lista.map(function (e) { return e.id + ' ' + e.nombre; })
+      // Solo IDs: la colección configuracion es legible sin sesión; los nombres se ven en el panel
+      total: lista.length, ids: lista.map(function (e) { return e.id; })
     });
     Logger.log('Simulación ' + hoy + ': ' + lista.length + ' sin marcar');
   } finally {

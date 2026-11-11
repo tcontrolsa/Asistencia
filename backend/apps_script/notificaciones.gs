@@ -137,6 +137,12 @@ function primerNombre_(nombre) {
   var n = p.length >= 3 ? p[2] : (p[1] || p[0] || '');
   return n ? n.charAt(0).toUpperCase() + n.slice(1).toLowerCase() : '';
 }
+// Para nombrar a terceros en WhatsApp: "SANMARTIN CARRILLO LUIS FERNANDO" → "Luis Sanmartin" (datos mínimos)
+function nombreCorto_(nombre) {
+  var p = String(nombre || '').replace(/\(.*?\)/g, ' ').trim().split(/\s+/).filter(String);
+  var t = p.length >= 3 ? [p[2], p[0]] : p.length === 2 ? [p[1], p[0]] : p;
+  return t.map(function (x) { return x.charAt(0).toUpperCase() + x.slice(1).toLowerCase(); }).join(' ');
+}
 
 // ---------------------------------------------------------------- eventos de desempeño
 function notificarEvaluacion_(p) {
@@ -150,7 +156,7 @@ function notificarEvaluacion_(p) {
       texto: (p.evaluadorNombre || 'Tu jefe inmediato') + ' registró tu evaluación de ' + mes + '. Revísala y confírmala.'
     });
     if (nueva) {
-      whatsappA_(p.empleadoId, 'Hola ' + primerNombre_(p.empleadoNombre) + ', ' + (p.evaluadorNombre || 'tu jefe inmediato') +
+      whatsappA_(p.empleadoId, 'Hola ' + primerNombre_(p.empleadoNombre) + ', ' + (nombreCorto_(p.evaluadorNombre) || 'tu jefe inmediato') +
         ' registró tu evaluación de desempeño de ' + mes + '. Revísala y confírmala en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
     }
   } else if (p.evento === 'corregida') {
@@ -172,7 +178,8 @@ function notificarEvaluacion_(p) {
         (p.reunionMotivo ? ': ' + p.reunionMotivo : '.') + ' Agéndala desde la evaluación.'
     });
     if (sol) {
-      whatsappA_(p.evaluadorId, 'Hola, ' + (p.empleadoNombre || p.empleadoId) + ' pidió una reunión para conversar su evaluación de desempeño de ' +
+      // El motivo de la reunión queda solo en la campana (dentro de la app), no en WhatsApp
+      whatsappA_(p.evaluadorId, 'Hola, ' + (p.empleadoNombre ? nombreCorto_(p.empleadoNombre) + ' (ID ' + p.empleadoId + ')' : 'ID ' + p.empleadoId) + ' pidió una reunión para conversar su evaluación de desempeño de ' +
         mes + '. Agéndala en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
     }
   } else if (p.evento === 'reunion_agendada') {
@@ -183,7 +190,7 @@ function notificarEvaluacion_(p) {
       titulo: 'Reunión agendada', texto: 'Conversarán tu evaluación de ' + mes + ' el ' + cuando + (p.reunionLugar ? ' · ' + p.reunionLugar : '') + '.'
     });
     if (ag) {
-      whatsappA_(p.empleadoId, 'Hola ' + primerNombre_(p.empleadoNombre) + ', ' + (p.evaluadorNombre || 'tu jefe inmediato') +
+      whatsappA_(p.empleadoId, 'Hola ' + primerNombre_(p.empleadoNombre) + ', ' + (nombreCorto_(p.evaluadorNombre) || 'tu jefe inmediato') +
         ' agendó la reunión para conversar tu evaluación de desempeño de ' + mes + ': ' + cuando + (p.reunionLugar ? ', ' + p.reunionLugar : '') + '.');
     }
   } else if (p.evento === 'plazo_reabierto') {
@@ -354,7 +361,7 @@ function recordatoriosDiarios() {
       });
       if (creada) {
         resumen.dia75++;
-        whatsappA_(e.evaluador_id, 'Hola ' + primerNombre_(porId[e.evaluador_id].nombre) + ', ' + (e.nombre || e.id) +
+        whatsappA_(e.evaluador_id, 'Hola ' + primerNombre_(porId[e.evaluador_id].nombre) + ', ' + (e.nombre ? nombreCorto_(e.nombre) + ' (ID ' + e.id + ')' : 'ID ' + e.id) +
           ' cumple ' + dias + ' días desde su ingreso: corresponde su seguimiento Día 75 en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
       }
     });
