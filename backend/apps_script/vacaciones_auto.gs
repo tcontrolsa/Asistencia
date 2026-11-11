@@ -330,3 +330,73 @@ function vacArchivoHistorico_(ss) {
   props.setProperty('VAC_HISTORICO_ID', nuevo.getId());
   return nuevo;
 }
+
+// ---------------------------------------------------------------- días de vacación repetidos (2026-11-11)
+// La misma persona con dos filas VACACIONES el mismo día se descuenta dos veces (aviso del cálculo diario).
+//   revisarVacacionesRepetidas()   NO cambia nada: muestra las filas repetidas
+//   corregirVacacionesRepetidas()  deja la primera fila de cada día; las demás se copian a la hoja
+//                                  VACACIONES_REPETIDAS_BORRADAS (respaldo) y se borran de VACACIONES.
+//   Después correr aplicarVacacionesAuto() para recalcular los saldos.
+function revisarVacacionesRepetidas() { return vacRepetidas_(false); }
+function corregirVacacionesRepetidas() { return vacRepetidas_(true); }
+
+// 'yyyy-MM-dd' de una celda de fecha: Date, texto 'dd/mm/aaaa' o 'aaaa-mm-dd' (con o sin hora)
+function vacDiaDeCelda_(v, tz) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  var t = String(v || '').trim(), m;
+  if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  return '';
+}
+
+function vacRepetidas_(aplicar) {
+  var ss = SpreadsheetApp.getActive();
+  var hoja = ss.getSheetByName(HOJA_VACACIONES);
+  var datos = hoja.getDataRange().getValues();
+  var tz = Session.getScriptTimeZone(), vistos = {}, sobran = [];
+  for (var j = 1; j < datos.length; j++) {
+    var dia = vacDiaDeCelda_(datos[j][0], tz);   // fecha real o escrita como texto
+    if (!dia) continue;
+    if (String(datos[j][3] || '').trim().toUpperCase() !== 'VACACIONES') continue;
+    var id = String(datos[j][1] || '').trim();
+    if (!id) continue;
+    var clave = id + '|' + dia;
+    if (vistos[clave]) sobran.push({ fila: j + 1, primera: vistos[clave], v: datos[j], clave: clave });
+    else vistos[clave] = j + 1;
+  }
+  if (!sobran.length) { Logger.log('Sin días de vacación repetidos.'); return 0; }
+  sobran.forEach(function (s) {
+    Logger.log((aplicar ? 'Se borra' : 'Se borraría') + ' la fila ' + s.fila + ' (' + s.clave.replace('|', ' · ') + (s.v[0] instanceof Date ? '' : ', fecha escrita como texto') +
+      '), repetida de la fila ' + s.primera + ': ' + s.v.map(function (x) { return x instanceof Date ? Utilities.formatDate(x, tz, 'dd/MM/yyyy HH:mm') : x; }).join(' | '));
+  });
+  if (!aplicar) { Logger.log(sobran.length + ' fila(s) repetida(s). Para corregir: corregirVacacionesRepetidas()'); return sobran.length; }
+
+  var resp = ss.getSheetByName('VACACIONES_REPETIDAS_BORRADAS');
+  if (!resp) {
+    resp = ss.insertSheet('VACACIONES_REPETIDAS_BORRADAS');
+    var cab = datos[0].slice();
+    cab.push('FILA_ORIGINAL', 'BORRADA_EN');
+    resp.getRange(1, 1, 1, cab.length).setValues([cab]).setFontWeight('bold');
+    resp.setFrozenRows(1);
+  }
+  var ahora = new Date();
+  var copia = sobran.map(function (s) { return s.v.concat([s.fila, ahora]); });
+  resp.getRange(resp.getLastRow() + 1, 1, copia.length, copia[0].length).setValues(copia);
+  SpreadsheetApp.flush();
+  var antes = hoja.getLastRow();
+  sobran.map(function (s) { return s.fila; }).sort(function (a, b) { return b - a; }).forEach(function (fila) { hoja.deleteRow(fila); });
+  SpreadsheetApp.flush();
+  // Comprobación: la hoja debe tener menos filas y ya no debe haber repetidos
+  var despues = hoja.getLastRow();
+  Logger.log('Libro ' + ss.getName() + ' (' + ss.getId() + ') · hoja ' + hoja.getName() + ': ' + antes + ' → ' + despues + ' filas.');
+  var quedan = 0, vistos2 = {};
+  hoja.getDataRange().getValues().forEach(function (r, i) {
+    if (!i) return;
+    var dia = vacDiaDeCelda_(r[0], tz), id = String(r[1] || '').trim();
+    if (!dia || !id || String(r[3] || '').trim().toUpperCase() !== 'VACACIONES') return;
+    if (vistos2[id + '|' + dia]) quedan++; else vistos2[id + '|' + dia] = true;
+  });
+  Logger.log(quedan ? '⚠️ Siguen ' + quedan + ' repetido(s) después de borrar.' : 'Comprobado: ya no hay repetidos.');
+  Logger.log(sobran.length + ' fila(s) borrada(s) (copia en VACACIONES_REPETIDAS_BORRADAS). Ahora corre aplicarVacacionesAuto().');
+  return sobran.length;
+}
