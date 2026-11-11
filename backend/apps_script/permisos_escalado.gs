@@ -137,7 +137,11 @@ function instalarEscaladoPermisos() {
 var PERM_HOJA_HORAS = 'VACACIONES_HORAS';
 
 function sincronizarCargosVacaciones_(aplicar) {
+  // Fase 5: un permiso marcado con «Voy a regresar» cambia de duración al volver; se copia cuando regresa
+  // o cuando termina el día (si no regresó, queda hasta las 16:15).
+  var hoyPerm = Utilities.formatDate(new Date(), 'America/Guayaquil', 'yyyy-MM-dd');
   var pendientes = solicitudesPorEstado_('APROBADA').filter(function (s) {
+    if (s.regreso_pendiente === true && String(s.desde || '') >= hoyPerm) return false;
     return s.tipo === 'PERMISO_PERSONAL' && Number(s.cargo_vacaciones_min || 0) > 0 && s.vacaciones_hoja !== true;
   });
   if (!pendientes.length) { Logger.log('Horas a vacaciones: nada nuevo'); return; }

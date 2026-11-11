@@ -359,10 +359,16 @@
   // Fase 3: permiso médico por horas registrado → ese tiempo es médico (no se descuenta) mientras TTHH no confirme
   // el descuento; permiso médico o calamidad por días con descuento confirmado (docs_estado DESCONTADO) → esos días
   // dejan de estar justificados.
+  // Fase 5: permiso marcado en la app (salida o entrada tardía) que el jefe rechazó → esa salida temprana o ese
+  // atraso de ese día dejan de estar justificados.
   function calcularBolsa({ empleado, porDia, hoy, solicitudes }) {
-    const justificadoVac = {}, medicoHoras = {}, sinJustificar = {};
+    const justificadoVac = {}, medicoHoras = {}, sinJustificar = {}, marcacionRechazada = {};
     (solicitudes || []).forEach(s => {
       if (!s) return;
+      if (s.estado === 'RECHAZADA' && s.origen && s.desde) {
+        marcacionRechazada[s.desde] = Object.assign(marcacionRechazada[s.desde] || {}, { [s.origen]: true });
+        return;
+      }
       if (s.estado === 'APROBADA' && s.tipo === 'PERMISO_PERSONAL' && s.modalidad === 'HORAS') {
         Object.keys(s.vacaciones_por_dia || {}).forEach(f => { justificadoVac[f] = (justificadoVac[f] || 0) + (Number(s.vacaciones_por_dia[f]) || 0); });
       } else if (s.estado === 'REGISTRADA' && (s.tipo === 'PERMISO_MEDICO' || s.tipo === 'CALAMIDAD')) {
@@ -490,10 +496,11 @@
         atrasoMinsDia = 0;
         salidaTempMinsDia = 0;
       } else {
-        const tieneJustifEntradaTardia = regsDia.some(r => r.razon_entrada_tardia && !['—', '-', ''].includes(String(r.razon_entrada_tardia).trim()));
+        const rech = marcacionRechazada[f] || {};
+        const tieneJustifEntradaTardia = !rech.ENTRADA_TARDIA && regsDia.some(r => r.razon_entrada_tardia && !['—', '-', ''].includes(String(r.razon_entrada_tardia).trim()));
         const permisosTotales = tiempoPersonal + tiempoMedico + tiempoJustificado;
         atrasoMinsDia = tieneJustifEntradaTardia ? 0 : Math.max(0, rawAtrasoMins - permisosTotales);
-        const tieneJustifSalidaTemprana = regsDia.some(r => r.razon_salida_temprana && !['—', '-', ''].includes(String(r.razon_salida_temprana).trim()));
+        const tieneJustifSalidaTemprana = !rech.SALIDA && regsDia.some(r => r.razon_salida_temprana && !['—', '-', ''].includes(String(r.razon_salida_temprana).trim()));
         if (tieneJustifSalidaTemprana) {
           salidaTempMinsDia = 0;
         } else {
@@ -553,7 +560,7 @@
   }
 
   window.ReglasJornada = {
-    HORA_ENTRADA_REF, TOLERANCIA_ENTRADA_MIN, HORA_SALIDA_REF, BOLSA_MIN, PENALIZACION_SIN_SALIDA_MIN, DESCANSOS_DESDE,
+    HORA_ENTRADA_REF, TOLERANCIA_ENTRADA_MIN, HORA_SALIDA_REF, BOLSA_MIN, PENALIZACION_SIN_SALIDA_MIN, DESCANSOS_DESDE, DESCANSOS_LV,
     obtenerMinutos, normalizarFechaStr, esFeriadoODomingo, obtenerDiasHabiles, periodoDe, esEmpleadoPasante,
     obtenerFechaInicioEfectivaEmpleado, ajusteDescansoDia, almorzoEnPlanta, almuerzoFinSemana, descansoDia,
     calcularNetWorkedOrdinario, esSalidaSinRegistrar, contarRegistrosInconclusos, esCumpleanosEmpleadoEnFecha,

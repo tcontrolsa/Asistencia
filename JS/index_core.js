@@ -1270,7 +1270,7 @@ function actualizarGuiaCampo() {
 // Un solo lugar que explica qué pasa con la ubicación y qué puede hacer el colaborador:
 //   buscando GPS → afinando → en la empresa (OFICINA) → fuera: teletrabajo, campo o ausencia justificada.
 // El botón principal se bloquea con un mensaje mientras no pueda usarse, en lugar de fallar al tocarlo.
-const TIPOS_AUSENCIA_DIA = ['VACACIONES', 'VACACION', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA', 'PERMISO'];
+const TIPOS_AUSENCIA_DIA = ['VACACIONES', 'VACACION', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'FALTA_JUSTIFICADA', 'PERMISO', 'CALAMIDAD'];
 let _esperaUbicDesde = 0;      // desde cuándo se está esperando una lectura útil (para mostrar ayuda)
 let _midiendoHasta = 0;        // "Volver a medir": muestra que se está midiendo
 
@@ -1678,6 +1678,31 @@ window.abrirModalReporteFueraArea = function () {
     // Si el colaborador ya tiene registrada su jornada (Entrada o Salida), no aplica reporte de ausencia
     if (typeof estado !== 'undefined' && estado && (estado.tieneEntrada || estado.tieneSalida)) {
         mostrarToast('Ya registraste tu jornada de asistencia el día de hoy.', 'info');
+        return;
+    }
+
+    // Permisos (fase 5): «Hoy no vengo» es una solicitud del flujo de permisos (vacaciones y permiso personal los
+    // aprueba el jefe; permiso médico y calamidad se registran con 72 h para documentos). El modal anterior
+    // (justificaba al instante) queda solo como respaldo si permisos.js no cargó.
+    if (window.Permisos && typeof window.Permisos.abrirFormulario === 'function' && empleado && empleado.id) {
+        const hoyPm = getLocalHoyStr(new Date());
+        window.Permisos.abrirFormulario({
+            empId: String(empleado.id),
+            titulo: 'Hoy no vengo',
+            subtitulo: 'Elige el motivo: tu jefe y TTHH reciben el aviso',
+            tiposPermitidos: ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'CALAMIDAD'],
+            creadoPor: { id: String(empleado.id), nombre: empleado.nombre || '', rol: 'COLABORADOR' },
+            onCreada: s => {
+                if (s && s.modalidad === 'DIAS' && (s.fechas || []).includes(hoyPm)) {
+                    try {
+                        localStorage.setItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyPm}`, JSON.stringify({
+                            tipo: s.tipo, texto: s.tipo, fecha: hoyPm, solicitud: s.id || '', estado: s.estado, timestamp: new Date().toISOString()
+                        }));
+                    } catch (e) { }
+                }
+                if (typeof renderHomePage === 'function') renderHomePage();
+            }
+        });
         return;
     }
 
@@ -2390,11 +2415,11 @@ function mostrarJustificacionSalida(razon, label) {
                     <div style="text-align: center; margin-bottom: 20px;">
                         <i class="fas fa-clipboard-check" style="font-size: 40px; color: #0284c7; margin-bottom: 12px;"></i>
                         <h3 style="font-size: clamp(18px, 5vw, 22px); color: #0f172a; margin: 0; font-weight: 700;">Salida Justificada</h3>
-                        <p style="color: #64748b; font-size: clamp(13px, 3.5vw, 15px); margin-top: 10px; line-height: 1.4;">¿Quién autoriza esta salida?</p>
+                        <p style="color: #64748b; font-size: clamp(13px, 3.5vw, 15px); margin-top: 10px; line-height: 1.4;">¿Por qué sales? Se registra como permiso personal y lo aprueba tu jefe inmediato.</p>
                     </div>
                     
                     <div style="background: #eff6ff; border-left: 4px solid #0284c7; padding: 14px 16px; border-radius: 10px; margin-bottom: 18px;">
-                        <input type="text" id="quienJustifica" placeholder="Nombre de la persona o jefe" 
+                        <input type="text" id="quienJustifica" maxlength="300" placeholder="Motivo de la salida" 
                                style="width: 100%; padding: 14px 16px; border: 2px solid #bfdbfe; border-radius: 10px; font-size: clamp(16px, 4.5vw, 18px); color: #1e293b; background: white;"
                                onkeypress="if(event.key==='Enter') procesarRazonSalidaJustificada()">
                     </div>
@@ -2415,16 +2440,18 @@ function mostrarJustificacionSalida(razon, label) {
 }
 
 window.procesarRazonSalidaJustificada = function () {
-    const nombre = document.getElementById('quienJustifica')?.value.trim();
-    if (!nombre) {
-        mostrarToast('Ingresa el nombre de quién autoriza', 'error');
+    const motivo = document.getElementById('quienJustifica')?.value.trim();
+    if (!motivo) {
+        mostrarToast('Escribe el motivo de la salida', 'error');
         return;
     }
 
+    // Permisos (fase 5): ya no se escribe quién autoriza; la salida crea un permiso personal que aprueba el jefe
     razonSalidaTemprana = 'salida_justificada';
     detalleRazonSalida = {
         razon: 'salida_justificada',
-        quien_justifica: nombre
+        quien_justifica: 'Solicitud al jefe inmediato',
+        motivo
     };
 
     empleado.razon_salida_temprana = razonSalidaTemprana;
@@ -2432,6 +2459,87 @@ window.procesarRazonSalidaJustificada = function () {
 
     mostrarModalTipoSalidaTemprana();
 };
+
+// ---------------------------------------------------------------- Permisos al marcar (fase 5)
+// Qué solicitud genera esta marcación: salida por permiso personal/médico o salida justificada (regrese o no) y
+// entrada tardía por permiso personal/médico. null si la marcación no es un permiso.
+function permisoDeMarcacion(tipoReg) {
+    if (tipoReg === 'ENTRADA') {
+        const r = detalleRazonEntrada && detalleRazonEntrada.razon;
+        if (r !== 'permiso_medico' && r !== 'permiso_personal') return null;
+        return { tipo: r === 'permiso_medico' ? 'PERMISO_MEDICO' : 'PERMISO_PERSONAL', origen: 'ENTRADA_TARDIA', regresa: false, motivo: '' };
+    }
+    if (tipoReg !== 'SALIDA') return null;
+    const ts = String(empleado.tipo_salida || '');
+    const rs = (detalleRazonSalida && detalleRazonSalida.razon) || '';
+    const motivo = (detalleRazonSalida && detalleRazonSalida.motivo) || '';
+    if (ts === 'PERMISO' || ts === 'PERMISO_CON_SALIDA_TEMPRANA') {
+        const medico = String(empleado.razon_permiso || '').toLowerCase().includes('medic');
+        return { tipo: medico ? 'PERMISO_MEDICO' : 'PERMISO_PERSONAL', origen: 'SALIDA', regresa: true, motivo };
+    }
+    if (ts !== 'SALIDA_TEMPRANA_JUSTIFICADA') return null;
+    if (rs === 'permiso_medico') return { tipo: 'PERMISO_MEDICO', origen: 'SALIDA', regresa: false, motivo };
+    if (rs === 'permiso_personal' || rs === 'salida_justificada') return { tipo: 'PERMISO_PERSONAL', origen: 'SALIDA', regresa: false, motivo };
+    return null;
+}
+
+const _hhmmAhora = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+function tramoPermisoMarcacion(info, hora) {
+    return info.origen === 'ENTRADA_TARDIA' ? { desde: '07:30', hasta: hora } : { desde: hora, hasta: '16:15' };
+}
+
+// Permiso personal que no cabe en la bolsa de 4 h: el colaborador acepta el cargo antes de guardar la marcación.
+// Si el cálculo falla o tarda, no se bloquea la marcación (la solicitud se crea igual y el jefe ve el reparto).
+async function confirmarCargoPermisoMarcacion(info) {
+    if (!info || info.tipo !== 'PERMISO_PERSONAL' || !window.Permisos || typeof window.Permisos.planMarcacion !== 'function') return { seguir: true };
+    const t = tramoPermisoMarcacion(info, _hhmmAhora());
+    let r = null;
+    showLoading(true, 'Revisando tu bolsa de 4 horas…', 'Un momento');
+    try { r = await conTiempoLimite(window.Permisos.planMarcacion({ id: String(empleado.id), nombre: empleado.nombre || '' }, t.desde, t.hasta), 10000); }
+    catch (e) { console.warn('[Permisos] Bolsa no calculada antes de marcar:', e); }
+    finally { showLoading(false); }
+    if (!r || !r.plan) return { seguir: true };
+    const p = r.plan;
+    if (!p.vacaciones_min && !p.rol_min) return { seguir: true, planBolsa: p, aceptaCargo: false };
+    const dur = m => { const h = Math.floor(m / 60), mm = m % 60; return h && mm ? `${h} h ${mm} min` : h ? `${h} h` : `${mm} min`; };
+    const partes = [];
+    if (p.vacaciones_min) partes.push(`• ${dur(p.vacaciones_min)} se cargarán a tus vacaciones (cada 8 h descuentan 1 día)`);
+    if (p.rol_min) partes.push(`• ${dur(p.rol_min)} se descontarán del rol (no te alcanzan las vacaciones)`);
+    const aviso = `Este permiso supera tu bolsa de 4 horas (te quedan ${dur(p.saldo_bolsa_inicial || 0)}):\n\n${partes.join('\n')}` +
+        (info.regresa ? '\n\nSe calculó hasta las 16:15; si regresas antes, se recalcula.' : '');
+    if (confirm(`${aviso}\n\n¿Aceptas este cargo?`)) return { seguir: true, planBolsa: p, aceptaCargo: true };
+    if (!p.vacaciones_min) return { seguir: false };
+    if (confirm('¿Registrar la salida sin aceptar el cargo a vacaciones?\n\nTodo el tiempo que no cubre la bolsa se descontará del rol.')) return { seguir: true, planBolsa: p, aceptaCargo: false };
+    return { seguir: false };
+}
+
+// Después de guardar la marcación: crea la solicitud (salida / entrada tardía) o cierra la del permiso al regresar.
+// No bloquea la marcación: si falla, se avisa para pedirlo en Permisos.
+function solicitudPermisoTrasMarcar(tipoReg, info, hora, registroId) {
+    const P = window.Permisos;
+    if (!P || !empleado || !empleado.id) return;
+    const horaHM = String(hora || '').slice(0, 5) || _hhmmAhora();
+    if (tipoReg === 'ENTRADA' && typeof P.ajustarRegreso === 'function') {
+        P.ajustarRegreso(String(empleado.id), horaHM).catch(e => console.warn('[Permisos] Regreso no ajustado:', e));
+    }
+    if (!info || typeof P.registrarDesdeMarcacion !== 'function') return;
+    const t = tramoPermisoMarcacion(info, horaHM);
+    P.registrarDesdeMarcacion({
+        emp: { id: String(empleado.id), nombre: empleado.nombre || '', area: empleado.area || '', cargo: empleado.cargo || '' },
+        tipo: info.tipo, origen: info.origen, horaDesde: t.desde, horaHasta: t.hasta, regresa: !!info.regresa,
+        motivo: info.motivo || '', registroId, aceptaCargo: !!info.aceptaCargo, planBolsa: info.planBolsa || null
+    }).then(r => {
+        if (!r || r.error) throw new Error((r && r.error) || 'sin respuesta');
+        if (r.omitida || r.existente) return;
+        const s = r.solicitud || {};
+        setTimeout(() => mostrarToast(s.estado === 'REGISTRADA'
+            ? 'Permiso médico registrado: entrega el certificado a TTHH en 72 horas (Permisos).'
+            : 'Se envió tu permiso a tu jefe inmediato para su aprobación.', 'success'), 2500);
+    }).catch(e => {
+        console.warn('[Permisos] Solicitud no creada al marcar:', e);
+        setTimeout(() => mostrarToast('Tu marcación se guardó, pero no se pudo crear la solicitud de permiso: pídelo en Permisos.', 'error'), 2500);
+    });
+}
 
 window.procesarRazonSalida = function (razon, label) {
     razonSalidaTemprana = razon;
@@ -2509,6 +2617,15 @@ async function procederConRegistro() {
                 }
             }
         }
+    }
+
+    // Permisos (fase 5): la salida o la entrada tardía por permiso crea una solicitud. Si es permiso personal y
+    // supera la bolsa de 4 h, el colaborador acepta el cargo antes de guardar la marcación.
+    const permisoMarc = permisoDeMarcacion(empleado.tipoRegistro);
+    if (permisoMarc) {
+        const decision = await confirmarCargoPermisoMarcacion(permisoMarc);
+        if (!decision.seguir) return;
+        Object.assign(permisoMarc, decision);
     }
 
     // El GPS entrega grados decimales: solo se valida el rango (el personal en campo marca desde otros países)
@@ -2595,6 +2712,7 @@ async function procederConRegistro() {
     const horaActual24 = res.hora ? String(res.hora).slice(0, 5) : formatearHora24(ahora);
     const comprobante = window.FirebaseBackend && res.id ? window.FirebaseBackend.comprobanteMarcacion(res.id) : '';
     guardarComprobanteLocal({ codigo: comprobante, tipo: tipoReg, fecha: res.fecha || getLocalHoyStr(ahora), hora: horaActual, id: res.id || '' });
+    solicitudPermisoTrasMarcar(tipoReg, permisoMarc, horaActual24, res.id || '');
 
     if (tipoReg === 'ENTRADA') {
         estado.tieneEntrada = true;

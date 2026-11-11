@@ -331,6 +331,8 @@
       if (isNaN(a) || isNaN(b)) return { error: 'Indica la hora de salida y de regreso' };
       if (b <= a) return { error: 'La hora de regreso debe ser posterior a la de salida' };
       minutos = b - a;
+      // Desde la marcación (fase 5) se cuentan solo minutos de jornada, sin los descansos que caen dentro
+      if (p.origen && Number(p.minutos) > 0) minutos = Math.min(minutos, Math.round(Number(p.minutos)));
     }
     if (!motivo && p.tipo !== 'VACACIONES') return { error: 'Escribe el motivo' };
 
@@ -365,6 +367,12 @@
       registros: [], avisos: {}
     };
     if (p.saldo) sol.saldo_al_solicitar = p.saldo;
+    // Fase 5: creada al marcar salida o entrada tardía en la app
+    if (p.origen) {
+      sol.origen = p.origen;
+      sol.regreso_pendiente = !!p.regresoPendiente;
+      sol.marcaciones = [{ origen: p.origen, registro: String(p.registroId || ''), hora: horaDesde, en: ahora.toISOString() }];
+    }
 
     // Permiso personal: reparto bolsa / vacaciones / rol (fase 2). Si algo no cabe en la bolsa, el colaborador
     // debe haber aceptado el aviso; se recalcula al aprobar con los datos de ese momento.
@@ -374,7 +382,8 @@
         try { plan = await planBolsa(emp, { modalidad, fechas, desde, minutos }); }
         catch (e) { return { error: 'No se pudo calcular tu bolsa de 4 horas: ' + (e.message || e) }; }
       }
-      if ((plan.vacaciones_min || plan.rol_min) && !p.aceptaCargo) return { error: 'Acepta el aviso: parte del permiso no cabe en tu bolsa de 4 horas' };
+      // Desde la marcación ya salió: se crea igual; si no aceptó el cargo, lo que iba a vacaciones va al rol
+      if ((plan.vacaciones_min || plan.rol_min) && !p.aceptaCargo && !p.origen) return { error: 'Acepta el aviso: parte del permiso no cabe en tu bolsa de 4 horas' };
       sol.plan_bolsa = plan;
       sol.acepta_cargo = !!p.aceptaCargo;
     }
@@ -438,6 +447,22 @@
     if (errores.length) toast(`Algunos días no se registraron en asistencia (${errores.length}). Avisa a TTHH.`, 'error');
   }
 
+  // Reparto que queda fijo al aprobar. Si se creó al marcar y el colaborador no aceptó el cargo a vacaciones,
+  // esa parte se descuenta del rol.
+  function repartoFinal(plan, s) {
+    let vac = Object.assign({}, plan.vacaciones_por_dia), rol = Object.assign({}, plan.rol_por_dia);
+    let vacMin = plan.vacaciones_min, rolMin = plan.rol_min;
+    if (s && s.origen && !s.acepta_cargo && vacMin) {
+      Object.keys(vac).forEach(f => { rol[f] = (Number(rol[f]) || 0) + (Number(vac[f]) || 0); });
+      rolMin += vacMin; vac = {}; vacMin = 0;
+    }
+    return {
+      bolsa_por_dia: plan.bolsa_por_dia, vacaciones_por_dia: vac, rol_por_dia: rol,
+      minutos_bolsa: plan.bolsa_min, cargo_vacaciones_min: vacMin, descuento_rol_min: rolMin,
+      plan_aprobacion: plan, vacaciones_hoja: false
+    };
+  }
+
   // Aprobar o rechazar. quien: {id, nombre}; puede el jefe asignado, alguien de TTHH o un administrador del panel
   async function resolver(id, accion, quien, comentario = '', esAdmin = false) {
     accion = String(accion || '').toUpperCase();
@@ -455,11 +480,7 @@
           const emp = await leerEmpleado(previa.empleadoId);
           if (!emp) throw new Error("No se encontró la ficha del colaborador");
           const plan = await planBolsa(emp, { modalidad: previa.modalidad, fechas: previa.fechas || [], desde: previa.desde, minutos: previa.minutos }, id);
-          final = {
-            bolsa_por_dia: plan.bolsa_por_dia, vacaciones_por_dia: plan.vacaciones_por_dia, rol_por_dia: plan.rol_por_dia,
-            minutos_bolsa: plan.bolsa_min, cargo_vacaciones_min: plan.vacaciones_min, descuento_rol_min: plan.rol_min,
-            plan_aprobacion: plan, vacaciones_hoja: false
-          };
+          final = repartoFinal(plan, previa);
         }
       } catch (e) { return { error: "No se pudo calcular la bolsa de 4 horas: " + (e.message || e) }; }
     }
@@ -512,8 +533,114 @@
     return { ok: true };
   }
 
+  // ---------------------------------------------------------------- fase 5: permisos al marcar en la app
+  const hhmm = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  const MOTIVO_MARCACION = { SALIDA: 'Salida con permiso registrada al marcar en la app', ENTRADA_TARDIA: 'Entrada tardía con permiso registrada al marcar en la app' };
+
+  // Minutos de jornada (07:30–16:15) entre dos horas, sin los descansos que caen dentro (receso, almuerzo):
+  // es el mismo faltante que ve el cálculo de la bolsa del panel.
+  function minutosJornada(a, b) {
+    const ini = Math.max(a, JORNADA.ini), fin = Math.min(b, JORNADA.fin);
+    if (isNaN(ini) || isNaN(fin) || fin <= ini) return 0;
+    const desc = (window.ReglasJornada && window.ReglasJornada.DESCANSOS_LV) || [];
+    return Math.max(0, fin - ini - desc.reduce((t, d) => (ini <= d.inicio && d.inicio < fin ? t + d.min : t), 0));
+  }
+
+  // Solicitud vigente de hoy que ya cubre el tramo (pedida antes de marcar)
+  async function solicitudQueCubre(empId, hoy, a, b) {
+    const snap = await db().collection(COL).where('empleadoId', '==', String(empId)).get();
+    let hallada = null;
+    snap.forEach(doc => {
+      const s = Object.assign({ id: doc.id }, doc.data());
+      if (hallada || ['RECHAZADA', 'CANCELADA'].includes(s.estado) || !(s.fechas || []).includes(hoy)) return;
+      if (s.modalidad !== 'HORAS') { hallada = s; return; }
+      const a2 = minutosDe(s.hora_desde), b2 = minutosDe(s.hora_hasta);
+      if (a < b2 && a2 < b) hallada = s;
+    });
+    return hallada;
+  }
+
+  /**
+   * Reparto de la bolsa de un permiso personal que se va a marcar ahora (la app pide aceptar el cargo antes de
+   * guardar la salida). Devuelve { minutos, plan } o { minutos: 0 } si el tramo no tiene tiempo de jornada,
+   * o { existente } si ya hay una solicitud que lo cubre.
+   */
+  async function planMarcacion(emp, horaDesde, horaHasta) {
+    const hoy = hoyStr();
+    const a = minutosDe(horaDesde), b = minutosDe(horaHasta);
+    const minutos = esLaborable(hoy) ? minutosJornada(a, b) : 0;
+    if (!minutos) return { minutos: 0 };
+    emp = (await leerEmpleado(emp.id)) || emp;
+    const existente = await solicitudQueCubre(emp.id, hoy, a, b);
+    if (existente) return { minutos, existente };
+    return { minutos, plan: await planBolsa(emp, { modalidad: 'HORAS', fechas: [hoy], desde: hoy, minutos }) };
+  }
+
+  /**
+   * El colaborador marcó salida (o entrada tardía) por permiso personal o médico en la app: se crea la solicitud
+   * por horas de hoy. Personal → la aprueba el jefe; médico → queda registrada con 72 h para el certificado.
+   * Si ya tenía una solicitud que cubre ese tramo, solo se le anota la marcación.
+   * p: { emp, tipo, origen 'SALIDA'|'ENTRADA_TARDIA', horaDesde, horaHasta, regresa, motivo, registroId, aceptaCargo, planBolsa }
+   */
+  async function registrarDesdeMarcacion(p) {
+    if (!TIPOS[p.tipo] || !p.emp || !p.emp.id || !MOTIVO_MARCACION[p.origen]) return { error: 'Datos incompletos' };
+    const hoy = hoyStr();
+    const a = minutosDe(p.horaDesde), b = minutosDe(p.horaHasta);
+    const minutos = esLaborable(hoy) ? minutosJornada(a, b) : 0;
+    if (!minutos) return { ok: true, omitida: true };
+    const existente = await solicitudQueCubre(p.emp.id, hoy, a, b);
+    if (existente) {
+      await db().collection(COL).doc(existente.id).set({
+        marcaciones: firebase.firestore.FieldValue.arrayUnion({ origen: p.origen, registro: String(p.registroId || ''), hora: p.horaDesde, en: ahoraIso() })
+      }, { merge: true }).catch(() => { });
+      return { ok: true, existente };
+    }
+    const emp = (await leerEmpleado(p.emp.id)) || p.emp;
+    return crearSolicitud({
+      emp, tipo: p.tipo, modalidad: 'HORAS', desde: hoy, horaDesde: p.horaDesde, horaHasta: p.horaHasta, minutos,
+      motivo: String(p.motivo || '').trim() || MOTIVO_MARCACION[p.origen],
+      origen: p.origen, regresoPendiente: !!p.regresa, registroId: p.registroId,
+      aceptaCargo: !!p.aceptaCargo, planBolsa: p.planBolsa || null,
+      creadoPor: { id: String(emp.id), nombre: emp.nombre || '', rol: 'COLABORADOR' }
+    });
+  }
+
+  // Al volver de un permiso marcado con «Voy a regresar»: la solicitud de hoy se cierra a la hora real de regreso
+  // y, si es permiso personal aún no copiado a la hoja de vacaciones, se recalcula el reparto de la bolsa.
+  async function ajustarRegreso(empId, horaRegreso) {
+    const hoy = hoyStr();
+    const r = minutosDe(horaRegreso);
+    const snap = await db().collection(COL).where('empleadoId', '==', String(empId)).get();
+    const abiertas = snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
+      .filter(s => s.regreso_pendiente === true && s.desde === hoy && !['RECHAZADA', 'CANCELADA'].includes(s.estado));
+    const hechas = [];
+    for (const s of abiertas) {
+      const a = minutosDe(s.hora_desde), b = minutosDe(s.hora_hasta);
+      const ahora = ahoraIso();
+      const upd = { regreso_pendiente: false, regreso_en: ahora };
+      if (!isNaN(r) && r > a && r < b) {
+        upd.hora_hasta = hhmm(r);
+        upd.minutos = minutosJornada(a, r);
+        upd.historial = firebase.firestore.FieldValue.arrayUnion({ en: ahora, quien: s.nombre || String(s.empleadoId), accion: `REGRESÓ ${upd.hora_hasta}` });
+        const recalcular = s.tipo === 'PERMISO_PERSONAL' && (PENDIENTES.includes(s.estado) || (s.estado === 'APROBADA' && s.vacaciones_hoja !== true));
+        if (recalcular) {
+          try {
+            const emp = await leerEmpleado(s.empleadoId);
+            const plan = await planBolsa(emp, { modalidad: 'HORAS', fechas: [hoy], desde: hoy, minutos: upd.minutos }, s.id);
+            if (PENDIENTES.includes(s.estado)) upd.plan_bolsa = plan;
+            else Object.assign(upd, repartoFinal(plan, s));
+          } catch (e) { console.warn('Permisos: reparto no recalculado al regresar', e); }
+        }
+      }
+      await db().collection(COL).doc(s.id).set(upd, { merge: true });
+      hechas.push(s.id);
+    }
+    return { ok: true, ajustadas: hechas };
+  }
+
   // ---------------------------------------------------------------- avisos (campana + WhatsApp)
   function periodoTxt(s) {
+    if (s.modalidad === 'HORAS' && s.regreso_pendiente) return `el ${fechaCorta(s.desde)} desde las ${s.hora_desde} (regreso por confirmar)`;
     if (s.modalidad === 'HORAS') return `el ${fechaCorta(s.desde)} de ${s.hora_desde} a ${s.hora_hasta}`;
     return s.desde === s.hasta ? `el ${fechaCorta(s.desde)}` : `del ${fechaCorta(s.desde)} al ${fechaCorta(s.hasta)} (${s.dias} día${s.dias === 1 ? '' : 's'} laborable${s.dias === 1 ? '' : 's'})`;
   }
@@ -550,10 +677,11 @@
 
     if (evento === 'creada') {
       // El motivo puede tener datos de salud: no viaja por WhatsApp, se lee en la app (requiere sesión)
-      const lineas = `*${quien}* solicita *${T.label.toLowerCase()}* ${per}.` + (s.motivo ? '\nEl motivo está en la solicitud.' : '') +
+      const verbo = { SALIDA: 'marcó salida con', ENTRADA_TARDIA: 'marcó entrada tardía con' }[s.origen] || 'solicita';
+      const lineas = `*${quien}* ${verbo} *${T.label.toLowerCase()}* ${per}.` + (s.motivo ? '\nEl motivo está en la solicitud.' : '') +
         (s.acepta_descuento ? `\n⚠️ Sin saldo suficiente: aceptó el descuento al rol de ${s.dias_sin_saldo} día(s).` : '') +
         (s.plan_bolsa && (s.plan_bolsa.vacaciones_min || s.plan_bolsa.rol_min)
-          ? `\n⚠️ Supera su bolsa de 4 h: ${s.plan_bolsa.vacaciones_min ? durTxt(s.plan_bolsa.vacaciones_min) + ' a vacaciones' : ''}${s.plan_bolsa.vacaciones_min && s.plan_bolsa.rol_min ? ' y ' : ''}${s.plan_bolsa.rol_min ? durTxt(s.plan_bolsa.rol_min) + ' al rol' : ''} (lo aceptó).` : '');
+          ? `\n⚠️ Supera su bolsa de 4 h: ${s.plan_bolsa.vacaciones_min ? durTxt(s.plan_bolsa.vacaciones_min) + ' a vacaciones' : ''}${s.plan_bolsa.vacaciones_min && s.plan_bolsa.rol_min ? ' y ' : ''}${s.plan_bolsa.rol_min ? durTxt(s.plan_bolsa.rol_min) + ' al rol' : ''} (${s.acepta_cargo ? 'lo aceptó' : 'no aceptó el cargo a vacaciones: se descuenta del rol'}).` : '');
       if (s.estado === 'PENDIENTE_JEFE') {
         const jefe = await leerEmpleado(s.aprobador_id);
         await campana(s.aprobador_id, 'permiso_solicitud', `Solicitud de ${T.label.toLowerCase()}`, `${quien} ${per}`, s, 'jefe');
@@ -635,6 +763,7 @@
     return `<span class="pm-estado ${clase}">${esc(txt)}</span>`;
   }
   function periodoHtml(s) {
+    if (s.modalidad === 'HORAS' && s.regreso_pendiente) return `<strong>${esc(fechaLarga(s.desde))}</strong> · desde las ${esc(s.hora_desde)} <span class="pm-sub">(regreso por confirmar)</span>`;
     if (s.modalidad === 'HORAS') return `<strong>${esc(fechaLarga(s.desde))}</strong> · ${esc(s.hora_desde)}–${esc(s.hora_hasta)} <span class="pm-sub">(${durTxt(s.minutos || 0)})</span>`;
     const dias = `<span class="pm-sub">(${s.dias} día${s.dias === 1 ? '' : 's'} laborable${s.dias === 1 ? '' : 's'})</span>`;
     return s.desde === s.hasta ? `<strong>${esc(fechaLarga(s.desde))}</strong> ${dias}` : `<strong>${esc(fechaLarga(s.desde))}</strong> → <strong>${esc(fechaLarga(s.hasta))}</strong> ${dias}`;
@@ -645,6 +774,7 @@
     if (opts.conNombre) lineas.push(`<div class="pm-quien"><i class="fas fa-user"></i> ${esc(nombreCorto(s.nombre))} <span class="pm-sub">· ${esc(s.empleadoId)}${s.area ? ' · ' + esc(s.area) : ''}</span></div>`);
     lineas.push(`<div class="pm-periodo">${periodoHtml(s)}</div>`);
     if (s.motivo) lineas.push(`<div class="pm-motivo">${esc(s.motivo)}</div>`);
+    if (s.origen) lineas.push(`<div class="pm-sub"><i class="fas fa-fingerprint"></i> ${s.origen === 'SALIDA' ? 'Registrado al marcar la salida' : 'Registrado al marcar la entrada'} en la app</div>`);
     if (s.tipo === 'PERMISO_PERSONAL' && (s.plan_bolsa || s.estado === 'APROBADA')) {
       const fin = s.estado === 'APROBADA' && s.minutos_bolsa !== undefined;
       const b = fin ? s.minutos_bolsa : (s.plan_bolsa || {}).bolsa_min || 0;
@@ -705,7 +835,7 @@
     modal.innerHTML = `
       <div class="pm-dialogo" role="dialog" aria-modal="true" aria-labelledby="pmTitulo">
         <div class="pm-dcab">
-          <div><h3 id="pmTitulo">${opts.elegirEmpleado ? 'Registrar a nombre de un colaborador' : 'Nueva solicitud'}</h3><div class="pm-sub">Permisos y vacaciones</div></div>
+          <div><h3 id="pmTitulo">${esc(opts.titulo || (opts.elegirEmpleado ? 'Registrar a nombre de un colaborador' : 'Nueva solicitud'))}</h3><div class="pm-sub">${esc(opts.subtitulo || 'Permisos y vacaciones')}</div></div>
           <button type="button" class="pm-cerrar" data-pm="cerrar" aria-label="Cerrar">&times;</button>
         </div>
         <div class="pm-dcuerpo">
@@ -755,6 +885,7 @@
       recalcular();
     }
     if (opts.elegirEmpleado) $('pmEmp').addEventListener('change', e => cargarEmpleado(e.target.value));
+    if (!st.emp && opts.empId) cargarEmpleado(String(opts.empId));   // la app pasa solo el ID: se lee la ficha completa (jefe)
 
     function elegirTipo(k) {
       st.tipo = k;
@@ -1392,7 +1523,7 @@
 
   window.Permisos = {
     montarApp, montarPanel, abrirFormulario, contarPorAprobar,
-    crearSolicitud, resolver, cancelar, leerConfig, esTTHH,
-    _internos: { fechasLaborables, sumarMinutosLaborables, esLaborable, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, verDocumento, revisarDocumentos }
+    crearSolicitud, resolver, cancelar, leerConfig, esTTHH, planMarcacion, registrarDesdeMarcacion, ajustarRegreso,
+    _internos: { minutosJornada, solicitudQueCubre, repartoFinal, fechasLaborables, sumarMinutosLaborables, esLaborable, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, verDocumento, revisarDocumentos }
   };
 })();
