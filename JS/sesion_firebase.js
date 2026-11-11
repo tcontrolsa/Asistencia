@@ -168,5 +168,30 @@
     }
   }
 
-  window.SesionFirebase = { abrir, abrirTerminal, usarPermiso, cerrar, estado, asegurar, asegurarDesdeSesionGuardada };
+  // Firestore rechazó una escritura por las reglas (etapa 2): si no hay sesión de Firebase, se pide la contraseña
+  // (aunque hoy se haya elegido "Ahora no"). En la app manda SESSION_DATA; en el panel y demás páginas, SUPERVISOR_SESSION.
+  function idSesionGuardada() {
+    const enApp = /(^|\/)(index\.html)?$/.test(location.pathname);
+    const claves = enApp ? ['SESSION_DATA', 'SUPERVISOR_SESSION'] : ['SUPERVISOR_SESSION', 'SESSION_DATA'];
+    for (const k of claves) {
+      try {
+        const s = JSON.parse(localStorage.getItem(k) || 'null');
+        const id = s && (s.empleadoId || s.id);
+        if (id) return String(id);
+      } catch (e) { }
+    }
+    return '';
+  }
+  async function pedirPorPermiso() {
+    const a = auth();
+    if (!a || a.currentUser) return false;            // con sesión: el rechazo es por rol, no por falta de sesión
+    try { localStorage.removeItem(KEY_OMITIDA); } catch (e) { }
+    if (/guardia/.test(location.pathname)) { asegurar('', { terminal: true }); return true; }
+    const id = idSesionGuardada();
+    if (!id) return false;
+    asegurar(id);
+    return true;
+  }
+
+  window.SesionFirebase = { abrir, abrirTerminal, usarPermiso, cerrar, estado, asegurar, asegurarDesdeSesionGuardada, pedirPorPermiso };
 })();

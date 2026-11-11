@@ -381,7 +381,7 @@ window.FirebaseBackend = {
             }
         } catch (error) {
             console.error("🔥 Error en FirebaseBackend:", error);
-            return { error: error.message || error.toString() };
+            return { error: window.FirebaseBackend._mensajeError(error) };
         }
     },
 
@@ -4962,8 +4962,40 @@ window.FirebaseBackend = {
             console.error("Error in guardarPermisoSupervisor:", e);
             return { error: e.message };
         }
+    },
+
+    // Seguridad etapa 2: Firestore rechaza por las reglas (permission-denied) → se pide la contraseña si falta la
+    // sesión de Firebase y se muestra un mensaje entendible en vez de "Missing or insufficient permissions"
+    _esRechazoPermiso(e) {
+        return !!e && (e.code === 'permission-denied' || /insufficient permissions/i.test(String(e.message || e)));
+    },
+    _mensajeError(e) {
+        if (!this._esRechazoPermiso(e)) return (e && (e.message || e.toString())) || 'Error';
+        const sinSesion = !(window.firebase && firebase.auth && firebase.auth().currentUser);
+        if (sinSesion && window.SesionFirebase && window.SesionFirebase.pedirPorPermiso) window.SesionFirebase.pedirPorPermiso();
+        return sinSesion
+            ? 'Por seguridad, confirma tu contraseña y vuelve a intentarlo.'
+            : 'No tienes permiso para hacer este cambio.';
     }
 };
+
+// Todas las funciones asíncronas del motor: un rechazo de las reglas se convierte en el mensaje de arriba
+(function () {
+    const FB = window.FirebaseBackend;
+    Object.keys(FB).forEach(k => {
+        const fn = FB[k];
+        if (k.startsWith('_') || typeof fn !== 'function' || fn.constructor.name !== 'AsyncFunction') return;
+        FB[k] = async function (...args) {
+            try { return await fn.apply(this, args); }
+            catch (e) {
+                if (!FB._esRechazoPermiso(e)) throw e;
+                const err = new Error(FB._mensajeError(e));
+                err.code = 'permission-denied';
+                throw err;
+            }
+        };
+    });
+})();
 
 function parsearTimestamp(tsString) {
     if (!tsString) return null;
