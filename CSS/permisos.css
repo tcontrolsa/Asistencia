@@ -24,6 +24,8 @@
 .pm-sub { color: var(--pm-sub); font-size: 12.5px; }
 .pm-sub i, .pm-resumen i { width: 16px; text-align: center; }
 .pm-alerta { background: #fff7ed; border-left: 3px solid #ea580c; color: #9a3412; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
+.pm-docs { display: flex; flex-wrap: wrap; gap: 6px; }
+.pm-docs .pm-btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-acciones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 .pm-vacio { background: #fff; border: 1px dashed #cbd5e1; border-radius: 14px; padding: 22px 16px; text-align: center; color: var(--pm-sub); font-size: 13px; display: grid; gap: 6px; justify-items: center; }
 .pm-vacio i { font-size: 22px; color: #94a3b8; }

@@ -25,8 +25,8 @@ var PERM_COL = 'solicitudes_permiso';
 var PERM_CFG = 'configuracion/permisos';
 var PERM_TIPOS = { VACACIONES: 'vacaciones', PERMISO_PERSONAL: 'permiso personal', PERMISO_MEDICO: 'permiso médico', CALAMIDAD: 'calamidad doméstica' };
 
-function escalarPermisosVencidos() { escalarPermisos_(true); sincronizarCargosVacaciones_(true); }
-function revisarEscaladoPermisos() { escalarPermisos_(false); sincronizarCargosVacaciones_(false); }
+function escalarPermisosVencidos() { escalarPermisos_(true); sincronizarCargosVacaciones_(true); if (typeof vencerDocumentosPermisos_ === 'function') vencerDocumentosPermisos_(true); }
+function revisarEscaladoPermisos() { escalarPermisos_(false); sincronizarCargosVacaciones_(false); if (typeof vencerDocumentosPermisos_ === 'function') vencerDocumentosPermisos_(false); }
 
 function escalarPermisos_(aplicar) {
   var lock = LockService.getScriptLock();

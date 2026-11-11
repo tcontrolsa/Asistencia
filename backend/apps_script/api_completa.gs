@@ -572,6 +572,14 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(leerColeccionServidor(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Documentos de permisos médicos y calamidad (permisos_documentos.gs): carpeta privada de Drive, con la
+      // sesión de Firebase de quien llama
+      if (data.accion === 'subirDocumentoPermiso' && typeof subirDocumentoPermiso === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(subirDocumentoPermiso(data))).setMimeType(ContentService.MimeType.JSON);
+      }
+      if (data.accion === 'verDocumentoPermiso' && typeof verDocumentoPermiso === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(verDocumentoPermiso(data))).setMimeType(ContentService.MimeType.JSON);
+      }
       if (data.accion === 'sesionFirebaseGuardia' && typeof emitirSesionFirebaseGuardia === 'function') {
         return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebaseGuardia(data)))
           .setMimeType(ContentService.MimeType.JSON);

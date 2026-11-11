@@ -38,6 +38,8 @@
     permiso_registrado: ['fa-notes-medical', 'nt-azul'],
     permiso_escalado: ['fa-users', 'nt-ambar'],
     permiso_cancelado: ['fa-ban', 'nt-gris'],
+    permiso_documento: ['fa-file-medical', 'nt-ambar'],
+    permiso_vencido: ['fa-hourglass-end', 'nt-rojo'],
     general: ['fa-info-circle', 'nt-gris']
   };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

@@ -356,11 +356,22 @@
   // penalización por no marcar salida) las cubre la bolsa; el resto se descuenta.
   // solicitudes (opcional, fase 2 de permisos): los permisos personales por horas APROBADOS cuya parte cargada a
   // vacaciones (vacaciones_por_dia) no debe descontarse otra vez ese día: se suma como tiempo justificado.
+  // Fase 3: permiso médico por horas registrado → ese tiempo es médico (no se descuenta) mientras TTHH no confirme
+  // el descuento; permiso médico o calamidad por días con descuento confirmado (docs_estado DESCONTADO) → esos días
+  // dejan de estar justificados.
   function calcularBolsa({ empleado, porDia, hoy, solicitudes }) {
-    const justificadoVac = {};
+    const justificadoVac = {}, medicoHoras = {}, sinJustificar = {};
     (solicitudes || []).forEach(s => {
-      if (!s || s.estado !== "APROBADA" || s.tipo !== "PERMISO_PERSONAL" || s.modalidad !== "HORAS") return;
-      Object.keys(s.vacaciones_por_dia || {}).forEach(f => { justificadoVac[f] = (justificadoVac[f] || 0) + (Number(s.vacaciones_por_dia[f]) || 0); });
+      if (!s) return;
+      if (s.estado === 'APROBADA' && s.tipo === 'PERMISO_PERSONAL' && s.modalidad === 'HORAS') {
+        Object.keys(s.vacaciones_por_dia || {}).forEach(f => { justificadoVac[f] = (justificadoVac[f] || 0) + (Number(s.vacaciones_por_dia[f]) || 0); });
+      } else if (s.estado === 'REGISTRADA' && (s.tipo === 'PERMISO_MEDICO' || s.tipo === 'CALAMIDAD')) {
+        if (s.docs_estado === 'DESCONTADO') {
+          if (s.modalidad === 'DIAS') (s.fechas || []).forEach(f => { sinJustificar[f] = true; });
+        } else if (s.tipo === 'PERMISO_MEDICO' && s.modalidad === 'HORAS' && s.desde) {
+          medicoHoras[s.desde] = (medicoHoras[s.desde] || 0) + (Number(s.minutos) || 0);
+        }
+      }
     });
     const e = empleado || {};
     const hoyStrLocal = hoy || hoyLocal();
@@ -391,7 +402,7 @@
         return t.includes('CAMPO') || modo.includes('CAMPO') || raz.includes('CAMPO') || est.includes('CAMPO');
       });
 
-      const isJustificado = esCampoHoy || regsDia.some(r => {
+      const isJustificado = !sinJustificar[f] && (esCampoHoy || regsDia.some(r => {
         const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
         const razAus = String(r.razon_ausencia || '').trim();
         if (tieneAsistencia && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) return false;
@@ -408,7 +419,7 @@
           if (tipo.includes('JUSTIFIC') || tipo.includes('CAMPO') || tipo.includes('VACAC') || tipo.includes('MEDIC') || tipo.includes('CALAMIDAD') || tipo.includes('CUMPLE') || tipo.includes('PERSONAL')) return true;
         }
         return false;
-      });
+      }));
 
       const periodosDia = [];
       let entradaPendiente = null;
@@ -459,6 +470,7 @@
       const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
       tiempoPersonal += regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
       tiempoMedico += regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
+      if (medicoHoras[f]) tiempoMedico += medicoHoras[f];
       tiempoJustificado += regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
       if (beneficioCumpleanosDia(e, f, regsDia, tieneAsistencia)) tiempoJustificado = Math.max(tiempoJustificado, 240);
       if (justificadoVac[f]) tiempoJustificado += justificadoVac[f];

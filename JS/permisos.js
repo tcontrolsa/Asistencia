@@ -624,8 +624,15 @@
   function chipEstado(s, comoAprobador) {
     const e = ESTADOS[s.estado] || { txt: s.estado, clase: 'pm-e-gris' };
     let txt = comoAprobador && e.txtAprob ? e.txtAprob : e.txt;
-    if (s.estado === 'REGISTRADA' && s.docs_estado === 'PENDIENTE') txt = 'Registrada · faltan documentos';
-    return `<span class="pm-estado ${e.clase}">${esc(txt)}</span>`;
+    let clase = e.clase;
+    if (s.estado === 'REGISTRADA') {
+      const d = {
+        PENDIENTE: ['Faltan documentos', 'pm-e-pend'], ENTREGADO: ['Documento por validar', 'pm-e-tthh'], VALIDADO: ['Documentos validados', 'pm-e-ok'],
+        RECHAZADO: ['Documento rechazado', 'pm-e-no'], VENCIDO: ['Plazo vencido', 'pm-e-no'], DESCONTADO: ['Descontado del rol', 'pm-e-gris']
+      }[s.docs_estado || 'PENDIENTE'];
+      if (d) { txt = d[0]; clase = d[1]; }
+    }
+    return `<span class="pm-estado ${clase}">${esc(txt)}</span>`;
   }
   function periodoHtml(s) {
     if (s.modalidad === 'HORAS') return `<strong>${esc(fechaLarga(s.desde))}</strong> · ${esc(s.hora_desde)}–${esc(s.hora_hasta)} <span class="pm-sub">(${durTxt(s.minutos || 0)})</span>`;
@@ -657,7 +664,17 @@
     } else if (s.estado === 'APROBADA' || s.estado === 'RECHAZADA') {
       lineas.push(`<div class="pm-sub"><i class="fas ${s.estado === 'APROBADA' ? 'fa-check' : 'fa-times'}"></i> ${s.estado === 'APROBADA' ? 'Aprobó' : 'Rechazó'} ${esc(nombreCorto(s.resuelta_por))}${s.resuelta_como === 'TTHH' ? ' (TTHH)' : ''} · ${esc(horaIso(s.resuelta_en))}${s.comentario ? `<br>«${esc(s.comentario)}»` : ''}</div>`);
     } else if (s.estado === 'REGISTRADA') {
-      lineas.push(`<div class="pm-sub"><i class="fas fa-file-medical"></i> Entrega los documentos a TTHH antes del ${esc(horaIso(s.docs_vence))}. Sin ellos se descuenta del rol.</div>`);
+      // Fase 3: estado de los documentos (la subida y la revisión de TTHH se conectan en el siguiente paso)
+      const de = s.docs_estado || 'PENDIENTE';
+      const txtDocs = {
+        PENDIENTE: `Entrega los documentos antes del ${esc(horaIso(s.docs_vence))}. Sin ellos TTHH puede descontarlo del rol.`,
+        ENTREGADO: 'Documento entregado · TTHH lo está revisando.',
+        VALIDADO: 'Documentos validados por TTHH.',
+        RECHAZADO: `Documento rechazado${s.docs_motivo_rechazo ? ': «' + esc(s.docs_motivo_rechazo) + '»' : ''}. Sube otro antes del ${esc(horaIso(s.docs_vence))}.`,
+        VENCIDO: 'Venció el plazo de 72 horas · TTHH decidirá si se descuenta del rol.',
+        DESCONTADO: 'Sin documentos: se descontó del rol.'
+      }[de] || '';
+      lineas.push(`<div class="${['VENCIDO', 'DESCONTADO', 'RECHAZADO'].includes(de) ? 'pm-alerta' : 'pm-sub'}"><i class="fas fa-file-medical"></i> ${txtDocs}</div>`);
     }
     if (s.modalidad === 'DIAS' && ['APROBADA', 'REGISTRADA'].includes(s.estado)) {
       if (s.registros_error) lineas.push(`<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No se registraron todos los días en asistencia. Avisa a TTHH.</div>`);
@@ -667,6 +684,7 @@
     return `<article class="pm-tarjeta" data-id="${esc(s.id)}">
       <div class="pm-cab"><span class="pm-tipo ${T.color}"><i class="fas ${T.icono}"></i> ${esc(T.label)}</span>${chipEstado(s, opts.comoAprobador)}</div>
       ${lineas.join('')}
+      ${bloqueDocs(s, opts.docs)}
       ${acciones ? `<div class="pm-acciones">${acciones}</div>` : ''}
     </article>`;
   }
@@ -879,20 +897,21 @@
     if (tipos.length === 1) elegirTipo(tipos[0]);
   }
 
-  // Rechazo con motivo (ventana propia: el panel y la app no deben depender de prompt())
-  function pedirMotivoRechazo(s) {
+  // Rechazo con motivo (ventana propia: el panel y la app no deben depender de prompt()).
+  // cfg opcional: { titulo, etiqueta, ejemplo, boton } (se reutiliza para rechazar documentos)
+  function pedirMotivoRechazo(s, cfg = {}) {
     return new Promise(resolve => {
       document.getElementById('pmModal')?.remove();
       const modal = document.createElement('div');
       modal.id = 'pmModal';
       modal.className = 'pm-modal';
       modal.innerHTML = `<div class="pm-dialogo pm-dialogo-chico" role="dialog" aria-modal="true" aria-labelledby="pmTitRech">
-        <div class="pm-dcab"><div><h3 id="pmTitRech">No aprobar</h3><div class="pm-sub">${esc(nombreCorto(s.nombre))} · ${esc((TIPOS[s.tipo] || {}).label || s.tipo)}</div></div>
+        <div class="pm-dcab"><div><h3 id="pmTitRech">${esc(cfg.titulo || 'No aprobar')}</h3><div class="pm-sub">${esc(nombreCorto(s.nombre))} · ${esc((TIPOS[s.tipo] || {}).label || s.tipo)}</div></div>
           <button type="button" class="pm-cerrar" data-pm="no" aria-label="Cerrar">&times;</button></div>
-        <div class="pm-dcuerpo"><label class="pm-etq" for="pmRechMotivo">Motivo (lo verá el colaborador)</label>
-          <textarea id="pmRechMotivo" class="pm-campo" rows="3" maxlength="400" placeholder="Ej: esa semana hay entrega de proyecto"></textarea></div>
+        <div class="pm-dcuerpo"><label class="pm-etq" for="pmRechMotivo">${esc(cfg.etiqueta || 'Motivo (lo verá el colaborador)')}</label>
+          <textarea id="pmRechMotivo" class="pm-campo" rows="3" maxlength="400" placeholder="${esc(cfg.ejemplo || 'Ej: esa semana hay entrega de proyecto')}"></textarea></div>
         <div class="pm-dpie"><button type="button" class="pm-btn pm-btn-sec" data-pm="no">Volver</button>
-          <button type="button" class="pm-btn pm-btn-rojo" data-pm="si" disabled><i class="fas fa-times"></i> No aprobar</button></div></div>`;
+          <button type="button" class="pm-btn pm-btn-rojo" data-pm="si" disabled><i class="fas fa-times"></i> ${esc(cfg.boton || 'No aprobar')}</button></div></div>`;
       document.body.appendChild(modal);
       const ta = modal.querySelector('#pmRechMotivo'), si = modal.querySelector('[data-pm="si"]');
       ta.addEventListener('input', () => { si.disabled = !ta.value.trim(); });
@@ -917,6 +936,228 @@
     if (r.error) { toast(r.error, 'error'); btn.disabled = false; btn.innerHTML = txt; return; }
     toast(accion === 'APROBAR' ? 'Solicitud aprobada. Se avisó al colaborador.' : 'Solicitud rechazada. Se avisó al colaborador.', 'success');
     if (alTerminar) alTerminar();
+  }
+
+  // ---------------------------------------------------------------- fase 3: documentos (médico y calamidad)
+  // Los archivos viven en una carpeta privada de Drive (permisos_documentos.gs). Apps Script identifica a quien llama
+  // con el token de su sesión de Firebase; sin sesión se pide confirmar la contraseña (SesionFirebase).
+  const DOCS_SUBIR = ['PENDIENTE', 'RECHAZADO'];
+  const DOCS_MAX_BYTES = 6 * 1024 * 1024;
+
+  async function tokenSesion(empleadoId) {
+    const a = window.firebase && firebase.auth ? firebase.auth() : null;
+    if (a) {
+      const u = a.currentUser || await new Promise(r => { const off = a.onAuthStateChanged(x => { off(); r(x); }); setTimeout(() => r(null), 4000); });
+      if (u) return u.getIdToken();
+    }
+    if (window.SesionFirebase && empleadoId) {
+      try { localStorage.removeItem('tcontrol_sesion_fb_omitida'); } catch (e) { }
+      window.SesionFirebase.asegurar(String(empleadoId));
+    }
+    throw new Error('Para los documentos necesitas confirmar tu contraseña. Hazlo y vuelve a intentarlo.');
+  }
+
+  // Foto → JPEG de hasta 1600 px (los certificados fotografiados con el celular pesan varios MB)
+  function leerArchivo(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => reject(new Error('No se pudo leer el archivo'));
+      fr.readAsDataURL(file);
+    });
+  }
+  async function prepararArchivo(file) {
+    const tipo = String(file.type || '').toLowerCase();
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(tipo)) throw new Error('Sube un PDF o una foto (JPG o PNG)');
+    let dataUrl = await leerArchivo(file);
+    let mime = tipo;
+    if (tipo.startsWith('image/')) {
+      const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => mal(new Error('No se pudo abrir la foto')); i.src = dataUrl; });
+      const escala = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      dataUrl = c.toDataURL('image/jpeg', 0.82);
+      mime = 'image/jpeg';
+    }
+    const base64 = dataUrl.split(',')[1] || '';
+    if (base64.length * 0.75 > DOCS_MAX_BYTES) throw new Error('El archivo supera 6 MB');
+    const nombre = String(file.name || 'documento').replace(/\.[^.]+$/, '') + (mime === 'application/pdf' ? '.pdf' : '.jpg');
+    return { base64, mime, nombre };
+  }
+
+  async function subirDocumento(s, file, yo) {
+    const arch = await prepararArchivo(file);
+    const idToken = await tokenSesion(yo.id);
+    const r = await window.FirebaseBackend._post({ accion: 'subirDocumentoPermiso', idToken, solicitudId: s.id, nombre: arch.nombre, mime: arch.mime, base64: arch.base64 });
+    if (!r || r.error) throw new Error((r && r.error) || 'No se pudo subir el documento');
+    return r;
+  }
+
+  async function verDocumento(s, docId, yo) {
+    // La ventana se abre antes de esperar (los navegadores bloquean ventanas abiertas después de un await)
+    const ventana = window.open('', '_blank');
+    try {
+      const idToken = await tokenSesion(yo.id);
+      const r = await window.FirebaseBackend._post({ accion: 'verDocumentoPermiso', idToken, solicitudId: s.id, docId });
+      if (!r || r.error) throw new Error((r && r.error) || 'No se pudo abrir el documento');
+      const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: r.mime }));
+      if (ventana) ventana.location.href = url; else window.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+    } catch (e) {
+      if (ventana) ventana.close();
+      throw e;
+    }
+  }
+
+  // TTHH: VALIDAR / RECHAZAR (documento entregado), DESCONTAR / PRORROGA (plazo vencido)
+  async function revisarDocumentos(id, accion, quien, extra = {}) {
+    const permitido = { VALIDAR: ['ENTREGADO'], RECHAZAR: ['ENTREGADO'], DESCONTAR: ['VENCIDO'], PRORROGA: ['VENCIDO'] }[accion];
+    if (!permitido) return { error: 'Acción no válida' };
+    if (!(await esTTHH(quien.id)) && !extra.admin) return { error: 'Solo TTHH revisa documentos' };
+    const ref = db().collection(COL).doc(id);
+    let sol = null;
+    try {
+      await db().runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error('La solicitud ya no existe');
+        const s = snap.data();
+        const est = s.docs_estado || 'PENDIENTE';
+        if (s.estado !== 'REGISTRADA' || !permitido.includes(est)) throw new Error('El estado de los documentos cambió; recarga la lista');
+        const ahora = ahoraIso();
+        const upd = { docs_revisado_por: quien.nombre || String(quien.id), docs_revisado_por_id: String(quien.id), docs_revisado_en: ahora };
+        if (accion === 'VALIDAR') upd.docs_estado = 'VALIDADO';
+        if (accion === 'RECHAZAR') { upd.docs_estado = 'RECHAZADO'; upd.docs_motivo_rechazo = String(extra.motivo || '').trim().slice(0, 300); }
+        if (accion === 'DESCONTAR') upd.docs_estado = 'DESCONTADO';
+        if (accion === 'PRORROGA') {
+          const horas = [24, 48, 72].includes(Number(extra.horas)) ? Number(extra.horas) : 24;
+          upd.docs_estado = 'PENDIENTE';
+          upd.docs_vence = new Date(Date.now() + horas * 3600000).toISOString();
+          upd.docs_prorroga_horas = horas;
+        }
+        upd.historial = firebase.firestore.FieldValue.arrayUnion({ en: ahora, quien: quien.nombre || String(quien.id), accion: 'DOCUMENTOS_' + accion });
+        tx.update(ref, upd);
+        sol = Object.assign({ id }, s, upd);
+      });
+    } catch (e) { return { error: e.message || String(e) }; }
+    avisarRevisionDocs(sol, accion).catch(e => console.warn('Permisos: aviso de documentos no enviado', e));
+    return { ok: true, solicitud: sol };
+  }
+
+  // Aviso al colaborador (datos mínimos: sin nombres de archivo ni contenido)
+  async function avisarRevisionDocs(s, accion) {
+    const T = TIPOS[s.tipo] || { label: s.tipo };
+    const per = periodoTxt(s);
+    const textos = {
+      VALIDAR: ['permiso_aprobado', 'Documentos validados', `${T.label} ${per} · TTHH validó tus documentos.`, `✅ TTHH validó los documentos de tu *${T.label.toLowerCase()}* ${per}. No necesitas hacer nada más.`],
+      RECHAZAR: ['permiso_rechazado', 'Documento rechazado', `${T.label} ${per} · revisa el motivo y sube otro antes del ${horaIso(s.docs_vence)}.`, `❌ TTHH no aceptó el documento de tu *${T.label.toLowerCase()}* ${per}.\n\nRevisa el motivo en la app (Permisos) y sube otro antes del ${horaIso(s.docs_vence)}.`],
+      DESCONTAR: ['permiso_rechazado', 'Descuento al rol', `${T.label} ${per} · sin documentos, se descuenta del rol.`, `ℹ️ Como no se entregaron los documentos de tu *${T.label.toLowerCase()}* ${per}, TTHH confirmó que se descontará del rol.`],
+      PRORROGA: ['permiso_solicitud', 'Nuevo plazo para tus documentos', `${T.label} ${per} · entrégalos antes del ${horaIso(s.docs_vence)}.`, `⏰ TTHH te dio un nuevo plazo para entregar los documentos de tu *${T.label.toLowerCase()}* ${per}: hasta el ${horaIso(s.docs_vence)}.\n\nSúbelos en la app TCONTROL → *Permisos*.`]
+    }[accion];
+    if (!textos) return;
+    await campana(s.empleadoId, textos[0], textos[1], textos[2], s, 'docs_' + accion.toLowerCase());
+    const colab = await leerEmpleado(s.empleadoId);
+    const r = await whatsapp(colab, saludoWa(colab && colab.nombre) + textos[3]);
+    await db().collection(COL).doc(s.id).set({ avisos: { ['docs_' + accion.toLowerCase()]: r && r.ok ? 'WhatsApp enviado' : `WhatsApp no enviado: ${(r && r.error) || 'sin respuesta'}` } }, { merge: true }).catch(() => { });
+  }
+
+  // Bloque de documentos de una tarjeta. op: { yoId, revisar }
+  function bloqueDocs(s, op) {
+    if (s.estado !== 'REGISTRADA' || !op) return '';
+    const est = s.docs_estado || 'PENDIENTE';
+    const esDueno = String(s.empleadoId) === String(op.yoId);
+    const docs = (s.docs || []).filter(d => d && d.id);
+    const lista = docs.length ? `<div class="pm-docs">${docs.map(d => `<button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-doc-ver="${esc(s.id)}" data-doc="${esc(d.id)}" title="Abrir">
+      <i class="fas ${d.mime === 'application/pdf' ? 'fa-file-pdf' : 'fa-file-image'}"></i> ${esc(String(d.nombre || 'documento').slice(0, 28))}</button>`).join('')}</div>` : '';
+    const b = [];
+    if ((esDueno && DOCS_SUBIR.includes(est)) || (op.revisar && (DOCS_SUBIR.includes(est) || est === 'VENCIDO'))) {
+      b.push(`<button type="button" class="pm-btn pm-btn-pri pm-btn-chico" data-doc-subir="${esc(s.id)}"><i class="fas fa-upload"></i> ${docs.length ? 'Subir otro documento' : 'Subir documento'}</button>`);
+    }
+    if (op.revisar && !esDueno) {
+      if (est === 'ENTREGADO') {
+        b.push(`<button type="button" class="pm-btn pm-btn-rojo pm-btn-chico" data-doc-accion="RECHAZAR" data-id="${esc(s.id)}"><i class="fas fa-times"></i> Rechazar documento</button>`);
+        b.push(`<button type="button" class="pm-btn pm-btn-verde pm-btn-chico" data-doc-accion="VALIDAR" data-id="${esc(s.id)}"><i class="fas fa-check"></i> Validar</button>`);
+      } else if (est === 'VENCIDO') {
+        b.push(`<button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-doc-accion="PRORROGA" data-id="${esc(s.id)}"><i class="fas fa-clock"></i> Dar prórroga</button>`);
+        b.push(`<button type="button" class="pm-btn pm-btn-rojo pm-btn-chico" data-doc-accion="DESCONTAR" data-id="${esc(s.id)}"><i class="fas fa-file-invoice-dollar"></i> Confirmar descuento</button>`);
+      }
+    }
+    return lista + (b.length ? `<div class="pm-acciones">${b.join('')}</div>` : '');
+  }
+
+  // Prórroga: 24, 48 o 72 h desde ahora
+  function pedirProrroga(s) {
+    return new Promise(resolve => {
+      document.getElementById('pmModal')?.remove();
+      const modal = document.createElement('div');
+      modal.id = 'pmModal';
+      modal.className = 'pm-modal';
+      modal.innerHTML = `<div class="pm-dialogo pm-dialogo-chico" role="dialog" aria-modal="true" aria-labelledby="pmTitPro">
+        <div class="pm-dcab"><div><h3 id="pmTitPro">Dar prórroga</h3><div class="pm-sub">${esc(nombreCorto(s.nombre))} · ${esc((TIPOS[s.tipo] || {}).label || s.tipo)}</div></div>
+          <button type="button" class="pm-cerrar" data-pm="no" aria-label="Cerrar">&times;</button></div>
+        <div class="pm-dcuerpo"><div class="pm-etq">Nuevo plazo desde ahora</div>
+          <div class="pm-seg" role="group" aria-label="Horas">${[24, 48, 72].map(h => `<button type="button" data-horas="${h}" aria-pressed="${h === 24}">${h} h</button>`).join('')}</div></div>
+        <div class="pm-dpie"><button type="button" class="pm-btn pm-btn-sec" data-pm="no">Volver</button>
+          <button type="button" class="pm-btn pm-btn-pri" data-pm="si"><i class="fas fa-clock"></i> Dar prórroga</button></div></div>`;
+      document.body.appendChild(modal);
+      let horas = 24;
+      modal.addEventListener('click', ev => {
+        const h = ev.target.closest('[data-horas]');
+        if (h) { horas = Number(h.dataset.horas); modal.querySelectorAll('[data-horas]').forEach(x => x.setAttribute('aria-pressed', x === h ? 'true' : 'false')); return; }
+        if (ev.target === modal || ev.target.closest('[data-pm="no"]')) { modal.remove(); resolve(null); }
+        else if (ev.target.closest('[data-pm="si"]')) { modal.remove(); resolve(horas); }
+      });
+    });
+  }
+
+  // Clics de documentos (app y panel). Devuelve true si el clic era de documentos.
+  async function manejarClicDocs(t, solicitudes, yo, admin) {
+    const ver = t.closest('[data-doc-ver]');
+    const subir = t.closest('[data-doc-subir]');
+    const acc = t.closest('[data-doc-accion]');
+    if (!ver && !subir && !acc) return false;
+    const id = (ver && ver.dataset.docVer) || (subir && subir.dataset.docSubir) || (acc && acc.dataset.id);
+    const s = (solicitudes || []).find(x => x.id === id);
+    if (!s) return true;
+    if (ver) {
+      try { await verDocumento(s, ver.dataset.doc, yo); } catch (e) { toast(e.message || String(e), 'error'); }
+      return true;
+    }
+    if (subir) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf,image/jpeg,image/png,image/webp';
+      input.addEventListener('change', async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const txt = subir.innerHTML;
+        subir.disabled = true;
+        subir.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subiendo…';
+        try { await subirDocumento(s, file, yo); toast('Documento enviado a TTHH', 'success'); }
+        catch (e) { toast(e.message || String(e), 'error'); subir.disabled = false; subir.innerHTML = txt; }
+      });
+      input.click();
+      return true;
+    }
+    const accion = acc.dataset.docAccion;
+    const extra = { admin };
+    if (accion === 'RECHAZAR') {
+      extra.motivo = await pedirMotivoRechazo(s, { titulo: 'Rechazar documento', etiqueta: 'Motivo (lo verá el colaborador)', ejemplo: 'Ej: la foto no se lee; falta la firma del médico', boton: 'Rechazar documento' });
+      if (!extra.motivo) return true;
+    } else if (accion === 'PRORROGA') {
+      extra.horas = await pedirProrroga(s);
+      if (!extra.horas) return true;
+    } else if (accion === 'DESCONTAR' && !window.confirm('¿Confirmar el descuento al rol? Esos días dejarán de estar justificados.')) {
+      return true;
+    }
+    acc.disabled = true;
+    const r = await revisarDocumentos(s.id, accion, yo, extra);
+    if (r.error) { toast(r.error, 'error'); acc.disabled = false; return true; }
+    toast({ VALIDAR: 'Documentos validados', RECHAZAR: 'Documento rechazado; se avisó al colaborador', DESCONTAR: 'Descuento confirmado; se avisó al colaborador', PRORROGA: 'Prórroga dada; se avisó al colaborador' }[accion], 'success');
+    return true;
   }
 
   // ---------------------------------------------------------------- app del colaborador
@@ -950,6 +1191,7 @@
         if (!st.mias) { lista.innerHTML = '<div class="pm-vacio"><i class="fas fa-spinner fa-spin"></i> Cargando…</div>'; return; }
         if (!st.mias.length) { lista.innerHTML = '<div class="pm-vacio"><i class="far fa-calendar"></i><strong>Aún no tienes solicitudes</strong>Usa «Nueva solicitud» para pedir vacaciones o un permiso.</div>'; return; }
         lista.innerHTML = st.mias.map(s => tarjeta(s, {
+          docs: { yoId: yo.id, revisar: st.tthh },
           acciones: x => PENDIENTES.includes(x.estado) ? `<button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-cancelar="${esc(x.id)}">Cancelar solicitud</button>` : ''
         })).join('');
       } else {
@@ -957,11 +1199,11 @@
         if (!st.aprobar) { lista.innerHTML = '<div class="pm-vacio"><i class="fas fa-spinner fa-spin"></i> Cargando…</div>'; return; }
         const otras = st.aprobar.filter(s => !pend.includes(s)).slice(0, 30);
         lista.innerHTML = (pend.length ? `<h3 class="pm-h3">Pendientes (${pend.length})</h3>` + pend.map(s => tarjeta(s, {
-          conNombre: true, comoAprobador: true, yoId: yo.id,
+          conNombre: true, comoAprobador: true, yoId: yo.id, docs: { yoId: yo.id, revisar: st.tthh },
           acciones: () => `<button type="button" class="pm-btn pm-btn-rojo pm-btn-chico" data-resolver="RECHAZAR" data-id="${esc(s.id)}"><i class="fas fa-times"></i> No aprobar</button>
             <button type="button" class="pm-btn pm-btn-verde pm-btn-chico" data-resolver="APROBAR" data-id="${esc(s.id)}"><i class="fas fa-check"></i> Aprobar</button>`
         })).join('') : '<div class="pm-vacio"><i class="fas fa-check-circle"></i><strong>No tienes solicitudes por aprobar</strong></div>') +
-          (otras.length ? `<h3 class="pm-h3">Recientes de tu equipo${st.tthh ? ' y de TTHH' : ''}</h3>` + otras.map(s => tarjeta(s, { conNombre: true })).join('') : '');
+          (otras.length ? `<h3 class="pm-h3">Recientes de tu equipo${st.tthh ? ' y de TTHH' : ''}</h3>` + otras.map(s => tarjeta(s, { conNombre: true, docs: { yoId: yo.id, revisar: st.tthh } })).join('') : '');
       }
       if (st.enlace && st.enlace.id) {
         const el = lista.querySelector(`[data-id="${CSS.escape(st.enlace.id)}"]`);
@@ -971,6 +1213,7 @@
 
     cont.addEventListener('click', async ev => {
       const t = ev.target;
+      if (await manejarClicDocs(t, (st.mias || []).concat(st.aprobar || []), yo, false)) return;
       if (t.closest('[data-pm="nueva"]')) {
         const emp = await leerEmpleado(yo.id) || Object.assign({}, opts.empleado);
         abrirFormulario({ emp, creadoPor: { id: yo.id, nombre: yo.nombre, rol: 'COLABORADOR' }, onCreada: () => { st.tab = 'mias'; pintar(); } });
@@ -1035,7 +1278,10 @@
       const q = st.busca.trim().toLowerCase();
       return (st.lista || []).filter(s => {
         if (st.filtro === 'PEND' && !PENDIENTES.includes(s.estado)) return false;
-        if (st.filtro === 'DOCS' && !(s.estado === 'REGISTRADA' && s.docs_estado === 'PENDIENTE')) return false;
+        const de = s.estado === 'REGISTRADA' ? (s.docs_estado || 'PENDIENTE') : '';
+        if (st.filtro === 'DOCS' && !['PENDIENTE', 'RECHAZADO'].includes(de)) return false;
+        if (st.filtro === 'VALIDAR' && de !== 'ENTREGADO') return false;
+        if (st.filtro === 'VENCIDOS' && de !== 'VENCIDO') return false;
         if (!q) return true;
         return [s.nombre, s.empleadoId, s.area, s.motivo, s.aprobador_nombre, (TIPOS[s.tipo] || {}).label].some(v => String(v || '').toLowerCase().includes(q));
       });
@@ -1045,11 +1291,16 @@
       cont.querySelector('[data-pm="a-nombre"]').hidden = !puedeResolver();
       if (st.tab === 'tthh') { pintarTTHH(); return; }
       const pendientes = (st.lista || []).filter(s => PENDIENTES.includes(s.estado)).length;
-      const docs = (st.lista || []).filter(s => s.estado === 'REGISTRADA' && s.docs_estado === 'PENDIENTE').length;
+      const deDe = s => s.estado === 'REGISTRADA' ? (s.docs_estado || 'PENDIENTE') : '';
+      const docs = (st.lista || []).filter(s => ['PENDIENTE', 'RECHAZADO'].includes(deDe(s))).length;
+      const porValidar = (st.lista || []).filter(s => deDe(s) === 'ENTREGADO').length;
+      const vencidos = (st.lista || []).filter(s => deDe(s) === 'VENCIDO').length;
       const avisoTthh = !st.cfg.tthh.length ? '<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No hay personas de TTHH configuradas: las solicitudes sin jefe y las que pasan a TTHH llegan a los supervisores administradores. Configúralas en «Personas de TTHH».</div>' : '';
       const filtros = `<div class="pm-filtros">
         <div class="pm-seg" role="group" aria-label="Filtro">
           <button type="button" data-filtro="PEND" aria-pressed="${st.filtro === 'PEND'}">Pendientes (${pendientes})</button>
+          <button type="button" data-filtro="VALIDAR" aria-pressed="${st.filtro === 'VALIDAR'}">Documentos por validar (${porValidar})</button>
+          <button type="button" data-filtro="VENCIDOS" aria-pressed="${st.filtro === 'VENCIDOS'}">Vencidos (${vencidos})</button>
           <button type="button" data-filtro="DOCS" aria-pressed="${st.filtro === 'DOCS'}">Faltan documentos (${docs})</button>
           <button type="button" data-filtro="TODAS" aria-pressed="${st.filtro === 'TODAS'}">Todas</button>
         </div>
@@ -1061,7 +1312,7 @@
       else {
         const l = filtrar();
         html = l.length ? `<div class="pm-grid">${l.slice(0, 200).map(s => tarjeta(s, {
-          conNombre: true, comoAprobador: true, yoId: yo.id,
+          conNombre: true, comoAprobador: true, yoId: yo.id, docs: { yoId: yo.id, revisar: puedeResolver() },
           acciones: x => PENDIENTES.includes(x.estado) && puedeResolver() && String(x.empleadoId) !== yo.id
             ? `<button type="button" class="pm-btn pm-btn-rojo pm-btn-chico" data-resolver="RECHAZAR" data-id="${esc(x.id)}"><i class="fas fa-times"></i> No aprobar</button>
                <button type="button" class="pm-btn pm-btn-verde pm-btn-chico" data-resolver="APROBAR" data-id="${esc(x.id)}"><i class="fas fa-check"></i> Aprobar${x.estado === 'PENDIENTE_JEFE' ? ' (en lugar del jefe)' : ''}</button>` : ''
@@ -1096,6 +1347,7 @@
 
     cont.addEventListener('click', async ev => {
       const t = ev.target;
+      if (await manejarClicDocs(t, st.lista || [], yo, !!opts.admin)) return;
       const tab = t.closest('.pm-tabs [data-tab]');
       if (tab) { st.tab = tab.dataset.tab; pintar(); return; }
       const f = t.closest('[data-filtro]');
@@ -1141,6 +1393,6 @@
   window.Permisos = {
     montarApp, montarPanel, abrirFormulario, contarPorAprobar,
     crearSolicitud, resolver, cancelar, leerConfig, esTTHH,
-    _internos: { fechasLaborables, sumarMinutosLaborables, esLaborable, planBolsa, saldoVacaciones }
+    _internos: { fechasLaborables, sumarMinutosLaborables, esLaborable, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, verDocumento, revisarDocumentos }
   };
 })();
