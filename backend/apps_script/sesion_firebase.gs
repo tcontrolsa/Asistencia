@@ -34,11 +34,15 @@ function emitirSesionFirebase(p) {
   var intentos = parseInt(cache.get(claveIntentos) || '0', 10);
   if (intentos >= SESION_FB_MAX_INTENTOS) return { ok: false, error: 'Demasiados intentos. Espera 15 minutos.' };
 
-  var emp = leerEmpleadoFirestore_(id);
+  // credComprobar_ (credenciales.gs): Firestore o la hoja privada según la fase
+  var comp = typeof credComprobar_ === 'function' ? credComprobar_(id, clave) : null;
+  var emp = comp ? comp.emp : leerEmpleadoFirestore_(id);
   if (!emp) return { ok: false, error: 'Colaborador no encontrado.' };
   if (String(emp.activo || 'SI').toUpperCase() === 'NO' || emp.activo === false) return { ok: false, error: 'Colaborador inactivo.' };
+  if (comp && comp.estado === 'sin') return { ok: false, sinPin: true, error: 'Tu cuenta aún no tiene contraseña.' };
   var guardado = String(emp.pin || '').trim();
-  if (!guardado || (guardado !== clave && guardado !== sha256Hex_(clave))) {
+  var correcta = comp ? comp.estado === 'ok' : !!guardado && (guardado === clave || guardado === sha256Hex_(clave));
+  if (!correcta) {
     cache.put(claveIntentos, String(intentos + 1), SESION_FB_BLOQUEO_SEG);
     if (typeof registrarAcceso_ === 'function') registrarAcceso_(id, 'sesionFirebase', 'rechazado', 'contraseña incorrecta (' + (intentos + 1) + ')');
     return { ok: false, error: 'Contraseña incorrecta.' };

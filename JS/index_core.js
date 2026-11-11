@@ -3530,7 +3530,8 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
         const params = {
             accion: 'actualizarPerfilEmpleado',
             empleadoId: empleadoId,
-            passwordHash: nuevaHash
+            passwordHash: nuevaHash,
+            oldPasswordHash: actualHash   // el servidor vuelve a comprobar la actual antes de cambiarla
         };
 
         if (window.FirebaseBackend && window.USE_FIREBASE) {

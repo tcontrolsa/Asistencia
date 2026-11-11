@@ -58,7 +58,9 @@ function emitirTokenEvaluacion(p) {
   }
   var guardado = String(emp.pin || '').trim();
   var hash = sha256Hex_(pin);
-  if (!guardado || (guardado !== hash && guardado !== pin)) {
+  var correcta = typeof credComprobar_ === 'function' ? credComprobar_(id, pin).estado === 'ok'
+    : !!guardado && (guardado === hash || guardado === pin);
+  if (!correcta) {
     cache.put(claveIntentos, String(intentos + 1), EVAL_BLOQUEO_SEG);
     return { ok: false, error: 'Contraseña incorrecta.' };
   }

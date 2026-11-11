@@ -442,6 +442,19 @@ window.FirebaseBackend = {
             }
         };
     },
+    // Contraseñas por el servidor (credenciales.gs). Devuelve la respuesta, o null si el servidor no está disponible
+    // (en ese caso, en la fase A, se sigue con la comprobación de siempre)
+    async _credServidor(params) {
+        try {
+            const r = await this._post(params);
+            if (!r || (r.error && /API Key|no reconocida|Error del servidor|no pudo completar/i.test(r.error))) return null;
+            return r;
+        } catch (e) { return null; }
+    },
+    async _usarPermiso(r, uid) {
+        if (r && r.customToken && window.SesionFirebase && window.SesionFirebase.usarPermiso) await window.SesionFirebase.usarPermiso(r.customToken, uid);
+    },
+
     async verificarPIN(params) {
         const pin = params.pin ? params.pin.toString().trim() : '';
         const token = params.deviceToken;
@@ -472,7 +485,19 @@ window.FirebaseBackend = {
             }
             if (doc && doc.exists) {
                 const data = doc.data();
+                // Seguridad: la contraseña la comprueba el servidor (y abre la sesión de Firebase)
+                const srv = await this._credServidor({ accion: 'sesionFirebase', empleadoId: doc.id, pin });
+                if (srv && srv.ok) {
+                    await this._usarPermiso(srv, doc.id);
+                    empDoc = doc;
+                    empData = data;
+                } else if (srv && srv.sinPin) {
+                    return { error: "Tu cuenta aún no tiene contraseña configurada. Por favor, haz clic en 'Vincular Dispositivo' para establecerla.", valido: false, debeRegistrarPin: true };
+                } else if (srv && srv.error) {
+                    return { error: /incorrecta/i.test(srv.error) ? "Contraseña incorrecta." : srv.error, valido: false };
+                }
                 const pinEnBd = data.pin ? data.pin.toString().trim() : '';
+                if (!empDoc) {
 
                 // Si no tiene contraseña establecida, se deniega y se redirige a vincular
                 if (!pinEnBd) {
@@ -488,6 +513,7 @@ window.FirebaseBackend = {
                     empData = data;
                 } else {
                     return { error: "Contraseña incorrecta", valido: false };
+                }
                 }
             } else {
                 return { error: "Usuario no encontrado", valido: false };
@@ -662,22 +688,35 @@ window.FirebaseBackend = {
 
         const pinExistente = empData.pin ? empData.pin.toString().trim() : '';
 
+        // Seguridad: crear o comprobar la contraseña lo hace el servidor (hoja privada CREDENCIALES); si no
+        // responde, se sigue como siempre (fase A)
+        let guardoServidor = false;
         // 🛡️ CASO 1: Si es la primera vez (no tiene PIN), es OBLIGATORIO establecer una contraseña de al menos 4 caracteres
         if (pinExistente === '') {
             if ((rawPin && rawPin.length < 4) || (!rawPin && pin.length < 4)) {
                 return { error: "Por seguridad, la contraseña debe contener al menos 4 caracteres." };
             }
+            const srv = await this._credServidor({ accion: 'credCrear', empleadoId: empDoc.id, pin });
+            if (srv && srv.ok) { guardoServidor = true; await this._usarPermiso(srv, empDoc.id); }
+            else if (srv && srv.error) return { error: srv.error };
         } else {
             // 🛡️ CASO 2: Si el empleado YA TIENE contraseña registrada, DEBE coincidir obligatoriamente
-            const coincide = (pinExistente === pin) || (rawPin && pinExistente === rawPin);
-            if (!coincide) {
-                return { error: "Contraseña incorrecta. Si la olvidaste, solicita a Recursos Humanos / Administrador el restablecimiento." };
+            const srv = await this._credServidor({ accion: 'sesionFirebase', empleadoId: empDoc.id, pin });
+            if (srv && srv.ok) {
+                await this._usarPermiso(srv, empDoc.id);
+            } else if (srv && srv.error) {
+                return { error: /incorrecta/i.test(srv.error) ? "Contraseña incorrecta. Si la olvidaste, solicita a Recursos Humanos / Administrador el restablecimiento." : srv.error };
+            } else {
+                const coincide = (pinExistente === pin) || (rawPin && pinExistente === rawPin);
+                if (!coincide) {
+                    return { error: "Contraseña incorrecta. Si la olvidaste, solicita a Recursos Humanos / Administrador el restablecimiento." };
+                }
             }
         }
 
         // 1. Actualizar empleado con el nuevo token (y la contraseña si era la primera vez o si se actualiza a hash SHA-256)
         const updateData = { deviceToken: token };
-        if (pinExistente === '' || pinExistente.length < 20) {
+        if (!guardoServidor && (pinExistente === '' || pinExistente.length < 20)) {
             updateData.pin = pin;
         }
         await empRef.update(updateData);
@@ -772,9 +811,20 @@ window.FirebaseBackend = {
         }
 
         // Manejo de PIN / Contraseña (permite tanto asignar clave como resetear / dejar en blanco '')
+        // Seguridad: lo guarda el servidor (hoja privada + Firestore en la fase A); si no responde, como siempre
         if (params.passwordHash !== undefined || params.pin !== undefined) {
             const nuevoPin = params.passwordHash !== undefined ? params.passwordHash : params.pin;
-            updateData.pin = nuevoPin !== null ? nuevoPin.toString().trim() : '';
+            const valor = nuevoPin !== null ? nuevoPin.toString().trim() : '';
+            let srv = null;
+            if (params.oldPasswordHash || params.oldPin) {
+                srv = await this._credServidor({ accion: 'credCambiar', empleadoId: empDoc.id, pinActual: params.oldPasswordHash || params.oldPin, pinNuevo: valor });
+                if (srv && !srv.ok && srv.error) return { error: srv.error };
+            } else {
+                let idToken = '';
+                try { if (firebase.auth && firebase.auth().currentUser) idToken = await firebase.auth().currentUser.getIdToken(); } catch (e) { }
+                if (idToken) srv = await this._credServidor({ accion: 'credAdmin', idToken, empleadoId: empDoc.id, pinNuevo: valor });
+            }
+            if (!(srv && srv.ok)) updateData.pin = valor;   // fase A: si el servidor no lo guardó, como siempre
         }
 
         // Manejo de Device Token / Dispositivo (permite desvincular o limpiar)
@@ -808,9 +858,10 @@ window.FirebaseBackend = {
             }
         }
 
-        // Dual-write to Sheets si corresponde
+        // Dual-write to Sheets si corresponde (sin contraseñas: no viajan en la URL)
         try {
-            this._jsonp({ accion: 'actualizarPerfilEmpleado', ...params });
+            const { passwordHash, pin, oldPasswordHash, oldPin, ...paraHoja } = params;
+            this._jsonp({ accion: 'actualizarPerfilEmpleado', ...paraHoja });
         } catch (e) { }
 
         return { ok: true, mensaje: "Perfil actualizado exitosamente en Firebase" };

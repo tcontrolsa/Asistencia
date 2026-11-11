@@ -562,6 +562,11 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebase(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Contraseñas en la hoja privada (credenciales.gs)
+      if (['credEstado', 'credCrear', 'credCambiar', 'credAdmin'].indexOf(data.accion) !== -1 && typeof credEstado === 'function') {
+        var fnCred = { credEstado: credEstado, credCrear: credCrear, credCambiar: credCambiar, credAdmin: credAdmin }[data.accion];
+        return ContentService.createTextOutput(JSON.stringify(fnCred(data))).setMimeType(ContentService.MimeType.JSON);
+      }
       // Servidor de la oficina (sincronización con Postgres): lectura de 'empleados' con la cuenta de servicio
       if (data.accion === 'leerColeccionServidor' && typeof leerColeccionServidor === 'function') {
         return ContentService.createTextOutput(JSON.stringify(leerColeccionServidor(data)))

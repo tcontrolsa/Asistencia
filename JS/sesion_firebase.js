@@ -50,6 +50,17 @@
     }
   }
 
+  // Abre la sesión con un permiso ya emitido por el servidor (ingreso o creación de contraseña)
+  async function usarPermiso(customToken, uidEsperado) {
+    const a = auth();
+    if (!a || !customToken) return false;
+    try {
+      if (a.currentUser && a.currentUser.uid === String(uidEsperado || '')) return true;
+      await a.signInWithCustomToken(customToken);
+      return true;
+    } catch (e) { console.warn('[Sesión Firebase] Permiso no usado:', e && (e.code || e.message) || e); return false; }
+  }
+
   async function cerrar() {
     try { const a = auth(); if (a && a.currentUser) await a.signOut(); } catch (e) { console.warn('[Sesión Firebase] Al cerrar:', e); }
   }
@@ -157,5 +168,5 @@
     }
   }
 
-  window.SesionFirebase = { abrir, abrirTerminal, cerrar, estado, asegurar, asegurarDesdeSesionGuardada };
+  window.SesionFirebase = { abrir, abrirTerminal, usarPermiso, cerrar, estado, asegurar, asegurarDesdeSesionGuardada };
 })();
