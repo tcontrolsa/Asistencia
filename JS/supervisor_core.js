@@ -4951,6 +4951,20 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     };
   }
 
+  // Permisos personales aprobados del colaborador (fase 2 de permisos): la parte cargada a vacaciones de un
+  // permiso por horas no se descuenta ese día. Se usa la copia en memoria y se refresca en segundo plano.
+  window._solicitudesPermisoCache = window._solicitudesPermisoCache || {};
+  let solicitudesPermisoEmp = window._solicitudesPermisoCache[id] || [];
+  if (window.firebase && firebase.firestore) {
+    firebase.firestore().collection('solicitudes_permiso').where('empleadoId', '==', String(id)).get().then(snap => {
+      const lista = snap.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(s => s.estado === 'APROBADA' && s.tipo === 'PERMISO_PERSONAL');
+      const cambio = JSON.stringify(lista.map(s => [s.id, s.vacaciones_por_dia])) !== JSON.stringify(solicitudesPermisoEmp.map(s => [s.id, s.vacaciones_por_dia]));
+      window._solicitudesPermisoCache[id] = lista;
+      solicitudesPermisoEmp = lista;
+      if (cambio && window.idDetalleActual === id && typeof rebuildTable === 'function') rebuildTable();
+    }).catch(err => console.warn('Permisos aprobados no leídos:', err));
+  }
+
   // Precargar saldo y lista de vacaciones inmediatamente desde memoria/caché local
   let vacacionesList = [];
   let vacEmpInicial = null;
@@ -5374,191 +5388,10 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     let fechasARegularizar = [];
     const esPasanteDet = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
 
-    // ============================================================
-    // CÁLCULO CRONOLÓGICO DE LA BOLSA DE 4 HORAS (240 MINUTOS) POR PERÍODO
-    // Las primeras 4 horas de déficit no justificado son de libre disponibilidad del colaborador
-    // Solo el tiempo excedente ("fuera de las 4 horas") se computa como tiempo por justificar y descuento
-    // ============================================================
-    let fechasCronologicas = [...fechasOrdenadas].sort((a, b) => a.localeCompare(b));
-    let saldoBeneficio4h = esPasanteDet ? 0 : 240;
-    let mapBeneficioPorDia = {};
-
-    fechasCronologicas.forEach(f => {
-      let d = porDia[f];
-      if (d.verificandoHistorial) {
-        mapBeneficioPorDia[f] = { consumo4h: 0, tjNeto: 0, descuentoNeto: 0, rawTJ: 0, rawDescuento: 0, atrasoMinsDia: 0, salidaTempMinsDia: 0 };
-        return;
-      }
-      let regsDia = [...d.registros].sort((a, b) => {
-        if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
-        return String(a.hora || '').localeCompare(String(b.hora || ''));
-      });
-      const dayOfWeek = new Date(f + 'T12:00:00').getDay();
-      const esFestivo = esFeriadoODomingo(f) || (dayOfWeek === 6);
-      const tieneAsistencia = regsDia.some(r => ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'SALIDA_CAMPO', 'ENTRADA_CAMPO'].includes(String(r.tipo || '').toUpperCase()));
-
-      const esCampoHoy = regsDia.some(r => {
-        const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        const modo = String(r.modo || r.modo_trabajo || '').toUpperCase();
-        const raz = String(r.razon_ausencia || r.razon_permiso || r.razon_justificac || r.razon_salida || r.observacion || '').toUpperCase();
-        const est = String(r.estado || '').toUpperCase();
-        return t.includes('CAMPO') || modo.includes('CAMPO') || raz.includes('CAMPO') || est.includes('CAMPO');
-      });
-
-      const isJustificado = esCampoHoy || regsDia.some(r => {
-        const tipo = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        const razAus = String(r.razon_ausencia || '').trim();
-        if (tieneAsistencia && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) return false;
-        if (r.justificado === 'SI' || r.justificado === true || r.justificada === 'SI' || r.justificada === true) {
-          if (tieneAsistencia && (tipo.includes('VACAC') || razAus.toUpperCase().includes('VACAC'))) return false;
-          return true;
-        }
-        const razPerm = String(r.razon_permiso || '').trim();
-        const razJust = String(r.razon_justificac || '').trim();
-        if (razAus && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razAus.toUpperCase())) return true;
-        if (razPerm && !['—', '-', '', 'INASISTENCIA', 'FALTA INJUSTIFICADA', 'INJUSTIFICADA'].includes(razPerm.toUpperCase())) return true;
-        if (razJust && !['—', '-', ''].includes(razJust.toUpperCase())) return true;
-        if (tipo && !['ENTRADA', 'SALIDA', 'ESTADO', 'SOLO_ALMUERZO'].includes(tipo)) {
-          if (tipo.includes('JUSTIFIC') || tipo.includes('CAMPO') || tipo.includes('VACAC') || tipo.includes('MEDIC') || tipo.includes('CALAMIDAD') || tipo.includes('CUMPLE') || tipo.includes('PERSONAL')) return true;
-        }
-        return false;
-      });
-
-      let periodosDia = [];
-      let entradaPendiente = null;
-      let ultimoSalidaMins = null;
-
-      regsDia.forEach(r => {
-        const tipo = String(r.tipo || '').toUpperCase();
-        if (tipo === 'ENTRADA' || tipo === 'RETORNO_CAMPO' || tipo === 'ENTRADA_CAMPO') {
-          let mE = obtenerMinutos(r.timestamp || r.hora);
-          if (entradaPendiente) {
-            let mPend = obtenerMinutos(entradaPendiente.timestamp || entradaPendiente.hora);
-            if (mPend !== null && mE !== null && Math.abs(mE - mPend) <= 2) return;
-          }
-          entradaPendiente = r;
-        } else if (tipo === 'SALIDA' || tipo === 'SALIDA_CAMPO' || tipo === 'SALIDA_PASANTE' || r.tipo_salida === 'SALIDA_PASANTE' || r.razon_salida === 'salida_pasante') {
-          if (entradaPendiente) {
-            periodosDia.push({ entrada: entradaPendiente, salida: r });
-            ultimoSalidaMins = obtenerMinutos(r.timestamp || r.hora);
-            entradaPendiente = null;
-          } else {
-            periodosDia.push({ entrada: null, salida: r });
-          }
-        }
-      });
-      if (entradaPendiente) periodosDia.push({ entrada: entradaPendiente, salida: null });
-      if (periodosDia.length === 0) periodosDia.push({ entrada: null, salida: null });
-
-      let primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
-      let atrasoMins = 0;
-      if (primerReg && !esPasanteDet && !esFestivo) { // sábado, domingo y feriado: sin atraso
-        let mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
-        let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
-        if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
-      }
-
-      let ultSalReg = [...regsDia].reverse().find(r => {
-        const t = String(r.tipo || r.tipo_salida || '').toUpperCase();
-        return t.includes('SALIDA');
-      });
-      if (ultSalReg) {
-        let mS = obtenerMinutos(ultSalReg.hora || ultSalReg.timestamp);
-        if (mS !== null) ultimoSalidaMins = mS;
-      }
-
-      let minsSalidaTemprana = 0;
-      let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
-      if (!esFestivo && !esPasanteDet && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
-        minsSalidaTemprana = refSalida - ultimoSalidaMins;
-      }
-
-      let tiempoPersonal = 0, tiempoMedico = 0, tiempoJustificado = 0;
-      const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
-      const persMins = regPermiso ? Number(regPermiso.permiso_personal_mins || 0) : 0;
-      const medMins = regPermiso ? Number(regPermiso.permiso_medico_mins || 0) : 0;
-      const justMins = regPermiso ? Number(regPermiso.tiempo_justificado_mins || 0) : 0;
-      tiempoPersonal += persMins;
-      tiempoMedico += medMins;
-      tiempoJustificado += justMins;
-      // Cumpleaños: media jornada (4 h) — por registro marcado o por fecha de nacimiento si trabajó ese día
-      const esCumpleDia = beneficioCumpleanosDia(e, f, regsDia, tieneAsistencia);
-      if (esCumpleDia) tiempoJustificado = Math.max(tiempoJustificado, 240);
-
-      let netWorkedOrdinario = (typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, f, e.id) : 0;
-      let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
-      if (!esFestivo && f >= DESCANSOS_DESDE) minsSalidaTemprana = Math.min(minsSalidaTemprana, missingMinutesDia);
-      if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
-        atrasoMins = Math.max(0, missingMinutesDia - minsSalidaTemprana);
-      }
-
-      let rawAtrasoMins = atrasoMins;
-      let rawSalidaTemprana = minsSalidaTemprana;
-      let atrasoMinsDia = atrasoMins;
-      let salidaTempMinsDia = minsSalidaTemprana;
-
-      if (esPasanteDet) {
-        atrasoMinsDia = 0;
-        salidaTempMinsDia = 0;
-      } else {
-        const tieneJustifEntradaTardia = regsDia.some(r => r.razon_entrada_tardia && !['—', '-', ''].includes(String(r.razon_entrada_tardia).trim()));
-        const permisosTotales = tiempoPersonal + tiempoMedico + tiempoJustificado;
-        if (tieneJustifEntradaTardia) {
-          atrasoMinsDia = 0;
-        } else {
-          atrasoMinsDia = Math.max(0, rawAtrasoMins - permisosTotales);
-        }
-        const tieneJustifSalidaTemprana = regsDia.some(r => r.razon_salida_temprana && !['—', '-', ''].includes(String(r.razon_salida_temprana).trim()));
-        if (tieneJustifSalidaTemprana) {
-          salidaTempMinsDia = 0;
-        } else {
-          const permisosRestantes = Math.max(0, permisosTotales - (tieneJustifEntradaTardia ? 0 : rawAtrasoMins));
-          salidaTempMinsDia = Math.max(0, rawSalidaTemprana - permisosRestantes);
-        }
-      }
-
-      let rawTJ = 0;
-      const esPrevioAlRegistro = Boolean(d.previoAlRegistro);
-      const esHoyOFuturo = f >= hoyStrLocal;
-      if ((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet) {
-        rawTJ = (esPasanteDet && periodosDia.some(p => p.entrada && !p.salida)) ? 60 : 0;
-      } else {
-        let missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
-        let totalPermisosHoy = tiempoPersonal + tiempoMedico;
-        let unaccountedMissing = Math.max(0, missingMinutes - totalPermisosHoy);
-        rawTJ = Math.max(0, unaccountedMissing - tiempoJustificado);
-        // Penalización por registro sin salida (no la compensan permisos ni justificaciones; no en fin de semana ni feriado)
-        if (!esFestivo) rawTJ += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
-      }
-
-      let rawDescuento = tiempoPersonal + (rawTJ > 0 ? Math.max(rawTJ, atrasoMinsDia) : atrasoMinsDia);
-      totDescuentoBrutoTotalRaw += rawDescuento;
-
-      // Absorber déficit con la bolsa de 4 horas (240 min) del período
-      let consumo4h = 0;
-      if (!esPasanteDet && saldoBeneficio4h > 0 && rawDescuento > 0) {
-        consumo4h = Math.min(saldoBeneficio4h, rawDescuento);
-        saldoBeneficio4h -= consumo4h;
-      }
-
-      let tjNeto = Math.max(0, rawTJ - consumo4h);
-      let descuentoNeto = Math.max(0, rawDescuento - consumo4h);
-
-      mapBeneficioPorDia[f] = {
-        consumo4h,
-        tjNeto,
-        descuentoNeto,
-        rawTJ,
-        rawDescuento,
-        atrasoMinsDia,
-        salidaTempMinsDia,
-        // Desglose para la columna T. Descontar
-        faltante: (isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet || esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario),
-        tiempoPersonal, tiempoMedico, tiempoJustificado,
-        penalSinSalida: (!esFestivo && !((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet)) ? PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia) : 0,
-        saldoBolsa: saldoBeneficio4h
-      };
-    });
+    // Bolsa de 4 h del período: cálculo compartido con la app (JS/reglas_jornada.js, comparado día por día con el
+    // cálculo anterior el 2026-11-11 sin diferencias). Los permisos personales por horas aprobados con parte cargada
+    // a vacaciones no se vuelven a descontar ese día (fase 2 de permisos).
+    const mapBeneficioPorDia = window.ReglasJornada.calcularBolsa({ empleado: e, porDia, hoy: hoyStrLocal, solicitudes: solicitudesPermisoEmp }).porDia;
 
     let filas = fechasOrdenadas.map(f => {
       let d = porDia[f];

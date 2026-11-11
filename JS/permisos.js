@@ -53,6 +53,7 @@
     REGISTRADA: { txt: 'Registrada', clase: 'pm-e-ok' }
   };
   const PENDIENTES = ['PENDIENTE_JEFE', 'PENDIENTE_TTHH'];
+  const MIN_DIA = 480;   // 8 h = 1 día de vacaciones
   // Concordancia: «Vacaciones aprobadas», «Permiso médico aprobado», «Calamidad doméstica registrada»
   const part = (T, raiz) => raiz + ({ VACACIONES: "as", CALAMIDAD: "a" }[Object.keys(TIPOS).find(k => TIPOS[k] === T)] || "o");
 
@@ -163,15 +164,19 @@
   // Lo mismo dicho a TTHH o al jefe (tercera persona)
   const MOTIVO_TTHH_3 = { sin_jefe: "No tiene jefe inmediato asignado", propio: "Su ficha lo tiene como su propio jefe", jefe_inactivo: "Su jefe inmediato no está activo", sin_respuesta: "El jefe no respondió en 8 horas laborables" };
 
-  // Saldo de vacaciones (hoja CALCULAR_vacaciones, columna J) menos los días de vacaciones futuros ya pedidos o aprobados
-  async function saldoVacaciones(emp) {
-    let restantes = null;
+  // Saldo de vacaciones (hoja CALCULAR_vacaciones, columna J) menos los días de vacaciones futuros ya pedidos o aprobados.
+  // También devuelve la lista de días de vacaciones (la usa el cálculo de la bolsa) y la capacidad en minutos para
+  // cargar horas de permiso personal (fase 2): J × 480 − la fracción de horas ya sincronizadas que aún no completa
+  // un día − las horas cargadas que todavía no llegan a la hoja (o están pedidas) − los días futuros comprometidos.
+  async function saldoVacaciones(emp, excluirId = '') {
+    let restantes = null, vacaciones = [];
     try {
       const pedir = typeof window.jsonpRequest === 'function' ? window.jsonpRequest
         : (window.FirebaseBackend && window.FirebaseBackend.procesarAccion ? p => window.FirebaseBackend.procesarAccion(p) : null);
       if (pedir) {
-        const r = await pedir({ accion: 'obtenerVacacionesEmpleado', empleadoId: emp.id });
+        const r = await pedir({ accion: 'obtenerVacacionesEmpleado', empleadoId: emp.id, force: true });
         if (r && !r.error) {
+          vacaciones = (r.vacaciones || []).filter(v => String(v.empleadoId || v.id || '').trim() === String(emp.id));
           if (r.vacacionesRestantesHoy !== null && r.vacacionesRestantesHoy !== undefined && r.vacacionesRestantesHoy !== '' && r.vacacionesRestantesHoy !== '--') restantes = Number(r.vacacionesRestantesHoy);
           else {
             const kpi = r.kpiVacacionesIndividual || window.kpiVacacionesIndividual || {};
@@ -183,16 +188,111 @@
     } catch (e) { console.warn('Permisos: saldo de vacaciones no leído', e); }
     if (restantes === null || isNaN(restantes)) return null;
     const hoy = hoyStr();
-    let comprometidos = 0;
+    const pv = periodoVacacionesDe(hoy);
+    let comprometidos = 0, sincronizadas = 0, pendientesHoja = 0;
     try {
       const snap = await db().collection(COL).where('empleadoId', '==', String(emp.id)).get();
       snap.forEach(doc => {
         const s = doc.data();
-        if (s.tipo !== 'VACACIONES' || !['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA'].includes(s.estado)) return;
-        comprometidos += (s.fechas || []).filter(f => f > hoy).length;
+        if (doc.id === excluirId || !['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA'].includes(s.estado)) return;
+        if (s.tipo === 'VACACIONES') comprometidos += (s.fechas || []).filter(f => f > hoy).length;
+        if (s.tipo !== 'PERMISO_PERSONAL' || s.desde < pv.inicio || s.desde > pv.fin) return;
+        // Horas cargadas a vacaciones: aprobadas (ya en la hoja o por llegar) y las pedidas que aún esperan
+        const min = s.estado === 'APROBADA' ? Number(s.cargo_vacaciones_min || 0) : Number((s.plan_bolsa || {}).vacaciones_min || 0);
+        if (s.estado === 'APROBADA' && s.vacaciones_hoja) sincronizadas += min; else pendientesHoja += min;
       });
     } catch (e) { }
-    return { restantes, comprometidos, disponible: restantes - comprometidos };
+    const disponible = restantes - comprometidos;
+    const capacidadMin = Math.max(0, disponible * MIN_DIA - (sincronizadas % MIN_DIA) - pendientesHoja);
+    return { restantes, comprometidos, disponible, vacaciones, capacidadMin, horasAcumuladasMin: sincronizadas + pendientesHoja };
+  }
+
+  // ---------------------------------------------------------------- fase 2: bolsa de 4 h y cargo a vacaciones
+  // Año de vacaciones: 1/dic del año anterior → 30/nov (vacaciones_auto.gs)
+  function periodoVacacionesDe(f) {
+    const d = new Date(f + 'T12:00:00');
+    const anio = d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
+    return { inicio: `${anio - 1}-12-01`, fin: `${anio}-11-30` };
+  }
+
+  // Registros del colaborador con el historial archivado (mismos datos que el detalle del panel)
+  async function registrosDe(empId) {
+    const FB = window.FirebaseBackend;
+    if (!FB || typeof FB.obtenerRegistros !== 'function') throw new Error('No se pudieron leer tus marcaciones');
+    const regs = await FB.obtenerRegistros({ empleadoId: String(empId), incluirArchivados: true });
+    return Array.isArray(regs) ? regs : [];
+  }
+
+  /**
+   * Reparte un permiso personal entre la bolsa de 4 h del período, las vacaciones y el rol (fase 2).
+   * Bolsa: saldo real del período en curso (ReglasJornada, mismo cálculo del panel) menos lo que ya tienen
+   * reservado otros permisos personales futuros (pedidos, o aprobados por horas: los aprobados por días ya
+   * tienen su registro). Períodos futuros empiezan con 4 h. Lo que no cabe va a vacaciones hasta la
+   * capacidad en minutos; el resto se descuenta del rol.
+   * Devuelve { bolsa_min, vacaciones_min, rol_min, bolsa_por_dia, vacaciones_por_dia, rol_por_dia, saldos, capacidad_vac_min }
+   */
+  async function planBolsa(emp, { modalidad, fechas, desde, minutos }, excluirId = '') {
+    if (!window.ReglasJornada) throw new Error('Falta el cálculo de la bolsa (reglas_jornada.js)');
+    const RJ = window.ReglasJornada;
+    const hoy = hoyStr();
+    const necesidad = {};
+    if (modalidad === 'HORAS') necesidad[desde] = minutos; else fechas.forEach(f => { necesidad[f] = MIN_DIA; });
+
+    const FB = window.FirebaseBackend;
+    if (!window._ajustesDescanso && FB && typeof FB.cargarAjustesDescanso === 'function') await FB.cargarAjustesDescanso();
+    const [regs, vac, otras] = await Promise.all([
+      registrosDe(emp.id),
+      saldoVacaciones(emp, excluirId),
+      db().collection(COL).where('empleadoId', '==', String(emp.id)).get()
+    ]);
+    const solicitudes = otras.docs.map(d => Object.assign({ id: d.id }, d.data()));
+
+    // Saldo de la bolsa por período (26–25)
+    const saldos = {}, iniciales = {};
+    const perHoy = RJ.periodoDe(hoy);
+    const saldoPeriodo = per => {
+      if (saldos[per.inicio] !== undefined) return saldos[per.inicio];
+      let s;
+      if (per.inicio === perHoy.inicio) {
+        s = RJ.saldoBolsaPeriodo({ empleado: Object.assign({}, emp, { registros: regs }), registros: regs, vacaciones: (vac && vac.vacaciones) || [], hoy, solicitudes }).saldo;
+      } else {
+        s = per.inicio > perHoy.inicio && !RJ.esEmpleadoPasante(emp) ? RJ.BOLSA_MIN : 0;
+      }
+      // Reservado por otros permisos personales de hoy en adelante
+      solicitudes.forEach(o => {
+        if (o.id === excluirId || o.tipo !== 'PERMISO_PERSONAL') return;
+        const pend = PENDIENTES.includes(o.estado);
+        const aprobHoras = o.estado === 'APROBADA' && o.modalidad === 'HORAS';
+        if (!pend && !aprobHoras) return;
+        const porDia = aprobHoras ? (o.bolsa_por_dia || {}) : ((o.plan_bolsa || {}).bolsa_por_dia || {});
+        Object.keys(porDia).forEach(f => { if (f >= hoy && f >= per.inicio && f <= per.fin) s -= Number(porDia[f]) || 0; });
+      });
+      saldos[per.inicio] = Math.max(0, s);
+      iniciales[per.inicio] = saldos[per.inicio];
+      return saldos[per.inicio];
+    };
+
+    let capacidad = vac ? vac.capacidadMin : 0;
+    const plan = { bolsa_por_dia: {}, vacaciones_por_dia: {}, rol_por_dia: {}, bolsa_min: 0, vacaciones_min: 0, rol_min: 0 };
+    Object.keys(necesidad).sort().forEach(f => {
+      const per = RJ.periodoDe(f);
+      saldoPeriodo(per);
+      let falta = necesidad[f];
+      const deBolsa = Math.min(saldos[per.inicio], falta);
+      saldos[per.inicio] -= deBolsa; falta -= deBolsa;
+      const deVac = Math.min(capacidad, falta);
+      capacidad -= deVac; falta -= deVac;
+      if (deBolsa) plan.bolsa_por_dia[f] = deBolsa;
+      if (deVac) plan.vacaciones_por_dia[f] = deVac;
+      if (falta) plan.rol_por_dia[f] = falta;
+      plan.bolsa_min += deBolsa; plan.vacaciones_min += deVac; plan.rol_min += falta;
+    });
+    plan.periodo = RJ.periodoDe(desde);
+    plan.saldo_bolsa_inicial = iniciales[plan.periodo.inicio] || 0;
+    plan.saldo_vacaciones_dias = vac ? vac.disponible : null;
+    plan.capacidad_vac_min = vac ? vac.capacidadMin : 0;
+    plan.calculado_en = ahoraIso();
+    return plan;
   }
 
   // ---------------------------------------------------------------- solicitudes
@@ -266,6 +366,19 @@
     };
     if (p.saldo) sol.saldo_al_solicitar = p.saldo;
 
+    // Permiso personal: reparto bolsa / vacaciones / rol (fase 2). Si algo no cabe en la bolsa, el colaborador
+    // debe haber aceptado el aviso; se recalcula al aprobar con los datos de ese momento.
+    if (p.tipo === 'PERMISO_PERSONAL') {
+      let plan = p.planBolsa;
+      if (!plan) {
+        try { plan = await planBolsa(emp, { modalidad, fechas, desde, minutos }); }
+        catch (e) { return { error: 'No se pudo calcular tu bolsa de 4 horas: ' + (e.message || e) }; }
+      }
+      if ((plan.vacaciones_min || plan.rol_min) && !p.aceptaCargo) return { error: 'Acepta el aviso: parte del permiso no cabe en tu bolsa de 4 horas' };
+      sol.plan_bolsa = plan;
+      sol.acepta_cargo = !!p.aceptaCargo;
+    }
+
     if (T.aprobacion) {
       const ap = await aprobadorDe(emp);
       if (ap.jefe) {
@@ -308,7 +421,14 @@
           razon_ausencia: razon, razon_justificac: razon, observacion: razon, quien_justifica: quienJustifica,
           dispositivo: 'SOLICITUD_PERMISO'
         });
-        if (r && r.error) errores.push(`${f}: ${r.error}`); else hechos.push(f);
+        if (r && r.error) { errores.push(`${f}: ${r.error}`); continue; }
+        hechos.push(f);
+        // Permiso personal por días (fase 2): lo que cubre la bolsa y lo que va al rol se marca como permiso
+        // personal del día (el panel lo descuenta de la bolsa y luego del rol); lo cargado a vacaciones no.
+        if (sol.tipo === 'PERMISO_PERSONAL' && r && r.id) {
+          const mins = (Number((sol.bolsa_por_dia || {})[f]) || 0) + (Number((sol.rol_por_dia || {})[f]) || 0);
+          await db().collection('registros').doc(r.id).set({ permiso_personal_mins: mins }, { merge: true });
+        }
       } catch (e) { errores.push(`${f}: ${e.message || e}`); }
     }
     const upd = { registros: hechos, registros_en: ahoraIso() };
@@ -326,6 +446,23 @@
     const ref = db().collection(COL).doc(id);
     const tthh = await esTTHH(quien.id);
     let sol = null;
+    // Permiso personal (fase 2): al aprobar se fija el reparto bolsa / vacaciones / rol con los datos de este momento
+    let final = null;
+    if (accion === "APROBAR") {
+      try {
+        const previa = (await ref.get()).data() || {};
+        if (previa.tipo === "PERMISO_PERSONAL") {
+          const emp = await leerEmpleado(previa.empleadoId);
+          if (!emp) throw new Error("No se encontró la ficha del colaborador");
+          const plan = await planBolsa(emp, { modalidad: previa.modalidad, fechas: previa.fechas || [], desde: previa.desde, minutos: previa.minutos }, id);
+          final = {
+            bolsa_por_dia: plan.bolsa_por_dia, vacaciones_por_dia: plan.vacaciones_por_dia, rol_por_dia: plan.rol_por_dia,
+            minutos_bolsa: plan.bolsa_min, cargo_vacaciones_min: plan.vacaciones_min, descuento_rol_min: plan.rol_min,
+            plan_aprobacion: plan, vacaciones_hoja: false
+          };
+        }
+      } catch (e) { return { error: "No se pudo calcular la bolsa de 4 horas: " + (e.message || e) }; }
+    }
     try {
       await db().runTransaction(async tx => {
         const snap = await tx.get(ref);
@@ -343,6 +480,7 @@
           comentario: String(comentario || '').trim().slice(0, 400),
           historial: firebase.firestore.FieldValue.arrayUnion({ en: ahora, quien: quien.nombre || String(quien.id), accion: accion === 'APROBAR' ? 'APROBADA' : 'RECHAZADA' })
         };
+        if (final) Object.assign(upd, final);
         tx.update(ref, upd);
         sol = Object.assign({ id }, s, upd);
       });
@@ -413,7 +551,9 @@
     if (evento === 'creada') {
       // El motivo puede tener datos de salud: no viaja por WhatsApp, se lee en la app (requiere sesión)
       const lineas = `*${quien}* solicita *${T.label.toLowerCase()}* ${per}.` + (s.motivo ? '\nEl motivo está en la solicitud.' : '') +
-        (s.acepta_descuento ? `\n⚠️ Sin saldo suficiente: aceptó el descuento al rol de ${s.dias_sin_saldo} día(s).` : '');
+        (s.acepta_descuento ? `\n⚠️ Sin saldo suficiente: aceptó el descuento al rol de ${s.dias_sin_saldo} día(s).` : '') +
+        (s.plan_bolsa && (s.plan_bolsa.vacaciones_min || s.plan_bolsa.rol_min)
+          ? `\n⚠️ Supera su bolsa de 4 h: ${s.plan_bolsa.vacaciones_min ? durTxt(s.plan_bolsa.vacaciones_min) + ' a vacaciones' : ''}${s.plan_bolsa.vacaciones_min && s.plan_bolsa.rol_min ? ' y ' : ''}${s.plan_bolsa.rol_min ? durTxt(s.plan_bolsa.rol_min) + ' al rol' : ''} (lo aceptó).` : '');
       if (s.estado === 'PENDIENTE_JEFE') {
         const jefe = await leerEmpleado(s.aprobador_id);
         await campana(s.aprobador_id, 'permiso_solicitud', `Solicitud de ${T.label.toLowerCase()}`, `${quien} ${per}`, s, 'jefe');
@@ -498,6 +638,17 @@
     if (opts.conNombre) lineas.push(`<div class="pm-quien"><i class="fas fa-user"></i> ${esc(nombreCorto(s.nombre))} <span class="pm-sub">· ${esc(s.empleadoId)}${s.area ? ' · ' + esc(s.area) : ''}</span></div>`);
     lineas.push(`<div class="pm-periodo">${periodoHtml(s)}</div>`);
     if (s.motivo) lineas.push(`<div class="pm-motivo">${esc(s.motivo)}</div>`);
+    if (s.tipo === 'PERMISO_PERSONAL' && (s.plan_bolsa || s.estado === 'APROBADA')) {
+      const fin = s.estado === 'APROBADA' && s.minutos_bolsa !== undefined;
+      const b = fin ? s.minutos_bolsa : (s.plan_bolsa || {}).bolsa_min || 0;
+      const v = fin ? s.cargo_vacaciones_min : (s.plan_bolsa || {}).vacaciones_min || 0;
+      const r = fin ? s.descuento_rol_min : (s.plan_bolsa || {}).rol_min || 0;
+      const t = [];
+      if (b) t.push(`bolsa de 4 h ${durTxt(b)}`);
+      if (v) t.push(`vacaciones ${durTxt(v)}`);
+      if (r) t.push(`rol ${durTxt(r)}`);
+      if (t.length) lineas.push(`<div class="${v || r ? 'pm-alerta' : 'pm-sub'}"><i class="fas fa-piggy-bank"></i> ${fin ? 'Se cargó a' : 'Se cargaría a'}: ${t.join(' · ')}${v || r ? (s.acepta_cargo ? ' · el colaborador aceptó el cargo' : '') : ''}</div>`);
+    }
     if (s.acepta_descuento) lineas.push(`<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> Sin saldo suficiente: aceptó el descuento al rol de ${s.dias_sin_saldo} día(s).</div>`);
     if (s.estado === 'PENDIENTE_JEFE') {
       lineas.push(`<div class="pm-sub"><i class="fas fa-user-tie"></i> ${opts.yoId && String(s.aprobador_id) === String(opts.yoId) ? "Te toca aprobarla" : 'La aprueba ' + esc(nombreCorto(s.aprobador_nombre))}${s.vence_jefe ? ` · pasa a TTHH el ${esc(horaIso(s.vence_jefe))} si no hay respuesta` : ''}</div>`);
@@ -559,6 +710,7 @@
             <textarea id="pmMotivo" class="pm-campo" rows="2" maxlength="400"></textarea>
             <div id="pmResumen" class="pm-resumen"></div>
             <label id="pmBoxDescuento" class="pm-acepta" hidden><input type="checkbox" id="pmAcepta"> <span id="pmTxtDescuento"></span></label>
+            <label id="pmBoxCargo" class="pm-acepta" hidden><input type="checkbox" id="pmAceptaCargo"> <span id="pmTxtCargo"></span></label>
           </div>
           <div id="pmMensaje" class="pm-error" role="alert" hidden></div>
         </div>
@@ -612,6 +764,7 @@
     }
     ['pmDesde', 'pmHasta', 'pmHoraDesde', 'pmHoraHasta', 'pmMotivo'].forEach(i => $(i).addEventListener('input', recalcular));
     $('pmAcepta').addEventListener('change', recalcular);
+    $("pmAceptaCargo").addEventListener("change", recalcular);
 
     async function recalcular() {
       mensaje('');
@@ -651,12 +804,45 @@
           partes.push(`<div><i class="fas fa-wallet"></i> Saldo disponible: <strong>${disp} día${disp === 1 ? '' : 's'}</strong>${st.saldo.comprometidos ? ` <span class="pm-sub">(${st.saldo.comprometidos} ya pedidos para fechas futuras)</span>` : ''}</div>`);
         }
       }
+      // Permiso personal (fase 2): bolsa de 4 h del período; lo que no cabe va a vacaciones y, sin vacaciones, al rol
+      let necesitaCargo = false, planCargando = false;
+      if (st.tipo === 'PERMISO_PERSONAL') {
+        const a = minutosDe($('pmHoraDesde').value), b = minutosDe($('pmHoraHasta').value);
+        const datosOk = st.modalidad === 'HORAS' ? (desde && !isNaN(a) && !isNaN(b) && b > a && esLaborable(desde)) : fechas.length > 0;
+        const clave = [st.emp.id, st.modalidad, desde, hasta, a, b].join('|');
+        if (datosOk && (!st.plan || st.plan.clave !== clave)) {
+          st.plan = { clave, estado: 'cargando' };
+          planBolsa(st.emp, { modalidad: st.modalidad, fechas, desde, minutos: b - a })
+            .then(p => { if (st.plan && st.plan.clave === clave) { st.plan = { clave, estado: 'ok', plan: p }; recalcular(); } })
+            .catch(e => { if (st.plan && st.plan.clave === clave) { st.plan = { clave, estado: 'error', error: e.message || String(e) }; recalcular(); } });
+        }
+        const P = st.plan && st.plan.clave === clave ? st.plan : null;
+        if (!datosOk) { /* sin datos completos todavía */ }
+        else if (!P || P.estado === 'cargando') { planCargando = true; partes.push('<div class="pm-sub"><i class="fas fa-spinner fa-spin"></i> Calculando tu bolsa de 4 horas…</div>'); }
+        else if (P.estado === 'error') { planCargando = true; partes.push(`<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No se pudo calcular tu bolsa de 4 horas: ${esc(P.error)}. Intenta de nuevo en un momento.</div>`); }
+        else {
+          const p = P.plan;
+          partes.push(`<div><i class="fas fa-piggy-bank"></i> Bolsa de 4 h disponible en el período ${fechaCorta(p.periodo.inicio).slice(0, 5)}–${fechaCorta(p.periodo.fin).slice(0, 5)}: <strong>${durTxt(p.saldo_bolsa_inicial)}</strong></div>`);
+          if (p.vacaciones_min || p.rol_min) {
+            necesitaCargo = true;
+            const trozos = [];
+            if (p.vacaciones_min) trozos.push(`<strong>${durTxt(p.vacaciones_min)} se cargarán a tus vacaciones</strong> (cada 8 h acumuladas descuentan 1 día)`);
+            if (p.rol_min) trozos.push(`<strong>${durTxt(p.rol_min)} se descontarán del rol</strong> porque no te alcanzan las vacaciones`);
+            $('pmTxtCargo').innerHTML = `Este permiso supera tu bolsa de 4 horas: ${trozos.join(' y ')}. Acepto este cargo.`;
+          } else {
+            partes.push(`<div class="pm-sub"><i class="fas fa-check"></i> Cabe en tu bolsa: no se carga a vacaciones.</div>`);
+          }
+        }
+      }
+      $('pmBoxCargo').hidden = !necesitaCargo;
+      st.necesitaCargo = necesitaCargo;
+
       $('pmResumen').innerHTML = partes.join('');
       $('pmBoxDescuento').hidden = !sinSaldo;
       if (sinSaldo) $('pmTxtDescuento').innerHTML = `No tienes saldo para ${sinSaldo} día${sinSaldo === 1 ? '' : 's'}. <strong>Acepto que ${sinSaldo === 1 ? 'ese día se descuente' : 'esos días se descuenten'} del rol.</strong>`;
       st.sinSaldo = sinSaldo;
       const motivoOk = st.tipo === 'VACACIONES' || $('pmMotivo').value.trim();
-      btn.disabled = st.enviando || !motivoOk || (st.modalidad === 'DIAS' && !fechas.length) || (sinSaldo > 0 && !$('pmAcepta').checked) || st.saldo === 'cargando';
+      btn.disabled = st.enviando || !motivoOk || (st.modalidad === "DIAS" && !fechas.length) || (sinSaldo > 0 && !$("pmAcepta").checked) || st.saldo === "cargando" || planCargando || (necesitaCargo && !$("pmAceptaCargo").checked);
       btn.innerHTML = T.aprobacion ? '<i class="fas fa-paper-plane"></i> Enviar solicitud' : '<i class="fas fa-check"></i> Registrar';
     }
 
@@ -673,6 +859,8 @@
           horaDesde: $('pmHoraDesde').value, horaHasta: $('pmHoraHasta').value, motivo: $('pmMotivo').value,
           aceptaDescuento: st.sinSaldo > 0 && $('pmAcepta').checked, diasSinSaldo: st.sinSaldo,
           saldo: st.saldo && typeof st.saldo === 'object' ? st.saldo : null,
+          planBolsa: st.tipo === "PERMISO_PERSONAL" && st.plan && st.plan.estado === "ok" ? st.plan.plan : null,
+          aceptaCargo: !!st.necesitaCargo && $("pmAceptaCargo").checked,
           creadoPor: opts.creadoPor
         });
         if (!res || res.error) throw new Error((res && res.error) || 'No se pudo enviar');
@@ -953,6 +1141,6 @@
   window.Permisos = {
     montarApp, montarPanel, abrirFormulario, contarPorAprobar,
     crearSolicitud, resolver, cancelar, leerConfig, esTTHH,
-    _internos: { fechasLaborables, sumarMinutosLaborables, esLaborable }
+    _internos: { fechasLaborables, sumarMinutosLaborables, esLaborable, planBolsa, saldoVacaciones }
   };
 })();
