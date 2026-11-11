@@ -8443,6 +8443,8 @@ async function navigateTo(page) {
             renderDesarrolloPage();
         } else if (page === 'visitas') {
             renderVisitasPage();
+        } else if (page === 'permisos') {
+            renderPermisosPage();
         } else if (page === 'carne') {
             renderCarnePage();
         }
@@ -8492,6 +8494,36 @@ function renderVisitasPage() {
     const enlace = window.__vsEnlacePendiente || null;
     window.__vsEnlacePendiente = null;
     window.VisitasAnfitrion.montar(cont, { enlace, empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area } });
+}
+
+// Permisos y vacaciones (JS/permisos.js): solicitudes del colaborador y aprobación del jefe inmediato o TTHH
+function renderPermisosPage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `<div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;"><div id="pmPermisosApp"></div></div>`;
+    const cont = document.getElementById('pmPermisosApp');
+    if (!window.Permisos || !empleado) {
+        cont.innerHTML = '<div class="glass-card text-center" style="background:white; border-radius:20px; padding:30px;">No se pudo cargar el módulo de permisos. Recarga la app.</div>';
+        return;
+    }
+    const enlace = window.__pmEnlacePendiente || null;
+    window.__pmEnlacePendiente = null;
+    window.Permisos.montarApp(cont, {
+        enlace,
+        empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area, cargo: empleado.cargo },
+        onPendientes: pintarInsigniaPermisos
+    });
+}
+
+function pintarInsigniaPermisos(n) {
+    const b = document.getElementById('badgePermisosApp');
+    if (!b) return;
+    b.hidden = !n;
+    b.textContent = n > 9 ? '9+' : String(n || 0);
+}
+
+function actualizarInsigniaPermisos() {
+    if (!window.Permisos || !empleado || !empleado.id) return;
+    window.Permisos.contarPorAprobar(empleado.id).then(pintarInsigniaPermisos).catch(() => { });
 }
 
 // Arranque sin internet: solo la credencial de campo (el QR se genera en el teléfono).
@@ -8723,6 +8755,9 @@ function montarCampanaApp() {
             } else if (enlace.modulo === 'visitas') {
                 window.__vsEnlacePendiente = enlace;
                 navigateTo('visitas');
+            } else if (enlace.modulo === 'permisos') {
+                window.__pmEnlacePendiente = enlace;
+                navigateTo('permisos');
             }
         }
     });
@@ -8730,6 +8765,7 @@ function montarCampanaApp() {
 
 function actualizarInterfazSegunCargo() {
     try { montarCampanaApp(); } catch (e) { console.warn('Campana de notificaciones:', e); }
+    try { actualizarInsigniaPermisos(); } catch (e) { console.warn('Permisos:', e); }
     const navItemExtras = document.getElementById('navItemExtras');
     const navItemAdmin = document.getElementById('navItemAdmin');
     if (!navItemExtras) return;

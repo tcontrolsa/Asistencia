@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="./CSS/supervisor.css?v=20261110_05">
   <link rel="stylesheet" href="./CSS/evaluacion.css?v=20261007_01">
   <link rel="stylesheet" href="./CSS/visitas.css?v=20261027_01">
+  <link rel="stylesheet" href="./CSS/permisos.css?v=20261111_01">
   <link rel="stylesheet" href="./CSS/notificaciones.css?v=20261007_01">
   <!-- FIREBASE SDKS -->
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
@@ -1340,6 +1341,7 @@
         </div>
         <div class="nav-item" data-panel="desempeno" id="navItemDesempeno"><i class="fas fa-seedling" style="color:#dc2626;"></i><span>Desempeño</span></div>
         <div class="nav-item" data-panel="visitas" id="navItemVisitas"><i class="fas fa-id-card-alt" style="color:#0ea5e9;"></i><span>Visitas</span></div>
+        <div class="nav-item" data-panel="permisos" id="navItemPermisos"><i class="fas fa-calendar-alt" style="color:#7c3aed;"></i><span>Permisos</span><span id="badgePermisosPanel" style="display:none; margin-left:auto; background:#dc2626; color:white; font-size:10px; font-weight:800; padding:1px 6px; border-radius:10px;">0</span></div>
         <div class="nav-item" id="navItemSoporte" style="display:none" onclick="window.open('soporte.html', 'tcontrol_soporte')" title="Abre el portal de soporte en otra pestaña"><i class="fas fa-headset" style="color:#16a34a;"></i><span>Portal de soporte</span><i class="fas fa-external-link-alt" style="font-size:10px; margin-left:6px; opacity:.6;"></i></div>
         <div class="nav-item" data-panel="whatsapp" id="navItemWhatsApp" style="display:none"><i class="fab fa-whatsapp" style="color:#22c55e;"></i><span>Notificaciones WhatsApp</span></div>
         <div class="nav-item" data-panel="opciones" id="navItemOpciones" style="display:none"><i
@@ -3719,6 +3721,8 @@
       <div id="panel-desempeno" class="panel"><div id="evPanelDesempeno"></div></div>
       <!-- PANEL VISITAS (JS/visitas_anfitrion.js) -->
       <div id="panel-visitas" class="panel"><div id="vsPanelVisitas"></div></div>
+      <!-- PANEL PERMISOS (JS/permisos.js) -->
+      <div id="panel-permisos" class="panel"><div id="pmPanelPermisos"></div></div>
 
       <div id="panel-detalle" class="panel">
         <div id="detalleContent"></div>
@@ -5338,17 +5342,18 @@
 
   <script src="./JS/openwa_service.js?v=20261110_04"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
-  <script src="./JS/supervisor_core.js?v=20261110_10"></script>
+  <script src="./JS/supervisor_core.js?v=20261110_11"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261110_04"></script>
   <script src="./JS/supervisor/supervisor_aviso_almuerzos.js?v=20261110_04"></script>
-  <script src="./JS/supervisor/supervisor_accesos.js?v=20261110_05"></script>
+  <script src="./JS/supervisor/supervisor_accesos.js?v=20261110_06"></script>
   <script src="./JS/supervisor/supervisor_mapa.js?v=20261110_02"></script>
   <script src="./JS/supervisor/supervisor_invitados.js?v=20260925_03"></script>
   <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_03"></script>
   <script src="./JS/evaluacion_desempeno.js?v=20261110_08"></script>
-  <script src="./JS/notificaciones.js?v=20261027_01"></script>
+  <script src="./JS/notificaciones.js?v=20261110_01"></script>
   <script src="./JS/visitas_anfitrion.js?v=20261109_03"></script>
+  <script src="./JS/permisos.js?v=20261111_01"></script>
   <script src="./JS/supervisor/supervisor_directorio.js?v=20261109_04"></script>
   <script src="./JS/supervisor/supervisor_registro.js?v=20261109_03"></script>
   <script src="./JS/supervisor/supervisor_reportes_custom.js?v=20261110_02"></script>

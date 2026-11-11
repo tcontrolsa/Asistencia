@@ -7439,7 +7439,8 @@ function cambiarPanel(panel) {
     detalle: 'Detalle de Empleado',
     opciones: 'Opciones adicionales',
     whatsapp: 'Notificaciones WhatsApp',
-    desempeno: 'Evaluación de desempeño'
+    desempeno: 'Evaluación de desempeño',
+    permisos: 'Permisos y vacaciones'
   };
   const titleText = titles[panel] || 'Supervisor';
   if ($('pageTitle')) $('pageTitle').textContent = titleText;
@@ -7470,6 +7471,9 @@ function cambiarPanel(panel) {
     }
     else if (panel === 'visitas') {
       cargarPanelVisitas();
+    }
+    else if (panel === 'permisos') {
+      cargarPanelPermisos();
     }
     else if (panel === 'opciones') {
       if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
@@ -9509,6 +9513,28 @@ function cargarPanelDesempeno() {
 window.cargarPanelDesempeno = cargarPanelDesempeno;
 
 // Registro de visitas (JS/visitas_anfitrion.js): cada supervisor ve las suyas; supervisor admin, todas
+// Permisos y vacaciones (JS/permisos.js): bandeja de TTHH y lista de personas de TTHH
+function cargarPanelPermisos(enlace) {
+  const cont = $('pmPanelPermisos');
+  if (!cont || !window.Permisos) return;
+  let ses = {};
+  try { ses = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+  const yo = (empCache || []).find(e => String(e.id) === String(ses.id)) || {};
+  window.Permisos.montarPanel(cont, {
+    usuario: { id: String(ses.id || ''), nombre: ses.nombre || yo.nombre || (String(ses.id) === '1058' ? 'Admin Master' : '') },
+    admin: tienePermisoAdmin(),
+    enlace,
+    onPendientes: pintarInsigniaPermisosPanel
+  });
+}
+
+function pintarInsigniaPermisosPanel(n) {
+  const b = $('badgePermisosPanel');
+  if (!b) return;
+  b.style.display = n ? 'inline-block' : 'none';
+  b.textContent = n > 99 ? '99+' : String(n || 0);
+}
+
 function cargarPanelVisitas(enlace) {
   const cont = $('vsPanelVisitas');
   if (!cont || !window.VisitasAnfitrion) return;
@@ -9868,6 +9894,7 @@ function montarCampanaPanel(session) {
     onAbrir: enlace => {
       if (enlace.modulo === 'visitas') { cambiarPanel('visitas'); return; }
       if (enlace.modulo === 'campo') { window.abrirPermisoCampo(enlace.empleadoId); return; }
+      if (enlace.modulo === 'permisos') { cambiarPanel('permisos'); cargarPanelPermisos(enlace); return; }
       if (enlace.modulo !== 'desempeno') return;
       cambiarPanel('desempeno');
       const cont = $('evPanelDesempeno');
@@ -9879,6 +9906,9 @@ function montarCampanaPanel(session) {
 function mostrarInformacionSupervisor(session) {
   try { montarCampanaPanel(session); } catch (e) { console.warn('Campana de notificaciones:', e); }
   try { iniciarAvisoSolicitudesCampo(); } catch (e) { console.warn('Solicitudes de campo:', e); }
+  try {
+    if (window.Permisos && session && session.id) window.Permisos.contarPorAprobar(session.id).then(pintarInsigniaPermisosPanel).catch(() => { });
+  } catch (e) { console.warn('Permisos:', e); }
   if (!session) return;
 
   const id = session.id || "";

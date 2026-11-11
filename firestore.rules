@@ -76,6 +76,19 @@ service cloud.firestore {
       allow delete: if true; // limpieza automática de avisos de más de 60 días
     }
 
+    // Colección 'solicitudes_permiso' (permisos y vacaciones, JS/permisos.js)
+    // La crea el colaborador (o TTHH a su nombre); la resuelven el jefe inmediato o TTHH;
+    // Apps Script (permisos_escalado.gs) la pasa a TTHH. Solo se crea en un estado inicial válido
+    // y no se borra: queda como historial. Se endurecerá con Firebase Auth en la etapa 2 de seguridad.
+    match /solicitudes_permiso/{solicitudId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['empleadoId', 'tipo', 'estado', 'fechas'])
+                    && request.resource.data.estado in ['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'REGISTRADA'];
+      allow update: if request.resource.data.empleadoId == resource.data.empleadoId
+                    && request.resource.data.tipo == resource.data.tipo;
+      allow delete: if false;
+    }
+
     // Colección 'empleados_desvinculados' (Historial laboral pasivo LOPDP)
     // Custodia de registros pasivos: no pueden eliminarse desde clientes.
     match /empleados_desvinculados/{desvinculadoId} {

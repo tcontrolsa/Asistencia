@@ -32,6 +32,12 @@
     campo_solicitud: ['fa-truck-pickup', 'nt-ambar'],
     campo_aprobado: ['fa-truck-pickup', 'nt-verde'],
     campo_rechazado: ['fa-ban', 'nt-rojo'],
+    permiso_solicitud: ['fa-calendar-alt', 'nt-ambar'],
+    permiso_aprobado: ['fa-calendar-check', 'nt-verde'],
+    permiso_rechazado: ['fa-calendar-times', 'nt-rojo'],
+    permiso_registrado: ['fa-notes-medical', 'nt-azul'],
+    permiso_escalado: ['fa-users', 'nt-ambar'],
+    permiso_cancelado: ['fa-ban', 'nt-gris'],
     general: ['fa-info-circle', 'nt-gris']
   };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

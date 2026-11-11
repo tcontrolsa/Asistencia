@@ -21,6 +21,7 @@
       { clave: 'servicios.invitados', nombre: 'Invitados y almuerzos extra', boton: 'subtab-btn-serv-invitados', sub: 'invitados' }] },
     { clave: 'desempeno', nombre: 'Desempeño', icono: 'fa-seedling', nav: '[data-panel="desempeno"]' },
     { clave: 'visitas', nombre: 'Visitas', icono: 'fa-id-card-alt', nav: '[data-panel="visitas"]' },
+    { clave: 'permisos', nombre: 'Permisos', icono: 'fa-calendar-alt', nav: '[data-panel="permisos"]' },
     { clave: 'whatsapp', nombre: 'Notificaciones WhatsApp', icono: 'fa-whatsapp fab', nav: '[data-panel="whatsapp"]' },
     { clave: 'soporte', nombre: 'Portal de soporte', icono: 'fa-headset', nav: '#navItemSoporte' },
     { clave: 'opciones', nombre: 'Opciones adicionales', icono: 'fa-sliders-h', nav: '[data-panel="opciones"]', soloMaster: true },
