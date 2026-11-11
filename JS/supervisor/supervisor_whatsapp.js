@@ -1320,7 +1320,7 @@ window.guardarTelefonoDesdeModalWa = async function () {
   const norm = window.normalizarNumeroParaWhatsApp(nuevoTel);
 
   if (!norm || norm.length < 9) {
-    mostrarToast('Por favor ingresa un número celular válido (ej: 0984660105)', 'error');
+    mostrarToast('Por favor ingresa un número celular válido (ej: 0991234567)', 'error');
     if (input) input.focus();
     return;
   }

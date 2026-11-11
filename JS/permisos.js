@@ -411,7 +411,8 @@
     const colab = await leerEmpleado(s.empleadoId);
 
     if (evento === 'creada') {
-      const lineas = `*${quien}* solicita *${T.label.toLowerCase()}* ${per}.` + (s.motivo ? `\nMotivo: ${s.motivo}` : '') +
+      // El motivo puede tener datos de salud: no viaja por WhatsApp, se lee en la app (requiere sesión)
+      const lineas = `*${quien}* solicita *${T.label.toLowerCase()}* ${per}.` + (s.motivo ? '\nEl motivo está en la solicitud.' : '') +
         (s.acepta_descuento ? `\n⚠️ Sin saldo suficiente: aceptó el descuento al rol de ${s.dias_sin_saldo} día(s).` : '');
       if (s.estado === 'PENDIENTE_JEFE') {
         const jefe = await leerEmpleado(s.aprobador_id);
@@ -432,7 +433,7 @@
       const destinos = lista.filter(d => !s.creada_por || String(d.id) !== String(s.creada_por.id));
       if (s.aprobador_id && String(s.aprobador_id) !== String(s.creada_por && s.creada_por.id) && !destinos.some(d => String(d.id) === String(s.aprobador_id))) destinos.push(await leerEmpleado(s.aprobador_id) || { id: s.aprobador_id });
       await Promise.allSettled(destinos.map(d => campana(d.id, 'permiso_registrado', `${T.label} ${part(T, "registrad")}`, txt, s, 'info')));
-      const wa = (porOtro ? `📋 *${nombreCorto(s.creada_por.nombre)}* registró a nombre de *${quien}* *` : `📋 *${quien}* registró *`) + `${T.label.toLowerCase()}* ${per}.` + (s.motivo ? `\nMotivo: ${s.motivo}` : '') +
+      const wa = (porOtro ? `📋 *${nombreCorto(s.creada_por.nombre)}* registró a nombre de *${quien}* *` : `📋 *${quien}* registró *`) + `${T.label.toLowerCase()}* ${per}.` +
         '\n\nEs informativo: no requiere aprobación. Los documentos deben llegar a TTHH en 72 horas.';
       const rs = await Promise.all(destinos.map(d => whatsapp(d, saludoWa(d.nombre) + wa)));
       avisos.aviso_jefe_tthh = `WhatsApp ${rs.filter(r => r.ok).length}/${destinos.length}`;

@@ -312,7 +312,7 @@
         },
 
         // Normalizar número telefónico para WhatsApp Ecuador y formato OpenWA/WAHA
-        // 0984660105 -> 593984660105@c.us
+        // 0991234567 -> 593991234567@c.us
         // +593 98 466 0105 -> 593984660105@c.us
         normalizarNumero(numeroRaw) {
             if (!numeroRaw) return null;
@@ -524,7 +524,7 @@
                 return { ok: true, chatId: String(numeroDestino).trim() };
             }
 
-            // Normalizar dígitos internacionales para la consulta OpenWA (ej: 593984660105 en vez de 0984660105)
+            // Normalizar dígitos internacionales para la consulta OpenWA (ej: 593991234567 en vez de 0991234567)
             const cleanDigits = toChatId.replace(/@.*$/, '').replace(/\D/g, '');
 
             // Si la consulta causaría bloqueo de Contenido Mixto (HTTPS -> HTTP), omitir probe para no disparar alertas en navegador
@@ -1350,54 +1350,71 @@
             return resultado;
         },
 
+        // ---- Ayudas para los avisos internos (minimización de datos personales) ----
+        // Los avisos van por WhatsApp, que queda en teléfonos personales: solo se envía lo necesario para
+        // saber QUÉ pasó y QUIÉN es (nombre corto + ID). Teléfonos, motivos o detalles de salud se consultan
+        // en el panel, que exige sesión. No hay números de respaldo escritos en el código.
+
+        // "SANMARTIN CARRILLO LUIS FERNANDO" → "Luis Sanmartin" (formato de la nómina: apellidos y nombres)
+        _nombreCorto(nombre) {
+            const limpio = String(nombre || '').replace(/\(.*?\)/g, ' ').trim();
+            if (/^ID\b|\d/.test(limpio)) return limpio; // "ID: 1058" u otros textos que no son un nombre
+            const p = limpio.split(/\s+/).filter(Boolean);
+            const tc = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+            if (p.length >= 3) return `${tc(p[2])} ${tc(p[0])}`;
+            if (p.length === 2) return `${tc(p[1])} ${tc(p[0])}`;
+            return tc(p[0] || '') || 'Colaborador';
+        },
+
+        // "2026-11-11" → "11/11/2026"
+        _fechaCorta(iso) {
+            const p = String(iso || '').slice(0, 10).split('-');
+            return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(iso || '');
+        },
+
+        // Supervisores administradores activos con teléfono (sin respaldo fijo: si no hay, no se envía)
+        async _destinatariosSupAdmin(excluirId = '') {
+            let lista = [];
+            try {
+                if (window.FirebaseBackend && window.FirebaseBackend.supAdminsCampo) {
+                    lista = await window.FirebaseBackend.supAdminsCampo();
+                } else if (typeof db !== 'undefined' && db) {
+                    const snap = await db.collection('empleados').get();
+                    snap.forEach(doc => {
+                        const d = doc.data() || {};
+                        const id = String(d.id || doc.id).trim();
+                        const rol = String(d.supervisor || d.rol || '').trim().toUpperCase();
+                        if (String(d.activo || 'SI').toUpperCase() === 'NO') return;
+                        if (id === '1058' || rol.includes('ADMIN')) lista.push({ id, nombre: d.nombre || 'Sup. Admin', telefono: d.telefono || '' });
+                    });
+                }
+            } catch (e) {
+                console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e);
+            }
+            return lista.filter(d => d.telefono && String(d.id) !== String(excluirId));
+        },
+
         // Notificar a los Supervisores Administradores sobre una nueva solicitud de almuerzo o refrigerio
         async notificarSupAdminsSolicitudInvitado(detalles = {}) {
             try {
-                let destinatarios = [];
-                if (typeof db !== 'undefined' && db) {
-                    try {
-                        const snap = await db.collection('empleados').get();
-                        snap.forEach(doc => {
-                            const d = doc.data() || {};
-                            const id = String(d.id || doc.id).trim();
-                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
-                            if ((id === '1058' || supVal.includes('ADMIN')) && d.telefono) {
-                                destinatarios.push({
-                                    id: id,
-                                    nombre: d.nombre || 'Sup. Admin',
-                                    telefono: d.telefono
-                                });
-                            }
-                        });
-                    } catch (e) {
-                        console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e);
-                    }
-                }
-
-                if (destinatarios.length === 0) {
-                    destinatarios = [
-                        { id: '1058', nombre: 'Fernando Sanmartin', telefono: '0984660105' },
-                        { id: '8', nombre: 'Martina Rodriguez', telefono: '0962707809' }
-                    ];
-                }
+                const destinatarios = await this._destinatariosSupAdmin();
+                if (destinatarios.length === 0) return { ok: false, error: 'Sin destinatarios' };
 
                 const isAlm = (detalles.tipoSolicitud === 'ALMUERZO_EXTRA' || detalles.subtipo === 'ALMUERZO_EXTRA');
                 const tipoLabel = isAlm
-                    ? '🍱 Almuerzo Extra'
-                    : (detalles.subtipo === 'REFRIGERIO_GALLETAS' ? '🍪 Break con Galletas TCONTROL' : '🥪 Refrigerio (Sánduche)');
+                    ? '🍱 Almuerzo extra'
+                    : (detalles.subtipo === 'REFRIGERIO_GALLETAS' ? '🍪 Break con galletas' : '🥪 Refrigerio (sánduche)');
 
-                const fechaReq = detalles.fecha || new Date().toISOString().slice(0, 10);
-                const horaReq = detalles.horaServicio ? `\n• *Hora para servir:* ${detalles.horaServicio}` : '';
-                const obs = detalles.observaciones ? `\n• *Detalle:* ${detalles.observaciones}` : '';
+                const fechaReq = this._fechaCorta(detalles.fecha || new Date().toISOString().slice(0, 10));
+                const horaReq = detalles.horaServicio ? ` a las ${detalles.horaServicio}` : '';
 
-                const mensaje = 
-                    `🔔 *TCONTROL - Nueva Solicitud de Catering / Invitados*\n\n` +
-                    `Estimado(a) *Sup. Admin*, se ha registrado un nuevo pedido de invitados:\n\n` +
-                    `• *Servicio:* ${tipoLabel} (x${detalles.cantidad || 1})\n` +
-                    `• *Fecha requerida:* ${fechaReq}${horaReq}\n` +
-                    `• *Solicitante:* ${detalles.empleadoNombre || 'Colaborador'} (${detalles.empleadoArea || 'Área'})\n` +
-                    `• *Invitado:* ${detalles.invitado || 'Invitado'} ${detalles.empresa ? '· ' + detalles.empresa : ''}${obs}\n\n` +
-                    `👉 *Acción requerida:* Favor ingresar al panel de Supervisor (pestaña *Invitados & Catering*) para revisar y coordinar la confirmación y atención.`;
+                const mensaje =
+                    `🍽️ *TCONTROL · Pedido de invitados por confirmar*\n\n` +
+                    `${tipoLabel} × ${detalles.cantidad || 1}\n` +
+                    `📅 ${fechaReq}${horaReq}\n` +
+                    `🙋 Pide: ${this._nombreCorto(detalles.empleadoNombre)}${detalles.empleadoArea ? ` (${detalles.empleadoArea})` : ''}\n` +
+                    `🤝 Para: ${detalles.invitado || 'Invitado'}${detalles.empresa ? ' · ' + detalles.empresa : ''}\n\n` +
+                    `👉 Confírmalo con cocina en el panel de Supervisor → *Invitados & Catering*.`;
 
                 const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
                 await Promise.allSettled(envios);
@@ -1411,45 +1428,17 @@
         // Notificar a Supervisores / Admins cuando un colaborador reporta un estado fuera de área que requiere regularización
         async notificarSupervisorEstadoFueraArea(detalles = {}) {
             try {
-                let destinatarios = [];
-                if (typeof db !== 'undefined' && db) {
-                    try {
-                        const snap = await db.collection('empleados').get();
-                        snap.forEach(doc => {
-                            const d = doc.data() || {};
-                            const id = String(d.id || doc.id).trim();
-                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
-                            if ((id === '1058' || supVal.includes('ADMIN')) && d.telefono) {
-                                destinatarios.push({
-                                    id: id,
-                                    nombre: d.nombre || 'Sup. Admin',
-                                    telefono: d.telefono
-                                });
-                            }
-                        });
-                    } catch (e) {
-                        console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e);
-                    }
-                }
+                const destinatarios = await this._destinatariosSupAdmin();
+                if (destinatarios.length === 0) return { ok: false, error: 'Sin destinatarios' };
 
-                if (destinatarios.length === 0) {
-                    destinatarios = [
-                        { id: '1058', nombre: 'Fernando Sanmartin', telefono: '0984660105' },
-                        { id: '8', nombre: 'Martina Rodriguez', telefono: '0962707809' }
-                    ];
-                }
+                const fechaReq = this._fechaCorta(detalles.fecha || new Date().toISOString().slice(0, 10));
+                const tipoLabel = detalles.textoEstado || detalles.tipo || 'Ausencia fuera de área';
 
-                const fechaReq = detalles.fecha || new Date().toISOString().slice(0, 10);
-                const tipoLabel = detalles.textoEstado || detalles.tipo || 'Ausencia Fuera de Área';
-                const obs = detalles.observacion ? `\n• *Detalle / Motivo:* ${detalles.observacion}` : '';
-
+                // El motivo escrito por el colaborador puede tener datos de salud: no viaja por WhatsApp, se lee en el panel
                 const mensaje =
-                    `🔔 *TCONTROL - Novedad de Asistencia Reportada*\n\n` +
-                    `El colaborador *${detalles.empleadoNombre || 'Colaborador'}* (ID: ${detalles.empleadoId || '--'}, Área: ${detalles.empleadoArea || 'General'}) ha reportado el siguiente estado:\n\n` +
-                    `• *Fecha:* ${fechaReq}\n` +
-                    `• *Estado:* ${tipoLabel}${obs}\n` +
-                    `• *Condición:* Preliminar (Fuera de geocerca)\n\n` +
-                    `👉 *Acción requerida:* Esta novedad requiere regularización por parte de Supervisión en el módulo de Asistencia dentro del período actual.`;
+                    `📍 *TCONTROL · Novedad por regularizar*\n\n` +
+                    `*${this._nombreCorto(detalles.empleadoNombre)}* (ID ${detalles.empleadoId || '--'}) reportó *${tipoLabel}* el ${fechaReq}, fuera de la geocerca.\n\n` +
+                    `👉 Revísala y regularízala en el panel de Supervisor → *Asistencia* antes del cierre del período.`;
 
                 const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
                 await Promise.allSettled(envios);
@@ -1464,22 +1453,20 @@
         // (automatica: ya quedó aprobado y el aviso es informativo, para revocarlo si no corresponde)
         async notificarSupAdminsSolicitudCampo(detalles = {}) {
             try {
-                let destinatarios = detalles.destinatarios || [];
-                if (!detalles.destinatarios && window.FirebaseBackend && window.FirebaseBackend.supAdminsCampo) {
-                    try { destinatarios = await window.FirebaseBackend.supAdminsCampo(); }
-                    catch (e) { console.warn("[OpenWA] Error consultando Sup. Admins en Firestore:", e); }
-                }
-                destinatarios = destinatarios.filter(d => d.telefono);
+                let destinatarios = detalles.destinatarios
+                    ? detalles.destinatarios.filter(d => d.telefono)
+                    : await this._destinatariosSupAdmin();
                 if (destinatarios.length === 0) return { ok: false, error: 'Sin destinatarios' };
 
-                const f = s => { const p = String(s || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(s || ''); };
-                const quien = `*${detalles.empleadoNombre || 'Colaborador'}* (ID: ${detalles.empleadoId || '--'}, Área: ${detalles.empleadoArea || 'General'})`;
-                const periodo = `• *Desde:* ${f(detalles.desde)}\n• *Hasta:* ${f(detalles.hasta)}\n• *Proyecto / motivo:* ${detalles.motivo || '--'}\n\n`;
+                const f = s => this._fechaCorta(s);
+                const quien = `*${this._nombreCorto(detalles.empleadoNombre)}* (ID ${detalles.empleadoId || '--'})`;
+                const periodo = `📅 Del ${f(detalles.desde)} al ${f(detalles.hasta)}\n` +
+                    (detalles.motivo ? `🏗️ ${String(detalles.motivo).slice(0, 120)}\n` : '') + '\n';
                 const mensaje = detalles.automatica
-                    ? `🚗 *TCONTROL - Registro en campo aprobado automáticamente*\n\n${quien} podrá registrar su asistencia en campo:\n\n${periodo}` +
-                      'ℹ️ Se aprobó solo por ser un período de hasta 15 días. Si no corresponde, revócalo en el panel de Supervisor (botón *Campo* en la ficha del colaborador).'
-                    : `🚗 *TCONTROL - Solicitud de registro en campo*\n\n${quien} solicita registrar su asistencia en campo:\n\n${periodo}` +
-                      '👉 *Acción requerida:* aprobar o rechazar en el panel de Supervisor (aviso *Solicitudes de campo* en Control Diario).';
+                    ? `🚗 *TCONTROL · Registro en campo aprobado*\n\n${quien} podrá marcar en campo:\n${periodo}` +
+                      'ℹ️ Se aprobó solo por ser de hasta 15 días. Si no corresponde, revócalo en el panel de Supervisor → ficha del colaborador → *Campo*.'
+                    : `🚗 *TCONTROL · Registro en campo por aprobar*\n\n${quien} pide marcar en campo:\n${periodo}` +
+                      '👉 Apruébalo o recházalo en el panel de Supervisor → Control Diario → *Solicitudes de campo*.';
 
                 const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
                 const res = await Promise.allSettled(envios);
@@ -1510,43 +1497,20 @@
         // Enviar recordatorio manual/periódico a Sup. Admins con el resumen de solicitudes pendientes
         async notificarSupAdminsRecordatorioPendientes(solicitudesPendientes = []) {
             try {
-                let destinatarios = [];
-                if (typeof db !== 'undefined' && db) {
-                    try {
-                        const snap = await db.collection('empleados').get();
-                        snap.forEach(doc => {
-                            const d = doc.data() || {};
-                            const id = String(d.id || doc.id).trim();
-                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
-                            if ((id === '1058' || supVal.includes('ADMIN')) && d.telefono) {
-                                destinatarios.push({
-                                    id: id,
-                                    nombre: d.nombre || 'Sup. Admin',
-                                    telefono: d.telefono
-                                });
-                            }
-                        });
-                    } catch (e) {}
-                }
-                if (destinatarios.length === 0) {
-                    destinatarios = [
-                        { id: '1058', nombre: 'Fernando Sanmartin', telefono: '0984660105' },
-                        { id: '8', nombre: 'Martina Rodriguez', telefono: '0962707809' }
-                    ];
-                }
+                const destinatarios = await this._destinatariosSupAdmin();
+                if (destinatarios.length === 0) return { ok: false, error: 'Sin destinatarios' };
 
                 const count = solicitudesPendientes.length;
                 const resumenLineas = solicitudesPendientes.slice(0, 5).map(s => {
                     const isAlm = (s.subtipo === 'ALMUERZO_EXTRA' || s.tipoSolicitud === 'ALMUERZO_EXTRA');
                     const icon = isAlm ? '🍱' : '🥪';
-                    return `• ${icon} ${s.fecha}: ${s.invitado} (x${s.cantidad}) - Por: ${s.solicitante || s.empleadoNombre}`;
+                    return `${icon} ${this._fechaCorta(s.fecha)} · ${s.invitado || 'Invitado'} × ${s.cantidad || 1} · pide ${this._nombreCorto(s.solicitante || s.empleadoNombre)}`;
                 }).join('\n');
 
-                const mensaje = 
-                    `🔔 *TCONTROL - Recordatorio para Sup. Admin*\n\n` +
-                    `Estimado(a) *Sup. Admin*, existen *${count}* solicitud(es) de refrigerios o almuerzos de invitados pendientes de revisión:\n\n` +
-                    `${resumenLineas}\n${count > 5 ? `...y ${count - 5} más.\n` : ''}\n` +
-                    `👉 Favor ingresar al panel de Supervisor (pestaña *Invitados & Catering*) para confirmar los pedidos con cocina.`;
+                const mensaje =
+                    `⏰ *TCONTROL · ${count} pedido(s) de invitados sin confirmar*\n\n` +
+                    `${resumenLineas}\n${count > 5 ? `…y ${count - 5} más.\n` : ''}\n` +
+                    `👉 Confírmalos con cocina en el panel de Supervisor → *Invitados & Catering*.`;
 
                 const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
                 await Promise.allSettled(envios);
@@ -1560,44 +1524,20 @@
         // Notificar a Sup. Admins cuando una solicitud de invitado es cancelada o eliminada
         async notificarSupAdminsCancelacionInvitado(detalles = {}) {
             try {
-                let destinatarios = [];
-                if (typeof db !== 'undefined' && db) {
-                    try {
-                        const snap = await db.collection('empleados').get();
-                        snap.forEach(doc => {
-                            const d = doc.data() || {};
-                            const id = String(d.id || doc.id).trim();
-                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
-                            if ((id === '1058' || supVal.includes('ADMIN')) && d.telefono) {
-                                destinatarios.push({
-                                    id: id,
-                                    nombre: d.nombre || 'Sup. Admin',
-                                    telefono: d.telefono
-                                });
-                            }
-                        });
-                    } catch (e) {}
-                }
-                if (destinatarios.length === 0) {
-                    destinatarios = [
-                        { id: '1058', nombre: 'Fernando Sanmartin', telefono: '0984660105' },
-                        { id: '8', nombre: 'Martina Rodriguez', telefono: '0962707809' }
-                    ];
-                }
+                const destinatarios = await this._destinatariosSupAdmin();
+                if (destinatarios.length === 0) return { ok: false, error: 'Sin destinatarios' };
 
                 const tipoLabel = (detalles.subtipo === 'ALMUERZO_EXTRA' || detalles.tipoSolicitud === 'ALMUERZO_EXTRA')
-                    ? '🍱 Almuerzo Extra'
-                    : ((detalles.subtipo === 'REFRIGERIO_SANDUCHE') ? '🥪 Sánduche' : '🍪 Break Galletas');
+                    ? '🍱 Almuerzo extra'
+                    : ((detalles.subtipo === 'REFRIGERIO_SANDUCHE') ? '🥪 Refrigerio (sánduche)' : '🍪 Break con galletas');
 
-                const mensaje = 
-                    `🗑️ *TCONTROL - Solicitud de Invitado Cancelada / Eliminada*\n\n` +
-                    `Estimado(a) *Sup. Admin*, se ha retirado una solicitud de invitados en la hoja *ALMUERZOS_EXTRA*:\n\n` +
-                    `• *Servicio:* ${tipoLabel} (x${detalles.cantidad || 1})\n` +
-                    `• *Fecha:* ${detalles.fecha || 'Hoy'}\n` +
-                    `• *Invitado:* ${detalles.invitado || 'Invitado'}\n` +
-                    `• *Solicitante:* ${detalles.solicitante || 'Colaborador'}\n` +
-                    `• *Eliminado por:* ${detalles.eliminadoPor || 'Supervisor'}\n\n` +
-                    `ℹ️ _El registro ha sido eliminado del sistema y de la lista de cocina._`;
+                const mensaje =
+                    `🗑️ *TCONTROL · Pedido de invitados cancelado*\n\n` +
+                    `${tipoLabel} × ${detalles.cantidad || 1}\n` +
+                    `📅 ${detalles.fecha ? this._fechaCorta(detalles.fecha) : 'Hoy'}\n` +
+                    `🤝 Para: ${detalles.invitado || 'Invitado'}\n` +
+                    `🙋 Pedido por ${this._nombreCorto(detalles.solicitante)} · cancelado por ${this._nombreCorto(detalles.eliminadoPor || 'Supervisor')}\n\n` +
+                    `ℹ️ Ya salió de la lista de cocina; no hace falta hacer nada más.`;
 
                 const envios = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, mensaje));
                 await Promise.allSettled(envios);
@@ -1616,29 +1556,28 @@
                 const supUrl = 'https://asistencia.tcontrolsa.com/supervisor.html';
 
                 const nombre = empInfo.nombre || 'Colaborador';
-                const id = empInfo.id || '';
-                const area = empInfo.area || 'General';
-                const cargo = empInfo.cargo || 'Personal';
+                const corto = this._nombreCorto(nombre);
+                const id = String(empInfo.id || '').trim();
+                const area = empInfo.area || '';
+                const cargo = empInfo.cargo || '';
                 const telefono = empInfo.telefono || '';
-                const rol = empInfo.supervisor === 'SUPERVISOR ADMIN' ? '👑 Supervisor Admin' : (empInfo.supervisor === 'SI' ? '🛡️ Supervisor' : '👤 Empleado regular');
+                // El rol solo se menciona si da acceso al panel: es lo que un administrador debe poder detectar
+                const rolElevado = empInfo.supervisor === 'SUPERVISOR ADMIN' ? 'Supervisor administrador'
+                    : (empInfo.supervisor === 'SI' ? 'Supervisor' : '');
 
                 // 1. Enviar mensaje de bienvenida al nuevo colaborador (si tiene teléfono)
                 let resColaborador = { ok: false };
                 if (telefono) {
-                    const msgBienvenida = 
-                        `👋 *¡Hola, ${nombre}! Bienvenido/a a TCONTROL.*\n\n` +
-                        `Te informamos que has sido registrado/a en el sistema de control de asistencia.\n\n` +
-                        `👤 *Tus Datos de Acceso:*\n` +
-                        `🆔 *ID:* ${id}\n` +
-                        `🏢 *Área:* ${area}\n` +
-                        `💼 *Cargo:* ${cargo}\n\n` +
-                        `🌐 *Enlace de Ingreso a la App:*\n` +
-                        `👉 ${appUrl}\n\n` +
-                        `📱 *Instrucciones para tu primer ingreso:*\n` +
-                        `1. Abre el enlace arriba desde tu teléfono o computador.\n` +
-                        `2. Digita tu número de ID (${id}).\n` +
-                        `3. El sistema te solicitará crear y registrar tu contraseña personal (mínimo 4 caracteres).\n\n` +
-                        `_¡Muchos éxitos y bienvenido/a al equipo!_ ✨`;
+                    const pila = corto.split(' ')[0];
+                    const msgBienvenida =
+                        `👋 *¡Hola, ${pila}! Bienvenido/a a TCONTROL.*\n\n` +
+                        `Ya estás registrado/a en la app de asistencia.\n\n` +
+                        `🆔 Tu ID es *${id}*\n\n` +
+                        `*Para entrar por primera vez:*\n` +
+                        `1️⃣ Abre ${appUrl}\n` +
+                        `2️⃣ Escribe tu ID *${id}*\n` +
+                        `3️⃣ Crea tu contraseña (mínimo 4 caracteres). No la compartas con nadie.\n\n` +
+                        `_¡Muchos éxitos en el equipo!_ ✨`;
 
                     resColaborador = await this.enviarMensajeTexto(telefono, msgBienvenida);
                     if (resColaborador.ok && this.registrarLogEnvio) {
@@ -1653,45 +1592,22 @@
                     }
                 }
 
-                // 2. Notificar a los Supervisores / Supervisor Admins
-                let destinatarios = [];
-                if (typeof db !== 'undefined' && db) {
-                    try {
-                        const snap = await db.collection('empleados').get();
-                        snap.forEach(doc => {
-                            const d = doc.data() || {};
-                            const docId = String(d.id || doc.id).trim();
-                            const supVal = String(d.supervisor || d.rol || '').trim().toUpperCase();
-                            if ((docId === '1058' || supVal.includes('ADMIN') || supVal === 'SI') && d.telefono && docId !== id) {
-                                destinatarios.push({
-                                    id: docId,
-                                    nombre: d.nombre || 'Supervisor',
-                                    telefono: d.telefono
-                                });
-                            }
-                        });
-                    } catch (e) {}
-                }
-                if (destinatarios.length === 0) {
-                    destinatarios = [
-                        { id: '1058', nombre: 'Fernando Sanmartin', telefono: '0984660105' },
-                        { id: '8', nombre: 'Martina Rodriguez', telefono: '0962707809' }
-                    ];
-                }
+                // 2. Avisar solo a los supervisores administradores (quienes gestionan altas), sin el teléfono
+                //    del colaborador: basta con saber si recibió la bienvenida.
+                const destinatarios = await this._destinatariosSupAdmin(id);
 
-                const fechaHoraStr = new Date().toLocaleString('es-EC', { timeZone: 'America/Guayaquil' });
-                const msgSup = 
-                    `🔔 *[TCONTROL] Nuevo Colaborador Registrado*\n\n` +
-                    `Se ha registrado un nuevo usuario en la plataforma:\n\n` +
-                    `👤 *Colaborador:* ${nombre}\n` +
-                    `🆔 *ID:* ${id}\n` +
-                    `🏢 *Área:* ${area}\n` +
-                    `💼 *Cargo:* ${cargo}\n` +
-                    `📱 *WhatsApp:* ${telefono || 'No registrado'}\n` +
-                    `🛡️ *Rol:* ${rol}\n` +
-                    `✍️ *Registrado por:* ${creadorNombre}\n` +
-                    `📅 *Fecha:* ${fechaHoraStr}\n\n` +
-                    `🌐 *Panel Supervisor:* ${supUrl}`;
+                const puesto = [cargo, area].filter(Boolean).join(' · ');
+                const estadoBienvenida = resColaborador.ok
+                    ? '✅ Ya recibió por WhatsApp su ID y el enlace de ingreso.'
+                    : (telefono ? '⚠️ La bienvenida por WhatsApp no se entregó: avísale su ID.'
+                                : '⚠️ No tiene WhatsApp registrado: avísale su ID.');
+                const msgSup =
+                    `🆕 *TCONTROL · Nuevo colaborador*\n\n` +
+                    `*${corto}* (ID ${id})` + (puesto ? `\n${puesto}` : '') + `\n\n` +
+                    (rolElevado ? `🛡️ Con acceso al panel como *${rolElevado}*. Si no corresponde, retíralo en su ficha.\n\n` : '') +
+                    `${estadoBienvenida}\n` +
+                    `✍️ Lo registró ${this._nombreCorto(creadorNombre)}.\n\n` +
+                    `👉 Ficha completa en el panel: ${supUrl}`;
 
                 const enviosSup = destinatarios.map(d => this.enviarMensajeTexto(d.telefono, msgSup));
                 await Promise.allSettled(enviosSup);

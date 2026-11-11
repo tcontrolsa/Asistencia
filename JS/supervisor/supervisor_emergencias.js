@@ -173,7 +173,7 @@ function emPersonas() {
   }).filter(p => p.enPlanta || p.rep);
 }
 
-// 0984660105 / 984660105 / +593 98 466 0105 → 593984660105
+// 0991234567 / 991234567 / +593 99 123 4567 → 593991234567
 function emNumeroWa(t) {
   const d = String(t || '').replace(/\D/g, '');
   if (d.startsWith('593') && d.length >= 11) return d;
