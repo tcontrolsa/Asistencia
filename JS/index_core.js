@@ -1814,6 +1814,10 @@ window.guardarReporteFueraArea = async function () {
     if (!confirm(`¿Confirmas que HOY NO VIENES A TRABAJAR?\n\nSe registrará "${textoEstado.replace(/^[^A-Za-zÁÉÍÓÚ]+/, '')}" por la jornada completa.\n\nSi estás en la empresa y el GPS falla, cancela y registra tu entrada en la terminal del guardia.`)) return;
     const uRep = evaluarUbicacion();
 
+    if (window.SesionFirebase && typeof window.SesionFirebase.asegurar === 'function') {
+        await window.SesionFirebase.asegurar(empleado.id, { siempre: true, motivo: 'Para guardar tu reporte, confirma que eres tú.' }).catch(() => null);
+    }
+
     showLoading(true);
     try {
         const payload = {
@@ -2684,6 +2688,13 @@ async function procederConRegistro() {
         bitacoraIntento({ ...evBase, fase: 'sin_conexion', error: 'Teléfono sin conexión a internet' });
         mostrarFalloMarcacion(tipoReg, 'Tu teléfono no tiene conexión a internet.', evBase.intento);
         return;
+    }
+
+    // Seguridad etapa 2: las marcaciones se guardarán solo con la sesión de Firebase de la persona. Si este
+    // teléfono aún no la tiene, se pide la contraseña aquí (aunque hoy haya elegido "Ahora no").
+    if (window.SesionFirebase && typeof window.SesionFirebase.asegurar === 'function') {
+        const s = await window.SesionFirebase.asegurar(empleado.id, { siempre: true, motivo: 'Para guardar tu marcación, confirma que eres tú.' }).catch(() => null);
+        if (!(s && s.ok)) bitacoraIntento({ ...evBase, fase: 'sin_sesion', error: 'Marcó sin sesión de Firebase' });
     }
 
     mostrarGuardandoMarcacion(tipoReg);

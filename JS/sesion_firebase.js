@@ -95,19 +95,29 @@
   let pidiendo = false;
 
   // opts.terminal: terminal del guardia (pide la clave del terminal en vez de la contraseña personal)
-  async function asegurar(empleadoId, opts) {
+  // opts.siempre: pide aunque hoy se haya elegido "Ahora no" (antes de marcar)
+  // Devuelve una promesa que se cumple al cerrar el aviso: { ok } (true si quedó con sesión)
+  // Una sola consulta a la vez: si dos partes de la página la piden juntas, comparten el mismo aviso
+  let esperaActual = null;
+  function asegurar(empleadoId, opts) {
     const terminal = !!(opts && opts.terminal);
     const id = terminal ? UID_TERMINAL : String(empleadoId || '').trim();
-    if (!id || pidiendo || !auth()) return;
-    const u = await usuarioGuardado();
-    if (u && u.uid === id) return;                    // ya tiene sesión
-    if (u && u.uid !== id) await cerrar();            // sesión de otra persona en este equipo
-    try { if (localStorage.getItem(KEY_OMITIDA) === id + '|' + hoy()) return; } catch (e) { }
-    pidiendo = true;
-    mostrarModal(id, terminal);
+    if (!id || !auth()) return Promise.resolve({ ok: false });
+    if (esperaActual) return esperaActual;
+    esperaActual = (async () => {
+      const u = await usuarioGuardado();
+      if (u && u.uid === id) return { ok: true };       // ya tiene sesión
+      if (u && u.uid !== id) await cerrar();            // sesión de otra persona en este equipo
+      if (!(opts && opts.siempre)) {
+        try { if (localStorage.getItem(KEY_OMITIDA) === id + '|' + hoy()) return { ok: false, omitida: true }; } catch (e) { }
+      }
+      pidiendo = true;
+      return new Promise(res => mostrarModal(id, terminal, res, opts && opts.motivo));
+    })().finally(() => { esperaActual = null; });
+    return esperaActual;
   }
 
-  function mostrarModal(id, terminal) {
+  function mostrarModal(id, terminal, alCerrar, motivo) {
     const fondo = document.createElement('div');
     fondo.id = 'modalSesionFirebase';
     fondo.setAttribute('role', 'dialog');
@@ -118,7 +128,7 @@
       <form style="background:#fff; border-radius:16px; padding:22px; width:100%; max-width:360px; box-shadow:0 20px 40px rgba(0,0,0,.25);">
         <div style="width:44px; height:44px; border-radius:12px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; font-size:20px; margin-bottom:10px;"><i class="fas fa-shield-alt"></i></div>
         <h3 id="sfbTitulo" style="margin:0 0 6px; font-size:17px; color:#0f172a;">${terminal ? 'Confirma la clave del terminal' : 'Confirma tu contraseña'}</h3>
-        <p style="margin:0 0 14px; font-size:13px; color:#475569; line-height:1.45;">Estamos reforzando la seguridad del sistema. Escribe ${terminal ? 'la clave del terminal' : 'tu contraseña'} <strong>una sola vez</strong>; después no te la volveremos a pedir en este ${terminal ? 'equipo' : 'teléfono'}.</p>
+        <p style="margin:0 0 14px; font-size:13px; color:#475569; line-height:1.45;">${motivo ? motivo + ' ' : ''}Estamos reforzando la seguridad del sistema. Escribe ${terminal ? 'la clave del terminal' : 'tu contraseña'} <strong>una sola vez</strong>; después no te la volveremos a pedir en este ${terminal ? 'equipo' : 'teléfono'}.</p>
         <label for="sfbClave" style="font-size:12px; font-weight:700; color:#334155;">${terminal ? 'Clave del terminal' : 'Contraseña'}</label>
         <input id="sfbClave" type="password" autocomplete="current-password" required maxlength="40" style="width:100%; box-sizing:border-box; margin:4px 0 6px; padding:11px 12px; font-size:16px; border:1px solid #cbd5e1; border-radius:10px;">
         <p id="sfbMsg" role="status" style="min-height:18px; margin:0 0 10px; font-size:12.5px; color:#b91c1c;"></p>
@@ -131,7 +141,10 @@
     const input = fondo.querySelector('#sfbClave');
     const msg = fondo.querySelector('#sfbMsg');
     const btn = form.querySelector('button[type="submit"]');
-    const cerrarModal = () => { fondo.remove(); pidiendo = false; };
+    const cerrarModal = (ok) => {
+      fondo.remove(); pidiendo = false;
+      if (typeof alCerrar === 'function') alCerrar({ ok: !!ok });
+    };
     setTimeout(() => input.focus(), 50);
 
     fondo.querySelector('[data-sfb-omitir]').addEventListener('click', () => {
@@ -145,7 +158,7 @@
       btn.disabled = true; btn.textContent = 'Verificando…'; msg.textContent = '';
       const r = terminal ? await abrirTerminal(clave) : await abrir(id, await sha256(clave));
       if (r.ok) {
-        cerrarModal();
+        cerrarModal(true);
         if (typeof window.mostrarToast === 'function') window.mostrarToast('Listo, gracias. Tu acceso quedó protegido.', 'success');
         return;
       }
