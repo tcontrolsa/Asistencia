@@ -461,6 +461,10 @@ function mantenimientoDiario() {
   logsMantenimiento = [];
   eliminarFilasEnBlanco();
   moverVacacionesAHojaVacaciones();
+  // Fichas nuevas o cambiadas en Firestore → hoja EMPLEADOS (empleados_hoja.gs)
+  if (typeof sincronizarFichasEnEmpleados === 'function') {
+    try { sincronizarFichasEnEmpleados(); } catch (e) { Logger.log('Fichas → EMPLEADOS: ' + e); }
+  }
 }
 
 /**

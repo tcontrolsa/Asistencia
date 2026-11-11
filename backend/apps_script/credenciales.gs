@@ -24,7 +24,7 @@
  * "pin" es siempre el SHA-256 en hexadecimal que calcula la app (o la contraseña en claro, que se cifra aquí).
  */
 
-var CRED_FUENTE = 'FIRESTORE';
+var CRED_FUENTE = 'CREDENCIALES';
 var CRED_ITER = 2000;
 var CRED_ROLES_ADMIN = ['master', 'admin', 'supervisor'];
 
