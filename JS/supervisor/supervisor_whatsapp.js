@@ -495,14 +495,39 @@ window.verificarAutoEnvioWhatsApp = async function (forzar = false) {
   }
 
   try {
+    const hoyP = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
+    await cargarPermisosHoySinAviso(hoyP);
     await window.OpenWAService.ejecutarChequeoAutomatico(calcularSinMarcarHoy(), false);
   } catch (e) {
     console.warn("[OpenWA] Error en verificación periódica de WhatsApp:", e);
   }
 };
 
+// Permisos de hoy (fase 4 del flujo de permisos, 2026-11-11): no recibe el aviso quien tiene para hoy una solicitud
+// pendiente, aprobada o registrada (vacaciones, permiso personal o médico, calamidad) por días, o por horas que
+// cubran la hora de corte del aviso. Los permisos por días aprobados ya crean registro; los por horas y los
+// pendientes no, por eso se consultan aparte. La misma regla está en recordatorio_auto.gs (simulación).
+const ESTADOS_PERMISO_SIN_AVISO = ['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA', 'REGISTRADA'];
+window._permisosHoySinAviso = window._permisosHoySinAviso || { fecha: '', ids: new Set() };
+function minutosHM(h) { const m = String(h || '').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : NaN; }
+function permisoCubreAviso(s, hoy, corteMin) {
+  if (!s || !ESTADOS_PERMISO_SIN_AVISO.includes(s.estado) || !(s.fechas || []).includes(hoy)) return false;
+  if (s.modalidad !== 'HORAS') return true;
+  const a = minutosHM(s.hora_desde), b = minutosHM(s.hora_hasta);
+  return !isNaN(a) && !isNaN(b) && a <= corteMin && corteMin < b;
+}
+async function cargarPermisosHoySinAviso(hoy) {
+  const corte = minutosHM((window.OpenWAService && window.OpenWAService.config && window.OpenWAService.config.horaCorteNoRegistro) || '08:15');
+  const snap = await firebase.firestore().collection('solicitudes_permiso').where('fechas', 'array-contains', hoy).get();
+  const ids = new Set();
+  snap.forEach(doc => { const s = doc.data(); if (permisoCubreAviso(s, hoy, corte)) ids.add(String(s.empleadoId)); });
+  window._permisosHoySinAviso = { fecha: hoy, ids };
+  return ids;
+}
+window.cargarPermisosHoySinAviso = cargarPermisosHoySinAviso;
+
 // Colaboradores activos que hoy no registran entrada (excluye vacaciones, campo, justificados,
-// "solo almuerzo" y excluidos de asistencia)
+// "solo almuerzo", excluidos de asistencia y quien tiene un permiso de hoy: ver cargarPermisosHoySinAviso)
 function calcularSinMarcarHoy() {
   const hoy = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
   const empActivos = (empCache || []).filter(e => {
@@ -512,8 +537,10 @@ function calcularSinMarcarHoy() {
     return act && !soloAlm && !excluido;
   });
 
+  const permisosHoy = window._permisosHoySinAviso && window._permisosHoySinAviso.fecha === hoy ? window._permisosHoySinAviso.ids : new Set();
   const sinMarcar = empActivos.filter(e => {
     if (e.entradaHoy) return false;
+    if (permisosHoy.has(String(e.id))) return false;
 
     const fReg = (e.registros || []).find(r => {
       const t = String(r.tipo || '').toUpperCase();
@@ -550,6 +577,8 @@ async function revisarRecordatorioAutomatico() {
     // Datos frescos: quién ya marcó entrada hasta este momento
     await cargarDatosCompletos(false, true);
     if (!Array.isArray(empCache) || empCache.length === 0) return; // sin datos no se decide nada
+    // Permisos de hoy: si no se pueden leer, no se envía (mejor tarde que avisar a quien tiene permiso)
+    await cargarPermisosHoySinAviso(hoy);
     const res = await window.OpenWAService.ejecutarChequeoAutomatico(calcularSinMarcarHoy(), false);
     console.log('[OpenWA] Recordatorio automático "no registró entrada":', res);
   } catch (e) {

@@ -39,7 +39,7 @@ function simulacionRecordatorioDiario() {
   if (!lock.tryLock(20000)) return;
   try {
     if (leerDocRec_('configuracion/recordatorio_sim_' + hoy)) return;
-    var lista = calcularSinMarcarHoyRec_(hoy);
+    var lista = calcularSinMarcarHoyRec_(hoy, regla.horaCorte);
     guardarDocRec_('configuracion/recordatorio_sim_' + hoy, {
       fecha: hoy, calculado_en: new Date().toISOString(), hora_corte: regla.horaCorte,
       // Solo IDs: la colección configuracion es legible sin sesión; los nombres se ven en el panel
@@ -64,8 +64,9 @@ function reglaDiaRec_(hoy, hm, cfg) {
 }
 
 // ---------------------------------------------------------------- reglas de calcularSinMarcarHoy
-function calcularSinMarcarHoyRec_(hoy) {
+function calcularSinMarcarHoyRec_(hoy, horaCorte) {
   var emps = listarEmpleadosFirestore_();
+  var conPermiso = permisosHoySinAvisoRec_(hoy, horaCorte || '08:15');   // fase 4 del flujo de permisos
   var regsFs = consultaAvisoAlm_('registros', 'fecha', hoy);   // aviso_almuerzos.gs
   var porEmp = {};
   regsFs.forEach(function (r) {
@@ -88,6 +89,7 @@ function calcularSinMarcarHoyRec_(hoy) {
     var tipo = String(e.tipoRegistro || e.tipo || '').toUpperCase();
     if (tipo === 'MASTER' || tipo === 'VISITANTE') return false;
 
+    if (conPermiso[String(e.id)]) return false;
     var regs = porEmp[e.id] || [];
     if (regs.some(function (r) { return String(r.tipo || '').toUpperCase() === 'ENTRADA'; })) return false;
     var fReg = regs.filter(function (r) {
@@ -100,6 +102,32 @@ function calcularSinMarcarHoyRec_(hoy) {
     if (regs.some(function (r) { return r.modo === 'CAMPO'; })) return false;
     return true;
   }).map(function (e) { return { id: e.id, nombre: e.nombre || '', telefono: e.telefono || '' }; });
+}
+
+// Fase 4 del flujo de permisos (2026-11-11), igual que cargarPermisosHoySinAviso del panel: no recibe el aviso quien
+// tiene para hoy una solicitud pendiente, aprobada o registrada por días, o por horas que cubran la hora de corte.
+function permisosHoySinAvisoRec_(hoy, horaCorte) {
+  var mins = function (h) { var m = String(h || '').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
+  var corte = mins(horaCorte);
+  var res = fetchFirestore_(notifBaseFirestore_() + ':runQuery?key=' + EVAL_API_KEY_FIREBASE, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: 'solicitudes_permiso' }],
+      where: { fieldFilter: { field: { fieldPath: 'fechas' }, op: 'ARRAY_CONTAINS', value: { stringValue: hoy } } }
+    } })
+  });
+  if (res.getResponseCode() !== 200) throw new Error('No se pudieron leer los permisos de hoy: ' + res.getContentText().slice(0, 200));
+  var ids = {};
+  JSON.parse(res.getContentText()).filter(function (r) { return r.document; }).forEach(function (r) {
+    var s = valorAvisoAlm_({ mapValue: { fields: r.document.fields || {} } }) || {};
+    if (['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA', 'REGISTRADA'].indexOf(s.estado) === -1) return;
+    if (s.modalidad === 'HORAS') {
+      var a = mins(s.hora_desde), b = mins(s.hora_hasta);
+      if (isNaN(a) || isNaN(b) || !(a <= corte && corte < b)) return;
+    }
+    ids[String(s.empleadoId)] = true;
+  });
+  return ids;
 }
 
 function esSoloAlmuerzoRec_(e) {
@@ -160,6 +188,7 @@ function instalarSimulacionRecordatorio() {
 /** Calcula ahora mismo a quién iría el recordatorio de hoy, sin guardar ni enviar. */
 function probarSimulacionRecordatorio() {
   var hoy = Utilities.formatDate(new Date(), REC_TZ, 'yyyy-MM-dd');
-  var lista = calcularSinMarcarHoyRec_(hoy);
+  var cfgP = leerDocRec_('configuracion/whatsapp') || {};
+  var lista = calcularSinMarcarHoyRec_(hoy, cfgP.horaCorteNoRegistro || '08:15');
   Logger.log(lista.length + ' sin marcar hoy (' + hoy + '):\n' + lista.map(function (e) { return e.id + ' ' + e.nombre; }).join('\n'));
 }
