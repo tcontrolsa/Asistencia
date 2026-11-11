@@ -87,9 +87,14 @@ service cloud.firestore {
 
     // Colección 'configuracion' (Parámetros globales del sistema)
     // Lectura para geocercas y horarios; borrado prohibido.
+    // Escritura (seguridad etapa 2): supervisores con sesión; el acceso a pestañas solo master y admin;
+    // el portal de soporte (soporte.html) guarda sus vínculos y tickets con la sesión de cualquier colaborador.
+    // Apps Script (túnel, simulaciones, candados) escribe con la cuenta de servicio.
     match /configuracion/{configId} {
       allow read: if true;
-      allow create, update: if true;
+      allow create, update: if (configId == 'acceso_pestanas' && esAdmin())
+                            || (configId != 'acceso_pestanas' && esGestor())
+                            || (configId in ['soporte_vinculos', 'soporte_tickets'] && conSesion());
       allow delete: if false;
     }
 
