@@ -411,8 +411,7 @@ window.FirebaseBackend = {
         }
 
         const empData = empDoc.data();
-        const pinExistente = empData.pin ? empData.pin.toString().trim() : '';
-        const tienePin = (pinExistente !== '');
+        const tienePin = this._tieneClave(empData);
 
         // Actualizar último uso sin esperar (no bloquea)
         dispRef.update({ ultimo_uso: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => { });
@@ -450,6 +449,20 @@ window.FirebaseBackend = {
             if (!r || (r.error && /API Key|no reconocida|Error del servidor|no pudo completar/i.test(r.error))) return null;
             return r;
         } catch (e) { return null; }
+    },
+    // ¿Tiene contraseña? En la fase B Firestore ya no guarda la contraseña: solo tiene_clave (lo escribe el servidor)
+    _tieneClave(d) {
+        return !!d && (d.tiene_clave === true || String(d.pin || '').trim() !== '');
+    },
+    // Restablecer ('') o asignar la contraseña de otra persona desde el panel: lo hace el servidor con la sesión de
+    // Firebase de quien lo pide (credAdmin). Devuelve { ok } o { error }.
+    async _credAdmin(params) {
+        let idToken = '';
+        try { if (firebase.auth && firebase.auth().currentUser) idToken = await firebase.auth().currentUser.getIdToken(); } catch (e) { }
+        if (!idToken) return { error: 'Tu sesión de seguridad no está activa. Recarga la página y confirma tu contraseña.' };
+        const r = await this._credServidor({ accion: 'credAdmin', idToken, ...params });
+        if (!r) return { error: 'No se pudo conectar con el servidor. Inténtalo de nuevo en un momento.' };
+        return r.ok ? r : { error: r.error || 'No se pudo guardar la contraseña.' };
     },
     async _usarPermiso(r, uid) {
         if (r && r.customToken && window.SesionFirebase && window.SesionFirebase.usarPermiso) await window.SesionFirebase.usarPermiso(r.customToken, uid);
@@ -498,6 +511,11 @@ window.FirebaseBackend = {
                 }
                 const pinEnBd = data.pin ? data.pin.toString().trim() : '';
                 if (!empDoc) {
+
+                // Sin respuesta del servidor y la ficha ya no guarda la contraseña (fase B): no se puede comprobar aquí
+                if (!pinEnBd && this._tieneClave(data)) {
+                    return { error: "No se pudo verificar tu contraseña en este momento. Revisa tu conexión e inténtalo de nuevo.", valido: false };
+                }
 
                 // Si no tiene contraseña establecida, se deniega y se redirige a vincular
                 if (!pinEnBd) {
@@ -565,7 +583,8 @@ window.FirebaseBackend = {
         });
 
         // Si el PIN tiene menos de 20 caracteres, es un PIN antiguo (no es SHA-256)
-        const debeActualizarPassword = (empData.pin?.toString().length || 0) < 20;
+        const pinViejo = String(empData.pin || '').trim();
+        const debeActualizarPassword = pinViejo !== '' && pinViejo.length < 20;
 
         const supRaw = (empData.supervisor || empData.rol || '').toString().trim().toUpperCase();
         const esSupervisor = (empData.supervisor === 'SI' || supRaw === 'SUPERVISOR ADMIN' || supRaw === 'SUPERVISOR_ADMIN' || supRaw === 'ADMIN' || supRaw === 'SUPERVISOR');
@@ -637,8 +656,7 @@ window.FirebaseBackend = {
         const empData = empDoc.data();
         if (empData.activo !== 'SI' && empData.activo !== 'si' && empData.activo !== true) return { error: "El empleado no se encuentra activo" };
 
-        const pinExistente = empData.pin ? empData.pin.toString().trim() : '';
-        const tienePin = (pinExistente !== '');
+        const tienePin = this._tieneClave(empData);
 
         const fotoRaw = empData.foto_url || empData.fotoUrl || empData.foto || empData.url_foto || empData.URL_FOTO || '';
         const fotoFinal = this._normalizarUrlFoto(fotoRaw);
@@ -687,18 +705,19 @@ window.FirebaseBackend = {
         if (empData.activo !== 'SI' && empData.activo !== 'si' && empData.activo !== true) return { error: "El empleado no se encuentra activo" };
 
         const pinExistente = empData.pin ? empData.pin.toString().trim() : '';
+        const tieneClave = this._tieneClave(empData);
+        const sinServidor = { error: "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo." };
 
-        // Seguridad: crear o comprobar la contraseña lo hace el servidor (hoja privada CREDENCIALES); si no
-        // responde, se sigue como siempre (fase A)
-        let guardoServidor = false;
+        // Seguridad: crear o comprobar la contraseña lo hace el servidor (hoja privada CREDENCIALES). La app ya no
+        // escribe contraseñas en Firestore; sin servidor solo se compara si la ficha aún la guarda (fase A).
         // 🛡️ CASO 1: Si es la primera vez (no tiene PIN), es OBLIGATORIO establecer una contraseña de al menos 4 caracteres
-        if (pinExistente === '') {
+        if (!tieneClave) {
             if ((rawPin && rawPin.length < 4) || (!rawPin && pin.length < 4)) {
                 return { error: "Por seguridad, la contraseña debe contener al menos 4 caracteres." };
             }
             const srv = await this._credServidor({ accion: 'credCrear', empleadoId: empDoc.id, pin });
-            if (srv && srv.ok) { guardoServidor = true; await this._usarPermiso(srv, empDoc.id); }
-            else if (srv && srv.error) return { error: srv.error };
+            if (srv && srv.ok) await this._usarPermiso(srv, empDoc.id);
+            else return (srv && srv.error) ? { error: srv.error } : sinServidor;
         } else {
             // 🛡️ CASO 2: Si el empleado YA TIENE contraseña registrada, DEBE coincidir obligatoriamente
             const srv = await this._credServidor({ accion: 'sesionFirebase', empleadoId: empDoc.id, pin });
@@ -707,6 +726,7 @@ window.FirebaseBackend = {
             } else if (srv && srv.error) {
                 return { error: /incorrecta/i.test(srv.error) ? "Contraseña incorrecta. Si la olvidaste, solicita a Recursos Humanos / Administrador el restablecimiento." : srv.error };
             } else {
+                if (!pinExistente) return sinServidor;
                 const coincide = (pinExistente === pin) || (rawPin && pinExistente === rawPin);
                 if (!coincide) {
                     return { error: "Contraseña incorrecta. Si la olvidaste, solicita a Recursos Humanos / Administrador el restablecimiento." };
@@ -714,12 +734,8 @@ window.FirebaseBackend = {
             }
         }
 
-        // 1. Actualizar empleado con el nuevo token (y la contraseña si era la primera vez o si se actualiza a hash SHA-256)
-        const updateData = { deviceToken: token };
-        if (!guardoServidor && (pinExistente === '' || pinExistente.length < 20)) {
-            updateData.pin = pin;
-        }
-        await empRef.update(updateData);
+        // 1. Actualizar empleado con el nuevo token (la contraseña ya la guardó el servidor)
+        await empRef.update({ deviceToken: token });
 
         // 📱 OPCIÓN 2: Desactivar/reemplazar cualquier dispositivo anterior registrado para este empleado
         try {
@@ -749,7 +765,7 @@ window.FirebaseBackend = {
             activo: true
         });
 
-        return { ok: true, esVinculacionExistente: pinExistente !== '' };
+        return { ok: true, esVinculacionExistente: tieneClave };
     },
 
     async actualizarPerfilEmpleado(params) {
@@ -778,19 +794,6 @@ window.FirebaseBackend = {
 
         const empData = empDoc.data();
 
-        // Si se va a cambiar la contraseña y el usuario envía la contraseña antigua (cambio desde perfil de empleado)
-        if (params.oldPasswordHash || params.oldPin) {
-            const pinActual = empData.pin ? empData.pin.toString().trim() : '';
-            if (pinActual !== '') {
-                const oldHash = params.oldPasswordHash?.toString().trim();
-                const oldPin = params.oldPin?.toString().trim();
-                const coincide = (pinActual === oldHash) || (oldPin && pinActual === oldPin);
-                if (!coincide) {
-                    return { error: "La contraseña actual es incorrecta." };
-                }
-            }
-        }
-
         const updateData = {};
         if (params.nombre !== undefined && params.nombre !== null) {
             updateData.nombre = params.nombre.toString().trim();
@@ -810,21 +813,18 @@ window.FirebaseBackend = {
             updateData.cultura_activa = hab;
         }
 
-        // Manejo de PIN / Contraseña (permite tanto asignar clave como resetear / dejar en blanco '')
-        // Seguridad: lo guarda el servidor (hoja privada + Firestore en la fase A); si no responde, como siempre
+        // Contraseña (asignar, cambiar o restablecer con ''): solo la guarda el servidor (hoja privada CREDENCIALES)
         if (params.passwordHash !== undefined || params.pin !== undefined) {
             const nuevoPin = params.passwordHash !== undefined ? params.passwordHash : params.pin;
             const valor = nuevoPin !== null ? nuevoPin.toString().trim() : '';
-            let srv = null;
             if (params.oldPasswordHash || params.oldPin) {
-                srv = await this._credServidor({ accion: 'credCambiar', empleadoId: empDoc.id, pinActual: params.oldPasswordHash || params.oldPin, pinNuevo: valor });
-                if (srv && !srv.ok && srv.error) return { error: srv.error };
+                const srv = await this._credServidor({ accion: 'credCambiar', empleadoId: empDoc.id, pinActual: params.oldPasswordHash || params.oldPin, pinNuevo: valor });
+                if (!srv) return { error: "No se pudo conectar con el servidor. Inténtalo de nuevo en un momento." };
+                if (!srv.ok) return { error: srv.error || "No se pudo cambiar la contraseña." };
             } else {
-                let idToken = '';
-                try { if (firebase.auth && firebase.auth().currentUser) idToken = await firebase.auth().currentUser.getIdToken(); } catch (e) { }
-                if (idToken) srv = await this._credServidor({ accion: 'credAdmin', idToken, empleadoId: empDoc.id, pinNuevo: valor });
+                const srv = await this._credAdmin({ empleadoId: empDoc.id, pinNuevo: valor });
+                if (srv.error) return { error: srv.error };
             }
-            if (!(srv && srv.ok)) updateData.pin = valor;   // fase A: si el servidor no lo guardó, como siempre
         }
 
         // Manejo de Device Token / Dispositivo (permite desvincular o limpiar)
@@ -2844,6 +2844,17 @@ window.FirebaseBackend = {
         if (updateData.cultura_habilitada !== undefined) {
             updateData.cultura_activa = updateData.cultura_habilitada;
         }
+        // La contraseña no se guarda en la ficha: si se escribió una nueva, la guarda el servidor (credAdmin).
+        // Un valor cifrado (64 caracteres) es la contraseña que ya tenía: se ignora.
+        if (updateData.pin !== undefined) {
+            const pinNuevo = String(updateData.pin || '').trim();
+            delete updateData.pin;
+            if (pinNuevo && !/^[a-f0-9]{64}$/.test(pinNuevo)) {
+                const srv = await this._credAdmin({ empleadoId: id, pinNuevo });
+                if (srv.error) return { error: srv.error };
+            }
+            if (Object.keys(updateData).length === 0) return { ok: true, empleadoId: id, actualizados: ['contraseña'] };
+        }
         // La regla de Firestore exige el campo id en el documento: se incluye siempre (es el mismo doc id)
         updateData.id = id;
 
@@ -3018,6 +3029,7 @@ window.FirebaseBackend = {
             let batch = db.batch();
             let count = 0;
             let guardados = 0;
+            const claves = [];   // contraseñas escritas en la carga: las guarda el servidor, no la ficha
 
             for (const emp of lista) {
                 if (!emp.id) continue;
@@ -3043,9 +3055,8 @@ window.FirebaseBackend = {
                                 }
                             }
                         } else if (key === 'pin') {
-                            if (val !== undefined && val !== null && val !== '') {
-                                dataObj[key] = val.toString();
-                            }
+                            const v = val !== undefined && val !== null ? val.toString().trim() : '';
+                            if (v && !/^[a-f0-9]{64}$/.test(v)) claves.push({ empleadoId: dataObj.id, pinNuevo: v });
                         } else if (key === 'supervisor') {
                             dataObj[key] = val || 'NO';
                         } else if (key === 'activo') {
@@ -3076,7 +3087,19 @@ window.FirebaseBackend = {
             }
 
             console.log(`✅ Importación masiva completada: ${guardados} empleados procesados.`);
-            return { ok: true, procesados: guardados };
+            const res = { ok: true, procesados: guardados };
+            if (claves.length > 20) {
+                res.avisoClaves = `No se cargaron las ${claves.length} contraseñas del archivo: cada colaborador creará la suya al ingresar.`;
+            } else if (claves.length) {
+                const fallidas = [];
+                for (const c of claves) {
+                    const r = await this._credAdmin(c);
+                    if (r.error) fallidas.push(c.empleadoId);
+                }
+                if (fallidas.length) res.avisoClaves = `No se guardó la contraseña de: ${fallidas.join(', ')}. Pueden crearla al ingresar o restablecerla desde el Directorio.`;
+            }
+            if (res.avisoClaves && typeof window.mostrarToast === 'function') window.mostrarToast(res.avisoClaves, 'warning');
+            return res;
         } catch (error) {
             console.error("🔥 Error en actualizarMasivoEmpleados:", error);
             return { error: error.message || error.toString() };
@@ -3085,44 +3108,26 @@ window.FirebaseBackend = {
 
     async resetearPinesTodosLosEmpleados(params = {}) {
         try {
-            console.log("🔄 Iniciando restablecimiento de contraseñas/PINs de todos los empleados...");
-            const querySnap = await db.collection('empleados').get();
-
-            if (querySnap.empty) {
-                return { ok: false, error: "No se encontraron empleados en la base de datos." };
-            }
-
-            let batch = db.batch();
-            let count = 0;
-            let totalActualizados = 0;
-
-            for (const doc of querySnap.docs) {
-                // Actualizar PIN a vacío para que el usuario deba registrar su nueva contraseña
-                const updateData = { pin: "" };
-
-                // Si se solicita desvincular dispositivos también (opcional)
-                if (params.desvincularDispositivos) {
-                    updateData.deviceToken = "";
-                }
-
-                batch.update(doc.ref, updateData);
-                count++;
-                totalActualizados++;
-
-                // Límite de lote Firestore de 500
-                if (count === 400) {
-                    await batch.commit();
-                    batch = db.batch();
-                    count = 0;
-                }
-            }
-
-            if (count > 0) {
-                await batch.commit();
-            }
+            console.log("🔄 Iniciando restablecimiento de contraseñas de todos los empleados...");
+            // Las contraseñas las borra el servidor (hoja privada + fichas); solo el Admin Master, y la suya se conserva
+            const srv = await this._credAdmin({ todos: true });
+            if (srv.error) return { ok: false, error: srv.error };
+            const totalActualizados = srv.empleadosAfectados || 0;
 
             // Si se solicitó desvincular dispositivos, limpiar colección de dispositivos
             if (params.desvincularDispositivos) {
+                try {
+                    const querySnap = await db.collection('empleados').get();
+                    let batch = db.batch();
+                    let count = 0;
+                    for (const doc of querySnap.docs) {
+                        batch.update(doc.ref, { deviceToken: "" });
+                        if (++count === 400) { await batch.commit(); batch = db.batch(); count = 0; }
+                    }
+                    if (count > 0) await batch.commit();
+                } catch (e) {
+                    console.warn("Aviso al desvincular teléfonos:", e);
+                }
                 try {
                     const dispSnap = await db.collection('dispositivos').get();
                     let dispBatch = db.batch();
@@ -3151,10 +3156,10 @@ window.FirebaseBackend = {
                 console.warn("Aviso al sincronizar reseteo con Sheets:", e);
             }
 
-            console.log(`✅ Contraseñas/PINs restablecidos para ${totalActualizados} empleados.`);
+            console.log(`✅ Contraseñas restablecidas para ${totalActualizados} empleados.`);
             return {
                 ok: true,
-                mensaje: `Se restablecieron las contraseñas de ${totalActualizados} empleados exitosamente. Ahora cada empleado podrá registrar su nueva contraseña personal.`,
+                mensaje: srv.mensaje || `Se restablecieron las contraseñas de ${totalActualizados} empleados.`,
                 empleadosAfectados: totalActualizados
             };
         } catch (error) {

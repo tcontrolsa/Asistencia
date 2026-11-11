@@ -1016,7 +1016,7 @@ window.exportarDirectorioExcel = async function () {
         emp.telefono || '',
         fNacTexto || '',
         edadCalc !== null ? edadCalc : '',
-        emp.pin ? String(emp.pin) : '',
+        (emp.tiene_clave === true || String(emp.pin || '').trim()) ? 'Tiene' : 'Sin contraseña',
         rolTexto,
         estadoTexto,
         culturaTexto,
@@ -1087,15 +1087,13 @@ window.abrirModalEditarEmpleado = function (empleadoId) {
   if ($('editDirCargo')) $('editDirCargo').value = emp.cargo || '';
   if ($('editDirTelefono')) $('editDirTelefono').value = emp.telefono || '';
   if ($('editDirPin')) {
-    // La mayoría ya tiene la contraseña cifrada (SHA-256, 64 caracteres): no se muestra.
-    // Vacío = se conserva la actual; escribir 4 dígitos la reemplaza.
-    const pinGuardado = String(emp.pin || '').trim();
-    const cifrado = pinGuardado.length >= 20;
-    $('editDirPin').value = cifrado ? '' : pinGuardado;
-    $('editDirPin').placeholder = cifrado ? 'Sin cambios' : '••••';
-    $('editDirPin').title = cifrado
+    // La contraseña nunca se muestra (la guarda el servidor). Vacío = se conserva; escribir 4 dígitos la reemplaza.
+    const tiene = emp.tiene_clave === true || String(emp.pin || '').trim() !== '';
+    $('editDirPin').value = '';
+    $('editDirPin').placeholder = tiene ? 'Sin cambios' : 'Sin contraseña';
+    $('editDirPin').title = tiene
       ? 'El colaborador ya tiene contraseña. Déjalo vacío para conservarla o escribe 4 dígitos para restablecerla.'
-      : '4 dígitos numéricos para marcar';
+      : 'Aún no tiene contraseña: la creará al ingresar, o escribe 4 dígitos para asignarle una.';
   }
 
   const fNacInputVal = normalizarFechaParaInput(obtenerFechaNacimientoEmpleado(emp));
@@ -1168,20 +1166,19 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
   }
 
   const empActual = (empCache || []).find(e => String(e.id).trim() === String(id).trim());
-  let pinFinal = pin;
-  if (!pinFinal && empActual) {
-    pinFinal = empActual.pin || '';
-  } else if (pinFinal && (pinFinal.length !== 4 || isNaN(pinFinal))) {
+  // Solo viaja si se escribió una nueva (la guarda el servidor, no la ficha)
+  const pinFinal = pin;
+  if (pinFinal && (pinFinal.length !== 4 || isNaN(pinFinal))) {
     mostrarToast('Si ingresas una contraseña, debe tener exactamente 4 dígitos numéricos', 'warning');
     return;
   }
 
   const datos = {
+    ...(pinFinal ? { pin: pinFinal } : {}),
     nombre: nombre,
     area: area,
     cargo: cargo,
     telefono: telefono,
-    pin: pinFinal,
     supervisor: supervisor,
     activo: activo,
     cultura_habilitada: (cultura === 'SI'),
@@ -1231,7 +1228,8 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
       // Actualizar registro en empCache
       const idx = empCache.findIndex(e => e.id === id);
       if (idx > -1) {
-        Object.assign(empCache[idx], datos);
+        const { pin: _clave, ...sinClave } = datos;
+        Object.assign(empCache[idx], sinClave, pinFinal ? { tiene_clave: true } : {});
       }
 
       cerrarModalEditarEmpleadoDirectorio();

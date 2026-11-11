@@ -81,8 +81,11 @@ function emitirCredencialCampo_(p) {
   var emp = leerEmpleadoFirestore_(id);
   if (!emp) return { ok: false, error: 'Colaborador no encontrado.' };
   if (!empleadoActivo_(emp)) return { ok: false, error: 'Colaborador inactivo.' };
+  // credComprobar_ (credenciales.gs): Firestore o la hoja privada CREDENCIALES según la fase
   var guardado = String(emp.pin || '').trim();
-  if (!guardado || (guardado !== sha256Hex_(pin) && guardado !== pin)) {
+  var correcta = typeof credComprobar_ === 'function' ? credComprobar_(id, pin).estado === 'ok'
+    : !!guardado && (guardado === sha256Hex_(pin) || guardado === pin);
+  if (!correcta) {
     cache.put(claveIntentos, String(intentos + 1), CRED_BLOQUEO_SEG);
     return { ok: false, error: 'Contraseña incorrecta.' };
   }

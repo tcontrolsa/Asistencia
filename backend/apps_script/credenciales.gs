@@ -8,14 +8,18 @@
  *
  * FASE A (CRED_FUENTE = 'FIRESTORE'): Firestore sigue siendo la referencia y CREDENCIALES es su copia, que se
  *   llena con credMigrarTodo() y se refresca en cada ingreso correcto. Las acciones de abajo escriben en las dos.
- * FASE B (CRED_FUENTE = 'CREDENCIALES'): solo cuenta la hoja; Firestore deja de tener contraseñas
- *   (credBorrarPinesFirestore()). Antes: credMigrarTodo() otra vez y comprobar con credResumen().
+ * FASE B (CRED_FUENTE = 'CREDENCIALES'): solo cuenta la hoja; Firestore deja de tener contraseñas.
+ *   En las fichas solo queda tiene_clave (true/false), que la app usa para saber si debe crear su contraseña.
+ *   Pasos (▶ en el editor): 1) credMigrarTodo()  2) credResumen() → 0 diferencias  3) cambiar CRED_FUENTE a
+ *   'CREDENCIALES' y guardar  4) credBorrarPinesFirestore() (respalda antes en la hoja oculta
+ *   CREDENCIALES_RESPALDO; para volver atrás: CRED_FUENTE = 'FIRESTORE' y credRestaurarPinesFirestore()).
  *
  * Acciones (POST por doPost):
  *   credEstado  { empleadoId }                         → { ok, tienePin }
  *   credCrear   { empleadoId, pin }                    → primera contraseña (solo si no tiene) + permiso de Firebase
  *   credCambiar { empleadoId, pinActual, pinNuevo }    → cambio desde el perfil
  *   credAdmin   { idToken, empleadoId, pinNuevo|'' }   → restablecer ('') o asignar; lo hace un supervisor con sesión
+ *   credAdmin   { idToken, todos: true }               → restablecer las de todos (solo el Admin Master; no la suya)
  *   (el ingreso es sesionFirebase en sesion_firebase.gs, que usa credComprobar_)
  * "pin" es siempre el SHA-256 en hexadecimal que calcula la app (o la contraseña en claro, que se cifra aquí).
  */
@@ -78,17 +82,33 @@ function credEscribirHoja_(id, canonico) {
   });
 }
 
-// Guarda (o borra, con '') la contraseña: hoja privada y, en la FASE A, también Firestore
+// Guarda (o borra, con '') la contraseña: hoja privada y, en la ficha de Firestore, tiene_clave (y el pin solo
+// en la FASE A; en la FASE B el campo pin se borra)
 function credGuardar_(id, canonico) {
   credOlvidar_(id);
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try { credEscribirHoja_(id, canonico); } finally { lock.releaseLock(); }
-  if (CRED_FUENTE === 'FIRESTORE') {
-    var r = fetchFirestore_(notifBaseFirestore_() + '/empleados/' + encodeURIComponent(id) + '?updateMask.fieldPaths=pin&currentDocument.exists=true', {
-      method: 'patch', contentType: 'application/json', payload: JSON.stringify({ fields: { pin: { stringValue: canonico || '' } } })
+  credFirestore_([{ id: id, canonico: canonico || '' }]);
+}
+
+// Escribe en las fichas de Firestore tiene_clave y, en la FASE A, pin (en la FASE B lo borra). Un solo envío
+// (commit) por cada 400 fichas. cambios: [{ id, canonico }]
+function credFirestore_(cambios) {
+  var base = notifBaseFirestore_();
+  var raiz = base.replace('https://firestore.googleapis.com/v1/', '');
+  for (var i = 0; i < cambios.length; i += 400) {
+    var writes = cambios.slice(i, i + 400).map(function (c) {
+      var fields = { tiene_clave: { booleanValue: !!c.canonico } };
+      if (CRED_FUENTE === 'FIRESTORE') fields.pin = { stringValue: c.canonico || '' };
+      return {
+        update: { name: raiz + '/empleados/' + c.id, fields: fields },
+        updateMask: { fieldPaths: ['pin', 'tiene_clave'] },   // pin fuera de fields = se borra
+        currentDocument: { exists: true }
+      };
     });
-    if (r.getResponseCode() !== 200) throw new Error('Firestore ' + r.getResponseCode());
+    var r = fetchFirestore_(base + ':commit', { method: 'post', contentType: 'application/json', payload: JSON.stringify({ writes: writes }) });
+    if (r.getResponseCode() !== 200) throw new Error('Firestore ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
   }
 }
 
@@ -146,8 +166,11 @@ function credCambiar(p) {
 function credAdmin(p) {
   var quien = credQuienLlama_(p.idToken);
   if (!quien) return { ok: false, error: 'Tu sesión de seguridad no está activa. Confirma tu contraseña en el panel y vuelve a intentarlo.' };
-  if (CRED_ROLES_ADMIN.indexOf(quien.rol) === -1) return { ok: false, error: 'No tienes permiso para cambiar contraseñas.' };
   var id = String(p.empleadoId || '').trim();
+  // La propia persona, con su sesión abierta, puede poner una contraseña nueva (pantalla "actualiza tu contraseña")
+  var propia = id && id === quien.uid && String(p.pinNuevo || '').trim() !== '';
+  if (!propia && CRED_ROLES_ADMIN.indexOf(quien.rol) === -1) return { ok: false, error: 'No tienes permiso para cambiar contraseñas.' };
+  if (p.todos === true || p.todos === 'true') return credAdminTodos_(quien);
   var emp = id ? leerEmpleadoFirestore_(id) : null;
   if (!emp) return { ok: false, error: 'Colaborador no encontrado.' };
   if (id === SESION_FB_MASTER && quien.uid !== SESION_FB_MASTER) return { ok: false, error: 'Solo el Admin Master puede cambiar su propia contraseña.' };
@@ -155,6 +178,32 @@ function credAdmin(p) {
   credGuardar_(id, nuevo ? credCanonico_(nuevo) : '');
   if (typeof registrarAcceso_ === 'function') registrarAcceso_(id, 'credAdmin', 'ok', (nuevo ? 'asignada' : 'restablecida') + ' por ' + quien.uid);
   return { ok: true };
+}
+
+// Restablecer todas las contraseñas (Configuración → restablecer): solo el Admin Master; la suya se conserva
+function credAdminTodos_(quien) {
+  if (quien.uid !== SESION_FB_MASTER && quien.rol !== 'master') return { ok: false, error: 'Solo el Admin Master puede restablecer las contraseñas de todos.' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var hoja = hojaCredenciales_();
+    var datos = hoja.getDataRange().getValues();
+    for (var i = 1; i < datos.length; i++) {
+      var id = String(datos[i][0]).trim();
+      if (!id || id === quien.uid) continue;
+      datos[i][1] = ''; datos[i][2] = '';
+      credOlvidar_(id);
+    }
+    if (datos.length > 1) hoja.getRange(2, 2, datos.length - 1, 2).setValues(datos.slice(1).map(function (f) { return [f[1], f[2]]; }));
+  } finally { lock.releaseLock(); }
+  var ids = [];
+  listarEmpleadosFirestore_().forEach(function (e) {
+    if (e.id !== quien.uid && (String(e.pin || '').trim() || e.tiene_clave === true)) ids.push(e.id);
+  });
+  credFirestore_(ids.map(function (id) { return { id: id, canonico: '' }; }));
+  if (typeof registrarAcceso_ === 'function') registrarAcceso_('TODOS', 'credAdmin', 'ok', 'restablecidas ' + ids.length + ' por ' + quien.uid);
+  return { ok: true, empleadosAfectados: ids.length,
+    mensaje: 'Se restablecieron las contraseñas de ' + ids.length + ' colaboradores (la tuya se conserva). Cada uno creará la suya al ingresar.' };
 }
 
 // uid y rol de quien llama, a partir de su sesión de Firebase (idToken verificado por Google)
@@ -175,7 +224,8 @@ function credQuienLlama_(idToken) {
 /** Copia a CREDENCIALES todas las contraseñas que hoy están en Firestore y vacía las que ya no existen allí
  *  (p. ej. restablecidas por el camino antiguo). Se puede repetir: deja la hoja igual a Firestore. */
 function credMigrarTodo() {
-  var t0 = Date.now(), n = 0, sin = 0, vaciadas = [];
+  if (CRED_FUENTE !== 'FIRESTORE') { Logger.log('Ya está en la FASE B (CRED_FUENTE = CREDENCIALES): no se copia nada desde Firestore.'); return; }
+  var t0 = Date.now(), n = 0, sin = 0, vaciadas = [], marcas = [];
   var hoja = hojaCredenciales_();
   var datos = hoja.getDataRange().getValues();
   var filaDe = {};
@@ -183,6 +233,7 @@ function credMigrarTodo() {
   var nuevas = [];
   listarEmpleadosFirestore_().forEach(function (e) {
     var pin = String(e.pin || '').trim();
+    if (e.tiene_clave !== !!pin) marcas.push({ id: e.id, canonico: pin });
     if (!pin) {
       sin++;
       var f = filaDe[e.id];
@@ -197,12 +248,14 @@ function credMigrarTodo() {
     n++;
   });
   if (nuevas.length) hoja.getRange(hoja.getLastRow() + 1, 1, nuevas.length, nuevas[0].length).setValues(nuevas);
+  if (marcas.length) credFirestore_(marcas);   // tiene_clave al día en las fichas (el pin queda igual)
   Logger.log(n + ' contraseñas copiadas a CREDENCIALES · ' + sin + ' fichas sin contraseña' +
     (vaciadas.length ? ' · vaciadas en la hoja: ' + vaciadas.join(', ') : '') + ' · ' + Math.round((Date.now() - t0) / 1000) + ' s');
 }
 
 /** Compara Firestore con CREDENCIALES: cuántas coinciden (antes de pasar a la FASE B debe dar 0 diferencias). */
 function credResumen() {
+  if (CRED_FUENTE !== 'FIRESTORE') { credResumenFaseB_(); return; }
   var dif = [], ok = 0, sinAmbos = 0;
   listarEmpleadosFirestore_().forEach(function (e) {
     var pin = String(e.pin || '').trim();
@@ -220,4 +273,63 @@ function credMedir() {
   var t0 = Date.now();
   credCalcular_(sha256Hex_('prueba'), Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'sal')), CRED_ITER);
   Logger.log('PBKDF2 con ' + CRED_ITER + ' iteraciones: ' + (Date.now() - t0) + ' ms');
+}
+
+// ---------------------------------------------------------------- FASE B (▶)
+var CRED_HOJA_RESPALDO = 'CREDENCIALES_RESPALDO';
+
+/** Quita las contraseñas de Firestore (deja tiene_clave). Requiere CRED_FUENTE = 'CREDENCIALES' y que la hoja
+ *  tenga a todos los que hoy tienen contraseña en Firestore, con el mismo valor. Antes respalda en una hoja oculta. */
+function credBorrarPinesFirestore() {
+  if (CRED_FUENTE !== 'CREDENCIALES') { Logger.log("Primero cambia CRED_FUENTE a 'CREDENCIALES' y guarda el archivo."); return; }
+  var emps = listarEmpleadosFirestore_();
+  var hoja = {};
+  hojaCredenciales_().getDataRange().getValues().slice(1).forEach(function (f) {
+    hoja[String(f[0]).trim()] = { hash: String(f[1] || ''), sal: String(f[2] || ''), iter: Number(f[3]) || CRED_ITER };
+  });
+  var conPin = emps.filter(function (e) { return String(e.pin || '').trim(); });
+  var dif = conPin.filter(function (e) {
+    var c = hoja[e.id];
+    return !c || !c.hash || credCalcular_(credCanonico_(String(e.pin).trim()), c.sal, c.iter) !== c.hash;
+  }).map(function (e) { return e.id; });
+  if (dif.length) { Logger.log('No se borró nada: ' + dif.length + " fichas no coinciden con CREDENCIALES (" + dif.join(', ') + "). Vuelve a 'FIRESTORE', corre credMigrarTodo() y repite."); return; }
+
+  var ss = SpreadsheetApp.getActive();
+  var resp = ss.getSheetByName(CRED_HOJA_RESPALDO) || ss.insertSheet(CRED_HOJA_RESPALDO);
+  resp.hideSheet();
+  if (resp.getLastRow() < 1) resp.appendRow(['ID', 'PIN_FIRESTORE', 'RESPALDADO_EN']);
+  var ahora = new Date();
+  if (conPin.length) resp.getRange(resp.getLastRow() + 1, 1, conPin.length, 3).setValues(conPin.map(function (e) { return [e.id, String(e.pin).trim(), ahora]; }));
+
+  var cambios = emps.filter(function (e) { return e.pin !== undefined || e.tiene_clave !== !!(hoja[e.id] && hoja[e.id].hash); })
+    .map(function (e) { return { id: e.id, canonico: hoja[e.id] && hoja[e.id].hash ? 'x' : '' }; });
+  credFirestore_(cambios);
+  Logger.log('Listo: ' + conPin.length + ' contraseñas quitadas de Firestore (respaldo en ' + CRED_HOJA_RESPALDO + '); ' + cambios.length + ' fichas actualizadas.');
+  credResumenFaseB_();
+}
+
+/** Comprobación de la FASE B: nadie con pin en Firestore y tiene_clave igual a la hoja. */
+function credResumenFaseB_() {
+  var hoja = {};
+  hojaCredenciales_().getDataRange().getValues().slice(1).forEach(function (f) { hoja[String(f[0]).trim()] = !!f[1]; });
+  var conPin = [], distinto = [], ok = 0;
+  listarEmpleadosFirestore_().forEach(function (e) {
+    if (String(e.pin || '').trim()) conPin.push(e.id);
+    if ((e.tiene_clave === true) !== !!hoja[e.id]) distinto.push(e.id); else ok++;
+  });
+  Logger.log('FASE B · fichas con pin en Firestore: ' + conPin.length + (conPin.length ? ' (' + conPin.join(', ') + ')' : '') +
+    ' · tiene_clave igual a la hoja: ' + ok + ' · distinto: ' + distinto.length + (distinto.length ? ' (' + distinto.join(', ') + ')' : ''));
+}
+
+/** Reversa: devuelve a Firestore las contraseñas del respaldo (solo con CRED_FUENTE = 'FIRESTORE').
+ *  Quien cambió su contraseña después del respaldo vuelve a la anterior. */
+function credRestaurarPinesFirestore() {
+  if (CRED_FUENTE !== 'FIRESTORE') { Logger.log("Primero vuelve CRED_FUENTE a 'FIRESTORE' y guarda el archivo."); return; }
+  var resp = SpreadsheetApp.getActive().getSheetByName(CRED_HOJA_RESPALDO);
+  if (!resp || resp.getLastRow() < 2) { Logger.log('No hay respaldo.'); return; }
+  var ultimo = {};
+  resp.getRange(2, 1, resp.getLastRow() - 1, 2).getValues().forEach(function (f) { if (f[0] && f[1]) ultimo[String(f[0]).trim()] = String(f[1]).trim(); });
+  var cambios = Object.keys(ultimo).map(function (id) { return { id: id, canonico: ultimo[id] }; });
+  credFirestore_(cambios);
+  Logger.log(cambios.length + ' contraseñas devueltas a Firestore. Después corre credMigrarTodo() para dejar la hoja igual.');
 }
