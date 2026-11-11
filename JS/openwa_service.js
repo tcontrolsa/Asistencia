@@ -313,7 +313,7 @@
 
         // Normalizar número telefónico para WhatsApp Ecuador y formato OpenWA/WAHA
         // 0991234567 -> 593991234567@c.us
-        // +593 98 466 0105 -> 593984660105@c.us
+        // +593 99 123 4567 -> 593991234567@c.us
         normalizarNumero(numeroRaw) {
             if (!numeroRaw) return null;
             let num = String(numeroRaw).trim();
