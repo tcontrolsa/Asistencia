@@ -172,9 +172,10 @@ function credQuienLlama_(idToken) {
 }
 
 // ---------------------------------------------------------------- editor (▶)
-/** Copia a CREDENCIALES todas las contraseñas que hoy están en Firestore (se puede repetir: deja todo al día). */
+/** Copia a CREDENCIALES todas las contraseñas que hoy están en Firestore y vacía las que ya no existen allí
+ *  (p. ej. restablecidas por el camino antiguo). Se puede repetir: deja la hoja igual a Firestore. */
 function credMigrarTodo() {
-  var t0 = Date.now(), n = 0, sin = 0;
+  var t0 = Date.now(), n = 0, sin = 0, vaciadas = [];
   var hoja = hojaCredenciales_();
   var datos = hoja.getDataRange().getValues();
   var filaDe = {};
@@ -182,7 +183,12 @@ function credMigrarTodo() {
   var nuevas = [];
   listarEmpleadosFirestore_().forEach(function (e) {
     var pin = String(e.pin || '').trim();
-    if (!pin) { sin++; return; }
+    if (!pin) {
+      sin++;
+      var f = filaDe[e.id];
+      if (f && String(hoja.getRange(f, 2).getValue() || '')) { hoja.getRange(f, 2, 1, 2).setValues([['', '']]); vaciadas.push(e.id); credOlvidar_(e.id); }
+      return;
+    }
     var canonico = credCanonico_(pin);
     var sal = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + e.id + Date.now()));
     var fila = [e.id, credCalcular_(canonico, sal, CRED_ITER), sal, CRED_ITER, 0, '', new Date(), new Date()];
@@ -191,7 +197,8 @@ function credMigrarTodo() {
     n++;
   });
   if (nuevas.length) hoja.getRange(hoja.getLastRow() + 1, 1, nuevas.length, nuevas[0].length).setValues(nuevas);
-  Logger.log(n + ' contraseñas copiadas a CREDENCIALES · ' + sin + ' fichas sin contraseña · ' + Math.round((Date.now() - t0) / 1000) + ' s');
+  Logger.log(n + ' contraseñas copiadas a CREDENCIALES · ' + sin + ' fichas sin contraseña' +
+    (vaciadas.length ? ' · vaciadas en la hoja: ' + vaciadas.join(', ') : '') + ' · ' + Math.round((Date.now() - t0) / 1000) + ' s');
 }
 
 /** Compara Firestore con CREDENCIALES: cuántas coinciden (antes de pasar a la FASE B debe dar 0 diferencias). */
