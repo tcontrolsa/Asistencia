@@ -138,6 +138,19 @@ function notificarVisita(p) {
     avisarVisitante_(p, 'Gracias por tu visita',
       'Gracias por visitar TCONTROL, ' + (p.visitanteNombre || '') + '. ¿Nos regalas un minuto? Califica tu visita aquí: ' +
       (enlaceVisitante || 'tu enlace privado') + ' · Tu opinión nos ayuda a mejorar.');
+  } else if (evento === 'credencial_frecuente') {
+    // Visitante frecuente (018_visitantes_frecuentes.sql): credencial con vigencia; el QR sirve todas las veces
+    var vigencia = 'del ' + fechaTexto_(p.desde) + ' al ' + fechaTexto_(p.hasta) + (p.diasTexto && p.diasTexto !== 'cualquier día' ? ', los días ' + p.diasTexto : '');
+    campana('visita_confirmada', 'Credencial de visitante frecuente', quien + ' tiene credencial de visitante frecuente ' + vigencia + '. Al llegar, ingresa con su QR.',
+      visitante + ' tiene credencial de visitante frecuente para visitar a ' + anfitrion + ' ' + vigencia + '.', 'vis_frec_' + id);
+    r.visitante = avisarVisitante_(p, 'Tu credencial de visitante frecuente',
+      'Hola ' + (p.visitanteNombre || '') + ', TCONTROL te registró como visitante frecuente de ' + anfitrion + '. Tu credencial vale ' + vigencia +
+      '. Cada vez que vengas muestra en portería este código QR (o el código ' + codigoVisita_(p.codigo) + ') y tu documento de identidad.' +
+      ' Guarda este mensaje: no necesitas registrarte de nuevo.' + epp, true);
+  } else if (evento === 'credencial_revocada') {
+    avisarVisitante_(p, 'Tu credencial de visitante frecuente fue anulada',
+      'Hola ' + (p.visitanteNombre || '') + ', tu credencial de visitante frecuente de TCONTROL (código ' + codigoVisita_(p.codigo) + ') fue anulada' +
+      (p.motivoRechazo ? ': ' + p.motivoRechazo : '.') + ' Si necesitas visitarnos, comunícate con ' + anfitrion + '.');
   } else if (evento === 'calificada') {
     campana('visita_calificada', 'Visita calificada', 'Tu visitante calificó la visita del ' + fecha + '.',
       'El visitante de ' + anfitrion + ' calificó la visita del ' + fecha + '.');

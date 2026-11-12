@@ -226,7 +226,7 @@
       <span class="gv-fila-info">
         <strong>${esc(v.nombre || '(sin nombre)')}</strong>
         <small>${conFecha ? `<b class="gv-fila-fecha">${esc(fechaCorta(v.fecha))}</b> · ` : ''}${esc(v.empresa || 'Particular')} · visita a ${esc(v.anfitrion || 'área encargada')}</small>
-        <span class="gv-fila-chips">${conFecha && completo ? '<em class="gv-chip gv-chip-ok"><i class="fas fa-check-circle"></i> Registro completo</em>' : ''}${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.sinContacto ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-phone-slash"></i> Sin contacto</em>' : ''}${v.estado === 'en_curso' && restaParaCierre() <= 30 ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-door-closed"></i> Registre su salida</em>' : ''}${v.salidaAutomatica ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-robot"></i> Salida no registrada</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
+        <span class="gv-fila-chips">${conFecha && completo ? '<em class="gv-chip gv-chip-ok"><i class="fas fa-check-circle"></i> Registro completo</em>' : ''}${v.origen === 'porteria' ? '<em class="gv-chip gv-chip-sc">Sin cita</em>' : ''}${v.origen === 'frecuente' ? '<em class="gv-chip" style="background:#ccfbf1;color:#0f766e;"><i class="fas fa-id-card-clip"></i> Frecuente</em>' : ''}${v.sinContacto ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-phone-slash"></i> Sin contacto</em>' : ''}${v.estado === 'en_curso' && restaParaCierre() <= 30 ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-door-closed"></i> Registre su salida</em>' : ''}${v.salidaAutomatica ? '<em class="gv-chip gv-chip-alerta"><i class="fas fa-robot"></i> Salida no registrada</em>' : ''}${v.tipoNombre ? `<em class="gv-chip">${esc(v.tipoNombre)}</em>` : ''}${v.epp ? '<em class="gv-chip gv-chip-epp"><i class="fas fa-hard-hat"></i> EPP</em>' : ''}</span>
       </span>
       ${estadoHtml(v)}
     </button>`;
@@ -742,7 +742,7 @@
     return `<div class="card gv-ficha ${accion ? 'gv-ficha-ok' : info ? 'gv-ficha-info' : 'gv-ficha-alerta'}">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span class="vs-codigo" style="font-size:18px">${esc(codigoBonito(v.codigo))}</span>
         ${estadoHtml(v)}</div>
-      <div class="gv-nombre">${esc(v.nombre || '(sin nombre)')}${v.origen === 'porteria' ? ' <span class="gv-sincita">Sin cita</span>' : ''}</div>
+      <div class="gv-nombre">${esc(v.nombre || '(sin nombre)')}${v.origen === 'porteria' ? ' <span class="gv-sincita">Sin cita</span>' : ''}${v.origen === 'frecuente' ? ' <span class="gv-sincita" style="background:#ccfbf1;color:#0f766e;">Visitante frecuente</span>' : ''}</div>
       <div class="vs-muted">${esc(v.empresa || '')}</div>
       <dl class="vs-datos">
         <dt>Visita a</dt><dd>${esc(v.anfitrion)}</dd>

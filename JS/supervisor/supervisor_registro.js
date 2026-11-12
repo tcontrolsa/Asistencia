@@ -62,6 +62,18 @@
     return cache().filter(e => (tel && numeros(e.telefono) === tel) || (nom && String(e.nombre || '').trim().toUpperCase() === nom));
   }
 
+  // La base cruza la solicitud con las visitas de los últimos 90 días (mismo WhatsApp o mismo nombre)
+  function avisoVisitas(s) {
+    const vs = Array.isArray(s.visitas) ? s.visitas : [];
+    if (!vs.length) return '';
+    const fila = v => `<li style="margin-top:4px;">${fechaCorta(v.fecha)}${v.hora ? ' ' + esc(v.hora) : ''} · <b>${esc(v.visitante)}</b>${v.empresa ? ' (' + esc(v.empresa) + ')' : ''}
+      ${v.anfitrion ? ' · visitó a ' + esc(v.anfitrion) : ''}${v.motivo ? ' · ' + esc(v.motivo) : ''}
+      <span style="opacity:.75;">· coincide por ${v.por === 'telefono' ? 'WhatsApp' : 'nombre'}${v.estado === 'en_curso' ? ' · sigue dentro' : ''}</span></li>`;
+    return `<div style="margin-top:10px; padding:8px 10px; border-radius:8px; background:#fee2e2; color:#7f1d1d; font-size:12px; font-weight:600;">
+      <i class="fas fa-id-badge"></i> Esta persona se registró como <b>visitante</b>. Confirma con quien la recibió que es un ingreso nuevo antes de aprobar.
+      <ul style="margin:2px 0 0; padding-left:18px; font-weight:500;">${vs.map(fila).join('')}</ul></div>`;
+  }
+
   async function cargar() {
     st.cargando = true; st.error = ''; pintar();
     try {
@@ -116,6 +128,7 @@
         <span style="overflow-wrap:anywhere;"><i class="fas fa-envelope" style="color:#64748b;"></i> ${esc(s.correo)}</span>
       </div>
       ${dup.length ? `<div style="margin-top:10px; padding:8px 10px; border-radius:8px; background:#fef3c7; color:#78350f; font-size:12px; font-weight:600;"><i class="fas fa-triangle-exclamation"></i> Posible duplicado: ${dup.map(e => `${esc(e.id)} · ${esc(e.nombre)}`).join('; ')}</div>` : ''}
+      ${avisoVisitas(s)}
       ${abierta ? `<form data-aprobar="${esc(s.id)}" style="margin-top:12px; padding-top:12px; border-top:1px solid #e2e8f0;">
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px;">
           <div><label style="${etiqueta}">ID</label><input name="id" value="${esc(siguienteId())}" inputmode="numeric" pattern="[0-9]{1,6}" required style="${estiloInput}"></div>
