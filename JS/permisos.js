@@ -68,6 +68,19 @@
   const minutosDe = h => { const m = String(h || '').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : NaN; };
   const durTxt = min => { const h = Math.floor(min / 60), m = min % 60; return h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`; };
   const nombreCorto = n => String(n || '').split(/\s+/).slice(0, 3).join(' ');
+  // Horas de la jornada para el formulario, en 24 h y cada 15 min (el selector del teléfono pedía AM/PM)
+  const PASO_HORA = 15;
+  const hm24 = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  function opcionesHora(desde, hasta, elegida, uso) {
+    const out = [];
+    for (let m = desde; m <= hasta; m += PASO_HORA) out.push(m);
+    if (uso === 'regresa' && out[out.length - 1] !== JORNADA.fin) out.push(JORNADA.fin);
+    const sel = out.includes(elegida) ? elegida : out[0];
+    return out.map(m => {
+      const nota = m === JORNADA.fin ? ' · fin de la jornada' : (m === JORNADA.ini && uso === 'sale' ? ' · inicio de la jornada' : '');
+      return `<option value="${hm24(m)}"${m === sel ? ' selected' : ''}>${hm24(m)}${nota}</option>`;
+    }).join('');
+  }
   const ahoraIso = () => new Date().toISOString();
   const tsMs = t => t && t.toMillis ? t.toMillis() : (t ? new Date(t).getTime() : 0);
   const horaIso = iso => iso ? new Date(iso).toLocaleString('es-EC', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
@@ -368,8 +381,10 @@
   const fechaDM = f => fechaCorta(f).slice(0, 5);
   const diaSiguiente = f => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + 1); return fechaStr(d); };
 
-  function htmlResumenTiempo(r) {
+  // opts.panel: textos en tercera persona (Detalle de Empleado del panel)
+  function htmlResumenTiempo(r, opts = {}) {
     const B = r.bolsa, V = r.vacaciones, R = r.rol;
+    const panel = !!opts.panel;
     const perTxt = `${fechaDM(B.periodo.inicio)} – ${fechaDM(B.periodo.fin)}`;
     const bolsa = B.pasante
       ? `<div class="pm-tnum">Sin bolsa</div><div class="pm-sub">Los pasantes no tienen bolsa de 4 horas.</div>`
@@ -377,7 +392,7 @@
         <div class="pm-barra" role="progressbar" aria-label="Bolsa de 4 horas usada" aria-valuemin="0" aria-valuemax="${B.total}" aria-valuenow="${B.usado + B.reservado}">
           <span class="pm-b-usado" style="width:${pct(B.usado, B.total)}%"></span><span class="pm-b-reserva" style="width:${pct(B.reservado, B.total)}%"></span></div>
         <div class="pm-leyenda"><span><i class="pm-p pm-b-usado"></i>Usado ${durTxt(B.usado)}</span>${B.reservado ? `<span><i class="pm-p pm-b-reserva"></i>Reservado ${durTxt(B.reservado)}</span>` : ''}</div>
-        <div class="pm-sub">Cubre atrasos, faltantes y permisos personales. Se renueva el ${fechaDM(diaSiguiente(B.periodo.fin))}: lo que no uses no pasa al siguiente período.</div>`;
+        <div class="pm-sub">Cubre atrasos, faltantes y permisos personales. Se renueva el ${fechaDM(diaSiguiente(B.periodo.fin))}: lo que no ${panel ? 'use' : 'uses'} no pasa al siguiente período.</div>`;
     const conPend = V.haciaSiguiente + V.porAprobarMin;
     const vacaciones = `<div class="pm-tnum">${durTxt(V.haciaSiguiente)} <small>de 8 h para el próximo día</small></div>
         <div class="pm-barra" role="progressbar" aria-label="Horas acumuladas para el próximo día de vacación" aria-valuemin="0" aria-valuemax="${MIN_DIA}" aria-valuenow="${V.haciaSiguiente}">
@@ -399,28 +414,42 @@
         </ul>
         <div class="pm-sub">Período de nómina ${perTxt}. Lo que no cubren la bolsa ni las vacaciones se descuenta del rol.</div>`;
     const tarjeta = (icono, color, titulo, sub, cuerpo) => `<article class="pm-tcard"><div class="pm-tcard-cab"><i class="fas ${icono} ${color}" aria-hidden="true"></i><div><h4>${titulo}</h4><div class="pm-sub">${sub}</div></div></div>${cuerpo}</article>`;
-    return `<div class="pm-tcab"><h3>Mi tiempo de permisos</h3>
+    return `<div class="pm-tcab"><h3>${panel ? 'Tiempo de permisos · período actual' : 'Mi tiempo de permisos'}</h3>
         <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-pm="tiempo" title="Volver a calcular"><i class="fas fa-rotate"></i> ${r.calculado.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</button></div>
       <div class="pm-tgrid">
         ${tarjeta('fa-piggy-bank', 'pm-c-violeta', 'Bolsa de 4 horas', `Período ${perTxt}`, bolsa)}
-        ${tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos cargados a tus vacaciones', vacaciones)}
+        ${tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', panel ? 'Permisos cargados a sus vacaciones' : 'Permisos cargados a tus vacaciones', vacaciones)}
         ${tarjeta('fa-file-invoice-dollar', totalRol ? 'pm-c-rojo' : 'pm-c-verde', 'Descuento al rol', `Período ${perTxt}`, rol)}
       </div>`;
   }
 
-  // Pinta el resumen en un contenedor; se puede volver a llamar para recalcular
-  async function montarResumenTiempo(cont, empId) {
+  // Pinta el resumen en un contenedor; se puede volver a llamar para recalcular.
+  // opts: { panel (tercera persona), cacheMs (reusar el último cálculo de ese colaborador), forzar }
+  const _cacheResumen = {};
+  async function montarResumenTiempo(cont, empId, opts = {}) {
     if (!cont || !empId) return;
+    const panel = !!opts.panel;
+    if (!cont._pmClick) {   // botón de recalcular / reintentar del propio resumen (la app también lo maneja: se ignora el doble)
+      cont._pmClick = true;
+      cont.addEventListener('click', ev => {
+        if (!ev.target.closest('[data-pm="tiempo"]') || cont.closest('.pm-app')) return;
+        montarResumenTiempo(cont, cont._pmEmp, Object.assign({}, cont._pmOpts, { forzar: true }));
+      });
+    }
+    cont._pmEmp = String(empId); cont._pmOpts = opts;
+    const c = _cacheResumen[String(empId)];
+    if (!opts.forzar && opts.cacheMs && c && Date.now() - c.en < opts.cacheMs) { cont.innerHTML = htmlResumenTiempo(c.r, opts); return; }
     const seq = (cont._pmSeq = (cont._pmSeq || 0) + 1);
-    if (!cont.innerHTML.trim()) cont.innerHTML = '<div class="pm-tcarga"><i class="fas fa-spinner fa-spin"></i> Calculando tu bolsa, vacaciones y descuentos…</div>';
+    if (!cont.innerHTML.trim()) cont.innerHTML = `<div class="pm-tcarga"><i class="fas fa-spinner fa-spin"></i> Calculando ${panel ? 'la' : 'tu'} bolsa, vacaciones y descuentos…</div>`;
     else cont.classList.add('pm-tactualiza');
     try {
       const r = await resumenTiempo(empId);
+      _cacheResumen[String(empId)] = { r, en: Date.now() };
       if (seq !== cont._pmSeq) return;
-      cont.innerHTML = htmlResumenTiempo(r);
+      cont.innerHTML = htmlResumenTiempo(r, opts);
     } catch (e) {
       if (seq !== cont._pmSeq) return;
-      cont.innerHTML = `<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No se pudo calcular tu tiempo de permisos: ${esc(e.message || e)}. <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-pm="tiempo">Reintentar</button></div>`;
+      cont.innerHTML = `<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No se pudo calcular ${panel ? 'el' : 'tu'} tiempo de permisos: ${esc(e.message || e)}. <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-pm="tiempo">Reintentar</button></div>`;
     } finally { cont.classList.remove('pm-tactualiza'); }
   }
 
@@ -459,9 +488,10 @@
       const a = minutosDe(horaDesde), b = minutosDe(horaHasta);
       if (isNaN(a) || isNaN(b)) return { error: 'Indica la hora de salida y de regreso' };
       if (b <= a) return { error: 'La hora de regreso debe ser posterior a la de salida' };
-      minutos = b - a;
-      // Desde la marcación (fase 5) se cuentan solo minutos de jornada, sin los descansos que caen dentro
-      if (p.origen && Number(p.minutos) > 0) minutos = Math.min(minutos, Math.round(Number(p.minutos)));
+      // Solo tiempo de jornada (07:30–16:15), sin el receso ni el almuerzo que caen dentro: es el faltante
+      // que ve el cálculo de la bolsa del panel (2026-11-12; antes se contaba regreso − salida)
+      minutos = minutosJornada(a, b);
+      if (!minutos) return { error: 'El permiso debe estar dentro de la jornada (07:30 a 16:15)' };
     }
     if (!motivo && p.tipo !== 'VACACIONES') return { error: 'Escribe el motivo' };
 
@@ -980,8 +1010,8 @@
               <div id="pmBoxHasta"><label class="pm-etq" for="pmHasta">Hasta</label><input type="date" id="pmHasta" class="pm-campo"></div>
             </div>
             <div class="pm-fila" id="pmBoxHoras" hidden>
-              <div><label class="pm-etq" for="pmHoraDesde">Sale a las</label><input type="time" id="pmHoraDesde" class="pm-campo" value="08:00"></div>
-              <div><label class="pm-etq" for="pmHoraHasta">Regresa a las</label><input type="time" id="pmHoraHasta" class="pm-campo" value="10:00"></div>
+              <div><label class="pm-etq" for="pmHoraDesde">Sale a las</label><select id="pmHoraDesde" class="pm-campo">${opcionesHora(JORNADA.ini, JORNADA.fin - PASO_HORA, minutosDe('08:00'), 'sale')}</select></div>
+              <div><label class="pm-etq" for="pmHoraHasta">Regresa a las</label><select id="pmHoraHasta" class="pm-campo">${opcionesHora(minutosDe('08:00') + PASO_HORA, JORNADA.fin, minutosDe('10:00'), 'regresa')}</select></div>
             </div>
             <label class="pm-etq" for="pmMotivo" id="pmLblMotivo">Motivo</label>
             <textarea id="pmMotivo" class="pm-campo" rows="2" maxlength="400"></textarea>
@@ -1041,6 +1071,12 @@
       $('pmLblDesde').textContent = horas ? 'Fecha' : 'Desde';
     }
     ['pmDesde', 'pmHasta', 'pmHoraDesde', 'pmHoraHasta', 'pmMotivo'].forEach(i => $(i).addEventListener('input', recalcular));
+    // «Regresa a las» empieza después de la hora de salida (conserva la elegida si sigue siendo válida)
+    $('pmHoraDesde').addEventListener('change', () => {
+      const a = minutosDe($('pmHoraDesde').value), b = minutosDe($('pmHoraHasta').value);
+      $('pmHoraHasta').innerHTML = opcionesHora(a + PASO_HORA, JORNADA.fin, b > a ? b : Math.min(a + 2 * 60, JORNADA.fin), 'regresa');
+      recalcular();
+    });
     $('pmAcepta').addEventListener('change', recalcular);
     $("pmAceptaCargo").addEventListener("change", recalcular);
 
@@ -1056,7 +1092,8 @@
       const partes = [];
       if (st.modalidad === 'HORAS') {
         const a = minutosDe($('pmHoraDesde').value), b = minutosDe($('pmHoraHasta').value);
-        partes.push(!isNaN(a) && !isNaN(b) && b > a ? `<div><i class="fas fa-clock"></i> ${durTxt(b - a)} de permiso</div>` : '<div class="pm-sub">Indica la hora de salida y de regreso.</div>');
+        const mj = !isNaN(a) && !isNaN(b) && b > a ? minutosJornada(a, b) : 0;
+        partes.push(mj ? `<div><i class="fas fa-clock"></i> ${durTxt(mj)} de permiso${mj < b - a ? ' <span class="pm-sub">(sin receso ni almuerzo)</span>' : ''}</div>` : '<div class="pm-sub">Indica la hora de salida y de regreso.</div>');
         if (desde && !esLaborable(desde)) partes.push('<div class="pm-sub">Esa fecha no es laborable.</div>');
       } else {
         partes.push(fechas.length ? `<div><i class="fas fa-calendar-day"></i> ${fechas.length} día${fechas.length === 1 ? '' : 's'} laborable${fechas.length === 1 ? '' : 's'} <span class="pm-sub">(sin fines de semana ni feriados)</span></div>` : '<div class="pm-sub">El rango no tiene días laborables.</div>');
@@ -1090,7 +1127,7 @@
         const clave = [st.emp.id, st.modalidad, desde, hasta, a, b].join('|');
         if (datosOk && (!st.plan || st.plan.clave !== clave)) {
           st.plan = { clave, estado: 'cargando' };
-          planBolsa(st.emp, { modalidad: st.modalidad, fechas, desde, minutos: b - a })
+          planBolsa(st.emp, { modalidad: st.modalidad, fechas, desde, minutos: st.modalidad === 'HORAS' ? minutosJornada(a, b) : 0 })
             .then(p => { if (st.plan && st.plan.clave === clave) { st.plan = { clave, estado: 'ok', plan: p }; recalcular(); } })
             .catch(e => { if (st.plan && st.plan.clave === clave) { st.plan = { clave, estado: 'error', error: e.message || String(e) }; recalcular(); } });
         }

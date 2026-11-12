@@ -6531,6 +6531,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           </div>
         </div>
         
+        <!-- TIEMPO DE PERMISOS (bolsa de 4 h, horas a vacaciones, descuento al rol · JS/permisos.js) -->
+        <section id="pmTiempoDetalle" class="pm-panel pm-tiempo" aria-live="polite" style="margin:0 0 12px;"></section>
+
         <!-- BANNER FECHAS POR REGULARIZAR -->
         <div id="contenedorBannerRegularizarDetalle">
           ${bannerDetalleHTML(fechasARegularizar)}
@@ -6573,6 +6576,11 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       </div>
     </div>`;
   cambiarPanel('detalle');
+
+  // Tiempo de permisos del período actual (mismo resumen que ve el colaborador en la app; se reusa 2 min)
+  if (window.Permisos && typeof window.Permisos.montarResumenTiempo === 'function') {
+    window.Permisos.montarResumenTiempo($('pmTiempoDetalle'), e.id, { panel: true, cacheMs: 2 * 60 * 1000 });
+  }
 
   if (vacEmpInicial) {
     actualizarCardVacaciones(vacEmpInicial.tomadas, vacEmpInicial.restantes);
