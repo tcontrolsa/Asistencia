@@ -196,7 +196,8 @@
         const s = doc.data();
         if (doc.id === excluirId || !['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA'].includes(s.estado)) return;
         if (s.tipo === 'VACACIONES') comprometidos += (s.fechas || []).filter(f => f > hoy).length;
-        if (s.tipo !== 'PERMISO_PERSONAL' || s.desde < pv.inicio || s.desde > pv.fin) return;
+        // Horas a vacaciones: se acumulan sin cortar por año (lo que al 30/nov no llega a 8 h pasa al año siguiente)
+        if (s.tipo !== 'PERMISO_PERSONAL' || s.desde > pv.fin) return;
         // Horas cargadas a vacaciones: aprobadas (ya en la hoja o por llegar) y las pedidas que aún esperan
         const min = s.estado === 'APROBADA' ? Number(s.cargo_vacaciones_min || 0) : Number((s.plan_bolsa || {}).vacaciones_min || 0);
         if (s.estado === 'APROBADA' && s.vacaciones_hoja) sincronizadas += min; else pendientesHoja += min;
@@ -259,14 +260,7 @@
         s = per.inicio > perHoy.inicio && !RJ.esEmpleadoPasante(emp) ? RJ.BOLSA_MIN : 0;
       }
       // Reservado por otros permisos personales de hoy en adelante
-      solicitudes.forEach(o => {
-        if (o.id === excluirId || o.tipo !== 'PERMISO_PERSONAL') return;
-        const pend = PENDIENTES.includes(o.estado);
-        const aprobHoras = o.estado === 'APROBADA' && o.modalidad === 'HORAS';
-        if (!pend && !aprobHoras) return;
-        const porDia = aprobHoras ? (o.bolsa_por_dia || {}) : ((o.plan_bolsa || {}).bolsa_por_dia || {});
-        Object.keys(porDia).forEach(f => { if (f >= hoy && f >= per.inicio && f <= per.fin) s -= Number(porDia[f]) || 0; });
-      });
+      s -= reservadoBolsa(solicitudes, per, hoy, excluirId);
       saldos[per.inicio] = Math.max(0, s);
       iniciales[per.inicio] = saldos[per.inicio];
       return saldos[per.inicio];
@@ -293,6 +287,141 @@
     plan.capacidad_vac_min = vac ? vac.capacidadMin : 0;
     plan.calculado_en = ahoraIso();
     return plan;
+  }
+
+  // ---------------------------------------------------------------- resumen de tiempo (bolsa, vacaciones, rol)
+  // Bolsa de 4 h ya reservada por permisos personales de hoy en adelante dentro del período (pedidos, o aprobados
+  // por horas: los aprobados por días ya tienen su registro y el cálculo del panel los ve).
+  function reservadoBolsa(solicitudes, per, hoy, excluirId = '') {
+    let r = 0;
+    (solicitudes || []).forEach(o => {
+      if (o.id === excluirId || o.tipo !== 'PERMISO_PERSONAL') return;
+      const pend = PENDIENTES.includes(o.estado);
+      const aprobHoras = o.estado === 'APROBADA' && o.modalidad === 'HORAS';
+      if (!pend && !aprobHoras) return;
+      const porDia = aprobHoras ? (o.bolsa_por_dia || {}) : ((o.plan_bolsa || {}).bolsa_por_dia || {});
+      Object.keys(porDia).forEach(f => { if (f >= hoy && f >= per.inicio && f <= per.fin) r += Number(porDia[f]) || 0; });
+    });
+    return r;
+  }
+
+  /**
+   * Cuánto tiempo lleva el colaborador, con el MISMO cálculo del panel (ReglasJornada):
+   *   bolsa      bolsa de 4 h del período 26–25: usado (atrasos, faltantes, permisos ya ocurridos) y reservado
+   *              por permisos que vienen. No pasa al período siguiente.
+   *   vacaciones horas de permiso personal cargadas a vacaciones en el año dic–nov: cada 8 h es 1 día.
+   *   rol        descuento al rol del período: lo que ya superó la bolsa y lo programado por permisos.
+   */
+  async function resumenTiempo(empId) {
+    const RJ = window.ReglasJornada;
+    if (!RJ) throw new Error('Falta el cálculo de la bolsa (reglas_jornada.js)');
+    const emp = (await leerEmpleado(empId)) || { id: String(empId) };
+    const hoy = hoyStr();
+    const FB = window.FirebaseBackend;
+    if (!window._ajustesDescanso && FB && typeof FB.cargarAjustesDescanso === 'function') await FB.cargarAjustesDescanso();
+    const [regs, vac, snap] = await Promise.all([
+      registrosDe(emp.id),
+      saldoVacaciones(emp),
+      db().collection(COL).where('empleadoId', '==', String(emp.id)).get()
+    ]);
+    const sols = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    const b = RJ.saldoBolsaPeriodo({ empleado: Object.assign({}, emp, { registros: regs }), registros: regs, vacaciones: (vac && vac.vacaciones) || [], hoy, solicitudes: sols });
+    const per = b.periodo;
+    const total = b.pasante ? 0 : RJ.BOLSA_MIN;
+    const reservado = Math.min(Math.max(0, b.saldo), reservadoBolsa(sols, per, hoy));
+
+    let rolOcurrido = 0;
+    Object.keys(b.mapa || {}).forEach(f => { if (f >= per.inicio && f <= per.fin) rolOcurrido += Number(b.mapa[f].descuentoNeto) || 0; });
+    let rolProgramado = 0;
+    const pv = periodoVacacionesDe(hoy);
+    let vacAprobadasMin = 0, vacAntesMin = 0, vacPorAprobarMin = 0, diasSinSaldo = 0;
+    sols.forEach(s => {
+      if (!['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA'].includes(s.estado)) return;
+      const aprob = s.estado === 'APROBADA';
+      if (s.tipo === 'PERMISO_PERSONAL') {
+        const rol = aprob ? s.rol_por_dia : (s.plan_bolsa || {}).rol_por_dia;
+        Object.keys(rol || {}).forEach(f => { if (f >= hoy && f >= per.inicio && f <= per.fin) rolProgramado += Number(rol[f]) || 0; });
+        // Horas a vacaciones acumuladas sin cortar por año (las que no llegan a 8 h pasan al año siguiente)
+        if (s.desde <= pv.fin) {
+          if (aprob) {
+            vacAprobadasMin += Number(s.cargo_vacaciones_min) || 0;
+            if (s.desde < pv.inicio) vacAntesMin += Number(s.cargo_vacaciones_min) || 0;
+          } else vacPorAprobarMin += Number((s.plan_bolsa || {}).vacaciones_min) || 0;
+        }
+      }
+      if (s.tipo === 'VACACIONES' && s.acepta_descuento && s.desde >= pv.inicio && s.desde <= pv.fin) diasSinSaldo += Number(s.dias_sin_saldo) || 0;
+    });
+    return {
+      emp: { id: String(emp.id), nombre: emp.nombre || '' }, hoy, calculado: new Date(),
+      bolsa: { periodo: per, total, usado: Math.max(0, total - b.saldo), reservado, libre: Math.max(0, b.saldo - reservado), pasante: !!b.pasante },
+      vacaciones: {
+        periodo: pv, aprobadasMin: vacAprobadasMin, porAprobarMin: vacPorAprobarMin,
+        diasPorHoras: Math.floor(vacAprobadasMin / MIN_DIA) - Math.floor(vacAntesMin / MIN_DIA),
+        haciaSiguiente: vacAprobadasMin % MIN_DIA, arrastre: vacAntesMin % MIN_DIA,
+        saldoDias: vac ? vac.disponible : null, comprometidos: vac ? vac.comprometidos : 0, diasSinSaldo
+      },
+      rol: { periodo: per, ocurrido: rolOcurrido, programado: rolProgramado }
+    };
+  }
+
+  const pct = (a, t) => t > 0 ? Math.max(0, Math.min(100, Math.round(a / t * 1000) / 10)) : 0;
+  const fechaDM = f => fechaCorta(f).slice(0, 5);
+  const diaSiguiente = f => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + 1); return fechaStr(d); };
+
+  function htmlResumenTiempo(r) {
+    const B = r.bolsa, V = r.vacaciones, R = r.rol;
+    const perTxt = `${fechaDM(B.periodo.inicio)} – ${fechaDM(B.periodo.fin)}`;
+    const bolsa = B.pasante
+      ? `<div class="pm-tnum">Sin bolsa</div><div class="pm-sub">Los pasantes no tienen bolsa de 4 horas.</div>`
+      : `<div class="pm-tnum">${durTxt(B.libre)} <small>libres de ${durTxt(B.total)}</small></div>
+        <div class="pm-barra" role="progressbar" aria-label="Bolsa de 4 horas usada" aria-valuemin="0" aria-valuemax="${B.total}" aria-valuenow="${B.usado + B.reservado}">
+          <span class="pm-b-usado" style="width:${pct(B.usado, B.total)}%"></span><span class="pm-b-reserva" style="width:${pct(B.reservado, B.total)}%"></span></div>
+        <div class="pm-leyenda"><span><i class="pm-p pm-b-usado"></i>Usado ${durTxt(B.usado)}</span>${B.reservado ? `<span><i class="pm-p pm-b-reserva"></i>Reservado ${durTxt(B.reservado)}</span>` : ''}</div>
+        <div class="pm-sub">Cubre atrasos, faltantes y permisos personales. Se renueva el ${fechaDM(diaSiguiente(B.periodo.fin))}: lo que no uses no pasa al siguiente período.</div>`;
+    const conPend = V.haciaSiguiente + V.porAprobarMin;
+    const vacaciones = `<div class="pm-tnum">${durTxt(V.haciaSiguiente)} <small>de 8 h para el próximo día</small></div>
+        <div class="pm-barra" role="progressbar" aria-label="Horas acumuladas para el próximo día de vacación" aria-valuemin="0" aria-valuemax="${MIN_DIA}" aria-valuenow="${V.haciaSiguiente}">
+          <span class="pm-b-vac" style="width:${pct(V.haciaSiguiente, MIN_DIA)}%"></span><span class="pm-b-reserva" style="width:${pct(Math.min(V.porAprobarMin, Math.max(0, MIN_DIA - V.haciaSiguiente)), MIN_DIA)}%"></span></div>
+        <div class="pm-leyenda"><span><i class="pm-p pm-b-vac"></i>Aprobado ${durTxt(V.haciaSiguiente)}</span>${V.porAprobarMin ? `<span><i class="pm-p pm-b-reserva"></i>Por aprobar ${durTxt(V.porAprobarMin)}</span>` : ''}</div>
+        <ul class="pm-tlista">
+          ${V.arrastre ? `<li><span>Horas que vienen del año anterior</span><strong>${durTxt(V.arrastre)}</strong></li>` : ''}
+          <li><span>Días descontados por horas este año</span><strong>${V.diasPorHoras}</strong></li>
+          ${conPend >= MIN_DIA ? `<li class="pm-tavisa"><span>Si se aprueba lo pendiente, se descuenta</span><strong>${Math.floor(conPend / MIN_DIA)} día${Math.floor(conPend / MIN_DIA) === 1 ? '' : 's'} más</strong></li>` : ''}
+          <li><span>Saldo de vacaciones disponible</span><strong>${V.saldoDias === null ? '—' : `${Math.floor(V.saldoDias)} día${Math.floor(V.saldoDias) === 1 ? '' : 's'}`}</strong></li>
+          ${V.diasSinSaldo ? `<li class="pm-tavisa"><span>Vacaciones pedidas sin saldo (van al rol)</span><strong>${V.diasSinSaldo} día${V.diasSinSaldo === 1 ? '' : 's'}</strong></li>` : ''}
+        </ul>
+        <div class="pm-sub">Año de vacaciones ${fechaCorta(V.periodo.inicio)} – ${fechaCorta(V.periodo.fin)}. Cada 8 h de permiso que no cubre la bolsa descuentan 1 día; lo que al 30/11 no llegue a 8 h pasa al año siguiente.</div>`;
+    const totalRol = R.ocurrido + R.programado;
+    const rol = `<div class="pm-tnum ${totalRol ? 'pm-c-rojo' : 'pm-c-verde'}">${totalRol ? durTxt(totalRol) : 'Sin descuento'}</div>
+        <ul class="pm-tlista">
+          <li><span>Atrasos, faltantes y permisos que ya superaron la bolsa</span><strong>${R.ocurrido ? durTxt(R.ocurrido) : '0'}</strong></li>
+          <li><span>Permisos que vienen y no tienen saldo</span><strong>${R.programado ? durTxt(R.programado) : '0'}</strong></li>
+        </ul>
+        <div class="pm-sub">Período de nómina ${perTxt}. Lo que no cubren la bolsa ni las vacaciones se descuenta del rol.</div>`;
+    const tarjeta = (icono, color, titulo, sub, cuerpo) => `<article class="pm-tcard"><div class="pm-tcard-cab"><i class="fas ${icono} ${color}" aria-hidden="true"></i><div><h4>${titulo}</h4><div class="pm-sub">${sub}</div></div></div>${cuerpo}</article>`;
+    return `<div class="pm-tcab"><h3>Mi tiempo de permisos</h3>
+        <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-pm="tiempo" title="Volver a calcular"><i class="fas fa-rotate"></i> ${r.calculado.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</button></div>
+      <div class="pm-tgrid">
+        ${tarjeta('fa-piggy-bank', 'pm-c-violeta', 'Bolsa de 4 horas', `Período ${perTxt}`, bolsa)}
+        ${tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos cargados a tus vacaciones', vacaciones)}
+        ${tarjeta('fa-file-invoice-dollar', totalRol ? 'pm-c-rojo' : 'pm-c-verde', 'Descuento al rol', `Período ${perTxt}`, rol)}
+      </div>`;
+  }
+
+  // Pinta el resumen en un contenedor; se puede volver a llamar para recalcular
+  async function montarResumenTiempo(cont, empId) {
+    if (!cont || !empId) return;
+    const seq = (cont._pmSeq = (cont._pmSeq || 0) + 1);
+    if (!cont.innerHTML.trim()) cont.innerHTML = '<div class="pm-tcarga"><i class="fas fa-spinner fa-spin"></i> Calculando tu bolsa, vacaciones y descuentos…</div>';
+    else cont.classList.add('pm-tactualiza');
+    try {
+      const r = await resumenTiempo(empId);
+      if (seq !== cont._pmSeq) return;
+      cont.innerHTML = htmlResumenTiempo(r);
+    } catch (e) {
+      if (seq !== cont._pmSeq) return;
+      cont.innerHTML = `<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No se pudo calcular tu tiempo de permisos: ${esc(e.message || e)}. <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-pm="tiempo">Reintentar</button></div>`;
+    } finally { cont.classList.remove('pm-tactualiza'); }
   }
 
   // ---------------------------------------------------------------- solicitudes
@@ -1300,12 +1429,17 @@
     cont.innerHTML = `<div class="pm-app">
       <header class="pm-hero"><div><h2>Permisos y vacaciones</h2><p>Pide vacaciones o permisos y sigue su estado.</p></div>
         <button type="button" class="pm-btn pm-btn-pri" data-pm="nueva"><i class="fas fa-plus"></i> Nueva solicitud</button></header>
+      <section class="pm-tiempo" aria-live="polite"></section>
       <nav class="pm-tabs" role="tablist" hidden>
         <button type="button" role="tab" data-tab="mias" aria-selected="true">Mis solicitudes</button>
         <button type="button" role="tab" data-tab="aprobar" aria-selected="false">Por aprobar <span class="pm-num" hidden></span></button>
       </nav>
       <div class="pm-lista"></div></div>`;
     const lista = cont.querySelector('.pm-lista'), tabs = cont.querySelector('.pm-tabs'), num = cont.querySelector('.pm-num');
+    // Resumen de tiempo: al abrir y cuando cambia alguna de mis solicitudes (aprobada, regreso, cargo…)
+    const boxTiempo = cont.querySelector('.pm-tiempo');
+    let firmaMias = null, tTiempo = null;
+    const recalcularTiempo = () => montarResumenTiempo(boxTiempo, yo.id);
 
     function pendientesParaMi() {
       return (st.aprobar || []).filter(s => (s.estado === 'PENDIENTE_JEFE' && String(s.aprobador_id) === yo.id) || (st.tthh && PENDIENTES.includes(s.estado)));
@@ -1345,6 +1479,7 @@
     cont.addEventListener('click', async ev => {
       const t = ev.target;
       if (await manejarClicDocs(t, (st.mias || []).concat(st.aprobar || []), yo, false)) return;
+      if (t.closest('[data-pm="tiempo"]')) { recalcularTiempo(); return; }
       if (t.closest('[data-pm="nueva"]')) {
         const emp = await leerEmpleado(yo.id) || Object.assign({}, opts.empleado);
         abrirFormulario({ emp, creadoPor: { id: yo.id, nombre: yo.nombre, rol: 'COLABORADOR' }, onCreada: () => { st.tab = 'mias'; pintar(); } });
@@ -1370,6 +1505,10 @@
     st.subs.push(escuchar(db().collection(COL).where('empleadoId', '==', yo.id), (l, err) => {
       if (err) st.errMias = 'No se pudieron cargar tus solicitudes.'; else { st.errMias = ''; st.mias = l; }
       pintar();
+      if (!err) {
+        const firma = JSON.stringify(l.map(s => [s.id, s.estado, s.minutos, s.cargo_vacaciones_min, s.docs_estado]).sort());
+        if (firma !== firmaMias) { const primera = firmaMias === null; firmaMias = firma; clearTimeout(tTiempo); tTiempo = setTimeout(recalcularTiempo, primera ? 0 : 1500); }
+      }
     }));
     (async () => {
       st.tthh = await esTTHH(yo.id);
@@ -1383,7 +1522,7 @@
       }));
     })();
     pintar();
-    cont._pm = { destruir() { st.subs.forEach(u => { try { u(); } catch (e) { } }); cont._pm = null; } };
+    cont._pm = { destruir() { clearTimeout(tTiempo); st.subs.forEach(u => { try { u(); } catch (e) { } }); cont._pm = null; } };
   }
 
   // ---------------------------------------------------------------- panel de supervisor
@@ -1523,7 +1662,7 @@
 
   window.Permisos = {
     montarApp, montarPanel, abrirFormulario, contarPorAprobar,
-    crearSolicitud, resolver, cancelar, leerConfig, esTTHH, planMarcacion, registrarDesdeMarcacion, ajustarRegreso,
+    crearSolicitud, resolver, cancelar, leerConfig, esTTHH, resumenTiempo, montarResumenTiempo, planMarcacion, registrarDesdeMarcacion, ajustarRegreso,
     _internos: { minutosJornada, solicitudQueCubre, repartoFinal, fechasLaborables, sumarMinutosLaborables, esLaborable, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, verDocumento, revisarDocumentos }
   };
 })();

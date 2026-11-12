@@ -93,3 +93,30 @@ textarea.pm-campo { resize: vertical; }
   .pm-fila { grid-template-columns: 1fr; }
   .pm-grid { grid-template-columns: 1fr; }
 }
+
+/* Resumen «Mi tiempo de permisos» (bolsa de 4 h, horas a vacaciones, descuento al rol) */
+.pm-tiempo:empty { display: none; }
+.pm-tiempo.pm-tactualiza { opacity: .6; transition: opacity .2s; }
+.pm-tcab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+.pm-tcab h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--pm-sub); font-weight: 800; }
+.pm-tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.pm-tcard { background: #fff; border: 1px solid var(--pm-borde); border-radius: 14px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.pm-tcard-cab { display: flex; gap: 10px; align-items: center; }
+.pm-tcard-cab > i { width: 34px; height: 34px; border-radius: 10px; background: var(--pm-fondo); display: grid; place-items: center; font-size: 16px; flex: 0 0 34px; }
+.pm-tcard h4 { margin: 0; font-size: 14px; font-weight: 800; }
+.pm-tnum { font-size: 20px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.pm-tnum small { font-size: 12.5px; font-weight: 600; color: var(--pm-sub); }
+.pm-barra { display: flex; height: 10px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
+.pm-barra > span { display: block; height: 100%; transition: width .4s ease; }
+.pm-b-usado { background: #7e22ce; }
+.pm-b-vac { background: #2563eb; }
+.pm-b-reserva { background: repeating-linear-gradient(45deg, #94a3b8 0 4px, #cbd5e1 4px 8px); }
+.pm-leyenda { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #334155; }
+.pm-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
+.pm-p { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.pm-tlista { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
+.pm-tlista li { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed var(--pm-borde); padding-bottom: 4px; }
+.pm-tlista li span { color: #334155; }
+.pm-tlista li strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pm-tlista .pm-tavisa strong { color: #b45309; }
+.pm-tcarga { background: #fff; border: 1px dashed #cbd5e1; border-radius: 14px; padding: 14px; color: var(--pm-sub); font-size: 13px; }

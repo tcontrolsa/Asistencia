@@ -7,7 +7,9 @@
  *                          (máximo 15 adicionales): 6 años = 12, 13 años = 19, 16 años = 22
  *   I  Tomadas           = días de VACACIONES del período 1/dic del año anterior → 30/nov del año (hasta hoy):
  *                          las de diciembre se descuentan del año siguiente (como diciembre 2025 en 2026)
- *                          + 1 día por cada 8 h de permiso personal cargadas a vacaciones (hoja VACACIONES_HORAS, 2026-11-11)
+ *                          + 1 día por cada 8 h de permiso personal cargadas a vacaciones (hoja VACACIONES_HORAS, 2026-11-11).
+ *                          Las horas que al 30/nov no completan 8 h pasan al año siguiente (decisión 2026-11-12): los días
+ *                          del año = días completos acumulados hasta el 30/nov del año − los acumulados hasta el 30/nov anterior.
  *   H = F + G,  J = H − I,  K = fechas tomadas del período.   F (saldo anterior) lo pone el cierre de año.
  * El año de vacaciones está en una sola celda (rango con nombre VAC_ANIO, celda M1): las fórmulas no tienen
  * el año escrito. La app y la foto diaria de Postgres leen F–J por posición: las columnas no se mueven.
@@ -49,6 +51,11 @@ function vacPeriodo_(anio) {
 // Fórmulas de una fila (sep: separador de argumentos de la hoja)
 function vacFormulas_(f, sep) {
   var s = sep;
+  // Días completos (8 h) de horas cargadas a vacaciones desde el inicio hasta el 30/nov del año indicado
+  var horasHasta = function (anioExpr) {
+    return 'INT(SUMIFS(' + VAC_HOJA_HORAS + '!$C:$C' + s + VAC_HOJA_HORAS + '!$B:$B' + s + '$A' + f + '&""' + s +
+      VAC_HOJA_HORAS + '!$A:$A' + s + '"<="&DATE(' + anioExpr + s + '11' + s + '30))/' + VAC_MIN_DIA + ')';
+  };
   var ini = 'DATE(VAC_ANIO-1' + s + '12' + s + '1)';
   var fin = 'MIN(TODAY()' + s + 'DATE(VAC_ANIO' + s + '11' + s + '30))';
   return {
@@ -57,8 +64,7 @@ function vacFormulas_(f, sep) {
     H: '=N($F' + f + ')+N($G' + f + ')',
     I: '=COUNTIFS(VACACIONES!$B:$B' + s + '$A' + f + s + 'VACACIONES!$D:$D' + s + '"VACACIONES"' + s +
        'VACACIONES!$A:$A' + s + '">="&' + ini + s + 'VACACIONES!$A:$A' + s + '"<="&' + fin + ')' +
-       '+IFERROR(INT(SUMIFS(' + VAC_HOJA_HORAS + '!$C:$C' + s + VAC_HOJA_HORAS + '!$B:$B' + s + '$A' + f + '&""' + s +
-       VAC_HOJA_HORAS + '!$A:$A' + s + '">="&' + ini + s + VAC_HOJA_HORAS + '!$A:$A' + s + '"<="&DATE(VAC_ANIO' + s + '11' + s + '30)' + ')/' + VAC_MIN_DIA + ')' + s + '0)',
+       '+IFERROR(' + horasHasta('VAC_ANIO') + '-' + horasHasta('VAC_ANIO-1') + s + '0)',
     J: '=$H' + f + '-$I' + f,
     K: '=IFERROR(TEXTJOIN(", "' + s + 'TRUE' + s + 'ARRAYFORMULA(TEXT(SORT(FILTER(VACACIONES!$A:$A' + s +
        'VACACIONES!$B:$B&""=$A' + f + '&""' + s + 'VACACIONES!$D:$D="VACACIONES"' + s + 'ISNUMBER(VACACIONES!$A:$A)' + s +
@@ -123,18 +129,20 @@ function vacAsegurarHojaHoras_() {
   return hoja;
 }
 
-// Días completos por horas de permiso personal cargadas a vacaciones (8 h = 1 día) en el año de vacaciones
+// Días por horas de permiso personal cargadas a vacaciones (8 h = 1 día) que tocan al año de vacaciones: días
+// completos acumulados hasta el 30/nov del año menos los del año anterior (lo que no llega a 8 h pasa al año siguiente)
 function vacHorasCargadas_(anio) {
   var hoja = SpreadsheetApp.getActive().getSheetByName(VAC_HOJA_HORAS);
   var out = {};
   if (!hoja || hoja.getLastRow() < 2) return out;
-  var p = vacPeriodo_(anio), min = {};
+  var fin = vacPeriodo_(anio).fin, finAnt = vacPeriodo_(anio - 1).fin, hasta = {}, hastaAnt = {};
   hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues().forEach(function (f) {
-    if (!(f[0] instanceof Date) || f[0] < p.inicio || f[0] > p.fin) return;
-    var id = String(f[1] || '').trim();
-    min[id] = (min[id] || 0) + (Number(f[2]) || 0);
+    if (!(f[0] instanceof Date) || f[0] > fin) return;
+    var id = String(f[1] || '').trim(), m = Number(f[2]) || 0;
+    hasta[id] = (hasta[id] || 0) + m;
+    if (f[0] <= finAnt) hastaAnt[id] = (hastaAnt[id] || 0) + m;
   });
-  Object.keys(min).forEach(function (id) { out[id] = Math.floor(min[id] / VAC_MIN_DIA); });
+  Object.keys(hasta).forEach(function (id) { out[id] = Math.floor(hasta[id] / VAC_MIN_DIA) - Math.floor((hastaAnt[id] || 0) / VAC_MIN_DIA); });
   return out;
 }
 
@@ -244,6 +252,8 @@ function actualizarVacacionesDiario() {
     var falta = [VC.ANIOS, VC.DEL_ANIO, VC.TOTAL, VC.TOMADAS, VC.RESTANTES].some(function (c) { return !fx[c - 1]; });
     // Fórmula de tomadas anterior a la hoja de horas (fase 2 de permisos): se repone con la nueva
     if (!falta && String(fx[VC.TOMADAS - 1] || '').indexOf(VAC_HOJA_HORAS) === -1) falta = true;
+    // Fórmula sin arrastre de horas (anterior al 2026-11-12): se repone con la que resta lo del año anterior
+    if (!falta && String(fx[VC.TOMADAS - 1] || '').replace(/\s/g, '').indexOf('DATE(VAC_ANIO-1' + sep + '11' + sep + '30)') === -1) falta = true;
     if (falta) { vacEscribirFormulas_(hoja, r.fila, sep); corregidas.push(String(r.v[0])); }
   });
   SpreadsheetApp.flush();
