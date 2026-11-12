@@ -5333,6 +5333,42 @@ function renderHomePage() {
 
     evaluarPopupAlmuerzo();
     ajustarLayout();
+    pintarAvisoPermisoHoy();
+}
+
+// Permisos por horas (2026-11-12): el horario pedido manda. El día del permiso se avisa que no hace falta marcar
+// la salida ni el regreso del permiso: solo la entrada y la salida de la jornada (si llega a las 16:15, ni la salida).
+let _avisoPermisoHoy = { fecha: '', lista: null, en: 0 };
+async function pintarAvisoPermisoHoy() {
+    try {
+        if (!empleado || !empleado.id || !window.firebase || !firebase.firestore) return;
+        const hoy = getLocalHoyStr(new Date());
+        if (_avisoPermisoHoy.fecha !== hoy || !_avisoPermisoHoy.lista || Date.now() - _avisoPermisoHoy.en > 5 * 60 * 1000) {
+            const snap = await firebase.firestore().collection('solicitudes_permiso').where('empleadoId', '==', String(empleado.id)).get();
+            _avisoPermisoHoy = {
+                fecha: hoy, en: Date.now(),
+                lista: snap.docs.map(d => d.data()).filter(x => x.modalidad === 'HORAS' && x.desde === hoy && !x.origen &&
+                    ['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA', 'REGISTRADA'].includes(x.estado))
+            };
+        }
+        const page = document.querySelector('#mainContent > .page');
+        if (currentPage !== 'home' || !page || document.getElementById('avisoPermisoHoy')) return;
+        const lista = _avisoPermisoHoy.lista.sort((a, b) => String(a.hora_desde).localeCompare(String(b.hora_desde)));
+        if (!lista.length) return;
+        const tipoTxt = t => t === 'PERMISO_MEDICO' ? 'permiso médico' : 'permiso personal';
+        const estTxt = x => ({ PENDIENTE_JEFE: 'pendiente de tu jefe', PENDIENTE_TTHH: 'pendiente de TTHH', APROBADA: 'aprobado', REGISTRADA: 'registrado' })[x.estado] || '';
+        const hastaFin = lista.some(x => String(x.hora_hasta).slice(0, 5) >= '16:15');
+        const div = document.createElement('div');
+        div.id = 'avisoPermisoHoy';
+        div.setAttribute('role', 'status');
+        div.style.cssText = 'margin:0 0 12px;background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.45;color:#3b0764;';
+        div.innerHTML = `<div style="font-weight:800;margin-bottom:4px;"><i class="fas fa-user-clock"></i> Hoy tienes ${lista.map(x =>
+            `${tipoTxt(x.tipo)} de ${escapeHtml(String(x.hora_desde).slice(0, 5))} a ${escapeHtml(String(x.hora_hasta).slice(0, 5))} (${estTxt(x)})`).join(' y ')}</div>
+            <div>${hastaFin
+                ? 'No necesitas marcar la salida: tu jornada termina cuando empieza el permiso. Marca solo tu entrada.'
+                : 'No necesitas marcar la salida ni el regreso del permiso: marca solo tu entrada y tu salida de la jornada.'}</div>`;
+        page.insertBefore(div, page.firstChild);
+    } catch (e) { console.warn('[Permisos] Aviso del día no mostrado:', e); }
 }
 
 // ========== DETALLE DE INSIGNIA (CUSTOM MODAL) ==========

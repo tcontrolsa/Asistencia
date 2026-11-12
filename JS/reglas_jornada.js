@@ -233,6 +233,26 @@
     const razon = String(r.razon_salida || r.razon_salida_temprana || r.razon_justificac || r.razon_ausencia || '').toLowerCase();
     return disp === 'AUTO_COMPLETAR' || razon.includes('no registr');
   }
+  // Quita de los tramos trabajados (entrada→salida) los horarios de permiso: un tramo 07:30–16:15 con permiso
+  // 10:00–12:00 queda en 07:30–10:00 y 12:00–16:15. Los tramos sin entrada o sin salida no se tocan.
+  function recortarPeriodos(periodosDia, permisos) {
+    const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`;
+    const out = [];
+    (periodosDia || []).forEach(p => {
+      const mE = p && p.entrada ? obtenerMinutos(p.entrada.hora || p.entrada.timestamp) : null;
+      const mS = p && p.salida ? obtenerMinutos(p.salida.hora || p.salida.timestamp) : null;
+      if (mE === null || mS === null || mS <= mE) { out.push(p); return; }
+      let trozos = [[mE, mS]];
+      permisos.forEach(({ a, b }) => {
+        trozos = trozos.flatMap(([x, y]) => (b <= x || a >= y) ? [[x, y]] : [[x, Math.max(x, a)], [Math.min(y, b), y]].filter(([u, v]) => v > u));
+      });
+      trozos.forEach(([x, y]) => out.push({
+        entrada: x === mE ? p.entrada : { tipo: 'ENTRADA', hora: hm(x), permiso: true },
+        salida: y === mS ? p.salida : { tipo: 'SALIDA', hora: hm(y), permiso: true }
+      }));
+    });
+    return out;
+  }
   function contarRegistrosInconclusos(periodosDia) {
     return (periodosDia || []).filter(p => p.entrada && (!p.salida || esSalidaSinRegistrar(p.salida))).length;
   }
@@ -361,10 +381,23 @@
   // dejan de estar justificados.
   // Fase 5: permiso marcado en la app (salida o entrada tardía) que el jefe rechazó → esa salida temprana o ese
   // atraso de ese día dejan de estar justificados.
+  // Permisos por horas (2026-11-12): el horario pedido manda. Toda solicitud por horas que no esté cancelada recorta
+  // la jornada marcada en ese horario, haya marcado o no la salida y el regreso del permiso (si los marcó, no se
+  // cuenta dos veces). Ese tiempo queda como faltante y se clasifica como siempre: permiso médico registrado →
+  // tiempo médico; personal aprobado → bolsa / vacaciones / rol; pendiente, o rechazado cuando el permiso ya había
+  // empezado → sin justificar (rechazado antes de la hora: no cuenta, se quedó trabajando).
+  // Si el permiso llega al fin de la jornada, la salida autocompletada no lleva los 15 min de penalización.
   function calcularBolsa({ empleado, porDia, hoy, solicitudes }) {
-    const justificadoVac = {}, medicoHoras = {}, sinJustificar = {}, marcacionRechazada = {};
+    const justificadoVac = {}, medicoHoras = {}, sinJustificar = {}, marcacionRechazada = {}, permisoHoras = {};
     (solicitudes || []).forEach(s => {
       if (!s) return;
+      // Un rechazo que llegó antes de la hora del permiso no cuenta: lo normal es que se quedara trabajando
+      const rechazoAntes = s.estado === 'RECHAZADA' && !s.origen && s.resuelta_en && s.hora_desde &&
+        new Date(s.resuelta_en) < new Date(`${s.desde}T${String(s.hora_desde).slice(0, 5)}:00`);
+      if (s.modalidad === 'HORAS' && s.estado !== 'CANCELADA' && s.desde && !rechazoAntes) {
+        const a = obtenerMinutos(s.hora_desde), b = obtenerMinutos(s.hora_hasta);
+        if (a !== null && b !== null && b > a) (permisoHoras[s.desde] = permisoHoras[s.desde] || []).push({ a, b });
+      }
       if (s.estado === 'RECHAZADA' && s.origen && s.desde) {
         marcacionRechazada[s.desde] = Object.assign(marcacionRechazada[s.desde] || {}, { [s.origen]: true });
         return;
@@ -481,7 +514,11 @@
       if (beneficioCumpleanosDia(e, f, regsDia, tieneAsistencia)) tiempoJustificado = Math.max(tiempoJustificado, 240);
       if (justificadoVac[f]) tiempoJustificado += justificadoVac[f];
 
-      const netWorkedOrdinario = calcularNetWorkedOrdinario(periodosDia, esFestivo, f, e.id);
+      const tramosPermiso = permisoHoras[f] || [];
+      const periodosNeto = tramosPermiso.length ? recortarPeriodos(periodosDia, tramosPermiso) : periodosDia;
+      const permisoHastaFin = tramosPermiso.some(t => t.b >= HORA_SALIDA_REF);
+      const inconclusos = periodosDia.filter(p => p.entrada && (!p.salida || (esSalidaSinRegistrar(p.salida) && !permisoHastaFin))).length;
+      const netWorkedOrdinario = calcularNetWorkedOrdinario(periodosNeto, esFestivo, f, e.id);
       const missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
       if (!esFestivo && f >= DESCANSOS_DESDE) minsSalidaTemprana = Math.min(minsSalidaTemprana, missingMinutesDia);
       if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
@@ -518,7 +555,7 @@
         const missingMinutes = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
         const unaccountedMissing = Math.max(0, missingMinutes - (tiempoPersonal + tiempoMedico));
         rawTJ = Math.max(0, unaccountedMissing - tiempoJustificado);
-        if (!esFestivo) rawTJ += PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia);
+        if (!esFestivo) rawTJ += PENALIZACION_SIN_SALIDA_MIN * inconclusos;
       }
 
       const rawDescuento = tiempoPersonal + (rawTJ > 0 ? Math.max(rawTJ, atrasoMinsDia) : atrasoMinsDia);
@@ -539,7 +576,7 @@
         salidaTempMinsDia,
         faltante: (isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet || esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario),
         tiempoPersonal, tiempoMedico, tiempoJustificado,
-        penalSinSalida: (!esFestivo && !((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet)) ? PENALIZACION_SIN_SALIDA_MIN * contarRegistrosInconclusos(periodosDia) : 0,
+        penalSinSalida: (!esFestivo && !((isJustificado && !tieneAsistencia) || esHoyOFuturo || esPrevioAlRegistro || esPasanteDet)) ? PENALIZACION_SIN_SALIDA_MIN * inconclusos : 0,
         saldoBolsa: saldoBeneficio4h
       };
     });
@@ -563,7 +600,7 @@
     HORA_ENTRADA_REF, TOLERANCIA_ENTRADA_MIN, HORA_SALIDA_REF, BOLSA_MIN, PENALIZACION_SIN_SALIDA_MIN, DESCANSOS_DESDE, DESCANSOS_LV,
     obtenerMinutos, normalizarFechaStr, esFeriadoODomingo, obtenerDiasHabiles, periodoDe, esEmpleadoPasante,
     obtenerFechaInicioEfectivaEmpleado, ajusteDescansoDia, almorzoEnPlanta, almuerzoFinSemana, descansoDia,
-    calcularNetWorkedOrdinario, esSalidaSinRegistrar, contarRegistrosInconclusos, esCumpleanosEmpleadoEnFecha,
+    calcularNetWorkedOrdinario, esSalidaSinRegistrar, contarRegistrosInconclusos, recortarPeriodos, esCumpleanosEmpleadoEnFecha,
     beneficioCumpleanosDia, armarPorDia, calcularBolsa, saldoBolsaPeriodo
   };
 })();
