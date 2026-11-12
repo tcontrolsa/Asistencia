@@ -4,7 +4,7 @@
 // Supervisor: solo sus visitantes (él es el anfitrión). Supervisor admin o master: cualquier anfitrión.
 (() => {
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { ses: null, datos: null, error: '', cargando: false, vista: 'lista', form: {}, sugAnf: [], sugRec: [], qr: null, enviando: false };
+  const st = { ses: null, datos: null, error: '', cargando: false, vista: 'lista', form: {}, sugAnf: [], sugRec: [], qr: null, qrFoto: '', enviando: false };
   const toast = (m, t) => (typeof mostrarToast === 'function' ? mostrarToast(m, t) : alert(m));
   const supervisor = () => { try { return JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { return {}; } };
   const fechaCorta = f => { const m = String(f || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
@@ -105,16 +105,24 @@
         <span><i class="fas fa-repeat" style="color:#7c3aed;"></i> ${esc(FRECUENCIAS[f.frecuencia] || f.frecuencia)} · ${esc(f.diasTexto)}</span>
         <span><i class="fas fa-door-open" style="color:#059669;"></i> ${f.entradas ? `${f.entradas} ingreso${f.entradas === 1 ? '' : 's'} · último ${fechaCorta(String(f.ultimaEntrada || '').slice(0, 10))}` : 'Aún no ingresa'}</span>
         <span><i class="fas fa-qrcode" style="color:#0f172a;"></i> <code>${esc(codigoBonito(f.codigo))}</code>${f.whatsapp || f.email ? '' : ' · <span style="color:#b45309;">sin WhatsApp ni correo</span>'}</span>
+        <span><i class="fas fa-camera" style="color:#0f766e;"></i> ${fotoTexto(f)}</span>
       </div>
       ${f.motivo ? `<div style="font-size:12px; color:#64748b; margin-top:6px;">${esc(f.motivo)}</div>` : ''}
       ${f.estado === 'REVOCADA' ? `<div style="font-size:12px; color:#b91c1c; margin-top:6px;">Revocada por ${esc(f.revocadaPor || '')} el ${fechaCorta(String(f.revocadaEn || '').slice(0, 10))}${f.motivoRevocacion ? ': ' + esc(f.motivoRevocacion) : ''}</div>` : ''}
       ${activa ? `<div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:12px;">
         <button type="button" data-a="revocar" data-id="${f.id}" style="${boton('#fef2f2', '#b91c1c', '#fecaca')}">Revocar</button>
         <button type="button" data-a="renovar" data-id="${f.id}" style="${boton('#fff', '#334155', '#cbd5e1')}"><i class="fas fa-calendar-plus"></i> Renovar</button>
+        ${f.foto ? `<button type="button" data-a="quitarFoto" data-id="${f.id}" style="${boton('#fff', '#b45309', '#fde68a')}"><i class="fas fa-user-xmark"></i> Quitar foto</button>`
+          : !f.vencida && (f.whatsapp || f.email) ? `<button type="button" data-a="pedirFoto" data-id="${f.id}" style="${boton('#fff', '#0f766e', '#99f6e4')}"><i class="fas fa-camera"></i> ${f.fotoEstado === 'solicitada' ? 'Pedir foto otra vez' : 'Pedir foto'}</button>` : ''}
         ${!f.vencida && (f.whatsapp || f.email) ? `<button type="button" data-a="reenviar" data-id="${f.id}" style="${boton('#fff', '#166534', '#bbf7d0')}"><i class="fab fa-whatsapp"></i> Reenviar</button>` : ''}
         ${!f.vencida ? `<button type="button" data-a="qr" data-id="${f.id}" style="${boton('#0f172a', '#fff')}"><i class="fas fa-qrcode"></i> Ver QR</button>` : ''}
       </div>` : ''}
     </article>`;
+  }
+
+  function fotoTexto(f) {
+    if (f.foto) return `Con foto · aceptó el ${fechaCorta(String(f.consentimientoFotoEn || '').slice(0, 10))}`;
+    return ({ solicitada: 'Foto pedida, sin respuesta', rechazada: 'Prefirió no dar foto', retirada: 'Retiró su foto', eliminada: 'Foto eliminada' })[f.fotoEstado] || 'Sin foto';
   }
 
   function vistaLista() {
@@ -173,6 +181,9 @@
             <input type="checkbox" name="dia" value="${n}" ${(f.dias || []).includes(String(n)) ? 'checked' : ''}> ${t}</label>`).join('')}</div></div>
       </fieldset>
       <label style="display:flex; gap:8px; align-items:flex-start; margin-top:12px; font-size:12.5px; color:#334155;">
+        <input type="checkbox" name="solicitarFoto" ${f.solicitarFoto !== false ? 'checked' : ''} style="margin-top:2px;">
+        <span><b>Pedirle su foto</b> para que la portería lo reconozca. Es voluntaria: le llega un enlace privado con el aviso de protección de datos y él decide si la sube (necesita WhatsApp o correo).</span></label>
+      <label style="display:flex; gap:8px; align-items:flex-start; margin-top:10px; font-size:12.5px; color:#334155;">
         <input type="checkbox" name="aceptaPrivacidad" ${f.aceptaPrivacidad ? 'checked' : ''} style="margin-top:2px;">
         <span>El visitante conoce y acepta el aviso de privacidad de visitas: sus datos se usan solo para controlar su ingreso y se anonimizan al terminar la credencial.</span></label>
       <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:14px;">
@@ -188,8 +199,10 @@
         <div style="font-size:11px; font-weight:800; letter-spacing:.08em; color:#2563eb;">TCONTROL · VISITANTE FRECUENTE</div>
         <img src="${imagenQr(f.codigo)}" alt="Código QR de la credencial" style="width:210px; height:210px; image-rendering:pixelated; margin:8px auto; display:block;">
         <div style="font-family:monospace; font-size:20px; font-weight:800; letter-spacing:3px;">${esc(codigoBonito(f.codigo))}</div>
-        <div style="font-weight:800; font-size:15px; margin-top:6px;">${esc(f.nombre)}</div>
-        <div style="font-size:12px; color:#475569;">${esc(f.empresa || '')}</div>
+        <div style="display:flex; gap:10px; align-items:center; justify-content:center; margin-top:6px;">
+          ${st.qrFoto ? `<img src="${st.qrFoto}" alt="Foto del visitante" style="width:64px; height:64px; border-radius:10px; object-fit:cover;">` : ''}
+          <div style="text-align:${st.qrFoto ? 'left' : 'center'};"><div style="font-weight:800; font-size:15px;">${esc(f.nombre)}</div>
+          <div style="font-size:12px; color:#475569;">${esc(f.empresa || '')}</div></div></div>
         <div style="font-size:12px; color:#475569; margin-top:6px;">Visita a ${esc(f.anfitrion)}<br>Vale del ${fechaCorta(f.desde)} al ${fechaCorta(f.hasta)} · ${esc(f.diasTexto)}</div>
         <div style="font-size:10.5px; color:#64748b; margin-top:6px;">Presentar con documento de identidad${f.epp ? ' y EPP' : ''}.</div>
       </div>
@@ -233,6 +246,7 @@
     ['nombre', 'empresa', 'tipo', 'motivo', 'whatsapp', 'email', 'frecuencia', 'desde', 'hasta', 'buscarReciente', 'buscarAnf'].forEach(k => { if (fm[k]) st.form[k] = fm[k].value; });
     st.form.dias = [...fm.querySelectorAll('[name=dia]:checked')].map(x => x.value);
     st.form.aceptaPrivacidad = !!fm.aceptaPrivacidad?.checked;
+    st.form.solicitarFoto = !!fm.solicitarFoto?.checked;
   }
   function nuevaCredencial() {
     const yo = supervisor(), hoy = st.datos.hoy;
@@ -265,12 +279,13 @@
     st.enviando = true; st.error = ''; pintar();
     try {
       const r = await llamar({ accion: 'crear', nombre: f.nombre, empresa: f.empresa, tipo: f.tipo, motivo: f.motivo, whatsapp: f.whatsapp, email: f.email,
-        frecuencia: f.frecuencia, desde: f.desde, hasta: f.hasta, dias: f.dias, anfitrionId: f.anfitrionId, aceptaPrivacidad: 'true' });
+        frecuencia: f.frecuencia, desde: f.desde, hasta: f.hasta, dias: f.dias, anfitrionId: f.anfitrionId, aceptaPrivacidad: 'true',
+        solicitarFoto: f.solicitarFoto ? 'true' : '' });
       toast(r.enviada ? `Credencial creada; se le envía el QR a ${r.frecuente.nombre}` : 'Credencial creada. No tiene WhatsApp ni correo: muéstrale o imprime el QR.', 'success');
       st.enviando = false;
       await cargar();
       await libQr();
-      st.qr = r.frecuente; st.vista = 'qr'; pintar();
+      st.qrFoto = ''; st.qr = r.frecuente; st.vista = 'qr'; pintar();
     } catch (e) { st.enviando = false; st.error = e.message; pintar(); }
   }
 
@@ -291,7 +306,17 @@
     try {
       if (a === 'qr') {
         if (!await libQr()) return toast('No se pudo cargar el generador de QR (revisa la conexión)', 'error');
+        st.qrFoto = f.foto ? ((await llamar({ accion: 'ver_foto', id })).foto || '') : '';
         st.qr = f; st.vista = 'qr'; return pintar();
+      }
+      if (a === 'pedirFoto') {
+        await llamar({ accion: 'solicitar_foto', id });
+        toast(`Se le envía a ${f.nombre} el enlace para que decida si sube su foto`, 'success');
+      }
+      if (a === 'quitarFoto') {
+        if (!confirm(`¿Quitar la foto de ${f.nombre}? Se borra ahora mismo.`)) return;
+        await llamar({ accion: 'quitar_foto', id });
+        toast('Foto eliminada', 'success');
       }
       if (a === 'reenviar') { await llamar({ accion: 'reenviar', id }); return toast(`Se reenvía la credencial a ${f.nombre}`, 'success'); }
       if (a === 'renovar') {

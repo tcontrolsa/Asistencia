@@ -13,7 +13,8 @@
  *        eventos en que se generó (solicitada, confirmada). Cuando la visita queda aprobada
  *        (aprobada, confirmada) se envía además la imagen del QR, generada aquí (qrcode_lib.gs).
  *   3. visitaRpc (solo POST): respaldo para redes que bloquean *.trycloudflare.com. Reenvía la
- *      llamada pública (api.visita_publica, sin token) a PostgREST.
+ *      llamada pública (api.visita_publica o api.frecuente_publica, sin token) a PostgREST.
+ *   La imagen que se envía es la tarjeta completa (tarjeta_visita.gs); si no se puede, el QR solo.
  *
  * Requiere: evaluacion_desempeno.gs (urlHistorico_, leerEmpleadoFirestore_), notificaciones.gs
  * (crearNotificacion_, whatsappA_, fechaTexto_), acceso_seguro.gs (enviarWhatsAppAcceso_,
@@ -21,6 +22,7 @@
  */
 
 var VISITAS_URL_PAGINA = 'https://asistencia.tcontrolsa.com/visitas.html';
+var VISITAS_URL_CREDENCIAL = 'https://asistencia.tcontrolsa.com/credencial.html';
 var VISITAS_MAX_INTENTOS = 5;
 
 // ---------------------------------------------------------------------
@@ -138,6 +140,12 @@ function notificarVisita(p) {
     avisarVisitante_(p, 'Gracias por tu visita',
       'Gracias por visitar TCONTROL, ' + (p.visitanteNombre || '') + '. ¿Nos regalas un minuto? Califica tu visita aquí: ' +
       (enlaceVisitante || 'tu enlace privado') + ' · Tu opinión nos ayuda a mejorar.');
+  } else if (evento === 'foto_frecuente') {
+    // El anfitrión le pide la foto (voluntaria): enlace privado con el aviso de protección de datos
+    r.visitante = avisarVisitante_(p, 'Tu foto para la credencial (opcional)',
+      'Hola ' + (p.visitanteNombre || '') + ', ' + anfitrion + ' te invita a agregar tu foto a tu credencial de visitante frecuente de TCONTROL ' +
+      'para que en portería te reconozcan más rápido. Es voluntaria: tu credencial funciona igual sin ella. ' +
+      'Antes de decidir, lee el aviso de protección de datos en tu enlace privado: ' + VISITAS_URL_CREDENCIAL + '#f=' + p.token);
   } else if (evento === 'credencial_frecuente') {
     // Visitante frecuente (018_visitantes_frecuentes.sql): credencial con vigencia; el QR sirve todas las veces
     var vigencia = 'del ' + fechaTexto_(p.desde) + ' al ' + fechaTexto_(p.hasta) + (p.diasTexto && p.diasTexto !== 'cualquier día' ? ', los días ' + p.diasTexto : '');
@@ -146,7 +154,9 @@ function notificarVisita(p) {
     r.visitante = avisarVisitante_(p, 'Tu credencial de visitante frecuente',
       'Hola ' + (p.visitanteNombre || '') + ', TCONTROL te registró como visitante frecuente de ' + anfitrion + '. Tu credencial vale ' + vigencia +
       '. Cada vez que vengas muestra en portería este código QR (o el código ' + codigoVisita_(p.codigo) + ') y tu documento de identidad.' +
-      ' Guarda este mensaje: no necesitas registrarte de nuevo.' + epp, true);
+      ' Guarda este mensaje: no necesitas registrarte de nuevo.' + epp +
+      (p.token ? ' Opcional: si quieres agregar tu foto para que portería te reconozca más rápido, lee el aviso y decide aquí: ' +
+        VISITAS_URL_CREDENCIAL + '#f=' + p.token : ''), true);
   } else if (evento === 'credencial_revocada') {
     avisarVisitante_(p, 'Tu credencial de visitante frecuente fue anulada',
       'Hola ' + (p.visitanteNombre || '') + ', tu credencial de visitante frecuente de TCONTROL (código ' + codigoVisita_(p.codigo) + ') fue anulada' +
@@ -237,7 +247,13 @@ function enviarWhatsAppImagenVisita_(numero, base64, caption) {
 // Devuelve qué se envió (queda en la respuesta de la cola para revisar). Nunca hace fallar la cola.
 function avisarVisitante_(p, asunto, texto, conQr) {
   var out = {};
-  var qr = conQr ? qrVisitaBase64_(p.codigo) : '';
+  var qr = '', tarjeta = false;
+  if (conQr) {
+    qr = typeof tarjetaVisitaBase64_ === 'function' ? tarjetaVisitaBase64_(datosTarjetaVisita_(p)) : '';
+    tarjeta = !!qr;
+    if (!qr) qr = qrVisitaBase64_(p.codigo);
+  }
+  out.tarjeta = tarjeta;
   try {
     if (p.whatsapp && typeof normalizarTelefonoEc_ === 'function' && whatsappActivo_()) {
       var numero = normalizarTelefonoEc_(p.whatsapp);
@@ -257,10 +273,11 @@ function avisarVisitante_(p, asunto, texto, conQr) {
     if (p.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(p.email))) {
       var html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#0f172a;line-height:1.5">' +
         texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/(https:\/\/\S+)/g, '<a href="$1">$1</a>') +
-        (qr ? '<p style="text-align:center;margin:18px 0"><img src="cid:qrvisita" alt="Código QR de ingreso" width="220" height="220"><br>' +
-          '<strong style="font-family:monospace;font-size:20px;letter-spacing:3px">' + codigoVisita_(p.codigo) + '</strong></p>' : '') +
-        '<p style="color:#64748b;font-size:12px;margin-top:18px">Recibes este mensaje porque registraste una visita a TCONTROL S.A. ' +
-        'y dejaste este correo para recibir tu enlace. Tus datos se tratan conforme a la Ley Orgánica de Protección de Datos Personales.</p></div>';
+        (qr ? (tarjeta ? '<p style="text-align:center;margin:18px 0"><img src="cid:qrvisita" alt="Tu pase de visita con código QR" width="300"></p>'
+          : '<p style="text-align:center;margin:18px 0"><img src="cid:qrvisita" alt="Código QR de ingreso" width="220" height="220"><br>' +
+          '<strong style="font-family:monospace;font-size:20px;letter-spacing:3px">' + codigoVisita_(p.codigo) + '</strong></p>') : '') +
+        '<p style="color:#64748b;font-size:12px;margin-top:18px">Recibes este mensaje porque ' +
+        (p.origen === 'frecuente' ? 'TCONTROL S.A. te registró como visitante frecuente con este correo.' : 'registraste una visita a TCONTROL S.A. y dejaste este correo para recibir tu enlace.') + ' Tus datos se tratan conforme a la Ley Orgánica de Protección de Datos Personales.</p></div>';
       var opciones = { to: String(p.email), subject: 'TCONTROL · ' + asunto, name: 'TCONTROL S.A.', htmlBody: html };
       if (qr) opciones.inlineImages = { qrvisita: Utilities.newBlob(Utilities.base64Decode(qr), 'image/png', 'pase-visita.png') };
       MailApp.sendEmail(opciones);
@@ -282,9 +299,10 @@ function probarQrVisitaWhatsApp() {
 // 3. Respaldo de la página pública
 // ---------------------------------------------------------------------
 function proxyVisitaPublica(d) {
+  var fn = d.fn === 'frecuente_publica' ? 'frecuente_publica' : 'visita_publica';
   var cuerpo = typeof d.p === 'string' ? d.p : JSON.stringify(d.p || {});
-  if (cuerpo.length > 6000) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
-  return rpcTunel_('visita_publica', cuerpo, '');
+  if (cuerpo.length > (fn === 'frecuente_publica' ? 600000 : 6000)) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
+  return rpcTunel_(fn, cuerpo, '');
 }
 
 /** Ejecutar una vez desde el editor (▶): define la clave de portería de visitas. Cámbiala aquí antes de ejecutar. */

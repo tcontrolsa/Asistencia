@@ -744,6 +744,10 @@
         ${estadoHtml(v)}</div>
       <div class="gv-nombre">${esc(v.nombre || '(sin nombre)')}${v.origen === 'porteria' ? ' <span class="gv-sincita">Sin cita</span>' : ''}${v.origen === 'frecuente' ? ' <span class="gv-sincita" style="background:#ccfbf1;color:#0f766e;">Visitante frecuente</span>' : ''}</div>
       <div class="vs-muted">${esc(v.empresa || '')}</div>
+      ${f.foto ? `<div style="display:flex;gap:12px;align-items:center;margin:10px 0;padding:10px;border-radius:12px;background:#f0fdfa;border:1px solid #99f6e4">
+        <img src="${f.foto}" alt="Foto del visitante" width="96" height="96" style="border-radius:10px;object-fit:cover;flex:none">
+        <span style="font-size:13px;color:#134e4a"><b>Compare la foto con la persona</b> y con su documento de identidad.</span></div>`
+        : v.origen === 'frecuente' ? '<div class="vs-muted" style="font-size:12.5px;margin-top:4px"><i class="fas fa-id-card"></i> Sin foto registrada: verifique solo con el documento.</div>' : ''}
       <dl class="vs-datos">
         <dt>Visita a</dt><dd>${esc(v.anfitrion)}</dd>
         ${v.tipoNombre ? `<dt>Tipo</dt><dd>${esc(v.tipoNombre)}</dd>` : ''}
@@ -902,6 +906,19 @@
     })();
     return cargaLista;
   }
+  // Foto del visitante frecuente (voluntaria, con su consentimiento). Si no carga, la ficha sigue sin ella.
+  async function fotoFrecuente(codigo) {
+    try {
+      const b = await base(false);
+      if (!b || !st.ses) return '';
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(`${b}/rpc/visita_guardia_foto`, { method: 'POST', signal: ctrl.signal,
+        headers: { Authorization: 'Bearer ' + st.ses.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ p: { codigo } }) });
+      clearTimeout(t);
+      const d = r.ok ? await r.json() : null;
+      return d && d.ok && /^data:image\/jpeg;base64,/.test(d.foto || '') ? d.foto : '';
+    } catch (e) { return ''; }
+  }
   async function buscar(codigo) {
     if (st.buscando) return;
     st.error = ''; st.ficha = null; st.exito = null; st.buscando = codigo.replace(/^TCV1:/i, ''); pintarPrincipal();
@@ -910,6 +927,7 @@
       const r = await rpc({ accion: 'buscar', codigo });
       if (!r.ok) throw new Error(r.error);
       st.ficha = { visita: r.visita, hoy: r.hoy };
+      if (r.visita.origen === 'frecuente') st.ficha.foto = await fotoFrecuente(r.visita.codigo);
     } catch (e) { st.error = e.message; }
     st.buscando = '';
     pintarPrincipal();
