@@ -3,14 +3,14 @@
  *
  * La misma tarjeta que muestra el panel: título, QR, código, nombre, empresa (y foto del visitante
  * frecuente si la dio), a quién visita, vigencia o fecha y el recordatorio de documento/EPP.
- * Apps Script no dibuja HTML, así que se arma en una presentación temporal de Google Slides del
- * tamaño de la tarjeta, se exporta su miniatura PNG (1600 px) y la presentación se manda a la
- * papelera enseguida. Si algo falla, visitas.gs envía solo el QR, como antes.
+ * Apps Script no dibuja HTML, así que se arma en una copia temporal de una plantilla vertical de
+ * Google Slides, se exporta su miniatura PNG (1600 px) y la copia se manda a la papelera enseguida. Si algo falla, visitas.gs envía solo el QR, como antes.
  *
  * Requiere: visitas.gs (nombreCortoVisita_, codigoVisita_), evaluacion_desempeno.gs (rpcTunel_),
  * notificaciones.gs (fechaTexto_), qrcode_lib.gs (qrcode).
- * La primera vez ejecuta probarTarjetaVisita() desde el editor (▶): pide permiso para Slides y Drive
- * y deja en tu Drive «prueba-tarjeta-visita.png» para revisarla.
+ * Una sola vez: crearPlantillaTarjeta() (▶) y en la presentación creada poner el tamaño de página
+ * 300 × 432 pt (Slides no deja fijarlo por código); luego probarTarjetaVisita() deja en tu Drive
+ * «prueba-tarjeta-visita.png» para revisarla. Necesita la API de Google Slides activada (Servicios).
  */
 
 var TARJETA_FUENTE = 'Plus Jakarta Sans';
@@ -61,49 +61,50 @@ function qrTarjetaBlob_(codigo) {
   return Utilities.newBlob(Utilities.base64Decode(gif), 'image/gif', 'qr.gif').getAs('image/png');
 }
 
-// PNG en base64 de la tarjeta; '' si no se pudo (se envía el QR solo)
+// PNG en base64 de la tarjeta; '' si no se pudo (se envía el QR solo).
+// Slides no deja fijar el tamaño de página por código: se copia una plantilla VERTICAL (crearPlantillaTarjeta)
+// y todo se dibuja a escala de su ancho (diseño base 300 × 432 pt).
 function tarjetaVisitaBase64_(d) {
   if (!d || !d.codigo || typeof qrcode !== 'function') return '';
-  var W = 300, conFoto = !!d.foto;
-  var H = 432;
+  var plantilla = PropertiesService.getScriptProperties().getProperty('TARJETA_PLANTILLA_ID');
+  if (!plantilla) { Logger.log('Tarjeta de visita: falta la plantilla. Ejecuta crearPlantillaTarjeta() una vez.'); return ''; }
+  var conFoto = !!d.foto;
   var oauth = ScriptApp.getOAuthToken();
   var id = '';
   try {
-    var cre = UrlFetchApp.fetch('https://slides.googleapis.com/v1/presentations', {
-      method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + oauth },
-      payload: JSON.stringify({ title: 'tmp-tarjeta-visita', pageSize: { width: { magnitude: W, unit: 'PT' }, height: { magnitude: H, unit: 'PT' } } })
-    });
-    if (cre.getResponseCode() !== 200) throw new Error('Slides: ' + cre.getContentText().slice(0, 200));
-    id = JSON.parse(cre.getContentText()).presentationId;
-
+    id = DriveApp.getFileById(plantilla).makeCopy('tmp-tarjeta-visita').getId();
     var pres = SlidesApp.openById(id);
+    var W = pres.getPageWidth(), H = pres.getPageHeight();
+    if (H <= W) throw new Error('La plantilla debe ser vertical (300 × 432 pt). Revisa Archivo → Configuración de página.');
+    var k = W / 300;
+    var n = function (x) { return x * k; };
     var slide = pres.getSlides()[0];
     slide.getPageElements().forEach(function (e) { e.remove(); });
     slide.getBackground().setSolidFill('#ffffff');
 
-    var marco = slide.insertShape(SlidesApp.ShapeType.ROUND_RECTANGLE, 6, 6, W - 12, H - 12);
+    var marco = slide.insertShape(SlidesApp.ShapeType.ROUND_RECTANGLE, n(6), n(6), W - n(12), H - n(12));
     marco.getFill().setSolidFill('#ffffff');
-    marco.getBorder().setWeight(2).getLineFill().setSolidFill('#0f172a');
+    marco.getBorder().setWeight(n(2)).getLineFill().setSolidFill('#0f172a');
 
-    textoTarjeta_(slide, d.titulo, 14, 18, W - 28, 18, { size: 10.5, bold: true, color: '#2563eb' });
+    textoTarjeta_(slide, d.titulo, n(14), n(18), W - n(28), n(18), { size: n(10.5), bold: true, color: '#2563eb' });
     var qr = slide.insertImage(qrTarjetaBlob_(d.codigo));
-    qr.setLeft((W - 196) / 2).setTop(40).setWidth(196).setHeight(196);
-    textoTarjeta_(slide, codigoVisita_(d.codigo).split('').join(' '), 14, 240, W - 28, 28, { size: 19, bold: true, font: 'Roboto Mono' });
+    qr.setLeft((W - n(196)) / 2).setTop(n(40)).setWidth(n(196)).setHeight(n(196));
+    textoTarjeta_(slide, codigoVisita_(d.codigo).split('').join(' '), n(14), n(240), W - n(28), n(28), { size: n(19), bold: true, font: 'Roboto Mono' });
 
-    var y = 274;
+    var y = n(274);
     if (conFoto) {
       var img = slide.insertImage(Utilities.newBlob(Utilities.base64Decode(d.foto), 'image/jpeg', 'foto.jpg'));
-      img.setLeft(30).setTop(y).setWidth(62).setHeight(62);
-      textoTarjeta_(slide, d.nombre, 102, y + 2, W - 132, 36, { size: 13.5, bold: true, align: 'START' });
-      textoTarjeta_(slide, d.empresa, 102, y + 38, W - 132, 20, { size: 10.5, color: '#475569', align: 'START' });
-      y += 70;
+      img.setLeft(n(30)).setTop(y).setWidth(n(62)).setHeight(n(62));
+      textoTarjeta_(slide, d.nombre, n(102), y + n(2), W - n(132), n(36), { size: n(13.5), bold: true, align: 'START' });
+      textoTarjeta_(slide, d.empresa, n(102), y + n(38), W - n(132), n(20), { size: n(10.5), color: '#475569', align: 'START' });
+      y += n(70);
     } else {
-      textoTarjeta_(slide, d.nombre, 18, y, W - 36, 24, { size: 14, bold: true });
-      textoTarjeta_(slide, d.empresa, 18, y + 24, W - 36, 18, { size: 10.5, color: '#475569' });
-      y += 48;
+      textoTarjeta_(slide, d.nombre, n(18), y, W - n(36), n(24), { size: n(14), bold: true });
+      textoTarjeta_(slide, d.empresa, n(18), y + n(24), W - n(36), n(18), { size: n(10.5), color: '#475569' });
+      y += n(48);
     }
-    textoTarjeta_(slide, d.lineas.join('\n'), 18, y, W - 36, 48, { size: 10, color: '#475569' });
-    textoTarjeta_(slide, d.pie, 18, H - 40, W - 36, 18, { size: 8.5, color: '#64748b' });
+    textoTarjeta_(slide, d.lineas.join('\n'), n(18), y, W - n(36), n(48), { size: n(10), color: '#475569' });
+    textoTarjeta_(slide, d.pie, n(18), H - n(40), W - n(36), n(18), { size: n(8.5), color: '#64748b' });
 
     var pageId = slide.getObjectId();
     pres.saveAndClose();
@@ -117,7 +118,7 @@ function tarjetaVisitaBase64_(d) {
     Logger.log('Tarjeta de visita no generada: ' + e);
     return '';
   } finally {
-    // La presentación temporal (con datos del visitante) no se queda en Drive
+    // La copia temporal (con datos del visitante) no se queda en Drive
     if (id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) { Logger.log('No se pudo borrar la tarjeta temporal: ' + e); } }
   }
 }
@@ -132,7 +133,25 @@ function textoTarjeta_(slide, texto, x, y, w, h, o) {
   return caja;
 }
 
-/** Ejecutar una vez desde el editor (▶): autoriza Slides/Drive y guarda una tarjeta de ejemplo en tu Drive. */
+/**
+ * Ejecutar UNA vez desde el editor (▶): crea la plantilla de la tarjeta y guarda su ID.
+ * Luego ábrela con el enlace del registro y en Archivo → Configuración de página → Personalizado
+ * pon 300 × 432 puntos (o 10,58 × 15,24 cm) y Aplicar. Después ejecuta probarTarjetaVisita().
+ */
+function crearPlantillaTarjeta() {
+  var props = PropertiesService.getScriptProperties();
+  var actual = props.getProperty('TARJETA_PLANTILLA_ID');
+  if (actual) {
+    try { var f = DriveApp.getFileById(actual); if (!f.isTrashed()) { Logger.log('Ya existe la plantilla: ' + f.getUrl()); return; } } catch (e) { }
+  }
+  var pres = SlidesApp.create('Plantilla tarjeta de visita (no borrar)');
+  pres.getSlides()[0].getPageElements().forEach(function (e) { e.remove(); });
+  pres.saveAndClose();
+  props.setProperty('TARJETA_PLANTILLA_ID', pres.getId());
+  Logger.log('Plantilla creada: ' + pres.getUrl() + ' → ábrela y en Archivo → Configuración de página → Personalizado pon 300 × 432 puntos.');
+}
+
+/** Después de la plantilla (▶): guarda una tarjeta de ejemplo en tu Drive para revisarla. */
 function probarTarjetaVisita() {
   var b64 = tarjetaVisitaBase64_({
     titulo: 'TCONTROL · VISITANTE FRECUENTE', codigo: 'PRUEBA23', nombre: 'Visitante de Prueba', empresa: 'Empresa de ejemplo',
