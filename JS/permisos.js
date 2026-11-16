@@ -135,10 +135,14 @@
     try {
       const snap = await db().collection(CFG_DOC[0]).doc(CFG_DOC[1]).get();
       const d = snap.exists ? snap.data() : {};
-      _cfg = { tthh: Array.isArray(d.tthh) ? d.tthh.filter(x => x && x.id).map(x => ({ id: String(x.id), nombre: x.nombre || '' })) : [] };
+      _cfg = {
+        tthh: Array.isArray(d.tthh) ? d.tthh.filter(x => x && x.id).map(x => ({ id: String(x.id), nombre: x.nombre || '' })) : [],
+        // El colaborador ve sus vacaciones solo en días completos (las fracciones, en el panel). Por defecto sí.
+        vacacionesSoloDias: d.vacaciones_solo_dias !== false
+      };
     } catch (e) {
       console.warn('Permisos: configuración no leída', e);
-      _cfg = _cfg || { tthh: [] };
+      _cfg = _cfg || { tthh: [], vacacionesSoloDias: true };
     }
     _cfgEn = Date.now();
     return _cfg;
@@ -150,7 +154,12 @@
   async function guardarTTHH(lista, quien) {
     const tthh = lista.map(x => ({ id: String(x.id), nombre: x.nombre || '' }));
     await db().collection(CFG_DOC[0]).doc(CFG_DOC[1]).set({ tthh, actualizado_por: quien || '', actualizado_en: ahoraIso() }, { merge: true });
-    _cfg = { tthh };
+    _cfg = Object.assign({ vacacionesSoloDias: true }, _cfg, { tthh });
+    _cfgEn = Date.now();
+  }
+  async function guardarVistaVacaciones(soloDias, quien) {
+    await db().collection(CFG_DOC[0]).doc(CFG_DOC[1]).set({ vacaciones_solo_dias: !!soloDias, actualizado_por: quien || '', actualizado_en: ahoraIso() }, { merge: true });
+    _cfg = Object.assign({ tthh: [] }, _cfg, { vacacionesSoloDias: !!soloDias });
     _cfgEn = Date.now();
   }
 
@@ -406,6 +415,16 @@
           ${V.diasSinSaldo ? `<li class="pm-tavisa"><span>Vacaciones pedidas sin saldo (van al rol)</span><strong>${V.diasSinSaldo} día${V.diasSinSaldo === 1 ? '' : 's'}</strong></li>` : ''}
         </ul>
         <div class="pm-sub">Año de vacaciones ${fechaCorta(V.periodo.inicio)} – ${fechaCorta(V.periodo.fin)}. Cada 8 h de permiso que no cubre la bolsa descuentan 1 día; lo que al 30/11 no llegue a 8 h pasa al año siguiente.</div>`;
+    // Vista del colaborador (2026-11-12): solo días completos; las horas acumuladas hacia el próximo día las ve el panel
+    const diasPend = Math.floor(conPend / MIN_DIA);
+    const saldoEntero = V.saldoDias === null ? null : Math.max(0, Math.floor(V.saldoDias));
+    const vacacionesColab = `<div class="pm-tnum">${saldoEntero === null ? '—' : `${saldoEntero} día${saldoEntero === 1 ? '' : 's'}`} <small>disponibles</small></div>
+        <ul class="pm-tlista">
+          <li><span>Días descontados por permisos este año</span><strong>${V.diasPorHoras}</strong></li>
+          ${diasPend ? `<li class="pm-tavisa"><span>Si se aprueba lo pendiente, se descuenta</span><strong>${diasPend} día${diasPend === 1 ? '' : 's'} más</strong></li>` : ''}
+          ${V.diasSinSaldo ? `<li class="pm-tavisa"><span>Vacaciones pedidas sin saldo (van al rol)</span><strong>${V.diasSinSaldo} día${V.diasSinSaldo === 1 ? '' : 's'}</strong></li>` : ''}
+        </ul>
+        <div class="pm-sub">Año de vacaciones ${fechaCorta(V.periodo.inicio)} – ${fechaCorta(V.periodo.fin)}. Cada 8 h de permiso que no cubre la bolsa descuentan 1 día de vacaciones.</div>`;
     const totalRol = R.ocurrido + R.programado;
     const rol = `<div class="pm-tnum ${totalRol ? 'pm-c-rojo' : 'pm-c-verde'}">${totalRol ? durTxt(totalRol) : 'Sin descuento'}</div>
         <ul class="pm-tlista">
@@ -418,7 +437,9 @@
         <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-pm="tiempo" title="Volver a calcular"><i class="fas fa-rotate"></i> ${r.calculado.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</button></div>
       <div class="pm-tgrid">
         ${tarjeta('fa-piggy-bank', 'pm-c-violeta', 'Bolsa de 4 horas', `Período ${perTxt}`, bolsa)}
-        ${tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', panel ? 'Permisos cargados a sus vacaciones' : 'Permisos cargados a tus vacaciones', vacaciones)}
+        ${panel ? tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos cargados a sus vacaciones', vacaciones)
+                : opts.soloDias === false ? tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos cargados a tus vacaciones', vacaciones)
+                : tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Vacaciones', 'Saldo en días completos', vacacionesColab)}
         ${tarjeta('fa-file-invoice-dollar', totalRol ? 'pm-c-rojo' : 'pm-c-verde', 'Descuento al rol', `Período ${perTxt}`, rol)}
       </div>`;
   }
@@ -436,6 +457,7 @@
         montarResumenTiempo(cont, cont._pmEmp, Object.assign({}, cont._pmOpts, { forzar: true }));
       });
     }
+    if (!panel) { try { opts = Object.assign({}, opts, { soloDias: (await leerConfig()).vacacionesSoloDias }); } catch (e) { } }
     cont._pmEmp = String(empId); cont._pmOpts = opts;
     const c = _cacheResumen[String(empId)];
     if (!opts.forzar && opts.cacheMs && c && Date.now() - c.en < opts.cacheMs) { cont.innerHTML = htmlResumenTiempo(c.r, opts); return; }
@@ -1567,13 +1589,13 @@
     if (!cont || !opts || !opts.usuario) return;
     if (cont._pm) { if (opts.enlace) cont._pm.enlace(opts.enlace); return; }
     const yo = { id: String(opts.usuario.id || ''), nombre: opts.usuario.nombre || '' };
-    const st = { tab: 'bandeja', filtro: 'PEND', busca: '', lista: null, err: '', tthh: false, cfg: { tthh: [] }, enlace: opts.enlace || null, subs: [] };
+    const st = { tab: 'bandeja', filtro: 'PEND', busca: '', lista: null, err: '', tthh: false, cfg: { tthh: [], vacacionesSoloDias: true }, enlace: opts.enlace || null, subs: [] };
     const empleados = () => (typeof window.todoElPersonal === 'function' ? window.todoElPersonal() : (window.empCache || [])).filter(activo);
     cont.innerHTML = `<div class="pm-panel">
       <div class="pm-pcab">
         <nav class="pm-tabs" role="tablist">
           <button type="button" role="tab" data-tab="bandeja" aria-selected="true">Solicitudes</button>
-          <button type="button" role="tab" data-tab="tthh" aria-selected="false">Personas de TTHH</button>
+          <button type="button" role="tab" data-tab="tthh" aria-selected="false">Configuración</button>
         </nav>
         <button type="button" class="pm-btn pm-btn-sec" data-pm="a-nombre"><i class="fas fa-user-plus"></i> Registrar médico o calamidad</button>
       </div>
@@ -1644,10 +1666,16 @@
           ${opts.admin ? `<button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-quitar="${esc(x.id)}">Quitar</button>` : ''}</li>`).join('') : '<li class="pm-sub">Nadie configurado todavía.</li>'}</ul>
         ${opts.admin ? `<div class="pm-fila pm-fila-agregar"><select id="pmNuevoTthh" class="pm-campo" aria-label="Persona a agregar"><option value="">Agregar persona…</option>${opciones.map(e => `<option value="${esc(e.id)}">${esc(nombreCorto(e.nombre))} · ${esc(e.id)}${e.area ? ' · ' + esc(e.area) : ''}</option>`).join('')}</select>
           <button type="button" class="pm-btn pm-btn-pri" data-pm="agregar-tthh"><i class="fas fa-plus"></i> Agregar</button></div>` : '<p class="pm-sub">Solo los administradores pueden cambiar esta lista.</p>'}
+      </section>
+      <section class="pm-config">
+        <h3 class="pm-h3">Vista del colaborador</h3>
+        <label class="pm-acepta pm-interruptor"><input type="checkbox" id="pmSoloDias" ${st.cfg.vacacionesSoloDias !== false ? 'checked' : ''} ${opts.admin ? '' : 'disabled'}>
+          <span><strong>Vacaciones solo en días completos</strong><br><span class="pm-sub">El colaborador ve su saldo y sus días tomados sin fracciones, y no ve las horas acumuladas hacia el próximo día. El panel siempre muestra el detalle.</span></span></label>
+        ${opts.admin ? '' : '<p class="pm-sub">Solo los administradores pueden cambiar esta opción.</p>'}
       </section>`;
     }
     async function guardarLista(nueva) {
-      try { await guardarTTHH(nueva, yo.nombre || yo.id); st.cfg = { tthh: nueva }; st.tthh = nueva.some(x => x.id === yo.id); toast('Lista de TTHH guardada', 'success'); }
+      try { await guardarTTHH(nueva, yo.nombre || yo.id); st.cfg = Object.assign({}, st.cfg, { tthh: nueva }); st.tthh = nueva.some(x => x.id === yo.id); toast('Lista de TTHH guardada', 'success'); }
       catch (e) { toast('No se pudo guardar: ' + (e.message || e), 'error'); }
       pintar();
     }
@@ -1678,6 +1706,18 @@
           onCreada: () => { st.filtro = 'TODAS'; st.tab = 'bandeja'; pintar(); }
         });
       }
+    });
+
+    cont.addEventListener('change', async ev => {
+      if (ev.target.id !== 'pmSoloDias' || !opts.admin) return;
+      const v = ev.target.checked;
+      ev.target.disabled = true;
+      try {
+        await guardarVistaVacaciones(v, yo.nombre || yo.id);
+        st.cfg = Object.assign({}, st.cfg, { vacacionesSoloDias: v });
+        toast(v ? 'El colaborador verá solo días completos' : 'El colaborador verá también las fracciones', 'success');
+      } catch (e) { ev.target.checked = !v; toast('No se pudo guardar: ' + (e.message || e), 'error'); }
+      ev.target.disabled = false;
     });
 
     (async () => {

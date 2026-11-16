@@ -30,10 +30,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
         media="print" onload="this.media='all'">
 
-    <link rel="stylesheet" href="./CSS/index.css?v=20260902_01">
+    <link rel="stylesheet" href="./CSS/index.css?v=20261113_01">
     <link rel="stylesheet" href="./CSS/evaluacion.css?v=20261007_01">
     <link rel="stylesheet" href="./CSS/visitas.css?v=20261027_01">
-    <link rel="stylesheet" href="./CSS/permisos.css?v=20261112_03">
+    <link rel="stylesheet" href="./CSS/permisos.css?v=20261113_01">
     <link rel="stylesheet" href="./CSS/notificaciones.css?v=20261007_01">
     <link rel="stylesheet" href="./CSS/credencial_campo.css?v=20261020_05">
     <!-- ===== FIREBASE SDKS & BACKEND ===== -->
@@ -172,56 +172,69 @@
         <div id="notifHostApp" class="nt-host-app" hidden></div>
         <div id="emBarraApp" class="em-barra-app" role="status" hidden></div>
         <div class="main-content" id="mainContent"></div>
+        <!-- Pie: 4 pestañas de uso diario + «Más» (el resto en una hoja; 2026-11-13) -->
         <div class="bottom-nav" style="display: none;">
             <button class="nav-item active" data-page="home">
                 <i class="fas fa-id-card"></i>
                 <span>Credencial</span>
             </button>
-            <button class="nav-item" id="navItemCarne" data-page="carne">
-                <i class="fas fa-qrcode"></i>
-                <span>Carné</span>
-            </button>
             <button class="nav-item" id="navItemAlmuerzo" data-page="almuerzo">
                 <i class="fas fa-utensils"></i>
                 <span>Almuerzo</span>
-            </button>
-            <button class="nav-item" data-page="history">
-                <i class="fas fa-chart-line"></i>
-                <span>Resumen</span>
-            </button>
-            <button class="nav-item" id="navItemExtras" data-page="extras" style="display: none;">
-                <i class="fas fa-clock"></i>
-                <span>Extras</span>
-            </button>
-            <button class="nav-item" id="navItemPagos" data-page="pagos">
-                <i class="fas fa-file-invoice-dollar"></i>
-                <span>Pagos</span>
-            </button>
-            <button class="nav-item" id="navItemEstado" data-page="estado" style="display: none;">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span>Estado</span>
-            </button>
-            <button class="nav-item" id="navItemVisitas" data-page="visitas">
-                <i class="fas fa-id-card-alt"></i>
-                <span>Visitas</span>
             </button>
             <button class="nav-item" id="navItemPermisos" data-page="permisos">
                 <i class="fas fa-calendar-alt"></i>
                 <span>Permisos</span>
                 <span class="pm-nav-badge" id="badgePermisosApp" hidden>0</span>
             </button>
-            <button class="nav-item" id="navItemDesarrollo" data-page="desarrollo">
-                <i class="fas fa-seedling"></i>
-                <span>Desarrollo</span>
+            <button class="nav-item" data-page="history">
+                <i class="fas fa-chart-line"></i>
+                <span>Resumen</span>
             </button>
-            <button class="nav-item" data-page="profile">
-                <i class="fas fa-user-circle"></i>
-                <span>Perfil</span>
+            <button class="nav-item nav-item-mas" id="navItemMas" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="navMasHoja">
+                <i class="fas fa-grip"></i>
+                <span>Más</span>
             </button>
-            <button class="nav-item" id="navItemAdmin" data-page="admin" style="display: none;">
-                <i class="fas fa-lock"></i>
-                <span>Master</span>
-            </button>
+        </div>
+        <div id="navMasHoja" class="nav-mas" hidden>
+            <div class="nav-mas-fondo" data-nav-mas-cerrar></div>
+            <div class="nav-mas-panel" role="dialog" aria-modal="true" aria-label="Más opciones">
+                <div class="nav-mas-cab"><span>Más opciones</span><button type="button" class="nav-mas-x" data-nav-mas-cerrar aria-label="Cerrar">&times;</button></div>
+                <div class="nav-mas-grid">
+                    <button class="nav-item" id="navItemCarne" data-page="carne">
+                        <i class="fas fa-qrcode"></i>
+                        <span>Carné</span>
+                    </button>
+                    <button class="nav-item" data-page="profile">
+                        <i class="fas fa-user-circle"></i>
+                        <span>Perfil</span>
+                    </button>
+                    <button class="nav-item" id="navItemPagos" data-page="pagos">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        <span>Pagos</span>
+                    </button>
+                    <button class="nav-item" id="navItemExtras" data-page="extras" style="display: none;">
+                        <i class="fas fa-clock"></i>
+                        <span>Extras</span>
+                    </button>
+                    <button class="nav-item" id="navItemVisitas" data-page="visitas">
+                        <i class="fas fa-id-card-alt"></i>
+                        <span>Visitas</span>
+                    </button>
+                    <button class="nav-item" id="navItemDesarrollo" data-page="desarrollo">
+                        <i class="fas fa-seedling"></i>
+                        <span>Desarrollo</span>
+                    </button>
+                    <button class="nav-item" id="navItemEstado" data-page="estado" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>Estado</span>
+                    </button>
+                    <button class="nav-item" id="navItemAdmin" data-page="admin" style="display: none;">
+                        <i class="fas fa-lock"></i>
+                        <span>Master</span>
+                    </button>
+                </div>
+            </div>
         </div>
         <!-- ===== PWA INSTALL BANNER ===== -->
         <div id="pwaInstallBanner">
@@ -254,11 +267,11 @@
     <script src="./JS/notificaciones.js?v=20261112_01"></script>
     <script src="./JS/visitas_anfitrion.js?v=20261112_01"></script>
     <script src="./JS/reglas_jornada.js?v=20261112_03"></script>
-    <script src="./JS/permisos.js?v=20261112_05"></script>
+    <script src="./JS/permisos.js?v=20261113_02"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
     <script src="./JS/credencial_campo.js?v=20261020_07"></script>
     <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_03"></script>
-    <script src="./JS/index_core.js?v=20261112_02"></script>
+    <script src="./JS/index_core.js?v=20261113_02"></script>
 </body>
 
 </html>

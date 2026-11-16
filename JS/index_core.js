@@ -7176,8 +7176,18 @@ async function renderProfilePage() {
 
         const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
         const badgeDisponibles = document.getElementById('badge-vacaciones-disponibles');
-        if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong>${vacacionesTomadas}</strong> día(s)`;
-        if (badgeDisponibles) badgeDisponibles.innerHTML = totalVacacionesDisponibles;
+        // Días completos (2026-11-12): las fracciones son de vista del panel, salvo que el panel lo desactive
+        // (Permisos → Configuración → «Vacaciones solo en días completos»)
+        const diaEntero = v => { const n = parseFloat(v); return isNaN(n) ? v : Math.max(0, Math.floor(n + 1e-9)); };
+        const pintarVac = soloDias => {
+            const f = soloDias ? diaEntero : (v => v);
+            if (lblTomadas) lblTomadas.innerHTML = `Total tomadas: <strong>${f(vacacionesTomadas)}</strong> día(s)`;
+            if (badgeDisponibles) badgeDisponibles.innerHTML = f(totalVacacionesDisponibles);
+        };
+        pintarVac(true);
+        if (window.Permisos && typeof window.Permisos.leerConfig === 'function') {
+            window.Permisos.leerConfig().then(c => { if (c && c.vacacionesSoloDias === false) pintarVac(false); }).catch(() => { });
+        }
     }).catch(function (e) {
         console.error("Error al obtener vacaciones del empleado:", e);
         const lblTomadas = document.getElementById('lbl-vacaciones-tomadas');
@@ -8554,17 +8564,36 @@ async function cerrarSesion() {
 }
 
 // ========== NAVEGACIÓN ==========
+// Pie con 4 pestañas + «Más» (2026-11-13): las demás pestañas viven en la hoja #navMasHoja. Siguen siendo
+// .nav-item con data-page, así que mostrar u ocultar una (Extras, Master…) funciona igual que antes.
+function abrirMenuMas() {
+    const hoja = document.getElementById('navMasHoja');
+    if (!hoja) return;
+    hoja.hidden = false;
+    document.getElementById('navItemMas')?.setAttribute('aria-expanded', 'true');
+    const primera = [...hoja.querySelectorAll('.nav-item')].find(b => b.offsetParent !== null);
+    try { primera && primera.focus({ preventScroll: true }); } catch (e) { }
+}
+function cerrarMenuMas() {
+    const hoja = document.getElementById('navMasHoja');
+    if (!hoja || hoja.hidden) return;
+    hoja.hidden = true;
+    document.getElementById('navItemMas')?.setAttribute('aria-expanded', 'false');
+}
 async function navigateTo(page) {
     currentPage = page;
 
     document.querySelectorAll('.nav-item').forEach(item => {
         if (item.dataset.page === page) {
             item.classList.add('active');
-            try { item.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (e) { }
         } else {
             item.classList.remove('active');
         }
     });
+    // «Más» se marca cuando la página abierta está en la hoja
+    const btnMas = document.getElementById('navItemMas');
+    if (btnMas) btnMas.classList.toggle('tiene-activa', !!document.querySelector(`#navMasHoja .nav-item[data-page="${page}"]`));
+    cerrarMenuMas();
 
     const fabWhatsApp = document.getElementById('fabWhatsApp');
     if (fabWhatsApp) {
@@ -9359,13 +9388,18 @@ function celebrarCumpleanos() {
 
 // Inicialización final
 document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.nav-item').forEach(item => {
+    document.querySelectorAll('.nav-item[data-page]').forEach(item => {
         item.addEventListener('click', () => {
             if (isAuthenticated) {
                 navigateTo(item.dataset.page);
             }
         });
     });
+    // Hoja «Más» del pie
+    const btnMas = document.getElementById('navItemMas');
+    if (btnMas) btnMas.addEventListener('click', () => { if (isAuthenticated) abrirMenuMas(); });
+    document.querySelectorAll('[data-nav-mas-cerrar]').forEach(el => el.addEventListener('click', cerrarMenuMas));
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') cerrarMenuMas(); });
 
     const fabWhatsApp = document.getElementById('fabWhatsApp');
     if (fabWhatsApp) {

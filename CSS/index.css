@@ -5060,3 +5060,25 @@
             margin-bottom: 16px;
             box-shadow: 0 10px 24px rgba(16, 185, 129, 0.35);
         }
+/* ===== Pie con 4 pestañas + «Más» (2026-11-13): el resto de pestañas va en una hoja inferior ===== */
+.bottom-nav { justify-content: space-around; overflow-x: hidden; padding-left: 6px; padding-right: 6px; }
+.bottom-nav .nav-item { flex: 1 1 0; min-width: 0; padding: 6px 4px; }
+.bottom-nav .nav-item span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.nav-item-mas.tiene-activa { color: #e11d48; font-weight: 750; }
+.nav-item-mas.tiene-activa i { color: #e11d48; }
+.nav-mas { position: fixed; inset: 0; z-index: 1200; }
+.nav-mas[hidden] { display: none; }
+.nav-mas-fondo { position: absolute; inset: 0; background: rgba(15, 23, 42, .45); animation: navMasFondo .2s ease; }
+.nav-mas-panel { position: absolute; left: 0; right: 0; bottom: 0; max-width: 560px; margin: 0 auto; background: #fff; border-radius: 22px 22px 0 0;
+  padding: 10px 14px max(16px, env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(15, 23, 42, .25); animation: navMasSube .22s cubic-bezier(.4, 0, .2, 1); }
+.nav-mas-cab { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 10px; font-weight: 800; font-size: 14px; color: #0f172a; }
+.nav-mas-x { border: 0; background: #f1f5f9; color: #334155; width: 34px; height: 34px; border-radius: 50%; font-size: 22px; line-height: 1; cursor: pointer; }
+.nav-mas-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.nav-mas-grid .nav-item { min-width: 0; width: 100%; padding: 12px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; color: #334155; font-size: 11.5px; }
+.nav-mas-grid .nav-item i { font-size: 22px; }
+.nav-mas-grid .nav-item span { display: block !important; white-space: normal; text-align: center; line-height: 1.15; }
+.nav-mas-grid .nav-item.active::before { display: none; }
+.nav-mas-grid .nav-item.active { background: #fff1f2; border-color: #fda4af; }
+@keyframes navMasSube { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes navMasFondo { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 380px) { .bottom-nav .nav-item span { display: block; font-size: 9.5px; } .nav-mas-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

@@ -120,3 +120,6 @@ textarea.pm-campo { resize: vertical; }
 .pm-tlista li strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pm-tlista .pm-tavisa strong { color: #b45309; }
 .pm-tcarga { background: #fff; border: 1px dashed #cbd5e1; border-radius: 14px; padding: 14px; color: var(--pm-sub); font-size: 13px; }
+.pm-config + .pm-config { margin-top: 14px; }
+.pm-interruptor { align-items: flex-start; cursor: pointer; background: #fff; border-color: var(--pm-borde); color: var(--pm-fg); }
+.pm-interruptor input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 18px; }
