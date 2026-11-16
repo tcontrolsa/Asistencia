@@ -19,7 +19,21 @@
 
   // Datos de nómina (NOMINA_CARGO_JEFE): unidad y área de nómina; si faltan, el área de asistencia
   const unidadDe = e => String((e && e.unidad) || '').trim();
-  const areaDe = e => String((e && (e.area_nomina || e.area)) || '').trim();
+  // Áreas escritas distinto (ADMINISTRACION / ADMINISTRACIÓN / Administración) se tratan como una sola
+  const claveArea = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').toUpperCase();
+  const AREAS = new Map();
+  const registrarAreas = emps => (emps || []).forEach(e => {
+    const raw = String((e && (e.area_nomina || e.area)) || '').trim().replace(/\s+/g, ' ');
+    if (!raw) return;
+    const k = claveArea(raw), v = raw.toUpperCase(), act = AREAS.get(k);
+    if (!act || (v !== k && act === k)) AREAS.set(k, v);   // se prefiere la variante con tilde
+  });
+  const areaDe = e => {
+    const raw = String((e && (e.area_nomina || e.area)) || '').trim();
+    if (!raw) return '';
+    const k = claveArea(raw);
+    return AREAS.get(k) || raw.toUpperCase().replace(/\s+/g, ' ');
+  };
   const subtituloEmp = e => [unidadDe(e), areaDe(e), String((e && (e.cargo_contrato || e.cargo)) || '').trim()].filter(Boolean).join(' · ');
   const opcionesSelect = (lista, actual, todos) => `<option value="">${todos}</option>` +
     lista.map(a => `<option ${a === actual ? 'selected' : ''}>${String(a).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))}</option>`).join('');
@@ -56,12 +70,15 @@
     { v: 5, t: 'Excelente', d: 'Supera lo esperado para su cargo. Lo hace de forma autónoma y consistente; puede servir de referente para otros.' }
   ];
   let RECOMENDACION = {
-    'Excelente': 'Reconocer el logro, mantener el rumbo y, si aplica, ampliar responsabilidades o retos de desarrollo.',
-    'Muy bueno': 'Reconocer el logro, mantener el rumbo y, si aplica, ampliar responsabilidades o retos de desarrollo.',
-    'Bueno': 'Reforzar fortalezas y acordar 1 o 2 acciones de mejora para el próximo mes.',
+    'Supera expectativas': 'Reconocer el logro, mantener el rumbo y, si aplica, ampliar responsabilidades o retos de desarrollo.',
+    'Cumple expectativas': 'Reforzar fortalezas y acordar 1 o 2 acciones de mejora para el próximo mes.',
     'Aceptable': 'Plan de mejora con compromisos concretos y seguimiento en la siguiente evaluación.',
-    'Requiere mejora': 'Reunión con Psicología Organizacional, plan de acción formal con apoyo o capacitación, y revisión en el mes siguiente.'
+    'Requiere mejora': 'Acordar acciones de mejora con apoyo o capacitación y revisarlas en la siguiente evaluación.',
+    'Requiere plan de acción': 'Reunión con Psicología Organizacional, plan de acción formal con apoyo o capacitación, y revisión en el mes siguiente.'
   };
+  // Categorías de desempeño por defecto (editables en Configuración); 'min' es el límite inferior inclusivo
+  const NIVELES_BASE = [{ min: 0.90, n: 'Supera expectativas' }, { min: 0.80, n: 'Cumple expectativas' }, { min: 0.70, n: 'Aceptable' }, { min: 0.60, n: 'Requiere mejora' }, { min: 0, n: 'Requiere plan de acción' }];
+  const NIVELES_ANTIGUOS = ['Excelente', 'Muy bueno', 'Bueno', 'Aceptable', 'Requiere mejora'];
   const ROLES = ['EVALUADO', 'EVALUADOR', 'EVALUADOR Y EVALUADO', 'NO APLICA'];
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const MAX_OBS = 200, MAX_TXT = 500;
@@ -72,15 +89,23 @@
   // (cuestionario): el historial no cambia cuando se edita.
   const BASE = {
     dimensiones: DIMENSIONES, items: ITEMS, escala: ESCALA, obligatoriaObs: [1, 2, 5],
-    niveles: [{ min: 0.95, n: 'Excelente' }, { min: 0.85, n: 'Muy bueno' }, { min: 0.75, n: 'Bueno' }, { min: 0.65, n: 'Aceptable' }, { min: 0, n: 'Requiere mejora' }],
-    meta: 0.80, plazos: { evaluarDia: 10, confirmarDias: 7, vigenciaDias: 45, avisoDias: 3 }, recomendaciones: RECOMENDACION
+    niveles: NIVELES_BASE,
+    meta: 0.60, plazos: { evaluarDia: 10, confirmarDias: 7, vigenciaDias: 45, avisoDias: 3 }, recomendaciones: RECOMENDACION
   };
   let CFG = BASE, CFG_VERSION = null, REAPERTURAS = [], NIVELES = BASE.niveles, META = BASE.meta, OBLIG = BASE.obligatoriaObs;
+  // Umbral de alerta a RR.HH.: donde empieza la penúltima categoría (bajo ese valor está la categoría más baja)
+  function umbralAlerta(niveles) {
+    const o = niveles.map(x => Number(x.min)).sort((a, b) => b - a);
+    return o.length > 1 ? o[o.length - 2] : 0;
+  }
   function aplicarConfig(cfg, version, reaperturas) {
     CFG = Object.assign({}, BASE, cfg || {});
+    // Una configuración guardada con las categorías antiguas se reemplaza por las nuevas (el admin puede volver a editarlas)
+    const nomCfg = (CFG.niveles || []).map(x => x.n).sort().join('|');
+    if (!CFG.niveles || nomCfg === NIVELES_ANTIGUOS.slice().sort().join('|')) { CFG.niveles = NIVELES_BASE; CFG.recomendaciones = BASE.recomendaciones; }
     DIMENSIONES = CFG.dimensiones; ITEMS = CFG.items; ESCALA = CFG.escala; RECOMENDACION = CFG.recomendaciones || {};
-    NIVELES = (CFG.niveles || BASE.niveles).slice().sort((a, b) => Number(b.min) - Number(a.min));
-    META = Number(CFG.meta) || 0.80;
+    NIVELES = CFG.niveles.slice().sort((a, b) => Number(b.min) - Number(a.min));
+    META = umbralAlerta(NIVELES);
     OBLIG = (CFG.obligatoriaObs || []).map(Number);
     CFG_VERSION = version || null;
     REAPERTURAS = reaperturas || [];
@@ -434,37 +459,35 @@
     if (e.confirmacionVencida) return `<span class="ev-chip ev-chip-warn" title="El plazo para confirmar venció el ${fechaCorta(e.venceConfirmar)}">No confirmada</span>`;
     return '<span class="ev-chip ev-chip-env">Enviada</span>';
   };
-  // Meta de cumplimiento (80 % al inicio): la de la evaluación o la vigente
-  const metaDe = e => Number(e && e.meta) || META;
-  const cumpleMeta = e => (e && typeof e.cumpleMeta === 'boolean') ? e.cumpleMeta : Number(e && e.porcentaje) >= metaDe(e);
-  const chipNivel = e => e ? `<span class="ev-nivel ${claseNivel(e.nivel)}">${pct(e.porcentaje)} · ${esc(e.nivel)}</span>${cumpleMeta(e) ? ''
-    : `<span class="ev-chip ev-chip-meta" title="Bajo la meta de ${pct(metaDe(e))}"><i class="fas fa-bullseye"></i> Bajo meta</span>`}` : '';
+  // Categoría de desempeño según el porcentaje y las categorías vigentes (también para evaluaciones antiguas)
+  const nivelEval = e => nivelDe(Number(e && e.porcentaje) || 0);
+  const chipNivel = e => e ? `<span class="ev-nivel ${claseNivel(nivelEval(e))}">${pct(e.porcentaje)} · ${esc(nivelEval(e))}</span>` : '';
+  const chipDesempeno = e => e ? `<span class="ev-nivel ${claseNivel(nivelEval(e))}">${esc(nivelEval(e))}</span>` : '<span class="ev-muted">—</span>';
 
   function barrasDimensiones(dims, lista = DIMENSIONES) {
     return `<div class="ev-dims">${lista.map(d => {
       const x = (dims && dims[d.k]) || { porcentaje: 0, nivel: '' };
       const p = Math.max(0, Math.min(1, Number(x.porcentaje) || 0));
+      const nv = x.nivel === 'Incompleto' ? 'Incompleto' : (x.nivel ? nivelDe(p) : '');
       return `<div class="ev-dim">
         <div class="ev-dim-top"><span>${esc(d.t)}</span><strong>${pct(p)}</strong></div>
-        <div class="ev-bar"><div class="ev-bar-fill ${claseNivel(x.nivel)}" style="width:${Math.round(p * 100)}%"></div></div>
-        <div class="ev-dim-nivel">${esc(x.nivel || '')}</div>
+        <div class="ev-bar"><div class="ev-bar-fill ${claseNivel(nv)}" style="width:${Math.round(p * 100)}%"></div></div>
+        <div class="ev-dim-nivel">${esc(nv)}</div>
       </div>`;
     }).join('')}</div>`;
   }
 
   function resumenHtml(r, compacto = false, dimsLista) {
-    const meta = Number(r.meta) || META;
-    const ok = Number(r.porcentaje) >= meta;
+    const nivelR = r.completa === false ? r.nivel : nivelDe(Number(r.porcentaje) || 0);
     return `<div class="ev-resumen ${compacto ? 'ev-resumen-compacto' : ''}">
-      <div class="ev-resumen-total ${claseNivel(r.nivel)}">
+      <div class="ev-resumen-total ${claseNivel(nivelR)}">
         <div class="ev-resumen-pct">${pct(r.porcentaje)}</div>
-        <div class="ev-resumen-nivel">${esc(r.nivel)}</div>
+        <div class="ev-resumen-nivel">${esc(nivelR)}</div>
         <div class="ev-muted">${r.puntaje} de ${r.maximo || 500} puntos</div>
-        ${r.completa === false ? '' : `<div class="ev-meta ${ok ? 'ev-meta-ok' : 'ev-meta-no'}"><i class="fas fa-bullseye"></i> Meta ${pct(meta)}: <strong>${ok ? 'cumple' : 'no cumple'}</strong></div>`}
       </div>
       ${barrasDimensiones(r.dimensiones, dimsLista)}
     </div>
-    ${RECOMENDACION[r.nivel] ? `<div class="ev-reco"><i class="fas fa-lightbulb"></i> <span><strong>Qué hacer:</strong> ${esc(RECOMENDACION[r.nivel])}</span></div>` : ''}`;
+    ${RECOMENDACION[nivelR] ? `<div class="ev-reco"><i class="fas fa-lightbulb"></i> <span><strong>Qué hacer:</strong> ${esc(RECOMENDACION[nivelR])}</span></div>` : ''}`;
   }
 
   function detalleHtml(e, opciones = {}) {
@@ -654,7 +677,7 @@
       </div>
       <p class="ev-muted ev-mb">${pendientes ? `${pendientes} evaluación(es) ${trimestral() ? 'trimestral(es)' : 'mensual(es)'} pendiente(s) para ${etiquetaPeriodo(st.mes)}.` : `Equipo al día para ${etiquetaPeriodo(st.mes)}.`}
         ${limiteEvaluar(st.mes) ? `<strong>Plazo: ${hoyLocal() > limiteEvaluar(st.mes) ? 'venció el' : 'hasta el'} ${fechaCorta(limiteEvaluar(st.mes))}.</strong>` : ''}
-        Califica en los últimos días del ${textoPeriodo()} y conversa el resultado la semana siguiente. Meta de cumplimiento: ${pct(META)}.</p>
+        Califica en los últimos días del ${textoPeriodo()} y conversa el resultado la semana siguiente.</p>
       ${filas}
       <p class="ev-muted ev-small">¿Falta alguien? Pide a Psicología Organizacional que lo asigne y <button class="ev-link" data-ev="salir">vuelve a ingresar tu contraseña</button>.</p>
     </div>`;
@@ -857,7 +880,7 @@
     if (f.paso === 1) {
       let dimActual = '';
       cuerpo = `<div class="ev-card ev-escala"><h4 class="ev-h4">Escala de valoración</h4>${ESCALA.slice().reverse().map(e => `<div class="ev-escala-fila"><span class="ev-c${e.v}">${e.v}</span><div><strong>${e.t}</strong> <span class="ev-muted">${e.d}</span></div></div>`).join('')}
-        <p class="ev-muted ev-small">Evalúa solo lo observado durante el período y frente a lo esperado para el cargo; no compares con otras personas.${OBLIG.length ? ` Las calificaciones ${OBLIG.join(', ').replace(/, (\d+)$/, ' y $1')} requieren una observación con un hecho concreto.` : ''} Meta de cumplimiento: ${pct(META)}.</p></div>`;
+        <p class="ev-muted ev-small">Evalúa solo lo observado durante el período y frente a lo esperado para el cargo; no compares con otras personas.${OBLIG.length ? ` Las calificaciones ${OBLIG.join(', ').replace(/, (\d+)$/, ' y $1')} requieren una observación con un hecho concreto.` : ''}</p></div>`;
       cuerpo += ITEMS.map((it, i) => {
         let cab = '';
         if (it.dim !== dimActual) {
@@ -1156,7 +1179,7 @@
     st.todas = [];
     st.empleados = opts.empleados;
     st.rVista = 'dashboard';
-    st.filtro = { periodo: periodoPorDefecto(), q: '', unidad: '', area: '', estado: '' };
+    st.filtro = { periodo: periodoPorDefecto(), q: '', unidad: '', area: '', estado: '', nivel: '', orden: '' };
     st.alIniciar = async () => {
       if (!st.ses.rrhh) { st.vista = 'sin-permiso'; return pintarResultados(st, opts); }
       await cargarTodas(st, opts);
@@ -1169,12 +1192,15 @@
       if (a === 'exportar') exportarExcel(st, opts);
       if (a === 'r-actualizar') cargarTodas(st, opts);
       if (a === 'r-vista') { st.rVista = b.dataset.v; pintarResultados(st, opts); }
+      // Ordenar por resultado: sin orden → mayor a menor → menor a mayor → sin orden
+      if (a === 'r-orden') { st.filtro.orden = { '': 'desc', desc: 'asc', asc: '' }[st.filtro.orden || '']; pintarResultados(st, opts); }
     };
     st.onChange = (a, el) => {
       if (a === 'r-periodo') { st.filtro.periodo = el.value; pintarResultados(st, opts); }
       if (a === 'r-unidad') { st.filtro.unidad = el.value; st.filtro.area = ''; pintarResultados(st, opts); }
       if (a === 'r-area') { st.filtro.area = el.value; pintarResultados(st, opts); }
       if (a === 'r-estado') { st.filtro.estado = el.value; pintarResultados(st, opts); }
+      if (a === 'r-nivel') { st.filtro.nivel = el.value; pintarResultados(st, opts); }
     };
     st.onInput = (a, el) => {
       if (a === 'r-q') {
@@ -1221,8 +1247,9 @@
   // Resultados (pedido 2026-11-10): en cada mes o trimestre aparecen TODOS los EVALUADO activos, una fila por persona,
   // también quienes están en período de prueba (se les marca el día de prueba en que van). Si en ese período tienen
   // su evaluación Día 75, esa es su resultado. 'TODAS' lista cada evaluación existente sin filtrar por período.
-  function filasResultados(st, opts) {
+  function filasResultados(st, opts, sinArea) {
     const per = st.filtro.periodo;
+    registrarAreas(opts.empleados());
     const emps = (opts.empleados() || []).filter(e => String(e.activo || 'SI').toUpperCase() !== 'NO' && !e.esEliminado);
     const porId = new Map(emps.map(e => [String(e.id), e]));
     const evals = per === 'TODAS' ? st.todas.slice()
@@ -1248,7 +1275,8 @@
     });
     const evaluadorNombre = id => { const x = porId.get(String(id || '')); return x ? x.nombre : ''; };
     const unidad = st.filtro && st.filtro.unidad;
-    return Array.from(filas.values()).filter(f => !unidad || unidadDe(f.emp) === unidad).map(f => ({
+    const area = !sinArea && st.filtro && st.filtro.area;
+    return Array.from(filas.values()).filter(f => (!unidad || unidadDe(f.emp) === unidad) && (!area || areaDe(f.emp) === area)).map(f => ({
       ...f,
       evaluador: f.ev ? (f.ev.evaluadorNombre || evaluadorNombre(f.ev.evaluadorId)) : evaluadorNombre(f.emp.evaluador_id),
       sinEvaluador: !f.ev && !f.emp.evaluador_id,
@@ -1273,14 +1301,21 @@
     const todas = filasResultados(st, opts);
     const f = st.filtro;
     const q = f.q.trim().toLowerCase();
+    // Áreas de la unidad elegida (o de toda la empresa), sin importar el área ya seleccionada
+    const areas = [...new Set(filasResultados(st, opts, true).map(x => areaDe(x.emp)).filter(Boolean))].sort();
     const filas = todas.filter(x =>
-      (!f.area || areaDe(x.emp) === f.area) &&
       (!f.estado || x.estado === f.estado) &&
+      (!f.nivel || (x.ev && nivelEval(x.ev) === f.nivel)) &&
       (!q || `${x.emp.nombre} ${x.emp.id} ${unidadDe(x.emp)} ${areaDe(x.emp)} ${x.evaluador}`.toLowerCase().includes(q)));
+    // Ordenar por el resultado general; quien aún no tiene resultado va al final
+    if (f.orden) filas.sort((a, b) => {
+      const pa = a.ev ? Number(a.ev.porcentaje) : null, pb = b.ev ? Number(b.ev.porcentaje) : null;
+      if (pa === null || pb === null) return pa === pb ? 0 : (pa === null ? 1 : -1);
+      return f.orden === 'asc' ? pa - pb : pb - pa;
+    });
     const conEval = todas.filter(x => x.ev);
     const prom = conEval.length ? conEval.reduce((s, x) => s + Number(x.ev.porcentaje), 0) / conEval.length : null;
     const cuenta = k => todas.filter(x => x.estado === k).length;
-    const areas = [...new Set(todas.map(x => areaDe(x.emp)).filter(Boolean))].sort();
     const unidades = [...new Set((opts.empleados() || []).map(unidadDe).filter(Boolean))].sort();
     const promDim = k => conEval.length ? conEval.reduce((s, x) => s + Number((x.ev.dimensiones[k] || {}).porcentaje || 0), 0) / conEval.length : 0;
     const opcionesPer = periodosDisponibles(trimestral() ? 8 : 12).map(m => `<option value="${m}" ${m === f.periodo ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')
@@ -1290,6 +1325,7 @@
     const barra = `<div class="ev-card ev-barra-r">
         <select class="ev-select" data-ev="r-periodo">${opcionesPer}</select>
         ${unidades.length ? `<select class="ev-select" data-ev="r-unidad">${opcionesSelect(unidades, f.unidad, 'Todas las unidades')}</select>` : ''}
+        ${areas.length ? `<select class="ev-select" data-ev="r-area">${opcionesSelect(areas, f.area, 'Todas las áreas')}</select>` : ''}
         <div class="ev-seg" role="tablist">
           <button class="${st.rVista === 'dashboard' ? 'ev-seg-on' : ''}" data-ev="r-vista" data-v="dashboard"><i class="fas fa-chart-pie"></i> Dashboard</button>
           <button class="${st.rVista === 'tabla' ? 'ev-seg-on' : ''}" data-ev="r-vista" data-v="tabla"><i class="fas fa-list"></i> Colaboradores</button>
@@ -1321,21 +1357,25 @@
       <div class="ev-card">
         <div class="ev-filtros">
           <input type="search" data-ev="r-q" placeholder="Buscar colaborador o evaluador" value="${esc(f.q)}">
-          <select class="ev-select" data-ev="r-area">${opcionesSelect(areas, f.area, 'Todas las áreas')}</select>
-          <select class="ev-select" data-ev="r-estado">
-            <option value="">Todos los estados</option>
+          <select class="ev-select" data-ev="r-nivel" title="Estado del desempeño">
+            <option value="">Todo el desempeño</option>
+            ${NIVELES.map(n => `<option value="${esc(n.n)}" ${n.n === f.nivel ? 'selected' : ''}>${esc(n.n)}</option>`).join('')}
+          </select>
+          <select class="ev-select" data-ev="r-estado" title="Estado de la evaluación">
+            <option value="">Toda evaluación</option>
             ${[['pendiente', 'Pendientes'], ['en-prueba', 'En período de prueba'], ['vencida', 'Plazo vencido'], ['enviada', 'Enviadas'], ['confirmada', 'Confirmadas'], ['sin-evaluador', 'Sin evaluador']].map(([v, t]) => `<option value="${v}" ${v === f.estado ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
         </div>
         <div class="ev-tabla-wrap"><table class="ev-tabla">
-          <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th>Resultado</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
+          <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th class="ev-th-orden" data-ev="r-orden" title="Ordenar por resultado" style="cursor:pointer;user-select:none">Resultado <i class="fas ${f.orden === 'desc' ? 'fa-sort-amount-down' : f.orden === 'asc' ? 'fa-sort-amount-up' : 'fa-sort'}"></i></th><th>Desempeño</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
           <tbody>${filas.map(x => `<tr ${evalsDe(st, x.emp.id).length ? `data-ev="persona" data-emp="${esc(x.emp.id)}" class="ev-fila-click" title="Ver dashboard del colaborador"` : ''}>
             <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong>${x.prueba !== null ? ` <span class="ev-chip ev-chip-warn" title="Ingresó el ${esc(fechaCorta(x.emp.fecha_ingreso || x.emp.fechaIngreso))}">Prueba · día ${x.prueba}</span>` : ''}${x.ev && x.ev.tipo === 'DIA75' && f.periodo !== 'DIA75' ? ' <span class="ev-chip ev-chip-pend">Día 75</span>' : ''}${x.ev && f.periodo === 'TODAS' && x.ev.tipo !== 'DIA75' ? ` <span class="ev-chip ev-chip-pend">${esc(etiquetaPeriodo(x.ev.periodo))}</span>` : ''}<div class="ev-muted ev-small">${esc(subtituloEmp(x.emp))}</div></td>
             <td>${esc(x.evaluador || '—')}</td>
             <td>${x.ev ? chipEstado(x.ev) : etiquetaEstado[x.estado]}</td>
-            <td>${x.ev ? chipNivel(x.ev) : '<span class="ev-muted">—</span>'}</td>
+            <td><strong>${x.ev ? pct(x.ev.porcentaje) : '<span class="ev-muted">—</span>'}</strong></td>
+            <td>${chipDesempeno(x.ev)}</td>
             ${DIMENSIONES.map(d => `<td class="ev-num">${x.ev ? pct((x.ev.dimensiones[d.k] || {}).porcentaje) : '—'}</td>`).join('')}
-          </tr>`).join('') || `<tr><td colspan="8" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>`}</tbody>
+          </tr>`).join('') || `<tr><td colspan="${5 + DIMENSIONES.length}" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>`}</tbody>
         </table></div>
         <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'TODAS' ? 'tienen alguna evaluación registrada (todas, de cualquier período)' : f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'están activos, incluidos quienes están en período de prueba (se indica el día en que van; su resultado es la evaluación Día 75 si la tienen en este período)'}.</p>
       </div>
@@ -1349,7 +1389,7 @@
     return `<div class="ev-card"><h4 class="ev-h4">Tendencia del colaborador</h4>
       <p class="ev-muted ev-small">No decidas por un solo mes: revisa la evolución de los últimos meses.</p>
       <div class="ev-tendencia">${lista.map(x => `<div class="ev-tend ${x.id === e.id ? 'ev-tend-on' : ''}">
-        <div class="ev-tend-bar"><div class="${claseNivel(x.nivel)}" style="height:${Math.round(Number(x.porcentaje) * 100)}%"></div></div>
+        <div class="ev-tend-bar"><div class="${claseNivel(nivelEval(x))}" style="height:${Math.round(Number(x.porcentaje) * 100)}%"></div></div>
         <strong>${pct(x.porcentaje)}</strong><span>${esc(x.periodo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(x.periodo).slice(0, 3) + ' ' + x.periodo.slice(2, 4))}</span>
       </div>`).join('')}</div></div>`;
   }
@@ -1381,9 +1421,8 @@
     const X0 = L + 26, X1 = W - R - 26;   // margen interno: que etiquetas y puntos no choquen con el eje ni con el borde
     const x = i => serie.length === 1 ? (X0 + X1) / 2 : X0 + i * (X1 - X0) / (serie.length - 1);
     const y = v => T + (1 - (v - min) / (1 - min)) * (H - T - B);
-    const bandas = NIVELES.map(n => Number(n.min)).filter(v => v > min && v < 1 && Math.abs(v - META) > 0.001).map(v =>
-      `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="ev-svg-grid"/><text x="${L - 6}" y="${y(v) + 4}" class="ev-svg-eje" text-anchor="end">${Math.round(v * 100)}%</text>`).join('')
-      + (META > min ? `<line x1="${L}" x2="${W - R}" y1="${y(META)}" y2="${y(META)}" class="ev-svg-meta"/><text x="${L - 6}" y="${y(META) + 4}" class="ev-svg-eje ev-svg-meta-txt" text-anchor="end">${Math.round(META * 100)}%</text><text x="${W - R}" y="${y(META) - 5}" class="ev-svg-eje ev-svg-meta-txt" text-anchor="end">Meta</text>` : '');
+    const bandas = NIVELES.map(n => Number(n.min)).filter(v => v > min && v < 1).map(v =>
+      `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="ev-svg-grid"/><text x="${L - 6}" y="${y(v) + 4}" class="ev-svg-eje" text-anchor="end">${Math.round(v * 100)}%</text>`).join('');
     const ruta = serie.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
     const marcas = serie.map((p, i) => `<g class="${claseNivel(nivelDe(p.v))}"><circle cx="${x(i)}" cy="${y(p.v)}" r="5" class="ev-svg-punto"><title>${esc(p.t)}: ${pct(p.v)}${p.n ? ` (${p.n})` : ''}</title></circle>
       <text x="${x(i)}" y="${y(p.v) - 10}" class="ev-svg-val" text-anchor="middle">${Math.round(p.v * 100)}</text>
@@ -1428,13 +1467,13 @@
 
     return cab + `
       <div class="ev-kpis">
-        <div class="ev-kpi"><span>Última evaluación</span><strong class="${claseNivel(ult.nivel)} ev-kpi-nivel">${pct(ult.porcentaje)}</strong><small>${esc(ult.nivel)} · ${esc(etiquetaPeriodo(ult.periodo))} · ${cumpleMeta(ult) ? 'cumple la meta' : 'bajo la meta'}</small></div>
+        <div class="ev-kpi"><span>Última evaluación</span><strong class="${claseNivel(nivelEval(ult))} ev-kpi-nivel">${pct(ult.porcentaje)}</strong><small>${esc(nivelEval(ult))} · ${esc(etiquetaPeriodo(ult.periodo))}</small></div>
         <div class="ev-kpi"><span>Promedio</span><strong>${pct(prom)}</strong><small>${evals.length} evaluación(es)</small></div>
         <div class="ev-kpi"><span>Vs. anterior</span><strong class="${delta === null ? '' : delta >= 0 ? 'ev-ok' : 'ev-danger'}">${delta === null ? '—' : puntos(delta)}</strong><small>${ant ? esc(etiquetaPeriodo(ant.periodo)) : 'Sin evaluación previa'}</small></div>
         <div class="ev-kpi"><span>Estado</span><strong class="ev-kpi-txt">${ult.estado === 'confirmada' ? 'Confirmada' : 'Por confirmar'}</strong><small>${ult.proximaEvaluacion ? 'Próxima: ' + fechaCorta(ult.proximaEvaluacion) : ''}</small></div>
       </div>
       <div class="ev-card"><h4 class="ev-h4">Evolución del resultado</h4>${lineaSvg(evals.map(e => ({ t: etiquetaCorta(e.periodo), v: Number(e.porcentaje) })), { titulo: 'Evolución de ' + nombre })}
-        <p class="ev-muted ev-small">Línea roja: meta de ${pct(META)}. Líneas guía: ${NIVELES.filter(n => Number(n.min) > 0).slice().reverse().map(n => `${Math.round(Number(n.min) * 100)} % ${esc(n.n)}`).join(' · ')}. Mira la tendencia de varios meses, no un mes aislado.</p></div>
+        <p class="ev-muted ev-small">Líneas guía: ${NIVELES.filter(n => Number(n.min) > 0).slice().reverse().map(n => `${Math.round(Number(n.min) * 100)} % ${esc(n.n)}`).join(' · ')}. Mira la tendencia de varios meses, no un mes aislado.</p></div>
       <div class="ev-grid2">
         <div class="ev-card"><h4 class="ev-h4">Dimensiones · ${esc(etiquetaPeriodo(ult.periodo))}</h4>
           <div class="ev-dims">${DIMENSIONES.map(d => {
@@ -1469,7 +1508,9 @@
     const conEval = filas.filter(x => x.ev);
     const prom = promedio(conEval.map(x => Number(x.ev.porcentaje)));
     const cobertura = filas.length ? conEval.length / filas.length : 0;
-    const enRiesgo = conEval.filter(x => !cumpleMeta(x.ev));
+    const bajoUmbral = e => Number(e.porcentaje) < META;   // en la categoría más baja
+    const nivelBajo = (NIVELES[NIVELES.length - 1] || {}).n || '';
+    const enRiesgo = conEval.filter(x => bajoUmbral(x.ev));
 
     // Tendencia por período (últimos 12 meses u 8 trimestres con datos)
     const meses = periodosDisponibles(trimestral() ? 8 : 12).slice().reverse();
@@ -1485,7 +1526,7 @@
 
     // Distribución por nivel
     const niveles = NIVELES.map(n => n.n);
-    const dist = niveles.map(n => ({ n, c: conEval.filter(x => x.ev.nivel === n).length }));
+    const dist = niveles.map(n => ({ n, c: conEval.filter(x => nivelEval(x.ev) === n).length }));
     const distHtml = conEval.length
       ? `<div class="ev-stack">${dist.filter(d => d.c).map(d => `<div class="${claseNivel(d.n)}" style="flex:${d.c}" title="${d.n}: ${d.c}"></div>`).join('')}</div>
          <div class="ev-leyenda">${dist.map(d => `<span><i class="${claseNivel(d.n)}"></i>${d.n} <strong>${d.c}</strong></span>`).join('')}</div>`
@@ -1509,8 +1550,8 @@
       const idx = hist.findIndex(e => e.id === x.ev.id);
       const ant = idx > 0 ? hist[idx - 1] : null;
       const caida = ant ? Number(x.ev.porcentaje) - Number(ant.porcentaje) : 0;
-      if (!cumpleMeta(x.ev) || caida <= -0.10) {
-        alertas.push({ x, motivo: caida <= -0.10 ? `Bajó ${puntos(caida).replace('-', '')} vs. ${etiquetaPeriodo(ant.periodo)}` : `Bajo la meta de ${pct(metaDe(x.ev))} · ${x.ev.nivel}` });
+      if (bajoUmbral(x.ev) || caida <= -0.10) {
+        alertas.push({ x, motivo: caida <= -0.10 ? `Bajó ${puntos(caida).replace('-', '')} vs. ${etiquetaPeriodo(ant.periodo)}` : nivelEval(x.ev) });
       }
     });
 
@@ -1520,7 +1561,7 @@
         <div class="ev-kpi"><span>Confirmadas</span><strong class="ev-ok">${conEval.filter(x => x.ev.estado === 'confirmada').length}</strong><small>${conEval.filter(x => x.ev.estado === 'enviada').length} por confirmar</small></div>
         <div class="ev-kpi"><span>Promedio general</span><strong class="${prom === null ? '' : claseNivel(nivelDe(prom)) + ' ev-kpi-nivel'}">${prom === null ? '—' : pct(prom)}</strong><small>${prom === null ? '' : nivelDe(prom)}</small></div>
         <div class="ev-kpi"><span>Vs. ${trimestral() ? 'trimestre' : 'mes'} anterior</span><strong class="${deltaMes === null ? '' : deltaMes >= 0 ? 'ev-ok' : 'ev-danger'}">${deltaMes === null ? '—' : puntos(deltaMes)}</strong><small>promedio general</small></div>
-        <div class="ev-kpi"><span>Bajo la meta (${pct(META)})</span><strong class="ev-danger">${enRiesgo.length}</strong><small>${conEval.length ? `${pct((conEval.length - enRiesgo.length) / conEval.length)} cumple la meta` : 'requieren plan de mejora'}</small></div>
+        <div class="ev-kpi"><span>${esc(nivelBajo)}</span><strong class="ev-danger">${enRiesgo.length}</strong><small>${conEval.length ? `${pct(enRiesgo.length / conEval.length)} de los evaluados` : 'sin evaluaciones'}</small></div>
         <div class="ev-kpi"><span>Pendientes</span><strong class="ev-warn">${filas.filter(x => x.estado === 'pendiente').length}</strong><small>${filas.filter(x => x.estado === 'sin-evaluador').length} sin evaluador</small></div>
       </div>
       <div class="ev-card"><h4 class="ev-h4">Tendencia del promedio general (${trimestral() ? 'trimestral' : 'mensual'})</h4>${lineaSvg(serie, { titulo: 'Promedio general por período' })}</div>
@@ -1535,7 +1576,7 @@
         ${alertas.length ? alertas.map(a => `<button class="ev-mia" data-ev="persona" data-emp="${esc(a.x.emp.id)}">
           <div><strong>${esc(a.x.emp.nombre || a.x.emp.id)}</strong><span class="ev-muted">${esc(a.x.emp.area || '')} · ${esc(a.motivo)}</span></div>
           <div class="ev-mia-der">${chipNivel(a.x.ev)}<i class="fas fa-chevron-right"></i></div></button>`).join('')
-          : `<p class="ev-muted">Sin alertas: nadie bajo la meta de ${pct(META)} ni con caídas de 10 puntos o más.</p>`}
+          : `<p class="ev-muted">Sin alertas: nadie en «${esc(nivelBajo)}» ni con caídas de 10 puntos o más.</p>`}
       </div>`;
   }
 
@@ -1599,8 +1640,8 @@
 
   function exportarExcel(st, opts) {
     const filas = filasResultados(st, opts);
-    const cols = ['ID', 'Colaborador', 'Área', 'Cargo', 'Evaluador', 'Período', 'Estado', 'Puntaje', '% Total', 'Nivel',
-      'Meta %', 'Cumple meta', ...DIMENSIONES.map(d => d.t + ' %'), ...ITEMS.map((it, i) => `${i + 1}. ${it.c}`),
+    const cols = ['ID', 'Colaborador', 'Área', 'Cargo', 'Evaluador', 'Período', 'Estado', 'Puntaje', '% Total', 'Estado del desempeño',
+      ...DIMENSIONES.map(d => d.t + ' %'), ...ITEMS.map((it, i) => `${i + 1}. ${it.c}`),
       'Fortalezas', 'Oportunidades de mejora', 'Compromisos', 'Confirmada', 'Confirmar hasta', 'Vigente hasta', 'Reunión'];
     const celda = v => `<td>${esc(v == null ? '' : v)}</td>`;
     const cuerpo = filas.map(x => {
@@ -1610,8 +1651,7 @@
         e ? (e.tipo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(e.periodo)) : etiquetaPeriodo(st.filtro.periodo),
         e ? (e.estado === 'confirmada' ? 'Confirmada' : (e.confirmacionVencida ? 'No confirmada' : 'Enviada'))
           : ({ pendiente: 'Pendiente', vencida: 'Plazo vencido', 'en-prueba': `En período de prueba (día ${x.prueba})` }[x.estado] || 'Sin evaluador'),
-        e ? e.puntaje : '', e ? Math.round(Number(e.porcentaje) * 1000) / 10 : '', e ? e.nivel : '',
-        e ? Math.round(metaDe(e) * 1000) / 10 : '', e ? (cumpleMeta(e) ? 'Sí' : 'No') : '',
+        e ? e.puntaje : '', e ? Math.round(Number(e.porcentaje) * 1000) / 10 : '', e ? nivelEval(e) : '',
         ...DIMENSIONES.map(d => e && e.dimensiones[d.k] ? Math.round(Number(e.dimensiones[d.k].porcentaje || 0) * 1000) / 10 : ''),
         ...ITEMS.map((_, i) => e && mismoCuestionario(e) ? e.calificaciones[i] : ''),
         e ? e.fortalezas : '', e ? e.mejoras : '', e ? e.compromisos : '', e && e.confirmadaEn ? String(e.confirmadaEn).slice(0, 10) : '',
@@ -1651,6 +1691,7 @@
     };
     const pintarA = () => {
       const emps = lista();
+      registrarAreas(emps);
       const evaluadores = emps.filter(e => valor(e, 'evaluacion_rol').includes('EVALUADOR'));
       const q = st.q.trim().toLowerCase();
       const unidades = [...new Set(emps.map(unidadDe).filter(Boolean))].sort();
@@ -1857,6 +1898,7 @@
     const suma = sumaPesos(g.items);
     if (suma !== 100) return toast(`Los pesos deben sumar 100 % (suman ${suma} %).`, 'warning');
     if (!g.niveles.some(n => Number(n.min) === 0)) return toast('Un nivel debe empezar en 0 %.', 'warning');
+    g.meta = umbralAlerta(g.niveles);   // umbral interno de alerta a RR.HH. (no se muestra como meta)
     st.guardandoCfg = true; repintarSinSalto(st);
     try {
       const res = await rpc(st.ses, 'eval_config', { modo: 'guardar', config: g, version: st.cfgVersion, comentario: st.cfgComentario });
@@ -1928,9 +1970,8 @@
         ${st.dirty ? '<div class="ev-aviso"><i class="fas fa-pen"></i> Tienes cambios sin guardar.</div>' : ''}
       </div>
 
-      <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-bullseye"></i> Meta y plazos</h4>
+      <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-calendar-alt"></i> Frecuencia y plazos</h4>
         <div class="ev-cfg-grid">
-          <label class="ev-campo"><span>Meta de cumplimiento (%)</span>${por('meta', g.meta)}<small class="ev-muted">Bajo este porcentaje la evaluación no cumple y se alerta a RR.HH.</small></label>
           <label class="ev-campo"><span>Frecuencia de la evaluación</span>
             <select class="ev-select" data-ev="cfg" data-p="frecuencia" data-t="txt">
               <option value="MENSUAL" ${g.frecuencia !== 'TRIMESTRAL' ? 'selected' : ''}>Mensual</option>
@@ -1943,8 +1984,8 @@
         </div>
       </div>
 
-      <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-layer-group"></i> Niveles de resultado</h4>
-        <p class="ev-muted ev-small">Cada nivel empieza en un porcentaje mínimo; uno debe empezar en 0 %.</p>
+      <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-layer-group"></i> Categorías de desempeño</h4>
+        <p class="ev-muted ev-small">Cada categoría empieza en un porcentaje mínimo (incluido); una debe empezar en 0 %. Se avisa a RR.HH. de las evaluaciones que caen en la categoría más baja.</p>
         <div class="ev-cfg-lista">${nivelesOrden.map(({ n, i }) => `<div class="ev-cfg-fila">
           <span class="ev-nivel ${claseNivelCfg(g, n.n)}">&nbsp;</span>
           <input type="text" class="ev-cfg-in ev-cfg-grow" data-ev="cfg" data-p="niveles.${i}.n" data-t="txt" data-old="${esc(n.n)}" value="${esc(n.n)}" maxlength="40">
@@ -2016,7 +2057,7 @@
       </div>
 
       <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-history"></i> Historial de versiones</h4>
-        ${st.versiones.length ? `<ul class="ev-cfg-ul">${st.versiones.map(v => `<li><strong>Versión ${v.version}</strong> · ${fechaCorta(v.creadoEn)} · ${esc(v.creadoPor)} · ${v.preguntas} preguntas · meta ${pct(v.meta)}${v.comentario ? ` — ${esc(v.comentario)}` : ''}</li>`).join('')}</ul>` : '<p class="ev-muted">Sin versiones.</p>'}
+        ${st.versiones.length ? `<ul class="ev-cfg-ul">${st.versiones.map(v => `<li><strong>Versión ${v.version}</strong> · ${fechaCorta(v.creadoEn)} · ${esc(v.creadoPor)} · ${v.preguntas} preguntas${v.comentario ? ` — ${esc(v.comentario)}` : ''}</li>`).join('')}</ul>` : '<p class="ev-muted">Sin versiones.</p>'}
       </div>
     </div>`;
   }

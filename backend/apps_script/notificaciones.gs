@@ -203,7 +203,7 @@ function notificarEvaluacion_(p) {
     crearNotificacion_({
       para: 'rol:rrhh', tipo: 'alerta_desempeno', clave: 'alerta_' + id,
       enlace: { modulo: 'desempeno', vista: 'resultados', periodo: p.periodo || '' },
-      titulo: 'Alerta de desempeño', texto: 'Una evaluación de ' + mes + ' quedó bajo la meta de ' + (p.meta || 80) + ' % o bajó 10 puntos. Revisa las alertas en Resultados.'
+      titulo: 'Alerta de desempeño', texto: 'Una evaluación de ' + mes + ' quedó en la categoría más baja de desempeño o bajó 10 puntos. Revisa las alertas en Resultados.'
     });
   }
 }
