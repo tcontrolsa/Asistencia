@@ -8950,6 +8950,12 @@ function montarCampanaApp() {
     host.hidden = false;
     document.body.classList.add('nt-app-activa');
     window.Notificaciones.montar(host, { empleadoId: String(empleado.id), onAbrir: abrirEnlaceAviso });
+    // Pregunta una vez si quiere recibir notificaciones emergentes (JS/push_avisos.js)
+    if (window.PushAvisos && !window.__pushInvitada) {
+        window.__pushInvitada = true;
+        const idInv = String(empleado.id);
+        setTimeout(() => { try { window.PushAvisos.invitar(idInv); } catch (e) { /* sin invitación */ } }, 5000);
+    }
     // Aviso emergente tocado con la app cerrada: la URL trae ?abrir=<enlace>
     if (!window.__pushAbrirRevisado) {
         window.__pushAbrirRevisado = true;

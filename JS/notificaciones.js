@@ -208,6 +208,7 @@
     pintar();
     pintarPush();
     if (window.PushAvisos) window.PushAvisos.refrescar(yo).then(pintarPush);
+    window.addEventListener('push-estado', pintarPush); // activado desde la invitación de la app
 
     host._notif = {
       clave: `${yo}|${!!opts.rrhh}`,
@@ -215,6 +216,7 @@
         if (cancelar) cancelar();
         document.removeEventListener('click', fuera);
         document.removeEventListener('keydown', tecla);
+        window.removeEventListener('push-estado', pintarPush);
         host.innerHTML = '';
         host._notif = null;
       }

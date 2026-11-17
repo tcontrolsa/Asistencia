@@ -86,6 +86,51 @@
     }
   }
 
+  // Invitación: pregunta una vez si quiere recibir avisos emergentes (el permiso del navegador solo se puede
+  // pedir con un toque de la persona). "Ahora no" la oculta 7 días; si ya los activó o están bloqueados, no aparece.
+  const LS_INVITACION = 'tcontrol_push_invitacion';
+  function invitar(empleadoId) {
+    const e = estado();
+    if (e !== 'inactivo' && e !== 'instalar_ios') return;
+    if (Date.now() - Number(leerLS(LS_INVITACION) || 0) < 7 * 24 * 3600 * 1000) return;
+    if (document.getElementById('pushInvitacion') || !empleadoId) return;
+    const ios = e === 'instalar_ios';
+    const caja = document.createElement('div');
+    caja.id = 'pushInvitacion';
+    caja.setAttribute('role', 'dialog');
+    caja.setAttribute('aria-label', 'Notificaciones');
+    caja.style.cssText = 'position:fixed; left:12px; right:12px; bottom:84px; max-width:420px; margin:0 auto; z-index:2500; background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 10px 30px rgba(15,23,42,.22); padding:14px 16px; font-family:inherit;';
+    caja.innerHTML = ios
+      ? `<div style="font-weight:800; color:#1e293b; font-size:14px; margin-bottom:4px;">🔔 ¿Quieres recibir notificaciones?</div>
+         <div style="font-size:12.5px; color:#475569; line-height:1.45;">En iPhone primero instala la app: abre esta página en <strong>Safari</strong>, toca <strong>Compartir</strong>, elige <strong>Añadir a pantalla de inicio</strong> y ábrela desde el icono nuevo. Luego activa los avisos desde la campana. (Requiere iOS 16.4 o superior.)</div>
+         <div style="display:flex; justify-content:flex-end; margin-top:10px;"><button type="button" data-pi="no" style="border:0; background:#6366f1; color:#fff; font-weight:700; border-radius:8px; padding:8px 16px; font-size:13px;">Entendido</button></div>`
+      : `<div style="font-weight:800; color:#1e293b; font-size:14px; margin-bottom:4px;">🔔 ¿Quieres recibir notificaciones?</div>
+         <div style="font-size:12.5px; color:#475569; line-height:1.45;">Te avisaremos de permisos, visitas y evaluaciones aunque la app esté cerrada. Puedes desactivarlas cuando quieras desde la campana.</div>
+         <div data-pi="msg" role="status" style="font-size:12px; color:#b91c1c; margin-top:6px; min-height:0;"></div>
+         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+           <button type="button" data-pi="no" style="border:1px solid #cbd5e1; background:#fff; color:#475569; font-weight:600; border-radius:8px; padding:8px 14px; font-size:13px;">Ahora no</button>
+           <button type="button" data-pi="si" style="border:0; background:#6366f1; color:#fff; font-weight:700; border-radius:8px; padding:8px 16px; font-size:13px;">Activar</button>
+         </div>`;
+    const cerrar = () => { guardarLS(LS_INVITACION, String(Date.now())); caja.remove(); };
+    caja.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-pi]');
+      if (!b) return;
+      if (b.dataset.pi === 'no') { cerrar(); return; }
+      if (b.dataset.pi === 'si') {
+        b.disabled = true;
+        activar(empleadoId).then(() => { caja.remove(); window.dispatchEvent(new CustomEvent('push-estado')); })
+          .catch(err => {
+            const m = caja.querySelector('[data-pi="msg"]');
+            if (m) m.textContent = (err && err.message) || 'No se pudo activar.';
+            b.disabled = false;
+            const no = caja.querySelector('[data-pi="no"]'); if (no) no.textContent = 'Cerrar';
+            guardarLS(LS_INVITACION, String(Date.now()));
+          });
+      }
+    });
+    document.body.appendChild(caja);
+  }
+
   // Si el token ya estaba activo, lo renueva en silencio (los tokens pueden cambiar).
   async function refrescar(empleadoId) {
     if (estado() !== 'activo') return;
@@ -101,5 +146,5 @@
     });
   }
 
-  window.PushAvisos = { soportado, esIOS, instalada, estado, activar, desactivar, refrescar };
+  window.PushAvisos = { soportado, esIOS, instalada, estado, activar, desactivar, refrescar, invitar };
 })();
