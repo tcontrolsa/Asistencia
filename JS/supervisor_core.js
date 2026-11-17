@@ -8257,7 +8257,8 @@ window.resetearPasswordEmpleado = async function (empleadoId, nombreEmpleado) {
 window.mostrarModalFuturos = function (preselectedEmpId = null, preselectedFecha = null) {
   const modal = $('eventoFuturoModal');
   const sel = $('futEmpleadoId');
-  sel.innerHTML = empCache.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (${e.id})</option>`).join('');
+  // Eventos futuros (vacaciones, etc.): el personal externo no entra; solo si se preselecciona uno concreto
+  sel.innerHTML = empCache.filter(e => !window.esPersonalExterno(e) || String(e.id) === String(preselectedEmpId)).map(e => `<option value="${e.id}">${escapeHtml(e.nombre)} (${e.id})</option>`).join('');
   if (preselectedEmpId) {
     sel.value = preselectedEmpId;
   }
@@ -10129,8 +10130,8 @@ window.actualizarKPIsOpciones = function () {
   const kpiSup = $('kpiOpcTotalSupervisores');
   if (!kpiEmp && !kpiSup) return;
 
-  const total = (empCache || []).length;
-  const conRoles = (empCache || []).filter(e => {
+  const total = (empCache || []).filter(e => !window.esPersonalExterno(e)).length;
+  const conRoles = (empCache || []).filter(e => !window.esPersonalExterno(e)).filter(e => {
     const id = String(e.id).trim();
     const rol = getSupervisorRole(e);
     return id === "1058" || rol !== 'EMPLEADO';
@@ -12790,7 +12791,7 @@ function resumenVacaciones() {
   const activos = (empCache || []).filter(e => {
     const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
     const excluido = (typeof esEmpleadoExcluidoAsistencia === 'function') ? esEmpleadoExcluidoAsistencia(e) : false;
-    return act && !excluido;
+    return act && !excluido && !window.esPersonalExterno(e);   // servicios externos quedan fuera de vacaciones
   });
   const r = { filas: [], adjudicadas: 0, tomadas: 0, restantes: 0, sumaKpis: 0, colabsConVac: 0, excluidos: 0 };
   activos.forEach(e => {
