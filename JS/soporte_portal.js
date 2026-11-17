@@ -195,7 +195,21 @@
     db().collection('configuracion').doc('soporte_tickets').set({ tickets: { [ticketId]: v } }, { merge: true })
       .catch(e => { console.warn('Soporte: estado del requerimiento', e); aviso('No se guardó el estado. Revisa la conexión.'); });
   }
+  // ¿Escribió de verdad (no «gracias» ni otro reporte) hasta 3 días después de cerrarse? Después de eso es otra conversación
+  const VENTANA_REABRIR_MS = 3 * 86400000;
+  const reabre = (t, marcador, ue) => t.ents ? t.ents.some(x => x > marcador && x <= marcador + VENTANA_REABRIR_MS) : ue > marcador;
   const estadoTicket = id => (SP.tick[id] && SP.tick[id].estado) || 'pendiente';
+  // Estado que ve la persona: marca manual + respuesta de cierre + «volvió a escribir» (misma regla que la lista)
+  function estadoReal(id) {
+    let t = null;
+    let ue = 0;
+    for (const k in SP.cache) { t = ((SP.cache[k] || {}).tickets || []).find(x => x.id === id); if (t) { ue = SP.cache[k].ultimoEntrante || 0; break; } }
+    let e = estadoTicket(id);
+    if (!t) return e;
+    if (e !== 'resuelto' && t.cierre && !reabre(t, t.cierre, ue)) e = 'resuelto';
+    if (e === 'resuelto' && reabre(t, Math.max(tsMs((SP.tick[id] || {}).ts), t.cierre || 0), ue)) e = 'pendiente';
+    return e;
+  }
 
   // ------------------------------------------------------------------ carga y revisión
   function guardarCache() {
@@ -203,6 +217,8 @@
     Object.keys(SP.cache).forEach(k => { if (!vivos.has(k)) delete SP.cache[k]; });
     try { localStorage.setItem(KEY_CACHE, JSON.stringify(SP.cache)); } catch (e) { }
   }
+  const RE_CIERRE = /qued[oó] (corregid|solucionad|resuelt|arreglad)|ya (est[aá]|fue|lo (corregimos|solucionamos|arreglamos)|(lo )?(correg|soluciona|arregl)\w*)|problema (solucionado|resuelto)|contrase.a se cambi/i;
+  const RE_AGRADECE = /^[\s\W]*(muchas |mil )?(gracias|ok|okey|vale|listo|perfecto|excelente|genial|entendido|de acuerdo)(?![a-záéíóúñ])[^a-z0-9]{0,6}(?:[a-záéíóúñ ]{0,14})?[^a-z0-9]{0,6}$/iu;
   function analizar(chatId, ms, ts) {
     const tickets = [];
     let otros = 0, ultEnt = 0;
@@ -215,8 +231,19 @@
       } else if (cat === 'mensaje') otros++;
       if (!m.mio) ultEnt = m.ts;
     });
+    // Por reporte: cuándo se le respondió que ya quedó solucionado y cuándo volvió a escribir de verdad
+    // (un nuevo reporte o un «gracias» no cuenta como volver a escribir)
+    tickets.forEach(t => {
+      t.cierre = 0; t.escribio = 0; t.ents = [];
+      ms.forEach(m => {
+        if (m.ts <= t.ts) return;
+        if (m.mio) { if (clasificar(m) === 'respuesta' && RE_CIERRE.test(m.cuerpo)) t.cierre = m.ts; }
+        else if (clasificar(m) === 'mensaje' && !RE_AGRADECE.test(m.cuerpo)) { t.escribio = m.ts; t.ents.push(m.ts); }
+      });
+    });
+    tickets.forEach(t => { t.ents = t.ents.slice(-40); });
     const ult = ms[ms.length - 1];
-    SP.cache[chatId] = { ts, tickets, otros, ultimoEntrante: ultEnt, espera: !!ult && !ult.mio };
+    SP.cache[chatId] = { ver: 5, ts, tickets, otros, ultimoEntrante: ultEnt, espera: !!ult && !ult.mio };
   }
   async function cargarChats() {
     if (SP.cargando) return;
@@ -246,7 +273,7 @@
     SP.revisando = true;
     try {
       let pend;
-      while ((pend = SP.chats.filter(c => !SP.cache[c.id] || SP.cache[c.id].ts !== c.ts)).length && SP.ses) {
+      while ((pend = SP.chats.filter(c => !SP.cache[c.id] || SP.cache[c.id].ts !== c.ts || SP.cache[c.id].ver !== 5)).length && SP.ses) {
         SP.porRevisar = pend.length;
         const c = pend[0];
         try {
@@ -255,7 +282,7 @@
           if (c.id === SP.sel) SP.msgs[c.id] = ms;
         } catch (e) {
           if (/esperar|conexi|respondi/i.test(e.message)) { await espera(Math.max(5000, SP.pausaHasta - Date.now())); continue; }
-          SP.cache[c.id] = { ts: c.ts, tickets: [], otros: 0, espera: false, error: true };
+          SP.cache[c.id] = { ver: 5, ts: c.ts, tickets: [], otros: 0, espera: false, error: true };
         }
         if (pend.length % 5 === 1) { guardarCache(); pintar(); }
         await espera(PAUSA_REVISION_MS);
@@ -294,9 +321,11 @@
       (inf.tickets || []).forEach(t => {
         const emp = (t.empleadoId && SP.emps.get(t.empleadoId)) || e;
         if (!emp) return;
-        const estado = estadoTicket(t.id);
-        // Resuelto pero el colaborador volvió a escribir después: vuelve a pendientes
-        const reabierto = estado === 'resuelto' && inf.ultimoEntrante > tsMs((SP.tick[t.id] || {}).ts);
+        let estado = estadoTicket(t.id);
+        // Sin marca manual pero ya se le respondió que quedó solucionado y no volvió a escribir: cuenta como resuelto
+        if (estado !== 'resuelto' && t.cierre && !reabre(t, t.cierre, inf.ultimoEntrante)) estado = 'resuelto';
+        // Resuelto pero el colaborador volvió a escribir (mensaje real, no un reporte nuevo ni un «gracias»): vuelve a pendientes
+        const reabierto = estado === 'resuelto' && reabre(t, Math.max(tsMs((SP.tick[t.id] || {}).ts), t.cierre || 0), inf.ultimoEntrante);
         out.push({ tipo: 'ticket', key: t.id, chat: c, emp, t, estado: reabierto ? 'pendiente' : estado, reabierto, ts: t.ts,
           espera: inf.espera, noLeidos: c.noLeidos });
       });
@@ -356,7 +385,7 @@
       temp.pendiente = false;
       if (SP.cache[chatId]) SP.cache[chatId].espera = false;
       if (texto === RESPUESTAS[1]) {                         // «Listo, ya quedó corregido…» cierra el reporte
-        const pend = (SP.msgs[chatId] || []).filter(m => !m.mio && clasificar(m) === 'reporte' && estadoTicket(m.id) !== 'resuelto');
+        const pend = (SP.msgs[chatId] || []).filter(m => !m.mio && clasificar(m) === 'reporte' && estadoReal(m.id) !== 'resuelto');
         const cual = pend.find(m => m.id === SP.ticketSel) || (pend.length === 1 ? pend[0] : null);
         if (cual) { marcarTicket(cual.id, 'resuelto'); aviso('Respuesta enviada y reporte marcado como resuelto'); }
         else if (pend.length > 1) aviso('Respuesta enviada. Hay varios reportes pendientes: marca cuál quedó resuelto');
@@ -537,7 +566,7 @@
       }
       if (k === 'reporte') {
         const r = leerReporte(m.cuerpo);
-        const est = estadoTicket(m.id);
+        const est = estadoReal(m.id);
         return `${sep}<div class="sp-ticket ${m.id === SP.ticketSel ? 'sel' : ''}" id="t_${esc(m.id)}">
           <div class="sp-ticket-cab"><i class="fas fa-exclamation-triangle"></i> Reporte de incidente <span class="sp-est ${est === 'resuelto' ? 'ok' : 'pend'}">${est === 'resuelto' ? 'Resuelto' : 'Pendiente'}</span></div>
           <div class="sp-ticket-datos"><span><small>Fecha del incidente</small>${esc(r.fecha || '—')}</span><span><small>Área</small>${esc((() => { const e = SP.sel && empleadoDe(SP.sel); return (e && (e.area_nomina || e.area)) || r.area || '—'; })())}</span><span><small>ID</small>${esc(r.id || '—')}</span></div>
@@ -579,7 +608,7 @@
         ${fila('fa-building', 'Unidad', e.unidad)}${fila('fa-layer-group', 'Área', e.area_nomina || e.area)}
         ${fila('fa-user-tie', 'Jefe inmediato', e.jefe_inmediato)}${fila('fa-phone', 'Teléfono', e.telefono)}
         <div class="sp-dato"><i class="fas fa-fingerprint"></i><div><small>Marcaciones de hoy</small><div class="sp-marcas">${hoyHtml}</div></div></div>
-        <div class="sp-dato"><i class="fas fa-clipboard-list"></i><div><small>Requerimientos</small><span>${tks.length} en total · ${tks.filter(t => estadoTicket(t.id) !== 'resuelto').length} pendientes</span></div></div>
+        <div class="sp-dato"><i class="fas fa-clipboard-list"></i><div><small>Requerimientos</small><span>${tks.length} en total · ${tks.filter(t => estadoReal(t.id) !== 'resuelto').length} pendientes</span></div></div>
       </div>
       ${tel ? `<a class="sp-btn sec" href="tel:+${tel}"><i class="fas fa-phone"></i> Llamar</a>` : ''}
       ${origen ? `<p class="sp-origen"><i class="fas fa-link"></i> Chat ligado ${origen}.${v.origen === 'manual' || v.origen === 'telefono' ? ` <button type="button" onclick="spDesvincular('${esc(c.id)}')">Quitar</button>` : ''}</p>` : ''}`;
