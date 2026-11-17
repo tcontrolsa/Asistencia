@@ -562,6 +562,10 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(emitirSesionFirebase(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Avisos emergentes (push_fcm.gs): la app lo llama tras crear un aviso en la campana para enviarlo al instante
+      if (data.accion === 'empujarPush' && typeof empujarPush === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(empujarPush())).setMimeType(ContentService.MimeType.JSON);
+      }
       // Contraseñas en la hoja privada (credenciales.gs)
       if (['credEstado', 'credCrear', 'credCambiar', 'credAdmin'].indexOf(data.accion) !== -1 && typeof credEstado === 'function') {
         var fnCred = { credEstado: credEstado, credCrear: credCrear, credCambiar: credCambiar, credAdmin: credAdmin }[data.accion];

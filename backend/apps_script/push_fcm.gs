@@ -135,7 +135,7 @@ function pushDecodificar_(v) {
  */
 function enviarPushPendientes() {
   var lock = LockService.getScriptLock();
-  if (!lock.tryLock(1000)) return 0;
+  if (!lock.tryLock(5000)) return 0; // espera un poco: si otra llamada está enviando, ya procesará este aviso
   try {
     if (!pushActivo_()) return 0;
     var desde = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -169,6 +169,12 @@ function enviarPushPendientes() {
   } finally {
     lock.releaseLock();
   }
+}
+
+// Acción 'empujarPush' (api_completa.gs): la app avisa que acaba de crear un aviso y se envía al instante.
+// Es inofensiva e idempotente: solo procesa avisos pendientes de los últimos 15 minutos.
+function empujarPush() {
+  return { ok: true, enviados: enviarPushPendientes() };
 }
 
 // Ejecutar UNA vez desde el editor: crea el disparador que envía los push cada minuto

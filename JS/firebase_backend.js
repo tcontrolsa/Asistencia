@@ -1519,6 +1519,8 @@ window.FirebaseBackend = {
             para: String(para), tipo: tipo || 'general', titulo: titulo || '', texto: texto || '', enlace: enlace || {},
             creada: firebase.firestore.Timestamp.now(), leidaPor: [], clave: clave || ''
         });
+        // Notificación emergente al instante (push_fcm.gs); si falla, el disparador de cada minuto la envía
+        try { this._post({ accion: 'empujarPush' }).catch(() => { }); } catch (e) { }
         return { ok: true };
     },
 
