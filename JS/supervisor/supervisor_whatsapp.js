@@ -1147,6 +1147,29 @@ window.ejecutarEnvioMasivoWhatsApp = async function () {
 
   const categoria = window._waModalCategoriaActual || 'sin_marcar';
   const templateKey = window._resolverTipoPlantillaWA(categoria);
+  // «No registró entrada»: no antes de la hora de corte; y si hoy ya salió el aviso, pedir confirmación
+  let fechaAvisoHoy = '';
+  if (templateKey === 'no_registro') {
+    const cfg = (window.OpenWAService.config || {});
+    const corte = cfg.horaCorteNoRegistro || '08:15';
+    const ahora = new Date();
+    if (ahora.getHours() * 60 + ahora.getMinutes() < minutosHM(corte)) {
+      mostrarToast(`Aún no es la hora de corte (${corte}). El aviso «no registró entrada» se puede enviar desde esa hora.`, 'error');
+      return;
+    }
+    fechaAvisoHoy = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().split('T')[0];
+    try {
+      const snap = await db.collection('configuracion').doc('whatsapp_autocheck').get();
+      if (snap.exists && snap.data().fecha === fechaAvisoHoy) {
+        const d = snap.data();
+        if (!confirm(`Hoy ya se envió el aviso «no registró entrada»${d.por ? ' (' + d.por + ')' : ''}. ¿Enviarlo de nuevo a los seleccionados?`)) return;
+        fechaAvisoHoy = ''; // ya hay candado del día
+      }
+    } catch (e) {
+      mostrarToast('No se pudo verificar si hoy ya se envió el aviso. Inténtalo de nuevo.', 'error');
+      return;
+    }
+  }
   const containerProgreso = $('progresoEnvioWhatsAppContainer');
   const fillProgreso = $('barraProgresoWhatsAppFill');
   const txtProgreso = $('lblProgresoWhatsAppTexto');
@@ -1165,6 +1188,23 @@ window.ejecutarEnvioMasivoWhatsApp = async function () {
 
   try {
     const resultado = await window.OpenWAService.enviarNotificacionesMasivas(empleadosParaEnviar, onProgress, templateKey);
+    // Envío manual del día: toma el candado para que el automático no repita el aviso
+    if (fechaAvisoHoy && resultado && resultado.enviados > 0) {
+      try {
+        let quien = '';
+        try { quien = (JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').nombre) || ''; } catch (e) { }
+        const ref = db.collection('configuracion').doc('whatsapp_autocheck');
+        await db.runTransaction(async tx => {
+          const snap = await tx.get(ref);
+          const previo = snap.exists ? snap.data() : {};
+          if (previo.fecha === fechaAvisoHoy) return;
+          tx.set(ref, {
+            ...previo, fecha: fechaAvisoHoy, inicio: firebase.firestore.FieldValue.serverTimestamp(),
+            por: quien, destinatarios: empleadosParaEnviar.length, ids: empleadosParaEnviar.map(e => String(e.id)), manual: true
+          });
+        });
+      } catch (e) { console.warn('[OpenWA] No se pudo registrar el envío manual en el candado:', e); }
+    }
     if (txtProgreso) txtProgreso.textContent = `Envío finalizado: ${resultado.enviados} enviados, ${resultado.fallidos} fallidos`;
     mostrarToast(`Despacho WhatsApp completado: ${resultado.enviados} notificaciones enviadas exitosamente`, 'success');
     setTimeout(() => {
