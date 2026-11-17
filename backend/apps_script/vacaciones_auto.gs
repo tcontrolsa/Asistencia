@@ -3,8 +3,8 @@
  *
  * Reglas (definidas por el usuario el 29/10/2026):
  *   E  Años de servicio  = años cumplidos al 31/12 del año de vacaciones, desde la fecha de ingreso (D)
- *   G  Días del año      = 0 con menos de 1 año; 11 (15 días calendario) y, desde el 6.º año, 1 día más por año
- *                          (máximo 15 adicionales): 6 años = 12, 13 años = 19, 16 años = 22
+ *   G  Días del año      = 0 con menos de 1 año; 11 hasta 5 años; 6 a 9 años = 12 a 15; 10 a 12 años = 16;
+ *                          13 a 16 años = 17 a 20; 17 a 19 años = 21; 20 años o más = 22 (tabla vigente desde 2026-11-17)
  *   I  Tomadas           = días de VACACIONES del período 1/dic del año anterior → 30/nov del año (hasta hoy):
  *                          las de diciembre se descuentan del año siguiente (como diciembre 2025 en 2026)
  *                          + 1 día por cada 8 h de permiso personal cargadas a vacaciones (hoja VACACIONES_HORAS, 2026-11-11).
