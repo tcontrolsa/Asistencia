@@ -76,7 +76,8 @@
         <div class="nt-cab"><strong>Notificaciones</strong><button type="button" class="nt-link" data-nt="todas">Marcar todo como leído</button></div>
         <div class="nt-lista"></div>
         <div class="nt-pie"><button type="button" class="nt-link nt-link-gris" data-nt="leidas" hidden></button>
-          <button type="button" class="nt-link nt-link-gris" data-nt="push" hidden></button></div>
+          <button type="button" class="nt-link nt-link-gris" data-nt="push" hidden></button>
+          <div class="nt-guia" hidden></div></div>
       </div>`;
     const btn = host.querySelector('.nt-btn');
     const panel = host.querySelector('.nt-panel');
@@ -85,6 +86,7 @@
     const btnLeidas = host.querySelector('[data-nt="leidas"]');
 
     const btnPush = host.querySelector('[data-nt="push"]');
+    const guia = host.querySelector('.nt-guia');
     const leida = n => (n.leidaPor || []).includes(yo);
 
     // Avisos emergentes (push): solo se ofrece si el navegador los admite
@@ -93,8 +95,11 @@
       const e = P ? P.estado() : 'no_soportado';
       btnPush.hidden = e === 'no_soportado';
       btnPush.textContent = e === 'activo' ? 'Desactivar avisos en este dispositivo'
-        : e === 'bloqueado' ? 'Avisos bloqueados en el navegador' : 'Activar avisos en este dispositivo';
+        : e === 'bloqueado' ? 'Avisos bloqueados en el navegador'
+        : e === 'instalar_ios' ? 'Cómo recibir avisos en tu iPhone'
+        : e === 'ios_antiguo' ? 'Avisos: actualiza tu iPhone' : 'Activar avisos en este dispositivo';
       btnPush.disabled = e === 'bloqueado';
+      if (e !== 'instalar_ios' && e !== 'ios_antiguo') guia.hidden = true;
     }
 
     function pintar() {
@@ -143,6 +148,19 @@
       if (ev.target.closest('[data-nt="push"]')) {
         const P = window.PushAvisos;
         if (!P || btnPush.disabled) return;
+        const est = P.estado();
+        if (est === 'instalar_ios' || est === 'ios_antiguo') {
+          guia.innerHTML = est === 'ios_antiguo'
+            ? '<p>Para recibir avisos necesitas <strong>iOS 16.4 o superior</strong>. Actualiza el iPhone en Ajustes &gt; General &gt; Actualización de software e instala la app en la pantalla de inicio.</p>'
+            : '<p><strong>Para recibir avisos en iPhone, instala la app:</strong></p><ol>'
+              + '<li>Abre esta página en <strong>Safari</strong>.</li>'
+              + '<li>Toca el botón <strong>Compartir</strong> (cuadrado con flecha hacia arriba).</li>'
+              + '<li>Elige <strong>Añadir a pantalla de inicio</strong> y confirma.</li>'
+              + '<li>Abre <strong>TCONTROL</strong> desde el icono nuevo, entra a la campana y toca <strong>Activar avisos</strong>.</li></ol>'
+              + '<p><small>Requiere iOS 16.4 o superior.</small></p>';
+          guia.hidden = !guia.hidden;
+          return;
+        }
         btnPush.disabled = true;
         const accion = P.estado() === 'activo' ? P.desactivar(yo) : P.activar(yo);
         accion.catch(e => { alert(e && e.message ? e.message : 'No se pudo cambiar el estado de los avisos.'); })

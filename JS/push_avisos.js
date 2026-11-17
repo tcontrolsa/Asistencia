@@ -6,7 +6,8 @@
  * El envío lo hace Apps Script (push_fcm.gs) cada vez que se crea un aviso de la campana.
  * El service worker (sw.js) muestra la notificación y abre la app al tocarla.
  *
- * API: PushAvisos.soportado(), PushAvisos.estado() -> 'activo'|'inactivo'|'bloqueado'|'no_soportado',
+ * API: PushAvisos.soportado(), PushAvisos.estado() -> 'activo'|'inactivo'|'bloqueado'|'no_soportado'|
+ *      'instalar_ios' (iPhone sin instalar la app)|'ios_antiguo' (iOS menor a 16.4),
  *      PushAvisos.activar(empleadoId), PushAvisos.desactivar(empleadoId)
  */
 (function () {
@@ -24,8 +25,17 @@
       !!(window.firebase && window.firebase.messaging && window.firebase.messaging.isSupported && window.firebase.messaging.isSupported());
   }
 
+  // iPhone/iPad: Safari solo admite avisos si la app está instalada en la pantalla de inicio (iOS 16.4+)
+  function esIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+  function instalada() {
+    return window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
+
   function estado() {
-    if (!soportado()) return 'no_soportado';
+    if (esIOS() && !instalada()) return 'instalar_ios';
+    if (!soportado()) return esIOS() ? 'ios_antiguo' : 'no_soportado';
     if (Notification.permission === 'denied') return 'bloqueado';
     return Notification.permission === 'granted' && leerLS(LS_TOKEN) ? 'activo' : 'inactivo';
   }
@@ -79,5 +89,5 @@
     });
   }
 
-  window.PushAvisos = { soportado, estado, activar, desactivar, refrescar };
+  window.PushAvisos = { soportado, esIOS, instalada, estado, activar, desactivar, refrescar };
 })();

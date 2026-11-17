@@ -54,3 +54,7 @@
 .nt-badge[hidden], .nt-panel[hidden], .nt-host-app[hidden] { display: none !important; }
 /* Con la campana activa, el contenido de la app deja una franja libre arriba */
 body.nt-app-activa .main-content { padding-top: 58px; }
+.nt-guia { text-align: left; font-size: 12.5px; line-height: 1.45; color: #334155; background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-top: 6px; }
+.nt-guia p { margin: 0 0 6px; }
+.nt-guia ol { margin: 0 0 6px; padding-left: 18px; }
+.nt-pie:has(.nt-guia:not([hidden])) { display: block; }
