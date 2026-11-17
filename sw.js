@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v2.02';
+const CACHE_NAME = 'tcontrol-v2.03';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -191,6 +191,9 @@ self.addEventListener('push', event => {
     badge: './assets/icons/icon-192.png',
     tag: d.tag || 'tcontrol-aviso',
     renotify: true,
+    silent: false,
+    vibrate: [250, 120, 250, 120, 400], // Android: patrón de vibración (iOS y escritorio lo ignoran)
+    timestamp: Date.now(),
     data: { enlace: d.enlace || '' }
   };
   event.waitUntil(self.registration.showNotification(titulo, opciones));
