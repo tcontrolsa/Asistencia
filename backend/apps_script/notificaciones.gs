@@ -73,6 +73,9 @@ function crearNotificacion_(n) {
     enlace: n.enlace || {}, creada: new Date(), leidaPor: [], clave: n.clave || ''
   };
   if (n.sinPush) datos.sinPush = true; // recordatorios diarios: solo campana, sin notificación emergente
+  // Push inmediato: el aviso nace ya marcado como enviado y se envía abajo; si no, lo recoge enviarPushPendientes
+  var pushInmediato = !n.sinPush && typeof enviarPush_ === 'function' && typeof pushActivo_ === 'function' && pushActivo_();
+  if (pushInmediato) datos.pushEnviado = true;
   Object.keys(datos).forEach(function (k) { campos[k] = valorFirestore_(datos[k]); });
   var url = notifBaseFirestore_() + '/' + NOTIF_COLECCION + '?key=' + EVAL_API_KEY_FIREBASE;
   var metodo = 'post';
@@ -89,7 +92,8 @@ function crearNotificacion_(n) {
   var codigo = res.getResponseCode();
   if (codigo === 409) return false; // ya existía (misma clave)
   if (codigo !== 200) { Logger.log('Notificación no creada (' + codigo + '): ' + res.getContentText().slice(0, 200)); return false; }
-  // El push lo envía enviarPushPendientes (push_fcm.gs, cada minuto) para todos los avisos, vengan de donde vengan
+  // Push inmediato (push_fcm.gs); los avisos creados desde la app los envía enviarPushPendientes cada minuto
+  try { if (pushInmediato && pushTiposApagados_().indexOf(String(datos.tipo)) < 0) enviarPush_(n); } catch (e) { Logger.log('Push inmediato: ' + e); }
   return true;
 }
 
