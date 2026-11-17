@@ -642,7 +642,7 @@
     const resHoy = Object.values(SP.tick).filter(t => t.estado === 'resuelto' && new Date(t.ts).toDateString() === hoyTxt).length;
     const masViejo = els.filter(x => x.tipo === 'ticket' && x.estado !== 'resuelto').reduce((m, x) => Math.min(m, x.ts), Infinity);
     $('spKpis').innerHTML = `
-      <button type="button" class="sp-kpi ${k.pend ? 'alerta' : 'ok'}" onclick="spFiltro('pendientes')"><b>${SP.tsChats ? k.pend : '…'}</b><span>${k.pend === 1 ? 'pendiente' : 'pendientes'}</span></button>
+      <button type="button" class="sp-kpi ${k.pend ? 'alerta' : 'ok'}" onclick="spFiltro('pendientes')"><b>${!SP.tsChats || (SP.porRevisar > 3 && !k.pend) ? '…' : k.pend + (SP.porRevisar > 3 ? '+' : '')}</b><span>${k.pend === 1 ? 'pendiente' : 'pendientes'}</span></button>
       <div class="sp-kpi"><b>${resHoy}</b><span>resueltos hoy</span></div>
       ${isFinite(masViejo) ? `<div class="sp-kpi ${Date.now() - masViejo > 864e5 ? 'urg' : ''}"><b>${hace(masViejo).replace('hace ', '')}</b><span>el más antiguo</span></div>` : ''}`;
     const bloq = sonidoBloqueado();
