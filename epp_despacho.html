@@ -19,10 +19,28 @@
 <body>
     <!-- Módulo EPP, página del despachador (JS/epp_despacho.js). Datos: JS/epp_api.js; en localhost con ?demo, JS/epp_datos.js -->
     <div id="eppApp"></div>
-    <script src="./JS/epp_matriz.js?v=20261116_01"></script>
-    <script src="./JS/epp_datos.js?v=20261116_01"></script>
-    <script src="./JS/epp_api.js?v=20261116_01"></script>
-    <script src="./JS/epp_firma.js?v=20261105_01"></script>
-    <script src="./JS/epp_despacho.js?v=20261105_01"></script>
+    <script>
+    // Módulo EPP aún no habilitado: en producción solo se muestra "Próximamente".
+    // En localhost (pruebas) se carga normal. Para habilitarlo, quitar este bloque y volver a poner los scripts.
+    (function () {
+      var local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+      if (!local) {
+        document.getElementById('eppApp').innerHTML =
+          '<main style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;font-family:Inter,system-ui,sans-serif;color:#e2e8f0">' +
+          '<i class="fas fa-hard-hat" style="font-size:44px;color:#f59e0b"></i>' +
+          '<h1 style="margin:0;font-size:26px">Próximamente</h1>' +
+          '<p style="margin:0;color:#94a3b8;max-width:320px">Despacho de EPP estará disponible muy pronto. Te avisaremos cuando puedas usarlo.</p></main>';
+        document.body.style.background = '#0f172a';
+        return;
+      }
+      [
+        './JS/epp_matriz.js?v=20261116_01',
+        './JS/epp_datos.js?v=20261116_01',
+        './JS/epp_api.js?v=20261116_01',
+        './JS/epp_firma.js?v=20261105_01',
+        './JS/epp_despacho.js?v=20261105_01'
+      ].forEach(function (u) { document.write('<script src="' + u + '"><\/script>'); });
+    })();
+    </script>
 </body>
 </html>
