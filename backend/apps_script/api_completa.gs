@@ -872,6 +872,9 @@ function procesarAccion(params) {
     case 'listarDesvinculados':
       return listarDesvinculados();
 
+    case 'exportarCalcularVacaciones':
+      return exportarCalcularVacaciones();
+
     case 'registrarLogWhatsApp':
       return registrarLogWhatsApp(params);
 
@@ -3057,6 +3060,35 @@ function desvincularColaborador(params) {
 /**
  * Retorna la lista de colaboradores que han sido desvinculados y archivados en DESVINCULADOS.
  */
+/**
+ * Devuelve la hoja CALCULAR_vacaciones tal como está (encabezado y todas las columnas, en el mismo orden)
+ * para descargarla como Excel desde el panel. Números como números; fechas y fórmulas de texto como se ven en la hoja.
+ */
+function exportarCalcularVacaciones() {
+  try {
+    var hoja = SpreadsheetApp.getActive().getSheetByName(HOJA_CALCULAR_VACACIONES);
+    if (!hoja) return { ok: false, error: 'No existe la hoja CALCULAR_vacaciones' };
+    var nF = hoja.getLastRow(), nC = hoja.getLastColumn();
+    if (nF < 1 || nC < 1) return { ok: true, filas: [], generado: new Date().toISOString() };
+    var rango = hoja.getRange(1, 1, nF, nC);
+    var v = rango.getValues(), d = rango.getDisplayValues();
+    var filas = [];
+    for (var i = 0; i < nF; i++) {
+      var fila = [], vacia = true;
+      for (var j = 0; j < nC; j++) {
+        var x = v[i][j];
+        var celda = (typeof x === 'number') ? x : d[i][j];
+        if (celda !== '' && celda !== null) vacia = false;
+        fila.push(celda);
+      }
+      if (!vacia) filas.push(fila);
+    }
+    return { ok: true, hoja: HOJA_CALCULAR_VACACIONES, filas: filas, generado: new Date().toISOString() };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+}
+
 function listarDesvinculados() {
   try {
     const ss = SpreadsheetApp.getActive();

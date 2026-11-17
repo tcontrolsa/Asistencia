@@ -13165,6 +13165,34 @@ window.exportarTablaVacacionesExcel = async function () {
   }
 };
 
+// Descarga la hoja CALCULAR_vacaciones con los datos más recientes y el mismo formato (encabezado y columnas) de la hoja.
+window.descargarCalcularVacaciones = async function (btn) {
+  const textoOriginal = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Descargando...'; }
+  try {
+    const res = await jsonpRequest({ accion: 'exportarCalcularVacaciones' });
+    if (!res || res.ok === false || res.error) throw new Error((res && res.error) || 'Sin respuesta del servidor');
+    const filas = res.filas || [];
+    if (!filas.length) throw new Error('La hoja CALCULAR_vacaciones no tiene datos');
+    await window.asegurarXLSX();
+    const ws = XLSX.utils.aoa_to_sheet(filas);
+    const anchos = filas[0].map((_, j) => {
+      const max = filas.slice(1, 60).reduce((m, f) => Math.max(m, String(f[j] == null ? '' : f[j]).length), 6);
+      return { wch: Math.min(max + 2, 40) };
+    });
+    ws['!cols'] = anchos;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CALCULAR_vacaciones');
+    XLSX.writeFile(wb, `CALCULAR_vacaciones_${getLocalHoyStr()}.xlsx`);
+    mostrarToast('Hoja CALCULAR_vacaciones descargada con los datos actuales', 'success');
+  } catch (err) {
+    console.error('Error al descargar CALCULAR_vacaciones:', err);
+    mostrarToast('No se pudo descargar: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = textoOriginal; }
+  }
+};
+
 // ==========================================
 // DETALLE DE KPIS POR COLABORADOR
 // ==========================================

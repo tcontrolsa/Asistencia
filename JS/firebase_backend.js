@@ -149,6 +149,9 @@ window.FirebaseBackend = {
                     return await this.desvincularColaborador(params);
                 case 'listarDesvinculados':
                     return await this.listarDesvinculados(params);
+
+                case 'exportarCalcularVacaciones':
+                    return await this._jsonp({ accion: 'exportarCalcularVacaciones' });
                 case 'resetearPinesTodosLosEmpleados':
                 case 'resetearPinesEmpleados':
                     return await this.resetearPinesTodosLosEmpleados(params);
