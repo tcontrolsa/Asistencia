@@ -93,6 +93,91 @@ function pushDestinatarios_(para) {
   return [String(para)];
 }
 
+// Tipos de aviso apagados por un administrador (Firestore configuracion/push {tipos_apagados: [...]}), caché 60 s
+function pushTiposApagados_() {
+  var cache = CacheService.getScriptCache();
+  var guardado = cache.get('push_tipos_apagados');
+  if (guardado !== null) return JSON.parse(guardado);
+  var lista = [];
+  try {
+    var res = pushFetch_(pushBase_() + '/configuracion/push?key=' + pushLlave_(), { muteHttpExceptions: true });
+    if (res.getResponseCode() === 200) {
+      var f = (JSON.parse(res.getContentText()).fields || {}).tipos_apagados;
+      lista = ((f && f.arrayValue && f.arrayValue.values) || []).map(function (v) { return v.stringValue; }).filter(String);
+    }
+  } catch (e) { Logger.log('Push: no se pudo leer configuracion/push: ' + e); }
+  cache.put('push_tipos_apagados', JSON.stringify(lista), 60);
+  return lista;
+}
+
+// Convierte un valor de la API REST de Firestore a un valor simple
+function pushDecodificar_(v) {
+  if (!v) return null;
+  if ('stringValue' in v) return v.stringValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('timestampValue' in v) return v.timestampValue;
+  if ('arrayValue' in v) return ((v.arrayValue.values) || []).map(pushDecodificar_);
+  if ('mapValue' in v) {
+    var o = {}, c = v.mapValue.fields || {};
+    Object.keys(c).forEach(function (k) { o[k] = pushDecodificar_(c[k]); });
+    return o;
+  }
+  return null;
+}
+
+/**
+ * Revisa los avisos de la campana creados en los últimos 15 minutos y envía el push de los que aún no salieron.
+ * Cubre TODOS los orígenes (Apps Script y la app: permisos, campo...). Se omiten los avisos marcados `sinPush`
+ * (recordatorios diarios), los ya leídos y los de tipos apagados. Marca `pushEnviado` en cada aviso enviado.
+ * Instalar con instalarPushPendientes() (se ejecuta cada minuto).
+ */
+function enviarPushPendientes() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return 0;
+  try {
+    if (!pushActivo_()) return 0;
+    var desde = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    var res = pushFetch_(pushBase_() + ':runQuery?key=' + pushLlave_(), {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({ structuredQuery: {
+        from: [{ collectionId: 'notificaciones' }],
+        where: { fieldFilter: { field: { fieldPath: 'creada' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: desde } } },
+        orderBy: [{ field: { fieldPath: 'creada' }, direction: 'ASCENDING' }],
+        limit: 200
+      } })
+    });
+    if (res.getResponseCode() !== 200) { Logger.log('Push pendientes (' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 200)); return 0; }
+    var apagados = pushTiposApagados_();
+    var enviados = 0;
+    JSON.parse(res.getContentText()).forEach(function (fila) {
+      if (!fila.document) return;
+      var d = pushDecodificar_({ mapValue: { fields: fila.document.fields || {} } });
+      if (d.pushEnviado || d.sinPush) return;
+      if ((d.leidaPor || []).indexOf(String(d.para)) >= 0) return;
+      var url = pushBase_().replace(/\/documents$/, '') + '/' + fila.document.name.replace(/^.*\/databases\/\(default\)\//, '') +
+        '?updateMask.fieldPaths=pushEnviado&key=' + pushLlave_();
+      if (apagados.indexOf(String(d.tipo)) < 0) enviados += enviarPush_({ para: d.para, tipo: d.tipo, titulo: d.titulo, texto: d.texto, enlace: d.enlace, clave: d.clave });
+      pushFetch_(url, { method: 'patch', contentType: 'application/json', muteHttpExceptions: true,
+        payload: JSON.stringify({ fields: { pushEnviado: { booleanValue: true } } }) });
+    });
+    return enviados;
+  } catch (e) {
+    Logger.log('Push pendientes: ' + e);
+    return 0;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Ejecutar UNA vez desde el editor: crea el disparador que envía los push cada minuto
+function instalarPushPendientes() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'enviarPushPendientes') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('enviarPushPendientes').timeBased().everyMinutes(1).create();
+  Logger.log('Disparador de push instalado (cada minuto).');
+}
+
 /**
  * Envía el aviso como notificación emergente a todos los dispositivos registrados del destinatario.
  * n = { para, tipo, titulo, texto, enlace, clave }. Devuelve cuántos envíos fueron aceptados por FCM.

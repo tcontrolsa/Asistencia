@@ -72,6 +72,7 @@ function crearNotificacion_(n) {
     para: String(n.para), tipo: n.tipo || 'general', titulo: n.titulo || '', texto: n.texto || '',
     enlace: n.enlace || {}, creada: new Date(), leidaPor: [], clave: n.clave || ''
   };
+  if (n.sinPush) datos.sinPush = true; // recordatorios diarios: solo campana, sin notificación emergente
   Object.keys(datos).forEach(function (k) { campos[k] = valorFirestore_(datos[k]); });
   var url = notifBaseFirestore_() + '/' + NOTIF_COLECCION + '?key=' + EVAL_API_KEY_FIREBASE;
   var metodo = 'post';
@@ -88,7 +89,7 @@ function crearNotificacion_(n) {
   var codigo = res.getResponseCode();
   if (codigo === 409) return false; // ya existía (misma clave)
   if (codigo !== 200) { Logger.log('Notificación no creada (' + codigo + '): ' + res.getContentText().slice(0, 200)); return false; }
-  if (typeof enviarPush_ === 'function') enviarPush_(n); // aviso emergente (push_fcm.gs); nunca lanza error
+  // El push lo envía enviarPushPendientes (push_fcm.gs, cada minuto) para todos los avisos, vengan de donde vengan
   return true;
 }
 
@@ -282,7 +283,7 @@ function recordatoriosDiarios() {
         var lista = pendientesPorJefe[jefe];
         var mes = mesTexto_(mesObjetivo);
         var creada = crearNotificacion_({
-          para: jefe, tipo: faltan <= aviso ? 'plazo_por_vencer' : 'evaluaciones_pendientes',
+          para: jefe, sinPush: true, tipo: faltan <= aviso ? 'plazo_por_vencer' : 'evaluaciones_pendientes',
           clave: 'pend_' + jefe + '_' + mesObjetivo, reemplazar: true,
           enlace: { modulo: 'desempeno', vista: 'equipo', periodo: mesObjetivo },
           titulo: faltan <= aviso ? 'Evaluaciones por vencer' : 'Evaluaciones pendientes',
@@ -311,7 +312,7 @@ function recordatoriosDiarios() {
       if (faltan === null) return;
       if (faltan < 0) {
         if (crearNotificacion_({
-          para: 'rol:rrhh', tipo: 'alerta_desempeno', clave: 'noconf_' + e.id,
+          para: 'rol:rrhh', sinPush: true, tipo: 'alerta_desempeno', clave: 'noconf_' + e.id,
           enlace: { modulo: 'desempeno', vista: 'resultados', periodo: e.periodo },
           titulo: 'Evaluación no confirmada', texto: (e.empleadoNombre || e.empleadoId) + ' no confirmó su evaluación de ' +
             mesTexto_(e.periodo) + ' (venció el ' + fechaTexto_(e.venceConfirmar) + ').'
@@ -320,7 +321,7 @@ function recordatoriosDiarios() {
       }
       if (faltan > aviso) return;
       var creada = crearNotificacion_({
-        para: e.empleadoId, tipo: 'evaluacion_por_confirmar', clave: 'porconf_' + e.id, reemplazar: true,
+        para: e.empleadoId, sinPush: true, tipo: 'evaluacion_por_confirmar', clave: 'porconf_' + e.id, reemplazar: true,
         enlace: { modulo: 'desempeno', vista: 'detalle', id: String(e.id), periodo: e.periodo },
         titulo: 'Evaluación por confirmar',
         texto: 'Confirma tu evaluación de ' + mesTexto_(e.periodo) + (faltan === 0 ? ': el plazo vence hoy.' : ' antes del ' + fechaTexto_(e.venceConfirmar) + '.')
@@ -341,7 +342,7 @@ function recordatoriosDiarios() {
       var faltan = diasEntre_(hoy, e.vigenteHasta);
       if (faltan === null || faltan < 0 || faltan > aviso) return;
       if (crearNotificacion_({
-        para: e.evaluadorId, tipo: 'vigencia_por_vencer', clave: 'vig_' + e.id,
+        para: e.evaluadorId, sinPush: true, tipo: 'vigencia_por_vencer', clave: 'vig_' + e.id,
         enlace: { modulo: 'desempeno', vista: 'equipo' },
         titulo: 'Evaluación por vencer', texto: 'El resultado de ' + (e.empleadoNombre || e.empleadoId) + ' (' + mesTexto_(e.periodo) +
           ') deja de estar vigente el ' + fechaTexto_(e.vigenteHasta) + '.'
@@ -356,7 +357,7 @@ function recordatoriosDiarios() {
       var dias = diasDesdeIngreso_(e.fecha_ingreso || e.fechaIngreso, hoy);
       if (dias === null || dias < 60 || dias > 75) return;
       var creada = crearNotificacion_({
-        para: e.evaluador_id, tipo: 'dia75', clave: 'd75_' + e.id,
+        para: e.evaluador_id, sinPush: true, tipo: 'dia75', clave: 'd75_' + e.id,
         enlace: { modulo: 'desempeno', vista: 'equipo', periodo: 'DIA75' },
         titulo: 'Seguimiento Día 75', texto: (e.nombre || e.id) + ' cumple ' + dias + ' días desde su ingreso: corresponde su seguimiento Día 75.'
       });

@@ -5,7 +5,17 @@
 // (campo `apagado`: la app ya no deja registrar el dispositivo y push_fcm.gs no le envía).
 // =====================================================================
 (function () {
-  const st = { docs: {}, cargando: false, error: '', filtro: 'todos', texto: '' };
+  const st = { docs: {}, cargando: false, error: '', filtro: 'todos', texto: '', tiposApagados: [] };
+  // Tipos de aviso agrupados para el interruptor (el servidor compara por `tipo`; push_fcm.gs lee configuracion/push)
+  const GRUPOS = [
+    { id: 'evaluaciones', t: 'Evaluaciones de desempeño', tipos: ['evaluacion_recibida', 'evaluacion_corregida', 'evaluacion_confirmada', 'evaluacion_por_confirmar', 'evaluaciones_pendientes', 'plazo_por_vencer', 'vigencia_por_vencer', 'dia75', 'alerta_desempeno'] },
+    { id: 'reuniones', t: 'Reuniones de evaluación', tipos: ['reunion_solicitada', 'reunion_agendada'] },
+    { id: 'visitas', t: 'Visitas', tipos: ['visita_solicitada', 'visita_confirmada', 'visita_llego', 'visita_cancelada', 'visita_calificada'] },
+    { id: 'permisos', t: 'Permisos y vacaciones', tipos: ['permiso_solicitud', 'permiso_aprobado', 'permiso_rechazado', 'permiso_registrado', 'permiso_escalado', 'permiso_cancelado', 'permiso_documento', 'permiso_vencido'] },
+    { id: 'campo', t: 'Permiso de campo', tipos: ['campo_solicitud', 'campo_aprobado', 'campo_rechazado'] },
+    { id: 'otros', t: 'Registro propio y avisos generales', tipos: ['registro', 'general', 'prueba'] }
+  ];
+  const grupoActivo = g => !g.tipos.some(t => st.tiposApagados.includes(t));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const col = () => window.firebase.firestore().collection('push_tokens');
   const personal = () => (window.todoElPersonal ? window.todoElPersonal() : (window.empCache || []))
@@ -46,7 +56,15 @@
         <td style="padding:7px 8px; text-align:right;">${boton}</td></tr>`;
     }).join('');
     const btnF = (v, t) => `<button type="button" class="btn" data-pa-filtro="${v}" style="padding:5px 12px; font-size:12px; border-radius:999px; border:1px solid ${st.filtro === v ? '#6366f1' : '#cbd5e1'}; background:${st.filtro === v ? '#eef2ff' : '#fff'}; color:${st.filtro === v ? '#4338ca' : '#475569'};">${t}</button>`;
+    const admin = puedeApagar();
+    const tipos = GRUPOS.map(g => `<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:#334155; ${admin ? 'cursor:pointer;' : 'opacity:.8;'}">
+        <input type="checkbox" data-pa-grupo="${g.id}" ${grupoActivo(g) ? 'checked' : ''} ${admin ? '' : 'disabled'}> ${esc(g.t)}</label>`).join('');
     cont.innerHTML = `
+      <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:14px;">
+        <strong style="font-size:13px; color:#1e293b; display:block; margin-bottom:2px;">Tipos de aviso que envían notificación emergente</strong>
+        <span style="font-size:11.5px; color:#64748b; display:block; margin-bottom:8px;">Si lo desmarcas, ese tipo sigue en la campana pero no se envía como notificación emergente. Los recordatorios diarios de evaluación nunca se envían.</span>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:6px 14px;">${tipos}</div>
+      </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
         <strong style="font-size:13px; color:#1e293b;">${activos} de ${lista.length} personas con avisos activos</strong>
         <span style="flex:1"></span>${btnF('todos', 'Todos')}${btnF('activos', 'Con avisos')}${btnF('sin', 'Sin avisos')}${btnF('apagados', 'Apagados')}
@@ -68,6 +86,10 @@
       const snap = await col().get();
       st.docs = {};
       snap.forEach(d => { st.docs[d.id] = d.data(); });
+      try {
+        const cfg = await window.firebase.firestore().collection('configuracion').doc('push').get();
+        st.tiposApagados = cfg.exists && Array.isArray(cfg.data().tipos_apagados) ? cfg.data().tipos_apagados : [];
+      } catch (e2) { st.tiposApagados = []; }
     } catch (e) {
       st.error = /permission/i.test(String(e && e.message)) ? 'Tu sesión no tiene permiso para ver los avisos. Cierra sesión y vuelve a entrar.' : 'No se pudo leer la lista de avisos.';
     }
@@ -100,6 +122,24 @@
     if (a) { cambiar(a.dataset.paApagar, true); return; }
     const p = ev.target.closest('[data-pa-permitir]');
     if (p) cambiar(p.dataset.paPermitir, false);
+  });
+  document.addEventListener('change', async ev => {
+    const chk = ev.target && ev.target.closest && ev.target.closest('[data-pa-grupo]');
+    if (!chk || !puedeApagar()) return;
+    const g = GRUPOS.find(x => x.id === chk.dataset.paGrupo);
+    if (!g) return;
+    const F = window.firebase.firestore.FieldValue;
+    chk.disabled = true;
+    let error = false;
+    try {
+      await window.firebase.firestore().collection('configuracion').doc('push').set(
+        { tipos_apagados: chk.checked ? F.arrayRemove(...g.tipos) : F.arrayUnion(...g.tipos), actualizado: F.serverTimestamp() }, { merge: true });
+      const cfg = await window.firebase.firestore().collection('configuracion').doc('push').get();
+      st.tiposApagados = cfg.data().tipos_apagados || [];
+    } catch (e) { error = true; }
+    pintar();
+    const m = document.getElementById('paMsg');
+    if (m) { m.style.color = error ? '#b91c1c' : '#15803d'; m.textContent = error ? 'No se pudo guardar el cambio.' : `Avisos de "${g.t}": ${chk.checked ? 'se envían' : 'ya no se envían'} como notificación emergente.`; }
   });
   document.addEventListener('input', ev => {
     if (ev.target && ev.target.id === 'paBuscar') {
