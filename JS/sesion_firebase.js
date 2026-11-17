@@ -112,12 +112,12 @@
         try { if (localStorage.getItem(KEY_OMITIDA) === id + '|' + hoy()) return { ok: false, omitida: true }; } catch (e) { }
       }
       pidiendo = true;
-      return new Promise(res => mostrarModal(id, terminal, res, opts && opts.motivo));
+      return new Promise(res => mostrarModal(id, terminal, res, opts && opts.motivo, !!(opts && opts.obligatoria)));
     })().finally(() => { esperaActual = null; });
     return esperaActual;
   }
 
-  function mostrarModal(id, terminal, alCerrar, motivo) {
+  function mostrarModal(id, terminal, alCerrar, motivo, obligatoria) {
     const fondo = document.createElement('div');
     fondo.id = 'modalSesionFirebase';
     fondo.setAttribute('role', 'dialog');
@@ -133,7 +133,7 @@
         <input id="sfbClave" type="password" autocomplete="current-password" required maxlength="40" style="width:100%; box-sizing:border-box; margin:4px 0 6px; padding:11px 12px; font-size:16px; border:1px solid #cbd5e1; border-radius:10px;">
         <p id="sfbMsg" role="status" style="min-height:18px; margin:0 0 10px; font-size:12.5px; color:#b91c1c;"></p>
         <button type="submit" style="width:100%; padding:12px; border:0; border-radius:10px; background:#2563eb; color:#fff; font-size:15px; font-weight:700; cursor:pointer;">Confirmar</button>
-        <button type="button" data-sfb-omitir style="width:100%; margin-top:8px; padding:10px; border:0; background:transparent; color:#64748b; font-size:13px; cursor:pointer;">Ahora no</button>
+        <button type="button" data-sfb-omitir style="${obligatoria ? 'display:none; ' : ''}width:100%; margin-top:8px; padding:10px; border:0; background:transparent; color:#64748b; font-size:13px; cursor:pointer;">${obligatoria ? 'El servidor no responde: marcar de todos modos' : 'Ahora no'}</button>
         <p style="margin:8px 0 0; font-size:11.5px; color:#94a3b8; text-align:center;">${terminal ? '¿No la tienes? Pídela a tu supervisor.' : '¿No la recuerdas? Cierra sesión y usa “¿Olvidaste tu contraseña?”.'}</p>
       </form>`;
     document.body.appendChild(fondo);
@@ -141,13 +141,14 @@
     const input = fondo.querySelector('#sfbClave');
     const msg = fondo.querySelector('#sfbMsg');
     const btn = form.querySelector('button[type="submit"]');
-    const cerrarModal = (ok) => {
+    const cerrarModal = (ok, extra) => {
       fondo.remove(); pidiendo = false;
-      if (typeof alCerrar === 'function') alCerrar({ ok: !!ok });
+      if (typeof alCerrar === 'function') alCerrar(Object.assign({ ok: !!ok }, extra || {}));
     };
     setTimeout(() => input.focus(), 50);
 
     fondo.querySelector('[data-sfb-omitir]').addEventListener('click', () => {
+      if (obligatoria) { cerrarModal(false, { tecnico: true }); return; } // solo se ofrece si el servidor falla
       try { localStorage.setItem(KEY_OMITIDA, id + '|' + hoy()); } catch (e) { }
       cerrarModal();
     });
@@ -165,7 +166,9 @@
       btn.disabled = false; btn.textContent = 'Confirmar';
       msg.textContent = /incorrecta/i.test(r.motivo || '') ? (terminal ? 'Clave incorrecta. Revísala e inténtalo de nuevo.' : 'Contraseña incorrecta. Revísala e inténtalo de nuevo.')
         : /intentos/i.test(r.motivo || '') ? r.motivo
-        : 'No se pudo verificar en este momento. Puedes intentarlo más tarde con “Ahora no”.';
+        : (obligatoria ? 'No se pudo verificar en este momento. Inténtalo de nuevo en unos segundos.' : 'No se pudo verificar en este momento. Puedes intentarlo más tarde con “Ahora no”.');
+      // Con la sesión obligatoria, solo si el servidor falla (no por contraseña incorrecta) se permite marcar sin ella
+      if (obligatoria && !/incorrecta|intentos/i.test(r.motivo || '')) fondo.querySelector('[data-sfb-omitir]').style.display = 'block';
       input.select();
     });
   }

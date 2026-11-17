@@ -2693,8 +2693,17 @@ async function procederConRegistro() {
     // Seguridad etapa 2: las marcaciones se guardarán solo con la sesión de Firebase de la persona. Si este
     // teléfono aún no la tiene, se pide la contraseña aquí (aunque hoy haya elegido "Ahora no").
     if (window.SesionFirebase && typeof window.SesionFirebase.asegurar === 'function') {
-        const s = await window.SesionFirebase.asegurar(empleado.id, { siempre: true, motivo: 'Para guardar tu marcación, confirma que eres tú.' }).catch(() => null);
-        if (!(s && s.ok)) bitacoraIntento({ ...evBase, fase: 'sin_sesion', error: 'Marcó sin sesión de Firebase' });
+        const s = await window.SesionFirebase.asegurar(empleado.id, { siempre: true, obligatoria: true, motivo: 'Para guardar tu marcación, confirma que eres tú.' }).catch(() => null);
+        if (!(s && s.ok)) {
+            // Sesión obligatoria: solo se marca sin ella si el servidor de sesiones no respondió (tecnico) o falló la carga
+            if (s && s.tecnico || !s) {
+                bitacoraIntento({ ...evBase, fase: 'sin_sesion', error: 'Marcó sin sesión de Firebase (servidor no respondió)' });
+            } else {
+                bitacoraIntento({ ...evBase, fase: 'sin_sesion_bloqueada', error: 'No confirmó la contraseña' });
+                mostrarFalloMarcacion(tipoReg, 'Debes confirmar tu contraseña para marcar. Si no la recuerdas, cierra sesión y usa “¿Olvidaste tu contraseña?”.', evBase.intento);
+                return;
+            }
+        }
     }
 
     mostrarGuardandoMarcacion(tipoReg);
