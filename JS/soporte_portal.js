@@ -355,6 +355,12 @@
       await api('POST', '/messages/send-text', { chatId, text: texto });
       temp.pendiente = false;
       if (SP.cache[chatId]) SP.cache[chatId].espera = false;
+      if (texto === RESPUESTAS[1]) {                         // «Listo, ya quedó corregido…» cierra el reporte
+        const pend = (SP.msgs[chatId] || []).filter(m => !m.mio && clasificar(m) === 'reporte' && estadoTicket(m.id) !== 'resuelto');
+        const cual = pend.find(m => m.id === SP.ticketSel) || (pend.length === 1 ? pend[0] : null);
+        if (cual) { marcarTicket(cual.id, 'resuelto'); aviso('Respuesta enviada y reporte marcado como resuelto'); }
+        else if (pend.length > 1) aviso('Respuesta enviada. Hay varios reportes pendientes: marca cuál quedó resuelto');
+      }
     } catch (e) {
       temp.error = e.message;
       const t2 = $('spTexto'); if (t2 && !t2.value) t2.value = texto;
@@ -534,7 +540,7 @@
         const est = estadoTicket(m.id);
         return `${sep}<div class="sp-ticket ${m.id === SP.ticketSel ? 'sel' : ''}" id="t_${esc(m.id)}">
           <div class="sp-ticket-cab"><i class="fas fa-exclamation-triangle"></i> Reporte de incidente <span class="sp-est ${est === 'resuelto' ? 'ok' : 'pend'}">${est === 'resuelto' ? 'Resuelto' : 'Pendiente'}</span></div>
-          <div class="sp-ticket-datos"><span><small>Fecha del incidente</small>${esc(r.fecha || '—')}</span><span><small>Área</small>${esc(r.area || '—')}</span><span><small>ID</small>${esc(r.id || '—')}</span></div>
+          <div class="sp-ticket-datos"><span><small>Fecha del incidente</small>${esc(r.fecha || '—')}</span><span><small>Área</small>${esc((() => { const e = SP.sel && empleadoDe(SP.sel); return (e && (e.area_nomina || e.area)) || r.area || '—'; })())}</span><span><small>ID</small>${esc(r.id || '—')}</span></div>
           <p>${esc(r.descripcion || m.cuerpo).replace(/\n/g, '<br>')}</p>
           <div class="sp-ticket-pie"><small>Recibido ${new Date(m.ts).toDateString() === new Date().toDateString() ? 'hoy' : new Date(m.ts).toLocaleDateString('es-EC')} a las ${horaCorta(m.ts)}</small>
             ${est === 'resuelto' ? `<button type="button" onclick="spEstado('${esc(m.id)}','pendiente')"><i class="fas fa-undo"></i> Reabrir</button>`
@@ -607,7 +613,7 @@
     const resHoy = Object.values(SP.tick).filter(t => t.estado === 'resuelto' && new Date(t.ts).toDateString() === hoyTxt).length;
     const masViejo = els.filter(x => x.tipo === 'ticket' && x.estado !== 'resuelto').reduce((m, x) => Math.min(m, x.ts), Infinity);
     $('spKpis').innerHTML = `
-      <button type="button" class="sp-kpi ${k.pend ? 'alerta' : 'ok'}" onclick="spFiltro('pendientes')"><b>${k.pend}</b><span>${k.pend === 1 ? 'pendiente' : 'pendientes'}</span></button>
+      <button type="button" class="sp-kpi ${k.pend ? 'alerta' : 'ok'}" onclick="spFiltro('pendientes')"><b>${SP.tsChats ? k.pend : '…'}</b><span>${k.pend === 1 ? 'pendiente' : 'pendientes'}</span></button>
       <div class="sp-kpi"><b>${resHoy}</b><span>resueltos hoy</span></div>
       ${isFinite(masViejo) ? `<div class="sp-kpi ${Date.now() - masViejo > 864e5 ? 'urg' : ''}"><b>${hace(masViejo).replace('hace ', '')}</b><span>el más antiguo</span></div>` : ''}`;
     const bloq = sonidoBloqueado();
@@ -704,20 +710,23 @@
   async function iniciar() {
     try { SP.cache = JSON.parse(localStorage.getItem(KEY_CACHE) || '{}'); } catch (e) { SP.cache = {}; }
     pintar();
-    const snap = await db().collection('empleados').get();
-    snap.forEach(d => {
-      const x = d.data() || {};
-      if (x.esEliminado) return;
-      SP.emps.set(d.id, { id: d.id, nombre: x.nombre || d.id, area: x.area || '', area_nomina: x.area_nomina || '', unidad: x.unidad || '', cargo: x.cargo || '',
-        cargo_nomina: x.cargo_nomina || '', jefe_inmediato: x.jefe_inmediato || '', telefono: x.telefono || x.celular || '', foto_url: x.foto_url || x.fotoUrl || x.foto || '', activo: x.activo });
-    });
+    // Los empleados se cargan en paralelo: las escuchas y la lista de chats ya no esperan a toda la colección
+    const empleadosListos = db().collection('empleados').get().then(snap => {
+      snap.forEach(d => {
+        const x = d.data() || {};
+        if (x.esEliminado) return;
+        SP.emps.set(d.id, { id: d.id, nombre: x.nombre || d.id, area: x.area || '', area_nomina: x.area_nomina || '', unidad: x.unidad || '', cargo: x.cargo || '',
+          cargo_nomina: x.cargo_nomina || '', jefe_inmediato: x.jefe_inmediato || '', telefono: x.telefono || x.celular || '', foto_url: x.foto_url || x.fotoUrl || x.foto || '', activo: x.activo });
+      });
+      pintar();
+    }).catch(e => { SP.error = 'No se pudo leer los colaboradores'; console.warn('Soporte: empleados', e); pintar(); });
     db().collection('configuracion').doc('soporte_vinculos').onSnapshot(d => { SP.vinc = Object.assign({}, (d.exists && d.data().vinculos) || {}); pintar(); },
       e => console.warn('Soporte: vínculos', e));
     db().collection('configuracion').doc('soporte_tickets').onSnapshot(d => { SP.tick = Object.assign({}, (d.exists && d.data().tickets) || {}); pintar(); },
       e => console.warn('Soporte: estados', e));
     db().collection('configuracion').doc('whatsapp').onSnapshot(async d => {
       const url = d.exists ? String(d.data().servidorUrl || '').replace(/\/+$/, '') : '';
-      if (url && url !== SP.base) { SP.base = url; await resolverSesionOpenWA(); cargarChats(); }
+      if (url && url !== SP.base) { SP.base = url; await Promise.all([resolverSesionOpenWA(), empleadosListos]); cargarChats(); }
     }, () => { SP.error = 'No se pudo leer la configuración de WhatsApp'; pintar(); });
     if (!SP.timer) SP.timer = setInterval(tic, 2000);
   }
