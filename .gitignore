@@ -88,3 +88,10 @@ $RECYCLE.BIN/
 *~
 .directory
 .Trash-*
+
+# Datos personales de usuarios: NUNCA al repositorio (es publico)
+nuevo/
+docs/
+db/reportes/
+*.xlsx
+*.xls
