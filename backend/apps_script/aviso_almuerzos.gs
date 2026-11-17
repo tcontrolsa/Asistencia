@@ -96,6 +96,7 @@ function contarAlmuerzosHoy_(hoy) {
     var p = porEmp[id];
     if (p.almuerzo !== 'SI' || p.salidaTemprana) return;
     var e = emps[id] || {};
+    if (String(e.area || '').trim().toUpperCase() === 'PRUEBAS') return;   // fichas de prueba no cuentan
     if (String(e.tipo_personal || '').toUpperCase() === 'EXTERNO') externos++; else empresa++;
   });
 

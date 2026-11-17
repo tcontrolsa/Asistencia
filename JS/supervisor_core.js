@@ -13,17 +13,19 @@ let empCache = [];
 
 // Personal de servicios externos (tipo_personal EXTERNO, serie 9000): grupo aparte. Control Diario, Dashboard,
 // Reportes, Directorio y Mapa muestran un grupo a la vez; los demás usos de empCache (búsquedas, sesión) ven a todos.
+// Fichas de prueba (área PRUEBAS, p. ej. 8001/8002): no cuentan en resultados, estadísticas ni totales de almuerzo
+window.esPersonalPrueba = e => String((e && e.area) || '').trim().toUpperCase() === 'PRUEBAS';
 window.esPersonalExterno = e => String((e && e.tipo_personal) || '').toUpperCase() === 'EXTERNO';
 function grupoPersonal() {
   try { return localStorage.getItem('tcontrol_grupo_personal') === 'EXTERNOS' ? 'EXTERNOS' : 'EMPRESA'; } catch (e) { return 'EMPRESA'; }
 }
 function personalDelGrupo() {
   const externos = grupoPersonal() === 'EXTERNOS';
-  return (empCache || []).filter(e => window.esPersonalExterno(e) === externos);
+  return (empCache || []).filter(e => !window.esPersonalPrueba(e) && window.esPersonalExterno(e) === externos);
 }
 window.personalDelGrupo = personalDelGrupo;
 // Almuerzos: el pedido de comida es uno solo para Empresa y Servicios externos, así que se cuentan siempre juntos
-function todoElPersonal() { return empCache || []; }
+function todoElPersonal() { return (empCache || []).filter(e => !window.esPersonalPrueba(e)); }
 window.todoElPersonal = todoElPersonal;
 // Marca en la tarjeta que la cifra suma a los dos grupos (solo si hay personal externo)
 window.marcarCifraConjunta = function (idValor) {
@@ -10130,8 +10132,8 @@ window.actualizarKPIsOpciones = function () {
   const kpiSup = $('kpiOpcTotalSupervisores');
   if (!kpiEmp && !kpiSup) return;
 
-  const total = (empCache || []).filter(e => !window.esPersonalExterno(e)).length;
-  const conRoles = (empCache || []).filter(e => !window.esPersonalExterno(e)).filter(e => {
+  const total = (empCache || []).filter(e => !window.esPersonalExterno(e) && !window.esPersonalPrueba(e)).length;
+  const conRoles = (empCache || []).filter(e => !window.esPersonalExterno(e) && !window.esPersonalPrueba(e)).filter(e => {
     const id = String(e.id).trim();
     const rol = getSupervisorRole(e);
     return id === "1058" || rol !== 'EMPLEADO';
@@ -12791,7 +12793,7 @@ function resumenVacaciones() {
   const activos = (empCache || []).filter(e => {
     const act = (e.estado === 'ACTIVO' || e.activo === 'SI' || e.activo === true || String(e.activo || '').toUpperCase() === 'SI');
     const excluido = (typeof esEmpleadoExcluidoAsistencia === 'function') ? esEmpleadoExcluidoAsistencia(e) : false;
-    return act && !excluido && !window.esPersonalExterno(e);   // servicios externos quedan fuera de vacaciones
+    return act && !excluido && !window.esPersonalExterno(e) && !window.esPersonalPrueba(e);   // servicios externos quedan fuera de vacaciones
   });
   const r = { filas: [], adjudicadas: 0, tomadas: 0, restantes: 0, sumaKpis: 0, colabsConVac: 0, excluidos: 0 };
   activos.forEach(e => {
