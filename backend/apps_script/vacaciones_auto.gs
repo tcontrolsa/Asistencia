@@ -42,7 +42,13 @@ function vacAnios_(ingreso, anio) {
 }
 function vacDiasDelAnio_(anios) {
   if (anios === null || anios < 1) return 0;
-  return 11 + Math.min(15, Math.max(0, anios - 5));
+  // Tabla de días laborables por años de servicio (2026-11-17)
+  if (anios <= 5) return 11;
+  if (anios <= 9) return anios + 6;      // 6→12 … 9→15
+  if (anios <= 12) return 16;
+  if (anios <= 16) return anios + 4;     // 13→17 … 16→20
+  if (anios <= 19) return 21;
+  return 22;
 }
 function vacPeriodo_(anio) {
   return { inicio: new Date(anio - 1, 11, 1), fin: new Date(anio, 10, 30, 23, 59, 59) };
@@ -60,7 +66,12 @@ function vacFormulas_(f, sep) {
   var fin = 'MIN(TODAY()' + s + 'DATE(VAC_ANIO' + s + '11' + s + '30))';
   return {
     E: '=IF($D' + f + '=""' + s + '""' + s + 'MAX(0' + s + 'VAC_ANIO-YEAR($D' + f + ')))',
-    G: '=IF($E' + f + '=""' + s + '""' + s + 'IF($E' + f + '<1' + s + '0' + s + '11+MIN(15' + s + 'MAX(0' + s + '$E' + f + '-5))))',
+    G: (function () {
+      var e = '$E' + f;
+      return '=IF(' + e + '=""' + s + '""' + s + 'IF(' + e + '<1' + s + '0' + s + 'IF(' + e + '<=5' + s + '11' + s +
+        'IF(' + e + '<=9' + s + e + '+6' + s + 'IF(' + e + '<=12' + s + '16' + s + 'IF(' + e + '<=16' + s + e + '+4' + s +
+        'IF(' + e + '<=19' + s + '21' + s + '22)))))))';
+    })(),
     H: '=N($F' + f + ')+N($G' + f + ')',
     I: '=COUNTIFS(VACACIONES!$B:$B' + s + '$A' + f + s + 'VACACIONES!$D:$D' + s + '"VACACIONES"' + s +
        'VACACIONES!$A:$A' + s + '">="&' + ini + s + 'VACACIONES!$A:$A' + s + '"<="&' + fin + ')' +
