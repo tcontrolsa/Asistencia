@@ -69,7 +69,9 @@ function pushLeerTokens_(empleadoId) {
   var url = pushBase_() + '/' + PUSH_COLECCION + '/' + encodeURIComponent(String(empleadoId)) + '?key=' + pushLlave_();
   var res = pushFetch_(url, { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) return [];
-  var f = (JSON.parse(res.getContentText()).fields || {}).tokens;
+  var campos = JSON.parse(res.getContentText()).fields || {};
+  if (campos.apagado && campos.apagado.booleanValue) return []; // apagado por un administrador
+  var f = campos.tokens;
   return ((f && f.arrayValue && f.arrayValue.values) || []).map(function (v) { return v.stringValue; }).filter(String);
 }
 

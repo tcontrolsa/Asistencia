@@ -197,6 +197,7 @@ window.cambiarSubtabWhatsApp = function (tab) {
     window.cargarLogsWhatsApp();
   } else if (tab === 'automatico' && typeof window.cargarAvisoAlmuerzos === 'function') {
     window.cargarAvisoAlmuerzos();   // el aviso de almuerzos vive en la pestaña 2 (Automatizaciones)
+    if (typeof window.cargarPushAvisos === 'function') window.cargarPushAvisos();   // y los avisos emergentes (push)
   }
 };
 

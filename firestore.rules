@@ -136,10 +136,18 @@ service cloud.firestore {
     // Colección 'push_tokens' (avisos emergentes, JS/push_avisos.js)
     // Tokens de dispositivo: cada persona solo escribe su propio documento y con sesión Firebase;
     // no se lee desde clientes (Apps Script lee con la cuenta de servicio, que no pasa por las reglas).
+    // Los gestores ven la lista; Admin Master/Admin pueden apagar los avisos de una persona (campo `apagado`),
+    // que la persona no puede cambiar.
     match /push_tokens/{empleadoId} {
-      allow read, delete: if false;
-      allow create, update: if esPropia(empleadoId)
-                            && request.resource.data.keys().hasOnly(['tokens', 'actualizado']);
+      allow get: if esPropia(empleadoId) || esGestor();
+      allow list: if esGestor();
+      allow delete: if false;
+      allow create: if esPropia(empleadoId)
+                    && request.resource.data.keys().hasOnly(['tokens', 'actualizado']);
+      allow update: if request.resource.data.keys().hasOnly(['tokens', 'actualizado', 'apagado'])
+                    && (esAdmin()
+                        || (esPropia(empleadoId)
+                            && request.resource.data.get('apagado', false) == resource.data.get('apagado', false)));
     }
 
     // Colección 'solicitudes_permiso' (permisos y vacaciones, JS/permisos.js)

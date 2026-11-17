@@ -46,6 +46,18 @@
 
   async function activar(empleadoId) {
     if (!soportado()) throw new Error('Este navegador no admite avisos emergentes.');
+    // Un administrador puede apagar los avisos de una persona (campo `apagado` en push_tokens)
+    try {
+      const previo = await docTokens(empleadoId).get();
+      if (previo.exists && previo.data().apagado) {
+        guardarLS(LS_TOKEN, '');
+        try { await window.firebase.messaging().deleteToken(); } catch (e) { }
+        throw new Error('Los avisos emergentes fueron desactivados por un administrador. Consulta con RR.HH.');
+      }
+    } catch (e) {
+      if (/administrador/.test(String(e && e.message))) throw e;
+      // sin permiso de lectura o sin red: se continúa y las reglas deciden al guardar
+    }
     const permiso = await Notification.requestPermission();
     if (permiso !== 'granted') throw new Error('Los avisos no fueron permitidos en este dispositivo.');
     const reg = await navigator.serviceWorker.ready;
