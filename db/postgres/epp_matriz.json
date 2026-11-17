@@ -1,0 +1,1544 @@
+{
+ "catalogo": [
+  {
+   "id": "ropa_gabardina",
+   "nombre": "Ropa de trabajo (overol gabardina)",
+   "categoria": "Ropa",
+   "icono": "fa-shirt",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL"
+   ],
+   "stockMin": 1,
+   "maxCant": 5
+  },
+  {
+   "id": "ropa_jean",
+   "nombre": "Ropa de trabajo (overol tipo jean)",
+   "categoria": "Ropa",
+   "icono": "fa-shirt",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL"
+   ],
+   "stockMin": 0,
+   "maxCant": 5
+  },
+  {
+   "id": "ropa_camisa",
+   "nombre": "Ropa de trabajo (camisa y pantalón)",
+   "categoria": "Ropa",
+   "icono": "fa-shirt",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL"
+   ],
+   "stockMin": 0,
+   "maxCant": 5
+  },
+  {
+   "id": "ropa_ignifugo",
+   "nombre": "Ropa de trabajo (gabardina o ignífugo)",
+   "categoria": "Ropa",
+   "icono": "fa-shirt",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL"
+   ],
+   "stockMin": 0,
+   "maxCant": 5
+  },
+  {
+   "id": "overol_pintura",
+   "nombre": "Overol de pintura",
+   "categoria": "Ropa",
+   "icono": "fa-shirt",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL"
+   ],
+   "stockMin": 3,
+   "maxCant": 5
+  },
+  {
+   "id": "traje_sandblasting",
+   "nombre": "Traje de protección para sandblasting",
+   "categoria": "Ropa",
+   "icono": "fa-user-shield",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL"
+   ],
+   "stockMin": 2,
+   "maxCant": 5
+  },
+  {
+   "id": "mandil_cuero",
+   "nombre": "Mandil de cuero",
+   "categoria": "Ropa",
+   "icono": "fa-vest",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 10,
+   "maxCant": 5
+  },
+  {
+   "id": "mangas_cuero",
+   "nombre": "Mangas de cuero",
+   "categoria": "Ropa",
+   "icono": "fa-vest",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 10,
+   "maxCant": 5
+  },
+  {
+   "id": "guantes_anticorte",
+   "nombre": "Guantes anticorte",
+   "categoria": "Manos",
+   "icono": "fa-mitten",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL"
+   ],
+   "stockMin": 17,
+   "maxCant": 5
+  },
+  {
+   "id": "guantes_estibaje",
+   "nombre": "Guantes de estibaje",
+   "categoria": "Manos",
+   "icono": "fa-mitten",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL"
+   ],
+   "stockMin": 3,
+   "maxCant": 5
+  },
+  {
+   "id": "guantes_cuero",
+   "nombre": "Guantes de cuero (napa)",
+   "categoria": "Manos",
+   "icono": "fa-mitten",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL"
+   ],
+   "stockMin": 10,
+   "maxCant": 20
+  },
+  {
+   "id": "guantes_antiimpacto",
+   "nombre": "Guantes anti impacto",
+   "categoria": "Manos",
+   "icono": "fa-mitten",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL"
+   ],
+   "stockMin": 10,
+   "maxCant": 5
+  },
+  {
+   "id": "guantes_nitrilo",
+   "nombre": "Guantes de nitrilo",
+   "categoria": "Manos",
+   "icono": "fa-mitten",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL"
+   ],
+   "stockMin": 5,
+   "maxCant": 20
+  },
+  {
+   "id": "guantes_dielectricos",
+   "nombre": "Guantes dieléctricos",
+   "categoria": "Manos",
+   "icono": "fa-bolt",
+   "tallas": [
+    "S",
+    "M",
+    "L",
+    "XL"
+   ],
+   "stockMin": 1,
+   "maxCant": 5
+  },
+  {
+   "id": "botas_puntera",
+   "nombre": "Botas de seguridad con puntera",
+   "categoria": "Pies",
+   "icono": "fa-shoe-prints",
+   "tallas": [
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46"
+   ],
+   "stockMin": 0,
+   "maxCant": 5
+  },
+  {
+   "id": "botas_dielectricas",
+   "nombre": "Botas de seguridad dieléctricas",
+   "categoria": "Pies",
+   "icono": "fa-shoe-prints",
+   "tallas": [
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46"
+   ],
+   "stockMin": 0,
+   "maxCant": 5
+  },
+  {
+   "id": "botas_caucho",
+   "nombre": "Botas de caucho",
+   "categoria": "Pies",
+   "icono": "fa-shoe-prints",
+   "tallas": [
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46"
+   ],
+   "stockMin": 2,
+   "maxCant": 5
+  },
+  {
+   "id": "rodillera",
+   "nombre": "Rodilleras",
+   "categoria": "Cuerpo",
+   "icono": "fa-shield",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 10,
+   "maxCant": 5
+  },
+  {
+   "id": "casco",
+   "nombre": "Casco de seguridad",
+   "categoria": "Cabeza",
+   "icono": "fa-hard-hat",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 5,
+   "maxCant": 5
+  },
+  {
+   "id": "casco_sandblasting",
+   "nombre": "Casco para sandblasting",
+   "categoria": "Cabeza",
+   "icono": "fa-hard-hat",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 5
+  },
+  {
+   "id": "capucha_suelda",
+   "nombre": "Capucha para suelda",
+   "categoria": "Cabeza",
+   "icono": "fa-hard-hat",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 10,
+   "maxCant": 5
+  },
+  {
+   "id": "gafas",
+   "nombre": "Gafas de seguridad",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-glasses",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 17,
+   "maxCant": 5
+  },
+  {
+   "id": "gafas_laser",
+   "nombre": "Gafas con protección para rayos láser",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-glasses",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 3,
+   "maxCant": 5
+  },
+  {
+   "id": "gafas_uv",
+   "nombre": "Gafas con protección UV",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-glasses",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 5,
+   "maxCant": 5
+  },
+  {
+   "id": "pantalla_facial",
+   "nombre": "Pantalla facial",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-head-side-mask",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 10,
+   "maxCant": 5
+  },
+  {
+   "id": "careta_suelda",
+   "nombre": "Careta para suelda",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-head-side-mask",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 3,
+   "maxCant": 5
+  },
+  {
+   "id": "careta_suelda_tubular",
+   "nombre": "Careta para suelda tubular",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-head-side-mask",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 5,
+   "maxCant": 5
+  },
+  {
+   "id": "careta_suelda_laser",
+   "nombre": "Careta para suelda láser",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-head-side-mask",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 3,
+   "maxCant": 5
+  },
+  {
+   "id": "careta_suelda_mig",
+   "nombre": "Careta para suelda MIG",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-head-side-mask",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 3,
+   "maxCant": 5
+  },
+  {
+   "id": "micas_suaves",
+   "nombre": "Micas suaves (sandblasting)",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-glasses",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 20
+  },
+  {
+   "id": "micas_duras",
+   "nombre": "Micas duras (sandblasting)",
+   "categoria": "Ojos y rostro",
+   "icono": "fa-glasses",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 20
+  },
+  {
+   "id": "auditiva",
+   "nombre": "Protección auditiva (tapones)",
+   "categoria": "Oídos",
+   "icono": "fa-ear-deaf",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 0,
+   "maxCant": 5
+  },
+  {
+   "id": "mascarilla_media",
+   "nombre": "Mascarilla media cara",
+   "categoria": "Respiración",
+   "icono": "fa-lungs",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 5,
+   "maxCant": 5
+  },
+  {
+   "id": "cartuchos_p100",
+   "nombre": "Cartuchos P100",
+   "categoria": "Respiración",
+   "icono": "fa-lungs",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 5,
+   "maxCant": 5
+  },
+  {
+   "id": "mascarilla_n95",
+   "nombre": "Mascarilla N95",
+   "categoria": "Respiración",
+   "icono": "fa-lungs",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 20
+  },
+  {
+   "id": "filtro_inorganico",
+   "nombre": "Filtro para vapores inorgánicos (amarillo 6003)",
+   "categoria": "Respiración",
+   "icono": "fa-lungs",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 3,
+   "maxCant": 5
+  },
+  {
+   "id": "filtro_organico",
+   "nombre": "Filtro para vapores orgánicos (negro 6001)",
+   "categoria": "Respiración",
+   "icono": "fa-lungs",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 5
+  },
+  {
+   "id": "respirador_full",
+   "nombre": "Respirador full face",
+   "categoria": "Respiración",
+   "icono": "fa-lungs",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 5
+  },
+  {
+   "id": "arnes",
+   "nombre": "Arnés de seguridad",
+   "categoria": "Altura",
+   "icono": "fa-person-falling",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 5
+  },
+  {
+   "id": "eslinga",
+   "nombre": "Eslinga",
+   "categoria": "Altura",
+   "icono": "fa-person-falling",
+   "tallas": [
+    "Única"
+   ],
+   "stockMin": 2,
+   "maxCant": 5
+  }
+ ],
+ "areas": [
+  {
+   "id": "mecanizado",
+   "nombre": "Mecanizado",
+   "puestos": [
+    {
+     "nombre": "Operador de máquinas (plegadora, guillotina, troqueladora)",
+     "actividad": "Corte · Doblado · Troquelado de planchas",
+     "epp": [
+      {
+       "eppId": "ropa_gabardina",
+       "riesgo": "Corte y abrasiones",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 1
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Corte y atrapamiento",
+       "tipo": "Obligatorio",
+       "duracionDias": 21,
+       "duracionTexto": "3 semanas",
+       "obs": "No usar guantes en equipos rotativos si hay riesgo de atrapamiento",
+       "min": 1
+      },
+      {
+       "eppId": "guantes_estibaje",
+       "riesgo": "",
+       "tipo": "Obligatorio",
+       "duracionDias": 21,
+       "duracionTexto": "3 semanas",
+       "obs": "No usar guantes en equipos rotativos si hay riesgo de atrapamiento",
+       "min": 3
+      },
+      {
+       "eppId": "guantes_cuero",
+       "riesgo": "",
+       "tipo": "Obligatorio",
+       "duracionDias": 21,
+       "duracionTexto": "3 semanas",
+       "obs": "No usar guantes en equipos rotativos si hay riesgo de atrapamiento",
+       "min": 1
+      },
+      {
+       "eppId": "mandil_cuero",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 30,
+       "duracionTexto": "1 mes",
+       "obs": "Cuando se manipula planchas con filos cortantes",
+       "min": 3
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "botas_puntera",
+       "riesgo": "Caída de objetos",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Con plantilla anti perforación",
+       "min": 0
+      }
+     ]
+    },
+    {
+     "nombre": "Operador de cortadora láser",
+     "actividad": "",
+     "epp": [
+      {
+       "eppId": "mascarilla_media",
+       "riesgo": "Vapores y humos",
+       "tipo": "Condicional",
+       "duracionDias": 90,
+       "duracionTexto": "3 meses",
+       "obs": "Definir si hay corte térmico o láser",
+       "min": 3
+      },
+      {
+       "eppId": "cartuchos_p100",
+       "riesgo": "Vapores y humos",
+       "tipo": "Condicional",
+       "duracionDias": 90,
+       "duracionTexto": "3 meses",
+       "obs": "Definir si hay corte térmico o láser",
+       "min": 3
+      },
+      {
+       "eppId": "gafas_laser",
+       "riesgo": "Proyección de partículas de maquina láser",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Definir si hay corte térmico o láser",
+       "min": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ensamble_electrico",
+   "nombre": "Ensamble Eléctrico",
+   "puestos": [
+    {
+     "nombre": "Técnico ensamblador",
+     "actividad": "Montaje de componentes · Uso de fresadora y torno · Doblado, troqueladora, cortadora de barras",
+     "epp": [
+      {
+       "eppId": "ropa_gabardina",
+       "riesgo": "Corte y abrasiones",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 0
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "No usar guantes en equipos rotativos si hay riesgo de atrapamiento",
+       "min": 17
+      },
+      {
+       "eppId": "gafas",
+       "riesgo": "Proyección",
+       "tipo": "Obligatorio",
+       "duracionDias": 30,
+       "duracionTexto": "1 mes",
+       "obs": "Pantalla cuando exista proyección de particulas Uso de gafas oscuras cuando se realicen trabajos en la interperie",
+       "min": 17
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Condicional",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "botas_dielectricas",
+       "riesgo": "Eléctrico",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Con plantilla anti perforación",
+       "min": 0
+      }
+     ]
+    },
+    {
+     "nombre": "Técnico en estañado de barras",
+     "actividad": "Estañar barras de cobre",
+     "epp": [
+      {
+       "eppId": "mascarilla_media",
+       "riesgo": "Humo metálico",
+       "tipo": "Obligatorio",
+       "duracionDias": 120,
+       "duracionTexto": "4 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "cartuchos_p100",
+       "riesgo": "Humo metálico",
+       "tipo": "Obligatorio",
+       "duracionDias": 120,
+       "duracionTexto": "4 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "guantes_cuero",
+       "riesgo": "Corte y atrapamiento",
+       "tipo": "Obligatorio",
+       "duracionDias": 2,
+       "duracionTexto": "2 días",
+       "obs": "No usar guantes en equipos rotativos si hay riesgo de atrapamiento",
+       "min": 3
+      },
+      {
+       "eppId": "mandil_cuero",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 7,
+       "duracionTexto": "1 semana",
+       "obs": "Cuando se manipula barras de cobre",
+       "min": 3
+      },
+      {
+       "eppId": "pantalla_facial",
+       "riesgo": "Proyección partículas",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Uso con amoladora",
+       "min": 2
+      }
+     ]
+    },
+    {
+     "nombre": "Técnico de pruebas",
+     "actividad": "Pruebas de media tensión",
+     "epp": [
+      {
+       "eppId": "guantes_dielectricos",
+       "riesgo": "Eléctrico",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso obligatorio para trabajos de media y alta tensión",
+       "min": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "taller_pesado_pulido",
+   "nombre": "Taller Pesado / Pulido",
+   "puestos": [
+    {
+     "nombre": "Pulidor y soldador",
+     "actividad": "Ensamble estructuras",
+     "epp": [
+      {
+       "eppId": "ropa_jean",
+       "riesgo": "Corte, abrasiones, proyección de chispas",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 0
+      },
+      {
+       "eppId": "casco",
+       "riesgo": "Caída de objetos",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Indispensable con puente grúa",
+       "min": 4
+      },
+      {
+       "eppId": "botas_puntera",
+       "riesgo": "Aplastamiento",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "",
+       "min": 0
+      },
+      {
+       "eppId": "guantes_cuero",
+       "riesgo": "Corte y manipulación",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Uso de guantes dependiendo la actividad",
+       "min": 10
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Corte y manipulación",
+       "tipo": "Obligatorio",
+       "duracionDias": 21,
+       "duracionTexto": "3 semanas",
+       "obs": "Uso de guantes dependiendo la actividad",
+       "min": 10
+      },
+      {
+       "eppId": "guantes_antiimpacto",
+       "riesgo": "Corte y manipulación",
+       "tipo": "Obligatorio",
+       "duracionDias": 120,
+       "duracionTexto": "4 meses",
+       "obs": "Uso de guantes dependiendo la actividad",
+       "min": 10
+      },
+      {
+       "eppId": "capucha_suelda",
+       "riesgo": "Corte y manipulación",
+       "tipo": "Obligatorio",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Uso de guantes dependiendo la actividad",
+       "min": 10
+      },
+      {
+       "eppId": "mandil_cuero",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando se manipula planchas con filos cortantes",
+       "min": 10
+      },
+      {
+       "eppId": "mangas_cuero",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando se manipula planchas con filos cortantes",
+       "min": 10
+      },
+      {
+       "eppId": "careta_suelda_tubular",
+       "riesgo": "Arco eléctrico",
+       "tipo": "Obligatorio",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Según tipo de arco",
+       "min": 5
+      },
+      {
+       "eppId": "pantalla_facial",
+       "riesgo": "Proyección partículas",
+       "tipo": "Obligatorio",
+       "duracionDias": 7,
+       "duracionTexto": "1 semana",
+       "obs": "Uso con amoladora",
+       "min": 10
+      },
+      {
+       "eppId": "gafas",
+       "riesgo": "Proyección partículas",
+       "tipo": "Obligatorio",
+       "duracionDias": 42,
+       "duracionTexto": "6 semanas",
+       "obs": "Uso con amoladora",
+       "min": 10
+      },
+      {
+       "eppId": "arnes",
+       "riesgo": "Altura",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Trabajo >1.8 m",
+       "min": 2
+      },
+      {
+       "eppId": "eslinga",
+       "riesgo": "Altura",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Trabajo >1.8 m",
+       "min": 2
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Condicional",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "mascarilla_media",
+       "riesgo": "Humos metálicos",
+       "tipo": "Obligatorio",
+       "duracionDias": 90,
+       "duracionTexto": "3 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 5
+      },
+      {
+       "eppId": "cartuchos_p100",
+       "riesgo": "Humos metálicos",
+       "tipo": "Obligatorio",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 5
+      },
+      {
+       "eppId": "rodillera",
+       "riesgo": "Posiciones incomodas",
+       "tipo": "Condicional",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 10
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "suelda_liviano_pulido",
+   "nombre": "Suelda Liviano / Pulido",
+   "puestos": [
+    {
+     "nombre": "Pulidor y  Soldador",
+     "actividad": "Suelda y pulido de tableros",
+     "epp": [
+      {
+       "eppId": "ropa_jean",
+       "riesgo": "Corte, abrasiones, proyección de chispas",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 0
+      },
+      {
+       "eppId": "careta_suelda_laser",
+       "riesgo": "Arco eléctrico",
+       "tipo": "Obligatorio",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Según tipo de arco",
+       "min": 3
+      },
+      {
+       "eppId": "careta_suelda_mig",
+       "riesgo": "Arco eléctrico",
+       "tipo": "Obligatorio",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Según tipo de arco",
+       "min": 3
+      },
+      {
+       "eppId": "careta_suelda",
+       "riesgo": "Arco eléctrico",
+       "tipo": "Obligatorio",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Según tipo de arco",
+       "min": 3
+      },
+      {
+       "eppId": "pantalla_facial",
+       "riesgo": "Partículas",
+       "tipo": "Obligatorio",
+       "duracionDias": 7,
+       "duracionTexto": "1 semana",
+       "obs": "Uso con amoladora",
+       "min": 7
+      },
+      {
+       "eppId": "gafas",
+       "riesgo": "Partículas",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Uso con amoladora",
+       "min": 5
+      },
+      {
+       "eppId": "mandil_cuero",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 42,
+       "duracionTexto": "6 semanas",
+       "obs": "Cuando se manipula planchas con filos cortantes",
+       "min": 7
+      },
+      {
+       "eppId": "mangas_cuero",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 42,
+       "duracionTexto": "6 semanas",
+       "obs": "Cuando se manipula planchas con filos cortantes",
+       "min": 7
+      },
+      {
+       "eppId": "mascarilla_media",
+       "riesgo": "Humos",
+       "tipo": "Obligatorio",
+       "duracionDias": 150,
+       "duracionTexto": "5 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "cartuchos_p100",
+       "riesgo": "Humos",
+       "tipo": "Obligatorio",
+       "duracionDias": 21,
+       "duracionTexto": "3 semanas",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "botas_puntera",
+       "riesgo": "Aplastamiento",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "",
+       "min": 0
+      },
+      {
+       "eppId": "guantes_cuero",
+       "riesgo": "Corte y manipulación",
+       "tipo": "Obligatorio",
+       "duracionDias": 90,
+       "duracionTexto": "3 meses",
+       "obs": "Uso de guantes dependiendo la actividad",
+       "min": 3
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Corte y manipulación",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Uso de guantes dependiendo la actividad",
+       "min": 7
+      },
+      {
+       "eppId": "capucha_suelda",
+       "riesgo": "Corte y manipulación",
+       "tipo": "Obligatorio",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Uso de guantes dependiendo la actividad",
+       "min": 7
+      }
+     ]
+    },
+    {
+     "nombre": "Pulidor",
+     "actividad": "Limpieza de tableros con ácido",
+     "epp": [
+      {
+       "eppId": "guantes_nitrilo",
+       "riesgo": "Limpieza con acido",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "mascarilla_media",
+       "riesgo": "Limpieza con acido",
+       "tipo": "Obligatorio",
+       "duracionDias": 180,
+       "duracionTexto": "6 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "filtro_inorganico",
+       "riesgo": "Limpieza con acido",
+       "tipo": "Obligatorio",
+       "duracionDias": 42,
+       "duracionTexto": "6 semanas",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sandblasting",
+   "nombre": "Sandblasting",
+   "puestos": [
+    {
+     "nombre": "Operador de sandblasting",
+     "actividad": "Limpieza con abrasivo",
+     "epp": [
+      {
+       "eppId": "ropa_jean",
+       "riesgo": "Corte, abrasiones, tempeuraturas bajas",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 0
+      },
+      {
+       "eppId": "casco_sandblasting",
+       "riesgo": "Inhalación polvo",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso continuo durante operación",
+       "min": 2
+      },
+      {
+       "eppId": "mascarilla_n95",
+       "riesgo": "Inhalación polvo",
+       "tipo": "Obligatorio",
+       "duracionDias": 1,
+       "duracionTexto": "1 día",
+       "obs": "Uso continuo durante operación",
+       "min": 2
+      },
+      {
+       "eppId": "traje_sandblasting",
+       "riesgo": "Proyección abrasiva",
+       "tipo": "Obligatorio",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "",
+       "min": 2
+      },
+      {
+       "eppId": "micas_suaves",
+       "riesgo": "Proyección abrasiva",
+       "tipo": "Obligatorio",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "",
+       "min": 2
+      },
+      {
+       "eppId": "micas_duras",
+       "riesgo": "Proyección abrasiva",
+       "tipo": "Obligatorio",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "",
+       "min": 2
+      },
+      {
+       "eppId": "botas_caucho",
+       "riesgo": "Ingreso de agua",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "",
+       "min": 2
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Golpes o cortes",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "",
+       "min": 5
+      },
+      {
+       "eppId": "guantes_nitrilo",
+       "riesgo": "Limpieza",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "",
+       "min": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "pintura",
+   "nombre": "Pintura",
+   "puestos": [
+    {
+     "nombre": "Pintor",
+     "actividad": "Aplicación pintura",
+     "epp": [
+      {
+       "eppId": "ropa_jean",
+       "riesgo": "Impregnación de pintura en la piel",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 0
+      },
+      {
+       "eppId": "respirador_full",
+       "riesgo": "Inhalación / Salpicaduras",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Según MSDS",
+       "min": 2
+      },
+      {
+       "eppId": "filtro_inorganico",
+       "riesgo": "Inhalación / Salpicaduras",
+       "tipo": "Obligatorio",
+       "duracionDias": 30,
+       "duracionTexto": "1 mes",
+       "obs": "Según MSDS",
+       "min": 2
+      },
+      {
+       "eppId": "filtro_organico",
+       "riesgo": "Inhalación / Salpicaduras",
+       "tipo": "Obligatorio",
+       "duracionDias": 30,
+       "duracionTexto": "1 mes",
+       "obs": "Según MSDS",
+       "min": 2
+      },
+      {
+       "eppId": "mascarilla_media",
+       "riesgo": "Humos",
+       "tipo": "Obligatorio",
+       "duracionDias": 90,
+       "duracionTexto": "3 meses",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "cartuchos_p100",
+       "riesgo": "Humos",
+       "tipo": "Obligatorio",
+       "duracionDias": 21,
+       "duracionTexto": "3 semanas",
+       "obs": "Cuando la actividad lo requiera",
+       "min": 3
+      },
+      {
+       "eppId": "pantalla_facial",
+       "riesgo": "Partículas",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Uso con amoladora",
+       "min": 2
+      },
+      {
+       "eppId": "guantes_nitrilo",
+       "riesgo": "Contacto químico",
+       "tipo": "Obligatorio",
+       "duracionDias": 1,
+       "duracionTexto": "1 día",
+       "obs": "",
+       "min": 5
+      },
+      {
+       "eppId": "overol_pintura",
+       "riesgo": "General",
+       "tipo": "Obligatorio",
+       "duracionDias": 30,
+       "duracionTexto": "1 mes",
+       "obs": "",
+       "min": 3
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "botas_puntera",
+       "riesgo": "Caídas",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "",
+       "min": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "bodega",
+   "nombre": "Bodega",
+   "puestos": [
+    {
+     "nombre": "Operador",
+     "actividad": "Manejo de materiales",
+     "epp": [
+      {
+       "eppId": "ropa_camisa",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 0
+      },
+      {
+       "eppId": "casco",
+       "riesgo": "Caída de objetos",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Cuando se trabaje en perchas",
+       "min": 4
+      },
+      {
+       "eppId": "botas_puntera",
+       "riesgo": "Golpes",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "",
+       "min": 0
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 150,
+       "duracionTexto": "5 meses",
+       "obs": "Guantes para manipulación",
+       "min": 5
+      },
+      {
+       "eppId": "arnes",
+       "riesgo": "Altura",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Trabajo >1.8 m",
+       "min": 2
+      },
+      {
+       "eppId": "eslinga",
+       "riesgo": "Altura",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Trabajo >1.8 m",
+       "min": 2
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Obligatorio",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mantenimiento",
+   "nombre": "Mantenimiento",
+   "puestos": [
+    {
+     "nombre": "Operador",
+     "actividad": "Arreglo, mantenimiento de equipos de los activos de la empresa",
+     "epp": [
+      {
+       "eppId": "ropa_camisa",
+       "riesgo": "Corte, abrasiones",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales",
+       "min": 0
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 30,
+       "duracionTexto": "1 mes",
+       "obs": "No usar guantes en equipos rotativos si hay riesgo de atrapamiento",
+       "min": 6
+      },
+      {
+       "eppId": "gafas",
+       "riesgo": "Proyección",
+       "tipo": "Obligatorio",
+       "duracionDias": 30,
+       "duracionTexto": "1 mes",
+       "obs": "Pantalla cuando exista proyección de particulas Uso de gafas oscuras cuando se realicen trabajos en la interperie",
+       "min": 5
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Condicional",
+       "duracionDias": 14,
+       "duracionTexto": "2 semanas",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "botas_dielectricas",
+       "riesgo": "General",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Con plantilla anti perforación",
+       "min": 0
+      },
+      {
+       "eppId": "arnes",
+       "riesgo": "Altura",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Trabajo >1.8 m",
+       "min": 1
+      },
+      {
+       "eppId": "eslinga",
+       "riesgo": "Altura",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Trabajo >1.8 m",
+       "min": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ingenieria_calidad_lider_de_produccion",
+   "nombre": "Ingeniería / Calidad / Líder de Producción",
+   "puestos": [
+    {
+     "nombre": "Ingeniería / Calidad / Líder de Producción",
+     "actividad": "",
+     "epp": [
+      {
+       "eppId": "ropa_ignifugo",
+       "riesgo": "Corte, abrasiones",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Uso en todo tipo de actividades laborales en campo",
+       "min": 0
+      },
+      {
+       "eppId": "botas_dielectricas",
+       "riesgo": "General",
+       "tipo": "Obligatorio",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Con plantilla anti perforación",
+       "min": 0
+      },
+      {
+       "eppId": "guantes_anticorte",
+       "riesgo": "Corte",
+       "tipo": "Obligatorio",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "Cuando se manipule objetos con filos cortantes",
+       "min": 5
+      },
+      {
+       "eppId": "gafas",
+       "riesgo": "Proyección",
+       "tipo": "Obligatorio",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "Pantalla cuando exista proyección de particulas Uso de gafas oscuras cuando se realicen trabajos en la interperie",
+       "min": 5
+      },
+      {
+       "eppId": "gafas_uv",
+       "riesgo": "Proyección",
+       "tipo": "Obligatorio",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "Pantalla cuando exista proyección de particulas Uso de gafas oscuras cuando se realicen trabajos en la interperie",
+       "min": 5
+      },
+      {
+       "eppId": "auditiva",
+       "riesgo": "Ruido",
+       "tipo": "Condicional",
+       "duracionDias": 60,
+       "duracionTexto": "2 meses",
+       "obs": "Cuando ruido este por encima del nivel permitido (ideal >85 dB)",
+       "min": null
+      },
+      {
+       "eppId": "casco",
+       "riesgo": "Caída de objetos",
+       "tipo": "Condicional",
+       "duracionDias": 365,
+       "duracionTexto": "1 año",
+       "obs": "Para trabajos en campo",
+       "min": 5
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
