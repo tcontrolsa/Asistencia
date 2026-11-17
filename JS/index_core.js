@@ -8949,21 +8949,34 @@ function montarCampanaApp() {
     if (!host || !window.Notificaciones || !empleado || !empleado.id) return;
     host.hidden = false;
     document.body.classList.add('nt-app-activa');
-    window.Notificaciones.montar(host, {
-        empleadoId: String(empleado.id),
-        onAbrir: enlace => {
-            if (enlace.modulo === 'desempeno') {
-                window.__evEnlacePendiente = enlace;
-                navigateTo('desarrollo');
-            } else if (enlace.modulo === 'visitas') {
-                window.__vsEnlacePendiente = enlace;
-                navigateTo('visitas');
-            } else if (enlace.modulo === 'permisos') {
-                window.__pmEnlacePendiente = enlace;
-                navigateTo('permisos');
+    window.Notificaciones.montar(host, { empleadoId: String(empleado.id), onAbrir: abrirEnlaceAviso });
+    // Aviso emergente tocado con la app cerrada: la URL trae ?abrir=<enlace>
+    if (!window.__pushAbrirRevisado) {
+        window.__pushAbrirRevisado = true;
+        try {
+            const crudo = new URLSearchParams(location.search).get('abrir');
+            if (crudo) {
+                abrirEnlaceAviso(JSON.parse(crudo));
+                history.replaceState(null, '', location.pathname);
             }
-        }
-    });
+        } catch (e) { /* enlace inválido: se ignora */ }
+        // ...o con la app abierta: el service worker avisa
+        window.addEventListener('push-abrir', ev => { if (ev.detail) abrirEnlaceAviso(ev.detail); });
+    }
+}
+
+function abrirEnlaceAviso(enlace) {
+    if (!enlace) return;
+    if (enlace.modulo === 'desempeno') {
+        window.__evEnlacePendiente = enlace;
+        navigateTo('desarrollo');
+    } else if (enlace.modulo === 'visitas') {
+        window.__vsEnlacePendiente = enlace;
+        navigateTo('visitas');
+    } else if (enlace.modulo === 'permisos') {
+        window.__pmEnlacePendiente = enlace;
+        navigateTo('permisos');
+    }
 }
 
 function actualizarInterfazSegunCargo() {

@@ -133,6 +133,15 @@ service cloud.firestore {
       allow delete: if true; // limpieza automática de avisos de más de 60 días
     }
 
+    // Colección 'push_tokens' (avisos emergentes, JS/push_avisos.js)
+    // Tokens de dispositivo: cada persona solo escribe su propio documento y con sesión Firebase;
+    // no se lee desde clientes (Apps Script lee con la cuenta de servicio, que no pasa por las reglas).
+    match /push_tokens/{empleadoId} {
+      allow read, delete: if false;
+      allow create, update: if esPropia(empleadoId)
+                            && request.resource.data.keys().hasOnly(['tokens', 'actualizado']);
+    }
+
     // Colección 'solicitudes_permiso' (permisos y vacaciones, JS/permisos.js)
     // La crea el colaborador (o TTHH a su nombre); la resuelven el jefe inmediato o TTHH;
     // Apps Script (permisos_escalado.gs) la pasa a TTHH. Solo se crea en un estado inicial válido

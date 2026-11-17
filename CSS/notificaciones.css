@@ -39,7 +39,9 @@
 .nt-vacio { padding: 26px 14px; text-align: center; color: #94a3b8; font-size: 13px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .nt-vacio i { font-size: 20px; }
 .nt-pie { border-top: 1px solid #f1f5f9; padding: 8px 14px; text-align: center; }
-.nt-pie:has(.nt-link[hidden]) { display: none; }
+.nt-pie:not(:has(.nt-link:not([hidden]))) { display: none; }
+.nt-pie .nt-link { display: block; width: 100%; padding: 4px 0; }
+.nt-pie .nt-link:disabled { opacity: .6; cursor: default; }
 .nt-link-gris { color: #64748b; }
 .nt-link[hidden] { display: none; }
 

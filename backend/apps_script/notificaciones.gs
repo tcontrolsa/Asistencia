@@ -88,6 +88,7 @@ function crearNotificacion_(n) {
   var codigo = res.getResponseCode();
   if (codigo === 409) return false; // ya existía (misma clave)
   if (codigo !== 200) { Logger.log('Notificación no creada (' + codigo + '): ' + res.getContentText().slice(0, 200)); return false; }
+  if (typeof enviarPush_ === 'function') enviarPush_(n); // aviso emergente (push_fcm.gs); nunca lanza error
   return true;
 }
 

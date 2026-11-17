@@ -4,7 +4,7 @@
 //             Cache Only como fallback offline
 // =====================================================
 
-const CACHE_NAME = 'tcontrol-v2.01';
+const CACHE_NAME = 'tcontrol-v2.02';
 const OFFLINE_URL = './offline.html';
 
 // Recursos a pre-cachear en la instalación (app shell)
@@ -175,6 +175,42 @@ self.addEventListener('fetch', event => {
           });
         });
       })
+  );
+});
+
+// ===== AVISOS EMERGENTES (Web Push vía FCM) =====
+// El servidor envía mensajes solo con "data": {titulo, texto, enlace(JSON), tag}.
+self.addEventListener('push', event => {
+  let carga = {};
+  try { carga = event.data ? event.data.json() : {}; } catch (e) { carga = {}; }
+  const d = carga.data || carga.notification || carga || {};
+  const titulo = d.titulo || d.title || 'TCONTROL';
+  const opciones = {
+    body: d.texto || d.body || '',
+    icon: './assets/icons/icon-192.png',
+    badge: './assets/icons/icon-192.png',
+    tag: d.tag || 'tcontrol-aviso',
+    renotify: true,
+    data: { enlace: d.enlace || '' }
+  };
+  event.waitUntil(self.registration.showNotification(titulo, opciones));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const crudo = (event.notification.data && event.notification.data.enlace) || '';
+  let enlace = null;
+  try { enlace = crudo ? JSON.parse(crudo) : null; } catch (e) { enlace = null; }
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(lista => {
+      const abierta = lista.find(c => c.url.indexOf(self.registration.scope) === 0);
+      if (abierta) {
+        abierta.postMessage({ type: 'PUSH_ABRIR', enlace });
+        return abierta.focus();
+      }
+      const url = './index.html' + (enlace ? '?abrir=' + encodeURIComponent(JSON.stringify(enlace)) : '');
+      return self.clients.openWindow(url);
+    })
   );
 });
 

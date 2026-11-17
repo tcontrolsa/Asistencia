@@ -75,7 +75,8 @@
       <div class="nt-panel" hidden role="dialog" aria-label="Notificaciones">
         <div class="nt-cab"><strong>Notificaciones</strong><button type="button" class="nt-link" data-nt="todas">Marcar todo como leído</button></div>
         <div class="nt-lista"></div>
-        <div class="nt-pie"><button type="button" class="nt-link nt-link-gris" data-nt="leidas" hidden></button></div>
+        <div class="nt-pie"><button type="button" class="nt-link nt-link-gris" data-nt="leidas" hidden></button>
+          <button type="button" class="nt-link nt-link-gris" data-nt="push" hidden></button></div>
       </div>`;
     const btn = host.querySelector('.nt-btn');
     const panel = host.querySelector('.nt-panel');
@@ -83,7 +84,18 @@
     const listaEl = host.querySelector('.nt-lista');
     const btnLeidas = host.querySelector('[data-nt="leidas"]');
 
+    const btnPush = host.querySelector('[data-nt="push"]');
     const leida = n => (n.leidaPor || []).includes(yo);
+
+    // Avisos emergentes (push): solo se ofrece si el navegador los admite
+    function pintarPush() {
+      const P = window.PushAvisos;
+      const e = P ? P.estado() : 'no_soportado';
+      btnPush.hidden = e === 'no_soportado';
+      btnPush.textContent = e === 'activo' ? 'Desactivar avisos en este dispositivo'
+        : e === 'bloqueado' ? 'Avisos bloqueados en el navegador' : 'Activar avisos en este dispositivo';
+      btnPush.disabled = e === 'bloqueado';
+    }
 
     function pintar() {
       const sinLeer = st.lista.filter(n => !leida(n)).length;
@@ -128,6 +140,15 @@
         marcar(st.lista.filter(n => !leida(n)).map(n => n.id));
         return;
       }
+      if (ev.target.closest('[data-nt="push"]')) {
+        const P = window.PushAvisos;
+        if (!P || btnPush.disabled) return;
+        btnPush.disabled = true;
+        const accion = P.estado() === 'activo' ? P.desactivar(yo) : P.activar(yo);
+        accion.catch(e => { alert(e && e.message ? e.message : 'No se pudo cambiar el estado de los avisos.'); })
+          .finally(() => { btnPush.disabled = false; pintarPush(); });
+        return;
+      }
       if (ev.target.closest('[data-nt="leidas"]')) {
         st.verLeidas = !st.verLeidas;
         pintar();
@@ -167,6 +188,8 @@
       st.error = 'No se pudieron cargar las notificaciones.';
     }
     pintar();
+    pintarPush();
+    if (window.PushAvisos) window.PushAvisos.refrescar(yo).then(pintarPush);
 
     host._notif = {
       clave: `${yo}|${!!opts.rrhh}`,
