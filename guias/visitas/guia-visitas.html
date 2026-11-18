@@ -1,0 +1,574 @@
+<meta charset="utf-8">
+<title>Guía de Visitas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: cabecera con pestañas por rol; cada rol es un tutorial paso a paso (lista de pasos + captura y explicación). */
+:root {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --ink: #1a2130;
+  --muted: #5a6476;
+  --line: #dfe3ea;
+  --brand: #c8102e;
+  --brand-soft: #fbe7ea;
+  --info: #2357d1;
+  --info-soft: #e7eefc;
+  --ok: #157a3a;
+  --ok-soft: #e3f4e9;
+  --warn: #a95207;
+  --warn-soft: #fdf0e1;
+  --bad: #b3261e;
+  --bad-soft: #fbe9e7;
+  --violet: #6d3fd6;
+  --violet-soft: #efe9fc;
+  --shadow: 0 1px 2px rgba(20, 28, 45, .06), 0 6px 18px rgba(20, 28, 45, .06);
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11141a; --surface: #1a1f28; --surface-2: #222833; --ink: #e9ecf1; --muted: #9ba4b4; --line: #2c3341;
+    --brand: #ff5c70; --brand-soft: #3b1a21; --info: #7aa2ff; --info-soft: #1d2a47; --ok: #5fd08a; --ok-soft: #173325;
+    --warn: #f3a65a; --warn-soft: #3a2815; --bad: #ff7d72; --bad-soft: #3d1c1a; --violet: #b59bff; --violet-soft: #2a2245;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11141a; --surface: #1a1f28; --surface-2: #222833; --ink: #e9ecf1; --muted: #9ba4b4; --line: #2c3341;
+  --brand: #ff5c70; --brand-soft: #3b1a21; --info: #7aa2ff; --info-soft: #1d2a47; --ok: #5fd08a; --ok-soft: #173325;
+  --warn: #f3a65a; --warn-soft: #3a2815; --bad: #ff7d72; --bad-soft: #3d1c1a; --violet: #b59bff; --violet-soft: #2a2245;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.55 var(--f-body); }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; letter-spacing: -.01em; margin: 0; }
+p { margin: 0; }
+a { color: var(--info); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; border-radius: 6px; }
+
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Cabecera */
+.cab { background: var(--surface); border-bottom: 1px solid var(--line); }
+.cab .wrap { padding-block: 28px 0; display: grid; gap: 18px; }
+.cab-top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+.marca { display: flex; align-items: center; gap: 10px; font: 600 13px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--brand); }
+.marca i { width: 10px; height: 10px; border-radius: 2px; background: var(--brand); display: inline-block; }
+.cab h1 { font-size: clamp(28px, 4.4vw, 42px); line-height: 1.08; margin-top: 8px; }
+.cab .lead { color: var(--muted); max-width: 62ch; margin-top: 8px; }
+.meta { font: 500 12px/1.4 var(--f-mono); color: var(--muted); text-align: right; }
+.meta b { color: var(--ink); font-weight: 500; }
+
+.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.tabs .wrap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tabs .wrap::-webkit-scrollbar { display: none; }
+.tab { border: 0; background: none; padding: 14px 14px 12px; font-weight: 600; font-size: 15px; color: var(--muted); border-bottom: 3px solid transparent; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brand); }
+.tab .ico { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: var(--surface-2); font-size: 12px; }
+.tab[aria-selected="true"] .ico { background: var(--brand-soft); color: var(--brand); }
+
+main .wrap { padding-block: 28px 56px; display: grid; gap: 28px; }
+.intro { display: grid; gap: 6px; max-width: 72ch; }
+.intro h2 { font-size: 26px; }
+.intro p { color: var(--muted); }
+
+/* Tutorial */
+.tuto { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
+.pasos { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 64px); }
+.paso-btn { width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; cursor: pointer; color: var(--muted); }
+.paso-btn:hover { background: var(--surface); color: var(--ink); }
+.paso-btn .n { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font: 500 12px/1 var(--f-mono); color: var(--muted); background: var(--surface); }
+.paso-btn .t { font-weight: 600; font-size: 14.5px; line-height: 1.35; padding-top: 3px; }
+.paso-btn[aria-current="step"] { background: var(--surface); border-color: var(--line); color: var(--ink); box-shadow: var(--shadow); }
+.paso-btn[aria-current="step"] .n { background: var(--brand); border-color: var(--brand); color: #fff; }
+.paso-btn.visto .n { border-color: var(--brand); color: var(--brand); }
+
+.escena { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); min-height: 420px; overflow: hidden; }
+.escena-img { background: var(--surface-2); padding: 24px; display: grid; place-items: center; border-right: 1px solid var(--line); }
+.escena-img.vacia { min-width: 220px; }
+.marco { border-radius: 18px; overflow: hidden; border: 6px solid #232a36; background: #232a36; box-shadow: 0 10px 30px rgba(0,0,0,.18); cursor: zoom-in; max-width: 100%; }
+.marco img { display: block; width: 100%; height: auto; }
+.marco.tel { width: 320px; }
+.marco.web { width: 460px; border-radius: 10px; border-width: 0; border-top: 22px solid #232a36; position: relative; }
+.marco.web::before { content: ""; position: absolute; top: -14px; left: 10px; width: 36px; height: 7px; background: radial-gradient(circle at 3.5px 3.5px, #ff6159 3px, transparent 3.5px), radial-gradient(circle at 17.5px 3.5px, #ffbd2e 3px, transparent 3.5px), radial-gradient(circle at 31.5px 3.5px, #28c941 3px, transparent 3.5px); }
+.marco.recorte { border-width: 0; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); width: 340px; }
+.sin-img { display: grid; place-items: center; gap: 10px; text-align: center; color: var(--muted); font-size: 14px; max-width: 220px; }
+.sin-img .gran { width: 72px; height: 72px; border-radius: 20px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); font-size: 30px; }
+.escena-txt { padding: 28px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--brand); }
+.escena-txt h3 { font-size: 23px; line-height: 1.2; }
+.escena-txt .cuerpo { display: grid; gap: 12px; color: var(--ink); max-width: 60ch; }
+.escena-txt .cuerpo p, .escena-txt .cuerpo li { color: var(--ink); }
+.escena-txt ul, .escena-txt ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.nota { border-radius: 10px; padding: 10px 12px; font-size: 14.5px; display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start; }
+.nota::before { font: 700 13px/20px var(--f-body); text-align: center; border-radius: 50%; width: 20px; height: 20px; }
+.nota.info { background: var(--info-soft); } .nota.info::before { content: "i"; background: var(--info); color: var(--surface); }
+.nota.warn { background: var(--warn-soft); } .nota.warn::before { content: "!"; background: var(--warn); color: var(--surface); }
+.nota.ok { background: var(--ok-soft); } .nota.ok::before { content: "✓"; background: var(--ok); color: var(--surface); }
+.kbd { font: 600 13.5px/1 var(--f-body); background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.nav-pasos { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nav-pasos .prog { flex: 1; min-width: 100px; height: 4px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.nav-pasos .prog i { display: block; height: 100%; background: var(--brand); border-radius: 4px; transition: width .25s; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 14px; font-weight: 600; font-size: 14.5px; cursor: pointer; }
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.pri { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn.pri:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--brand); }
+
+/* Bloques de referencia */
+.bloque { display: grid; gap: 14px; }
+.bloque > h2 { font-size: 22px; }
+.bloque > p.sub { color: var(--muted); margin-top: -8px; max-width: 70ch; }
+.tabla-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14.5px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px/1.3 var(--f-body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+tr:last-child td { border-bottom: 0; }
+td b { font-weight: 600; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.c-azul { background: var(--info-soft); color: var(--info); }
+.c-violeta { background: var(--violet-soft); color: var(--violet); }
+.c-verde { background: var(--ok-soft); color: var(--ok); }
+.c-rojo { background: var(--bad-soft); color: var(--bad); }
+.c-ambar { background: var(--warn-soft); color: var(--warn); }
+.c-gris { background: var(--surface-2); color: var(--muted); }
+
+.galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.fig { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 10px; align-content: start; }
+.fig img { width: 100%; border-radius: 10px; border: 1px solid var(--line); cursor: zoom-in; display: block; }
+.fig figcaption { font-size: 14px; color: var(--muted); }
+.fig figcaption b { color: var(--ink); }
+
+/* Flujo de estados */
+.flujo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.carril { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 12px; align-content: start; }
+.carril h3 { font-size: 17px; }
+.carril .de { font-size: 13.5px; color: var(--muted); margin-top: -6px; }
+.cadena { display: grid; gap: 8px; }
+.eslabon { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.eslabon .flecha { width: 22px; display: grid; justify-items: center; color: var(--muted); font-size: 13px; padding-top: 4px; }
+.eslabon p { font-size: 14.5px; }
+.ramas { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Calculadora */
+.calc { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); overflow: hidden; }
+.calc-in { padding: 22px; display: grid; gap: 14px; border-right: 1px solid var(--line); align-content: start; }
+.campo { display: grid; gap: 6px; }
+.campo label, .campo .lbl { font: 600 12.5px/1.2 var(--f-body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.campo select, .campo input[type="number"] { font: 500 15px/1.2 var(--f-body); padding: 9px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
+.campo input[type="range"] { width: 100%; accent-color: var(--violet); }
+.fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: none; border-radius: 8px; padding: 7px 12px; font-weight: 600; font-size: 14px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.calc-out { padding: 22px 26px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.cifra { font: 700 40px/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.cifra small { font: 500 15px/1 var(--f-body); color: var(--muted); margin-left: 6px; }
+.linea-tiempo { position: relative; height: 46px; border-radius: 10px; background: var(--surface-2); overflow: hidden; }
+.linea-tiempo span { position: absolute; top: 0; bottom: 0; }
+.lt-permiso { background: var(--info); opacity: .85; }
+.lt-desc { background: repeating-linear-gradient(45deg, var(--muted) 0 3px, transparent 3px 7px); opacity: .55; }
+.lt-eje { display: flex; justify-content: space-between; font: 500 11.5px/1 var(--f-mono); color: var(--muted); margin-top: 6px; }
+.reparto { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--surface-2); }
+.reparto i { display: block; height: 100%; transition: width .25s; }
+.r-bolsa { background: var(--violet); } .r-vac { background: var(--info); } .r-rol { background: var(--bad); } .r-med { background: var(--ok); }
+.leyenda { display: grid; gap: 8px; }
+.leyenda div { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; font-size: 14.5px; }
+.leyenda div i { width: 12px; height: 12px; border-radius: 3px; }
+.leyenda div b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.explica { font-size: 14.5px; color: var(--muted); }
+
+/* Preguntas */
+.faq { display: grid; gap: 8px; }
+.faq details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.faq summary { cursor: pointer; padding: 14px 16px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 500 18px/1 var(--f-mono); color: var(--muted); }
+.faq details[open] summary::after { content: "−"; }
+.faq .resp { padding: 0 16px 16px; color: var(--muted); display: grid; gap: 8px; max-width: 75ch; }
+
+.cambios { font-size: 14px; color: var(--muted); display: grid; gap: 6px; }
+.cambios li { list-style: none; display: grid; grid-template-columns: 92px 1fr; gap: 10px; }
+.cambios ul { padding: 0; margin: 0; display: grid; gap: 6px; }
+.cambios time { font: 500 12.5px/1.6 var(--f-mono); color: var(--ink); }
+
+/* Visor de imagen */
+.visor { position: fixed; inset: 0; z-index: 20; background: rgba(10, 13, 19, .82); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.visor img { max-width: min(100%, 900px); max-height: 100%; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.visor button { position: absolute; top: max(14px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 50%; width: 40px; height: 40px; font-size: 20px; cursor: pointer; }
+
+@media (max-width: 900px) {
+  .tuto { grid-template-columns: minmax(0, 1fr); }
+  .pasos { position: static; display: flex; overflow-x: auto; gap: 6px; padding-bottom: 4px; scrollbar-width: thin; }
+  .pasos li { flex: 0 0 auto; }
+  .paso-btn { grid-template-columns: 24px auto; padding: 8px 10px; background: var(--surface); border-color: var(--line); }
+  .paso-btn .t { font-size: 13.5px; white-space: nowrap; padding-top: 2px; }
+  .paso-btn .n { width: 24px; height: 24px; }
+  .escena { grid-template-columns: minmax(0, 1fr); }
+  .escena-img { border-right: 0; border-bottom: 1px solid var(--line); padding: 18px; }
+  .calc { grid-template-columns: minmax(0, 1fr); }
+  .calc-in { border-right: 0; border-bottom: 1px solid var(--line); }
+  .flujo { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .marco.tel { width: 100%; max-width: 300px; }
+  .marco.web, .marco.recorte { width: 100%; }
+  .escena-txt { padding: 20px 18px; }
+  .meta { text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+.url { word-break: break-all; }
+</style>
+
+<header class="cab">
+  <div class="wrap">
+    <div class="cab-top">
+      <div>
+        <div class="marca"><i></i>TCONTROL · Asistencia</div>
+        <h1>Guía de Visitas</h1>
+        <p class="lead">Cómo registrar, invitar, recibir y controlar a los visitantes: página del visitante, app del anfitrión, terminal de portería y panel. Elige tu rol y sigue los pasos; toca cualquier captura para verla en grande. Los nombres de las capturas son ficticios.</p>
+      </div>
+      <div class="meta">Versión <b id="metaVersion"></b><br>Actualizada <b id="metaFecha"></b></div>
+    </div>
+  </div>
+</header>
+<nav class="tabs" aria-label="Secciones de la guía">
+  <div class="wrap" role="tablist" id="tabs"></div>
+</nav>
+<main id="main"><div class="wrap" id="vista"></div></main>
+<div class="visor" id="visor" hidden><button type="button" aria-label="Cerrar">×</button><img alt=""></div>
+
+<script>
+/* =====================================================================
+   CONTENIDO DE LA GUÍA
+   Para actualizarla: edita los textos de PASOS / tablas de abajo, cambia
+   VERSION y FECHA, agrega una línea en CAMBIOS y vuelve a publicar.
+   Las capturas viven en img/ (ver README.md en la misma carpeta).
+   ===================================================================== */
+const VERSION = '1.0';
+const FECHA = '18/11/2026';
+const CAMBIOS = [
+  ['18/11/2026', 'Primera versión: visitante, anfitrión, portería (con cita, sin cita, contacto y calificación), panel, configuración y visitantes frecuentes.']
+];
+
+const VISTAS = [
+  { id: 'visitante', ico: '1', nombre: 'Visitante',
+    titulo: 'Registrar la visita y obtener el código QR',
+    intro: 'El visitante no necesita cuenta ni app: todo pasa en una página web con un enlace privado. Puede registrarse solo (y el anfitrión aprueba) o completar la invitación que le envió el anfitrión.' },
+  { id: 'anfitrion', ico: '2', nombre: 'Anfitrión',
+    titulo: 'Invitar, aprobar y seguir a tus visitantes',
+    intro: 'Cualquier colaborador puede recibir visitas. En la app, abre Más → Visitas. La primera vez de cada sesión se pide la contraseña, porque hay datos de personas externas.' },
+  { id: 'porteria', ico: '3', nombre: 'Portería',
+    titulo: 'Registrar entradas y salidas en la terminal del guardia',
+    intro: 'En la terminal del guardia, pestaña Visitas. Se activa con la clave de portería de visitas (distinta de la clave de la terminal). El guardia escanea el QR, verifica el documento a la vista y registra la entrada y la salida.' },
+  { id: 'panel', ico: '4', nombre: 'Panel',
+    titulo: 'Administración en el panel de supervisión',
+    intro: 'Los supervisores administradores ven todas las visitas y las calificaciones. El administrador principal configura los tipos de visita, los plazos y los avisos. Las credenciales de visitantes frecuentes están en Directorio.' },
+  { id: 'reglas', ico: '5', nombre: 'Reglas',
+    titulo: 'Estados, horarios y protección de datos',
+    intro: 'Cómo avanza una visita, qué avisos llegan, el horario de portería y cuánto tiempo se guardan los datos.' }
+];
+
+const PASOS = {
+  visitante: [
+    { t: 'Abre la página de visitas', img: 'v01-inicio.png', marco: 'tel',
+      h: '<p>El visitante abre <b class="url">asistencia.tcontrolsa.com/visitas.html</b> (el anfitrión puede compartirle el enlace).</p><p>Arriba ve los tres pasos: <b>Regístrate</b>, <b>Aprobación</b> e <b>Ingresa</b> con el QR y la cédula. Luego elige el tipo de visita:</p><ul><li><b>Oficina</b>: reuniones y trámites.</li><li><b>Planta</b>: ingreso a planta o talleres, con <span class="chip c-ambar">EPP</span> obligatorio.</li><li><b>Cliente de producto</b>: retirar producto; el anfitrión es opcional.</li><li><b>Proveedor o contratista</b>: entregas, servicios y obras.</li></ul>' },
+    { t: 'Llena sus datos', img: 'v02-form-planta.png', marco: 'tel',
+      h: '<p>Busca a la persona que visita escribiendo al menos 3 letras de su nombre y la elige de la lista. Después pone la fecha (hasta 60 días adelante), la hora aproximada, su <b>nombre tal como aparece en su documento</b>, la empresa y el motivo.</p><p>WhatsApp y correo son <b>opcionales</b>: solo sirven para recibir el enlace y los avisos.</p><div class="nota warn">Si la visita es a planta, la página avisa qué EPP debe traer. Sin EPP el guardia no lo deja pasar.</div><p>Al final acepta el aviso de privacidad y los términos, y toca <span class="kbd">Registrar visita</span>.</p>' },
+    { t: 'Espera la aprobación', img: 'v03-pendiente.png', marco: 'tel',
+      h: '<p>Queda <span class="chip c-ambar">Esperando aprobación</span>. Al anfitrión le llega un aviso en la campana y por WhatsApp.</p><p>Esta página es su <b>enlace privado</b>: es la única forma de volver a ver la visita y el código. Conviene tocar <span class="kbd">Copiar enlace</span> y guardarlo.</p><div class="nota info">El mismo celular recuerda sus visitas recientes al abrir de nuevo la página.</div>' },
+    { t: 'Recibe su pase con QR', img: 'v04-pase.png', marco: 'tel',
+      h: '<p>Cuando el anfitrión aprueba, en el mismo enlace aparece el <b>pase de ingreso</b>: el código QR y el código de 8 caracteres. Si dejó WhatsApp o correo, también se lo enviamos.</p><p>Puede <span class="kbd">Guardar imagen</span> del pase o copiar su enlace. El día de la visita lo muestra en portería junto con su cédula.</p>' },
+    { t: 'Si lo invitaron: completa el registro', img: 'v05-completar.png', marco: 'tel',
+      h: '<p>Cuando el anfitrión lo invita, el visitante recibe un enlace que abre <span class="chip c-ambar">Completa tu registro</span>. Confirma nombre, empresa y motivo, acepta los términos y toca <span class="kbd">Confirmar y obtener mi código</span>.</p><p>Como la invitó el propio anfitrión, la visita queda <b>aprobada al instante</b> y aparece el QR.</p>' },
+    { t: 'Llegó sin cita', img: 'v07-sin-cita.png', marco: 'tel',
+      h: '<p>Si llega sin registro, el guardia le muestra un QR en la terminal. Al escanearlo con su celular se abre <b>¿Llegaste sin cita?</b>: llena los mismos datos (para hoy) y obtiene su propio QR para mostrarlo al guardia.</p><div class="nota info">El QR del guardia vence a los 15 minutos. Si no tiene celular, el guardia lo registra.</div>' },
+    { t: 'Califica la visita', img: 'v06-calificar.png', marco: 'tel',
+      h: '<p>Al salir, el guardia le muestra un QR para calificar (y si dejó contacto, también le llega el enlace). Califica de 1 a 5 estrellas la <b>atención</b>, la <b>puntualidad</b> y las <b>instalaciones</b>, con un comentario opcional.</p><p>La calificación solo la ven el anfitrión y la administración.</p>' }
+  ],
+  anfitrion: [
+    { t: 'Abre «Mis visitas»', img: 'a01-mis-visitas.png', marco: 'tel',
+      h: '<p>En la app toca <span class="kbd">Más</span> → <span class="kbd">Visitas</span> y confirma tu contraseña.</p><p>Arriba ves el botón <span class="kbd">Invitar</span> y tres contadores: <b>por aprobar</b>, <b>hoy</b> y <b>dentro ahora</b>. La lista se actualiza sola cada minuto.</p><p>Pestañas: <b>Por aprobar</b>, <b>Hoy</b>, <b>Próximas</b>, <b>Historial</b> y, si te llegan copias de otras áreas, <b>Avisos</b>. Cada una tiene buscador.</p>' },
+    { t: 'Aprueba o rechaza una solicitud', img: 'a08-rechazar.png', marco: 'tel',
+      h: '<p>Cuando alguien se registra para visitarte, aparece en <b>Por aprobar</b> y te llega un aviso por la campana y WhatsApp.</p><ul><li><span class="kbd">Aprobar</span>: el visitante recibe su código QR.</li><li><span class="kbd">Rechazar</span>: puedes dejarle un mensaje (o tocar una opción rápida). Le llega junto con el aviso.</li></ul><div class="nota warn">Si no apruebas, el guardia ve la visita como «Sin aprobar» y no puede dejarlo pasar.</div>' },
+    { t: 'Invitar: ¿para qué viene?', img: 'a04-invitar-tipo.png', marco: 'tel',
+      h: '<p>Lo más rápido es <b>invitar</b>: así el visitante entra directo con su QR. Toca <span class="kbd">Invitar</span> y elige el tipo de visita.</p><p>El tipo define a quién más se avisa (por ejemplo, SSOMA en las visitas a planta) y si se exige EPP.</p>' },
+    { t: 'Invitar: ¿cuándo viene?', img: 'a05-invitar-fecha.png', marco: 'tel',
+      h: '<p>Elige <b>Hoy</b>, <b>Mañana</b>, <b>Pasado mañana</b> u <b>Otro día</b>, y si la sabes, la hora.</p><p>En el paso 3 escribes el motivo (lo verá el guardia). El nombre y la empresa son opcionales: los completa el visitante.</p>' },
+    { t: 'Invitar: revisa y crea', img: 'a06-invitar-resumen.png', marco: 'tel',
+      h: '<p>Revisa el resumen; toca cualquier dato para corregirlo. Si es a planta, se recuerda que el visitante debe traer su EPP.</p><p>Toca <span class="kbd">Crear invitación</span>.</p>' },
+    { t: 'Envíale el enlace', img: 'a07-invitar-enlace.png', marco: 'tel',
+      h: '<p>Envíale el enlace por <b>WhatsApp</b>, <b>cópialo</b> o mándalo por <b>correo</b>. Al abrirlo completará sus datos y recibirá su QR.</p><div class="nota warn">El enlace es personal y no se vuelve a mostrar. Si se pierde, en la visita toca <span class="kbd">Enviar enlace</span>: se genera uno nuevo y el anterior deja de funcionar.</div>' },
+    { t: 'Sigue la visita del día', img: 'a02-hoy.png', marco: 'tel',
+      h: '<p>En <b>Hoy</b> ves quién está <span class="chip c-verde">En las instalaciones</span> y quién está <span class="chip c-ambar">Por llegar</span>. Al registrar el guardia la entrada, te llega el aviso «Tu visita llegó».</p><p>Toca una visita para ver el detalle (código, ingreso, registro en portería). Desde ahí puedes <span class="kbd">Pedir almuerzo</span> (se registra en Catering), reenviar el enlace o cancelar.</p>' },
+    { t: 'Revisa el historial', img: 'a03-historial.png', marco: 'tel',
+      h: '<p>En <b>Historial</b> quedan las visitas concluidas, rechazadas, canceladas o sin asistencia. Cada una muestra:</p><ul><li><span class="chip c-verde">Registro completo</span> si portería registró entrada y salida.</li><li>Si llegó <b>sin cita</b>, la llamada del guardia y su resultado.</li><li>La <b>calificación</b> que dejó el visitante.</li></ul>' }
+  ],
+  porteria: [
+    { t: 'Activa la portería de visitas', img: 'g01-clave.png', marco: 'tel',
+      h: '<p>En la terminal del guardia abre la pestaña <span class="kbd">Visitas</span> e ingresa la <b>clave de portería de visitas</b>. La sesión dura 12 horas.</p><p>Al terminar el turno se puede tocar <span class="kbd">Cerrar portería de visitas</span>.</p>' },
+    { t: 'Pantalla de portería', img: 'g02-porteria.png', marco: 'tel',
+      h: '<p>Tiene dos entradas:</p><ul><li><b>Visitante con cita</b>: <span class="kbd">Escanear su código QR</span> con la cámara, o escribir el código de 8 caracteres.</li><li><b>Registrar visitante sin cita</b>: para quien llegó sin registro previo.</li></ul>' },
+    { t: 'Visitas de hoy', img: 'g03-lista.png', marco: 'tel',
+      h: '<p>Debajo está la lista del día, que se actualiza sola. Filtros: <b>Dentro</b>, <b>Por llegar</b>, <b>Sin aprobar</b> y <b>Salieron</b>, más un buscador. Con <span class="kbd">Historial</span> se buscan visitas de otros días (hasta 3 meses).</p><p>Tocar una fila abre su ficha, igual que escanear el QR.</p>' },
+    { t: 'Registra la entrada', img: 'g04-ficha-entrada.png', marco: 'tel',
+      h: '<p>La ficha muestra nombre, empresa, a quién visita, tipo, motivo y fecha (nunca el teléfono ni el correo del visitante).</p><ol><li>Mira su <b>documento de identidad</b> y compáralo con el nombre. No se anota el número.</li><li>Marca <b>Verifiqué su documento</b> (y <b>Lleva el EPP</b> si es a planta).</li><li>Toca <span class="kbd">Registrar entrada</span>.</li></ol><div class="nota warn">Si la ficha dice «Sin aprobar», «programada para otro día» o «no completó su registro», no se puede registrar la entrada.</div>' },
+    { t: 'Confirmación', img: 'g05-entrada-ok.png', marco: 'recorte',
+      h: '<p>Queda una tarjeta verde: <b>Entrada registrada correctamente</b>. Se avisó al anfitrión que su visitante llegó y la visita quedó en el historial.</p>' },
+    { t: 'Registra la salida', img: 'g06-ficha-salida.png', marco: 'tel',
+      h: '<p>Cuando el visitante se va, escanea otra vez su QR (o tócalo en la lista, filtro <b>Dentro</b>) y toca <span class="kbd">Registrar salida</span>.</p><div class="nota warn">Registra cada salida en el momento. Las que sigan abiertas a la hora de cierre se cierran solas como «Salida no registrada».</div>' },
+    { t: 'QR para calificar', img: 'g07-calificar-qr.png', marco: 'tel',
+      h: '<p>Al registrar la salida aparece un QR: pide al visitante que lo escanee para calificar la visita. Toca <span class="kbd">Listo</span> al terminar.</p>' },
+    { t: 'Sin cita: ¿tiene celular?', img: 'g08-sin-cita.png', marco: 'tel',
+      h: '<p>Toca <span class="kbd">Registrar visitante sin cita</span> y elige:</p><ul><li><b>Sí, tiene celular</b>: se registra él mismo escaneando un QR.</li><li><b>No tiene celular</b>: tú lo registras en 4 pasos.</li></ul>' },
+    { t: 'Con celular: QR de portería', img: 'g09-qr-porteria.png', marco: 'tel',
+      h: '<p>Muéstrale la pantalla para que escanee el QR. Llena sus datos en su teléfono y le aparece su propio QR. Luego toca <span class="kbd">Ya se registró: escanear su QR</span> y sigue como con cualquier visita.</p><p>El QR vence a los 15 minutos; con <span class="kbd">Otro QR</span> se genera uno nuevo.</p>' },
+    { t: 'Sin celular: regístralo tú', img: 'g10-sin-celular.png', marco: 'tel',
+      h: '<p>Cuatro pasos: tipo de visita, a quién visita, datos del visitante y confirmación.</p><p>En la confirmación marca que <b>revisaste su cédula</b>, <b>léele en voz alta</b> el aviso de datos y marca que estuvo de acuerdo. Toca <span class="kbd">Registrar y avisar al anfitrión</span>.</p>' },
+    { t: 'Avisa al anfitrión', img: 'g11-avisar-anfitrion.png', marco: 'tel',
+      h: '<p>En las visitas sin cita hay que <b>hablar con el anfitrión</b> antes de dejarlo pasar. Toca <span class="kbd">Llamar</span> o <span class="kbd">WhatsApp</span> (el número no se muestra) y elige qué pasó:</p><ul><li><b>Viene a recibirlo</b> o <b>Que espere</b>: registra la entrada.</li><li><b>No contestó</b> o <b>Número equivocado</b>: puedes avisarle por el <b>bot de WhatsApp</b> y volver a llamar.</li></ul><div class="nota warn">Si decides dejarlo pasar sin hablar con el anfitrión, la visita queda marcada como «Ingresó sin contacto».</div>' },
+    { t: 'Si el servidor no responde', img: null, icono: '🛟',
+      h: '<p>Si se cae el servidor de visitas, la portería pasa sola a <b>modo contingencia</b> y lo indica con un aviso:</p><ul><li>Se pueden seguir registrando entradas, salidas y visitantes sin cita (estos los registra el guardia).</li><li>Todo se guarda en un respaldo y se envía solo cuando el servidor vuelve, con la hora real.</li><li>No hay QR de portería, historial ni credenciales de visitante frecuente.</li></ul>' }
+  ],
+  panel: [
+    { t: 'Todas las visitas', img: 'p01-panel-todas.png', marco: 'web',
+      h: '<p>En el panel, sección <b>Visitas</b>, los supervisores administradores ven <b>todas</b> las visitas de la empresa, con a quién visita cada una. Tienen las mismas pestañas y acciones que el anfitrión.</p>' },
+    { t: 'Calificaciones', img: 'p02-calificaciones.png', marco: 'web',
+      h: '<p>La pestaña <span class="kbd">Calificaciones</span> resume las visitas del mes, quiénes están dentro y el promedio de <b>atención</b>, <b>puntualidad</b> e <b>instalaciones</b>, con la tabla de calificaciones recientes y sus comentarios.</p>' },
+    { t: 'Configuración: tipos de visita', img: 'p03-config-tipos.png', marco: 'web',
+      h: '<p>Solo el <b>administrador principal</b> ve <span class="kbd">Configuración</span>. Por cada tipo de visita:</p><ul><li>Nombre y descripción que ve el visitante.</li><li><b>Avisar también a</b>: IDs de colaboradores que reciben una copia (por ejemplo, SSOMA en planta). La copia les aparece en la pestaña Avisos.</li><li><b>EPP obligatorio</b>, <b>Anfitrión opcional</b> (lo atiende el primero de la lista) y <b>Activo</b>.</li></ul>' },
+    { t: 'Configuración: plazos y avisos', img: 'p04-config-plazos.png', marco: 'web',
+      h: '<p>También se define el texto del EPP y los plazos:</p><ul><li>Duración del QR de portería y cuántos registros admite.</li><li>Hasta cuántos días adelante se puede registrar o invitar.</li><li>Máximo de solicitudes pendientes por anfitrión.</li><li>Días para <b>anonimizar</b> las visitas concluidas.</li><li>Si las copias también van por WhatsApp, y el correo para derechos de datos.</li></ul><div class="nota info">Los valores de la captura son los de fábrica; los vigentes se ven en el panel.</div>' },
+    { t: 'Visitantes frecuentes', img: 'p05-frecuentes.png', marco: 'web',
+      h: '<p>Para quien viene <b>al menos una vez por semana</b> (proveedores, técnicos). En <b>Directorio</b> toca <span class="kbd">Visitantes frecuentes</span> y confirma tu contraseña (siempre la pide).</p><p>Cada credencial muestra la vigencia, los días permitidos, los ingresos y la foto. Acciones: <b>Revocar</b>, <b>Renovar</b>, <b>Pedir foto</b>, <b>Reenviar</b> y <b>Ver QR</b> (para imprimir).</p><div class="nota info">Un supervisor ve solo sus visitantes; TTHH y el administrador ven todos.</div>' },
+    { t: 'Nueva credencial', img: 'p06-frecuente-nueva.png', marco: 'web',
+      h: '<p>Llena nombre, empresa, tipo, motivo y WhatsApp (para enviarle el QR). Puedes copiar los datos de una visita reciente.</p><p>Elige la vigencia (mínimo una semana, máximo 6 meses) y, si quieres, los días permitidos. La foto es <b>voluntaria</b>: le llega un enlace con el aviso de datos y él decide si la sube.</p><p>Con su QR entra por portería sin invitación: al escanearlo se crea la visita del día.</p>' }
+  ]
+};
+</script>
+
+<script>
+/* ====================== Comportamiento (no hace falta editar) ====================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const estadoPaso = {};
+try { Object.assign(estadoPaso, JSON.parse(localStorage.getItem('guiaVisitasPasos') || '{}')); } catch (e) { }
+const guardarPasos = () => { try { localStorage.setItem('guiaVisitasPasos', JSON.stringify(estadoPaso)); } catch (e) { } };
+
+$('#metaVersion').textContent = VERSION;
+$('#metaFecha').textContent = FECHA;
+
+function pintarTabs(actual) {
+  $('#tabs').innerHTML = VISTAS.map(v => `<button type="button" role="tab" class="tab" data-v="${v.id}" aria-selected="${v.id === actual}"><span class="ico">${v.ico}</span>${esc(v.nombre)}</button>`).join('');
+}
+
+function htmlTutorial(id) {
+  const pasos = PASOS[id];
+  return `<div class="tuto" data-tuto="${id}">
+    <ol class="pasos" aria-label="Pasos">${pasos.map((p, i) => `<li><button type="button" class="paso-btn" data-i="${i}"><span class="n">${i + 1}</span><span class="t">${esc(p.t)}</span></button></li>`).join('')}</ol>
+    <article class="escena" aria-live="polite"></article>
+  </div>`;
+}
+
+function pintarPaso(id, i) {
+  const pasos = PASOS[id];
+  i = Math.max(0, Math.min(pasos.length - 1, i));
+  estadoPaso[id] = i; guardarPasos();
+  const p = pasos[i];
+  const tuto = $(`[data-tuto="${id}"]`);
+  tuto.querySelectorAll('.paso-btn').forEach((b, k) => {
+    b.toggleAttribute('aria-current', k === i);
+    if (k === i) b.setAttribute('aria-current', 'step');
+    b.classList.toggle('visto', k < i);
+  });
+  const imgHtml = p.img
+    ? `<div class="escena-img"><div class="marco ${p.marco || 'tel'}" data-zoom="img/${p.img}" role="button" tabindex="0" aria-label="Ver captura en grande"><img src="img/${p.img}" alt="Captura: ${esc(p.t)}" loading="lazy"></div></div>`
+    : `<div class="escena-img vacia"><div class="sin-img"><div class="gran" aria-hidden="true">${p.icono || '•'}</div>Sin pantalla propia</div></div>`;
+  tuto.querySelector('.escena').innerHTML = `${imgHtml}
+    <div class="escena-txt">
+      <div class="eyebrow">Paso ${i + 1} de ${pasos.length}</div>
+      <h3>${esc(p.t)}</h3>
+      <div class="cuerpo">${p.h}</div>
+      <div class="nav-pasos">
+        <button type="button" class="btn" data-mover="-1" ${i === 0 ? 'disabled' : ''}>← Anterior</button>
+        <div class="prog" aria-hidden="true"><i style="width:${((i + 1) / pasos.length) * 100}%"></i></div>
+        ${i < pasos.length - 1 ? `<button type="button" class="btn pri" data-mover="1">Siguiente →</button>` : siguienteVista(id)}
+      </div>
+    </div>`;
+  const activo = tuto.querySelector(`.paso-btn[data-i="${i}"]`);
+  if (activo && window.matchMedia('(max-width: 900px)').matches) activo.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+function siguienteVista(id) {
+  const k = VISTAS.findIndex(v => v.id === id);
+  const sig = VISTAS[k + 1];
+  return sig ? `<button type="button" class="btn pri" data-ir="${sig.id}">${esc(sig.nombre)} →</button>` : '';
+}
+
+/* ---------- Bloques extra por vista ---------- */
+const TABLA_TIPOS = `<section class="bloque"><h2>Los tipos de visita</h2>
+  <p class="sub">Los define el administrador en el panel; estos son los de fábrica.</p>
+  <div class="tabla-wrap"><table>
+    <thead><tr><th>Tipo</th><th>Para qué</th><th>EPP</th><th>¿Debe elegir anfitrión?</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip c-azul">Oficina</span></td><td>Reuniones, trámites y visitas a oficinas</td><td>No</td><td>Sí</td></tr>
+      <tr><td><span class="chip c-ambar">Planta</span></td><td>Ingreso a planta o talleres</td><td><b>Obligatorio</b>: el guardia lo verifica</td><td>Sí</td></tr>
+      <tr><td><span class="chip c-verde">Cliente de producto</span></td><td>Retirar producto suelto o una compra</td><td>No</td><td>Opcional: si no elige, lo atiende el área encargada</td></tr>
+      <tr><td><span class="chip c-violeta">Proveedor o contratista</span></td><td>Entregas, servicios, mantenimiento u obras</td><td>No</td><td>Sí</td></tr>
+    </tbody></table></div></section>`;
+
+const DOS_CAMINOS = `<section class="bloque"><h2>Dos formas de llegar con cita</h2>
+  <div class="flujo">
+    <div class="carril"><h3>El anfitrión invita</h3><p class="de">Recomendado: entra directo</p>
+      <div class="cadena">
+        <div class="eslabon"><span class="flecha">●</span><p>El anfitrión crea la invitación y le envía el enlace.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-ambar">Invitación enviada</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>El visitante completa sus datos y acepta los términos.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Aprobada</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>Recibe su QR. Al anfitrión le llega «Invitado registrado».</p></div>
+      </div></div>
+    <div class="carril"><h3>El visitante se registra</h3><p class="de">Necesita aprobación</p>
+      <div class="cadena">
+        <div class="eslabon"><span class="flecha">●</span><p>El visitante llena el registro en la página de visitas.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-ambar">Por aprobar</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>El anfitrión recibe el aviso y decide.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Aprobada</span><span class="chip c-rojo">Rechazada</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>Si se aprueba, el QR aparece en su enlace.</p></div>
+      </div></div>
+  </div></section>`;
+
+const FLUJO = `<section class="bloque"><h2>Recorrido de una visita</h2>
+  <div class="flujo">
+    <div class="carril"><h3>Con cita</h3><p class="de">Invitación o registro aprobado</p>
+      <div class="cadena">
+        <div class="eslabon"><span class="flecha">●</span><div class="ramas"><span class="chip c-ambar">Invitación enviada</span><span class="chip c-ambar">Por aprobar</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Aprobada</span><span class="chip c-rojo">Rechazada</span><span class="chip c-gris">Cancelada</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>El guardia escanea el QR, verifica el documento (y el EPP) y registra la entrada.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-azul">En las instalaciones</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>Al salir, el guardia registra la salida.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Concluida</span></div></div>
+      </div></div>
+    <div class="carril"><h3>Sin cita</h3><p class="de">Decide el guardia</p>
+      <div class="cadena">
+        <div class="eslabon"><span class="flecha">●</span><p>Se registra con el QR de portería o lo registra el guardia.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-ambar">En portería</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>Se avisa al anfitrión y el guardia lo llama.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Contestó</span><span class="chip c-rojo">No contestó: sin contacto</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-azul">En las instalaciones</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Concluida</span></div></div>
+      </div></div>
+  </div></section>`;
+
+const REGLAS = `<section class="bloque"><h2>Estados de una visita</h2>
+  <div class="tabla-wrap"><table>
+    <thead><tr><th>Estado</th><th>Qué significa</th><th>¿Puede entrar?</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip c-ambar">Invitación enviada</span></td><td>El anfitrión invitó; el visitante aún no completa sus datos.</td><td>No</td></tr>
+      <tr><td><span class="chip c-ambar">Por aprobar</span></td><td>El visitante se registró; falta que el anfitrión apruebe.</td><td>No</td></tr>
+      <tr><td><span class="chip c-verde">Aprobada</span></td><td>Tiene su QR. En portería aparece como «Por llegar».</td><td>Sí, solo el día programado</td></tr>
+      <tr><td><span class="chip c-azul">En las instalaciones</span></td><td>Portería registró la entrada.</td><td>Ya entró</td></tr>
+      <tr><td><span class="chip c-verde">Concluida</span></td><td>Portería registró la salida (o se cerró sola al cierre).</td><td>—</td></tr>
+      <tr><td><span class="chip c-rojo">Rechazada</span> <span class="chip c-gris">Cancelada</span></td><td>No se realizará; el visitante recibe el motivo si se dejó uno.</td><td>No</td></tr>
+      <tr><td><span class="chip c-gris">No asistió</span></td><td>Pasó la fecha sin que se registrara el ingreso.</td><td>No</td></tr>
+    </tbody></table></div></section>
+  <section class="bloque"><h2>Horario y cierre</h2>
+  <div class="galeria">
+    <figure class="fig"><figcaption><b>07:30 a 18:30.</b> Es el horario de visitas. Fuera de él la portería no registra ingresos (las salidas sí) y no se puede registrar a nadie sin cita.</figcaption></figure>
+    <figure class="fig"><figcaption><b>Cierre automático.</b> Las visitas que siguen dentro a la hora de cierre se cierran solas y quedan marcadas «Salida no registrada». Media hora antes, la portería avisa quiénes siguen dentro.</figcaption></figure>
+    <figure class="fig"><figcaption><b>Solo el día programado.</b> Una visita aprobada para otro día no puede ingresar hoy: el anfitrión debe invitarla de nuevo para la fecha correcta.</figcaption></figure>
+  </div></section>
+  <section class="bloque"><h2>Avisos que llegan</h2>
+  <div class="tabla-wrap"><table>
+    <thead><tr><th>Cuándo</th><th>Anfitrión (campana y WhatsApp)</th><th>Visitante (si dejó WhatsApp o correo)</th></tr></thead>
+    <tbody>
+      <tr><td>Se registra para visitarte</td><td>«Solicitud de visita»: apruébala en Visitas</td><td>Recibimos tu solicitud, con su enlace</td></tr>
+      <tr><td>Completa tu invitación</td><td>«Invitado registrado» (solo campana)</td><td>Visita confirmada, con su QR</td></tr>
+      <tr><td>Apruebas</td><td>—</td><td>Visita aprobada, con su QR</td></tr>
+      <tr><td>Rechazas o cancelas</td><td>—</td><td>La visita no podrá realizarse, con tu mensaje</td></tr>
+      <tr><td>Llega sin cita</td><td>«Visita sin cita en portería»; si no contestas, aviso urgente por el bot</td><td>Su QR y su enlace</td></tr>
+      <tr><td>Portería registra la entrada</td><td>«Tu visita llegó»</td><td>—</td></tr>
+      <tr><td>Portería registra la salida</td><td>—</td><td>Gracias, con el enlace para calificar</td></tr>
+      <tr><td>El visitante cancela</td><td>«Visita cancelada» (solo campana)</td><td>—</td></tr>
+      <tr><td>Califica</td><td>«Visita calificada» (solo campana)</td><td>—</td></tr>
+    </tbody></table></div>
+  <p class="sub" style="margin-top:10px">Las personas configuradas en «Avisar también a» reciben una copia de las solicitudes, confirmaciones y llegadas de ese tipo de visita.</p></section>
+  <section class="bloque"><h2>Protección de datos (LOPDP)</h2>
+  <div class="galeria">
+    <figure class="fig"><figcaption><b>Datos mínimos.</b> Nombre, empresa, motivo y, solo si los deja, WhatsApp o correo. No se guarda el número de cédula: el guardia la mira y nada más.</figcaption></figure>
+    <figure class="fig"><figcaption><b>Quién ve qué.</b> El anfitrión y la administración ven la visita. El guardia ve la ficha sin datos de contacto. El enlace privado del visitante solo lo tiene él.</figcaption></figure>
+    <figure class="fig"><figcaption><b>180 días.</b> Después de concluida, la visita se anonimiza: se borran nombre, empresa, motivo, contacto y comentario, y su enlace deja de funcionar.</figcaption></figure>
+  </div></section>`;
+
+const FAQ = [
+  ['¿El visitante necesita instalar algo?', 'No. Todo es una página web. Su enlace privado le muestra el estado de la visita y su código QR.'],
+  ['¿Qué pasa si el visitante pierde su enlace?', 'El anfitrión toca «Enviar enlace» en la visita: se genera uno nuevo y el anterior deja de funcionar.'],
+  ['¿Puede entrar con el código si el QR no se lee?', 'Sí. El guardia escribe el código de 8 caracteres que aparece bajo el QR.'],
+  ['El visitante llegó y la visita sigue «Sin aprobar», ¿qué hago?', 'El guardia no puede registrar la entrada. Debe comunicarse con el anfitrión para que la apruebe en la app.'],
+  ['¿Quién decide si entra un visitante sin cita?', 'El guardia, después de verificar la cédula y llamar al anfitrión. Si no logra hablar con él y lo deja pasar, queda registrado «Ingresó sin contacto».'],
+  ['¿Puedo pedir almuerzo para mi visitante?', 'Sí, desde la visita aprobada del día con «Pedir almuerzo». Se registra en Catering.'],
+  ['¿Cuándo conviene una credencial de visitante frecuente?', 'Cuando la persona viene al menos una vez por semana. Con su QR entra sin invitación durante la vigencia (de una semana a 6 meses).'],
+  ['¿Qué ve el guardia de los visitantes?', 'Nombre, empresa, a quién visita, tipo, motivo y horario. Nunca su teléfono ni su correo.']
+];
+
+function htmlFaq() {
+  return `<section class="bloque"><h2>Preguntas frecuentes</h2><div class="faq">${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><div class="resp"><p>${esc(a)}</p></div></details>`).join('')}</div></section>
+  <section class="bloque"><h2>Cambios de la guía</h2><div class="cambios"><ul>${CAMBIOS.map(([f, t]) => `<li><time>${esc(f)}</time><span>${esc(t)}</span></li>`).join('')}</ul></div></section>`;
+}
+
+const EXTRA = {
+  visitante: TABLA_TIPOS,
+  anfitrion: DOS_CAMINOS,
+  porteria: '',
+  panel: ''
+};
+
+function pintarVista(id) {
+  const v = VISTAS.find(x => x.id === id) || VISTAS[0];
+  pintarTabs(v.id);
+  const intro = `<div class="intro"><h2>${esc(v.titulo)}</h2><p>${esc(v.intro)}</p></div>`;
+  if (v.id === 'reglas') {
+    $('#vista').innerHTML = intro + FLUJO + REGLAS + htmlFaq();
+  } else {
+    $('#vista').innerHTML = intro + htmlTutorial(v.id) + (EXTRA[v.id] || '');
+    pintarPaso(v.id, estadoPaso[v.id] || 0);
+  }
+}
+
+/* ---------- Navegación ---------- */
+function vistaDeHash() { const h = location.hash.replace('#', ''); return VISTAS.some(v => v.id === h) ? h : VISTAS[0].id; }
+function ir(id) { if (location.hash !== '#' + id) location.hash = id; else pintarVista(id); window.scrollTo({ top: 0 }); }
+window.addEventListener('hashchange', () => pintarVista(vistaDeHash()));
+
+document.addEventListener('click', e => {
+  const tab = e.target.closest('.tab'); if (tab) { ir(tab.dataset.v); return; }
+  const irA = e.target.closest('[data-ir]'); if (irA) { ir(irA.dataset.ir); return; }
+  const pb = e.target.closest('.paso-btn'); if (pb) { pintarPaso(pb.closest('[data-tuto]').dataset.tuto, +pb.dataset.i); return; }
+  const mv = e.target.closest('[data-mover]'); if (mv) { const id = mv.closest('[data-tuto]').dataset.tuto; pintarPaso(id, (estadoPaso[id] || 0) + +mv.dataset.mover); return; }
+  const z = e.target.closest('[data-zoom]'); if (z) { abrirVisor(z.dataset.zoom); return; }
+});
+document.addEventListener('keydown', e => {
+  if (!$('#visor').hidden) { if (e.key === 'Escape') cerrarVisor(); return; }
+  const z = e.target.closest && e.target.closest('[data-zoom]');
+  if (z && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrirVisor(z.dataset.zoom); return; }
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  const t = document.querySelector('[data-tuto]');
+  if (t && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { const id = t.dataset.tuto; pintarPaso(id, (estadoPaso[id] || 0) + (e.key === 'ArrowRight' ? 1 : -1)); }
+});
+
+function abrirVisor(src) { const v = $('#visor'); v.querySelector('img').src = src; v.hidden = false; v.querySelector('button').focus(); }
+function cerrarVisor() { $('#visor').hidden = true; }
+$('#visor').addEventListener('click', cerrarVisor);
+
+pintarVista(vistaDeHash());
+</script>

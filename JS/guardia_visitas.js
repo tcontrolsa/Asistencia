@@ -192,7 +192,7 @@
         <span><strong>Registrar visitante sin cita</strong><small>Llegó sin registro previo: regístrelo antes de dejarlo pasar</small></span>
         <i class="fas fa-chevron-right"></i>
       </button>
-      <p class="gv-cerrar-porteria"><button type="button" class="vs-link" data-gv="salir"><i class="fas fa-lock"></i> Cerrar portería de visitas</button></p>
+      <p class="gv-cerrar-porteria"><a class="vs-link" href="./guias/visitas/guia-visitas.html#porteria" target="_blank" rel="noopener"><i class="fas fa-book-open"></i> Guía de portería</a> · <button type="button" class="vs-link" data-gv="salir"><i class="fas fa-lock"></i> Cerrar portería de visitas</button></p>
     </div>`;
     if (scanVivo) { const nuevo = cont.querySelector('.gv-scan'); if (nuevo) nuevo.replaceWith(scanVivo); }
     if (st.escaneando) iniciarCamara();
