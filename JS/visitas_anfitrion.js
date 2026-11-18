@@ -172,9 +172,12 @@
     c.innerHTML = `<div class="vs-root va-root">
       <div class="vs-card va-hero">
         <div class="va-hero-txt"><h2><i class="fas fa-id-card-alt"></i> ${st.admin ? 'Visitas · todas' : 'Mis visitas'}</h2>
-          <p>${st.admin ? 'Visitantes de la empresa y su calificación.' : 'Aprueba solicitudes, invita y sigue a tus visitantes.'}</p>
-          <a href="./guias/visitas/guia-visitas.html#${st.admin ? 'panel' : 'anfitrion'}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;font-weight:700;color:#1d4ed8;text-decoration:none"><i class="fas fa-book-open"></i> ¿Cómo funciona? Ver la guía paso a paso</a></div>
+          <p>${st.admin ? 'Visitantes de la empresa y su calificación.' : 'Aprueba solicitudes, invita y sigue a tus visitantes.'}</p></div>
         <button class="vs-btn vs-btn-prim va-invitar" data-vs="invitar"><i class="fas fa-user-plus"></i> Invitar</button>
+        <a class="vs-guia" href="./guias/visitas/guia-visitas.html#${st.admin ? 'panel' : 'anfitrion'}" target="_blank" rel="noopener">
+          <span class="vs-guia-ico"><i class="fas fa-book-open"></i></span>
+          <span class="vs-guia-txt"><strong>¿Cómo funciona? Mira la guía paso a paso</strong><small>${st.admin ? 'Todas las visitas, calificaciones, configuración y visitantes frecuentes' : 'Invitar, aprobar, recibir y seguir a tus visitantes, con capturas'}</small></span>
+          <i class="fas fa-chevron-right vs-guia-flecha"></i></a>
         <div class="va-kpis">
           ${kpi('pendientes', 'fa-inbox', grupos.pendientes.length, 'por aprobar', 'va-kpi-pend')}
           ${kpi('hoy', 'fa-calendar-day', grupos.hoy.length, 'hoy', 'va-kpi-hoy')}
