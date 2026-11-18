@@ -9349,7 +9349,8 @@ function cargarPanelDesempeno() {
   cont.dataset.montado = '1';
   window.EvaluacionDesempeno.montarPanel(cont, {
     empleado: { id: String(ses.id || ''), nombre: ses.nombre || yo.nombre || '', area: yo.area, cargo: ses.cargo || yo.cargo, supervisor: ses.supervisor || yo.supervisor, evaluacion_rol: yo.evaluacion_rol },
-    empleados: () => personalDelGrupo(),   // Empresa o Servicios externos, según el selector del panel
+    empleados: () => personalDelGrupo(),
+    esDeOtroGrupo: id => { const e = (empCache || []).find(x => String(x.id) === String(id)); return !!e && window.esPersonalExterno(e) !== (grupoPersonal() === 'EXTERNOS'); },   // Empresa o Servicios externos, según el selector del panel
     puedeAsignar: tienePermisoAdmin(),
     esMaster: esAdminMaster(),   // pestaña Configuración del cuestionario
     guardarEmpleado: (id, datos) => (window.FirebaseBackend && window.USE_FIREBASE)

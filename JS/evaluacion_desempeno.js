@@ -1270,6 +1270,7 @@
     // Una fila por persona: la Día 75 va primero para que, si hubiera también la del período, gane esta última
     evals.slice().sort((a, b) => (a.tipo === 'DIA75' ? 0 : 1) - (b.tipo === 'DIA75' ? 0 : 1)).forEach(ev => {
       const id = String(ev.empleadoId);
+      if (opts.esDeOtroGrupo && !porId.has(id) && opts.esDeOtroGrupo(id)) return;   // evaluaciones del otro grupo (Empresa / Servicios externos)
       const clave = per === 'TODAS' ? 'ev_' + ev.id : id;
       filas.set(clave, { emp: porId.get(id) || { id, nombre: ev.empleadoNombre, area: ev.area, cargo: ev.cargo }, ev });
     });
