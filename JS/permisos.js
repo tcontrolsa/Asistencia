@@ -1486,7 +1486,8 @@
     const yo = { id: String(opts.empleado.id), nombre: opts.empleado.nombre || '' };
     const st = { tab: 'mias', mias: null, aprobar: null, tthh: false, esJefe: false, errMias: '', errAprobar: '', subs: [], enlace: opts.enlace || null };
     cont.innerHTML = `<div class="pm-app">
-      <header class="pm-hero"><div><h2>Permisos y vacaciones</h2><p>Pide vacaciones o permisos y sigue su estado.</p></div>
+      <header class="pm-hero"><div><h2>Permisos y vacaciones</h2><p>Pide vacaciones o permisos y sigue su estado.</p>
+        <a class="pm-guia" href="./guias/permisos/guia-permisos.html" target="_blank" rel="noopener"><i class="fas fa-book-open"></i> ¿Cómo funciona? Ver la guía paso a paso</a></div>
         <button type="button" class="pm-btn pm-btn-pri" data-pm="nueva"><i class="fas fa-plus"></i> Nueva solicitud</button></header>
       <section class="pm-tiempo" aria-live="polite"></section>
       <nav class="pm-tabs" role="tablist" hidden>

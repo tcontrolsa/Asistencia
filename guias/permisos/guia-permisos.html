@@ -1,0 +1,589 @@
+<meta charset="utf-8">
+<title>Guía de Permisos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: cabecera con pestañas por rol; cada rol es un tutorial paso a paso (lista de pasos + captura y explicación). */
+:root {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --ink: #1a2130;
+  --muted: #5a6476;
+  --line: #dfe3ea;
+  --brand: #c8102e;
+  --brand-soft: #fbe7ea;
+  --info: #2357d1;
+  --info-soft: #e7eefc;
+  --ok: #157a3a;
+  --ok-soft: #e3f4e9;
+  --warn: #a95207;
+  --warn-soft: #fdf0e1;
+  --bad: #b3261e;
+  --bad-soft: #fbe9e7;
+  --violet: #6d3fd6;
+  --violet-soft: #efe9fc;
+  --shadow: 0 1px 2px rgba(20, 28, 45, .06), 0 6px 18px rgba(20, 28, 45, .06);
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11141a; --surface: #1a1f28; --surface-2: #222833; --ink: #e9ecf1; --muted: #9ba4b4; --line: #2c3341;
+    --brand: #ff5c70; --brand-soft: #3b1a21; --info: #7aa2ff; --info-soft: #1d2a47; --ok: #5fd08a; --ok-soft: #173325;
+    --warn: #f3a65a; --warn-soft: #3a2815; --bad: #ff7d72; --bad-soft: #3d1c1a; --violet: #b59bff; --violet-soft: #2a2245;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11141a; --surface: #1a1f28; --surface-2: #222833; --ink: #e9ecf1; --muted: #9ba4b4; --line: #2c3341;
+  --brand: #ff5c70; --brand-soft: #3b1a21; --info: #7aa2ff; --info-soft: #1d2a47; --ok: #5fd08a; --ok-soft: #173325;
+  --warn: #f3a65a; --warn-soft: #3a2815; --bad: #ff7d72; --bad-soft: #3d1c1a; --violet: #b59bff; --violet-soft: #2a2245;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.55 var(--f-body); }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; letter-spacing: -.01em; margin: 0; }
+p { margin: 0; }
+a { color: var(--info); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; border-radius: 6px; }
+
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Cabecera */
+.cab { background: var(--surface); border-bottom: 1px solid var(--line); }
+.cab .wrap { padding-block: 28px 0; display: grid; gap: 18px; }
+.cab-top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+.marca { display: flex; align-items: center; gap: 10px; font: 600 13px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--brand); }
+.marca i { width: 10px; height: 10px; border-radius: 2px; background: var(--brand); display: inline-block; }
+.cab h1 { font-size: clamp(28px, 4.4vw, 42px); line-height: 1.08; margin-top: 8px; }
+.cab .lead { color: var(--muted); max-width: 62ch; margin-top: 8px; }
+.meta { font: 500 12px/1.4 var(--f-mono); color: var(--muted); text-align: right; }
+.meta b { color: var(--ink); font-weight: 500; }
+
+.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.tabs .wrap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tabs .wrap::-webkit-scrollbar { display: none; }
+.tab { border: 0; background: none; padding: 14px 14px 12px; font-weight: 600; font-size: 15px; color: var(--muted); border-bottom: 3px solid transparent; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brand); }
+.tab .ico { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: var(--surface-2); font-size: 12px; }
+.tab[aria-selected="true"] .ico { background: var(--brand-soft); color: var(--brand); }
+
+main .wrap { padding-block: 28px 56px; display: grid; gap: 28px; }
+.intro { display: grid; gap: 6px; max-width: 72ch; }
+.intro h2 { font-size: 26px; }
+.intro p { color: var(--muted); }
+
+/* Tutorial */
+.tuto { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
+.pasos { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 64px); }
+.paso-btn { width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; cursor: pointer; color: var(--muted); }
+.paso-btn:hover { background: var(--surface); color: var(--ink); }
+.paso-btn .n { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font: 500 12px/1 var(--f-mono); color: var(--muted); background: var(--surface); }
+.paso-btn .t { font-weight: 600; font-size: 14.5px; line-height: 1.35; padding-top: 3px; }
+.paso-btn[aria-current="step"] { background: var(--surface); border-color: var(--line); color: var(--ink); box-shadow: var(--shadow); }
+.paso-btn[aria-current="step"] .n { background: var(--brand); border-color: var(--brand); color: #fff; }
+.paso-btn.visto .n { border-color: var(--brand); color: var(--brand); }
+
+.escena { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); min-height: 420px; overflow: hidden; }
+.escena-img { background: var(--surface-2); padding: 24px; display: grid; place-items: center; border-right: 1px solid var(--line); }
+.escena-img.vacia { min-width: 220px; }
+.marco { border-radius: 18px; overflow: hidden; border: 6px solid #232a36; background: #232a36; box-shadow: 0 10px 30px rgba(0,0,0,.18); cursor: zoom-in; max-width: 100%; }
+.marco img { display: block; width: 100%; height: auto; }
+.marco.tel { width: 320px; }
+.marco.web { width: 460px; border-radius: 10px; border-width: 0; border-top: 22px solid #232a36; position: relative; }
+.marco.web::before { content: ""; position: absolute; top: -14px; left: 10px; width: 36px; height: 7px; background: radial-gradient(circle at 3.5px 3.5px, #ff6159 3px, transparent 3.5px), radial-gradient(circle at 17.5px 3.5px, #ffbd2e 3px, transparent 3.5px), radial-gradient(circle at 31.5px 3.5px, #28c941 3px, transparent 3.5px); }
+.marco.recorte { border-width: 0; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); width: 340px; }
+.sin-img { display: grid; place-items: center; gap: 10px; text-align: center; color: var(--muted); font-size: 14px; max-width: 220px; }
+.sin-img .gran { width: 72px; height: 72px; border-radius: 20px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); font-size: 30px; }
+.escena-txt { padding: 28px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--brand); }
+.escena-txt h3 { font-size: 23px; line-height: 1.2; }
+.escena-txt .cuerpo { display: grid; gap: 12px; color: var(--ink); max-width: 60ch; }
+.escena-txt .cuerpo p, .escena-txt .cuerpo li { color: var(--ink); }
+.escena-txt ul, .escena-txt ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.nota { border-radius: 10px; padding: 10px 12px; font-size: 14.5px; display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start; }
+.nota::before { font: 700 13px/20px var(--f-body); text-align: center; border-radius: 50%; width: 20px; height: 20px; }
+.nota.info { background: var(--info-soft); } .nota.info::before { content: "i"; background: var(--info); color: var(--surface); }
+.nota.warn { background: var(--warn-soft); } .nota.warn::before { content: "!"; background: var(--warn); color: var(--surface); }
+.nota.ok { background: var(--ok-soft); } .nota.ok::before { content: "✓"; background: var(--ok); color: var(--surface); }
+.kbd { font: 600 13.5px/1 var(--f-body); background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.nav-pasos { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nav-pasos .prog { flex: 1; min-width: 100px; height: 4px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.nav-pasos .prog i { display: block; height: 100%; background: var(--brand); border-radius: 4px; transition: width .25s; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 14px; font-weight: 600; font-size: 14.5px; cursor: pointer; }
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.pri { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn.pri:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--brand); }
+
+/* Bloques de referencia */
+.bloque { display: grid; gap: 14px; }
+.bloque > h2 { font-size: 22px; }
+.bloque > p.sub { color: var(--muted); margin-top: -8px; max-width: 70ch; }
+.tabla-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14.5px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px/1.3 var(--f-body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+tr:last-child td { border-bottom: 0; }
+td b { font-weight: 600; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.c-azul { background: var(--info-soft); color: var(--info); }
+.c-violeta { background: var(--violet-soft); color: var(--violet); }
+.c-verde { background: var(--ok-soft); color: var(--ok); }
+.c-rojo { background: var(--bad-soft); color: var(--bad); }
+.c-ambar { background: var(--warn-soft); color: var(--warn); }
+.c-gris { background: var(--surface-2); color: var(--muted); }
+
+.galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.fig { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 10px; align-content: start; }
+.fig img { width: 100%; border-radius: 10px; border: 1px solid var(--line); cursor: zoom-in; display: block; }
+.fig figcaption { font-size: 14px; color: var(--muted); }
+.fig figcaption b { color: var(--ink); }
+
+/* Flujo de estados */
+.flujo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.carril { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 12px; align-content: start; }
+.carril h3 { font-size: 17px; }
+.carril .de { font-size: 13.5px; color: var(--muted); margin-top: -6px; }
+.cadena { display: grid; gap: 8px; }
+.eslabon { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.eslabon .flecha { width: 22px; display: grid; justify-items: center; color: var(--muted); font-size: 13px; padding-top: 4px; }
+.eslabon p { font-size: 14.5px; }
+.ramas { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Calculadora */
+.calc { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); overflow: hidden; }
+.calc-in { padding: 22px; display: grid; gap: 14px; border-right: 1px solid var(--line); align-content: start; }
+.campo { display: grid; gap: 6px; }
+.campo label, .campo .lbl { font: 600 12.5px/1.2 var(--f-body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.campo select, .campo input[type="number"] { font: 500 15px/1.2 var(--f-body); padding: 9px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
+.campo input[type="range"] { width: 100%; accent-color: var(--violet); }
+.fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: none; border-radius: 8px; padding: 7px 12px; font-weight: 600; font-size: 14px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.calc-out { padding: 22px 26px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.cifra { font: 700 40px/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.cifra small { font: 500 15px/1 var(--f-body); color: var(--muted); margin-left: 6px; }
+.linea-tiempo { position: relative; height: 46px; border-radius: 10px; background: var(--surface-2); overflow: hidden; }
+.linea-tiempo span { position: absolute; top: 0; bottom: 0; }
+.lt-permiso { background: var(--info); opacity: .85; }
+.lt-desc { background: repeating-linear-gradient(45deg, var(--muted) 0 3px, transparent 3px 7px); opacity: .55; }
+.lt-eje { display: flex; justify-content: space-between; font: 500 11.5px/1 var(--f-mono); color: var(--muted); margin-top: 6px; }
+.reparto { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--surface-2); }
+.reparto i { display: block; height: 100%; transition: width .25s; }
+.r-bolsa { background: var(--violet); } .r-vac { background: var(--info); } .r-rol { background: var(--bad); } .r-med { background: var(--ok); }
+.leyenda { display: grid; gap: 8px; }
+.leyenda div { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; font-size: 14.5px; }
+.leyenda div i { width: 12px; height: 12px; border-radius: 3px; }
+.leyenda div b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.explica { font-size: 14.5px; color: var(--muted); }
+
+/* Preguntas */
+.faq { display: grid; gap: 8px; }
+.faq details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.faq summary { cursor: pointer; padding: 14px 16px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 500 18px/1 var(--f-mono); color: var(--muted); }
+.faq details[open] summary::after { content: "−"; }
+.faq .resp { padding: 0 16px 16px; color: var(--muted); display: grid; gap: 8px; max-width: 75ch; }
+
+.cambios { font-size: 14px; color: var(--muted); display: grid; gap: 6px; }
+.cambios li { list-style: none; display: grid; grid-template-columns: 92px 1fr; gap: 10px; }
+.cambios ul { padding: 0; margin: 0; display: grid; gap: 6px; }
+.cambios time { font: 500 12.5px/1.6 var(--f-mono); color: var(--ink); }
+
+/* Visor de imagen */
+.visor { position: fixed; inset: 0; z-index: 20; background: rgba(10, 13, 19, .82); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.visor img { max-width: min(100%, 900px); max-height: 100%; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.visor button { position: absolute; top: max(14px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 50%; width: 40px; height: 40px; font-size: 20px; cursor: pointer; }
+
+@media (max-width: 900px) {
+  .tuto { grid-template-columns: minmax(0, 1fr); }
+  .pasos { position: static; display: flex; overflow-x: auto; gap: 6px; padding-bottom: 4px; scrollbar-width: thin; }
+  .pasos li { flex: 0 0 auto; }
+  .paso-btn { grid-template-columns: 24px auto; padding: 8px 10px; background: var(--surface); border-color: var(--line); }
+  .paso-btn .t { font-size: 13.5px; white-space: nowrap; padding-top: 2px; }
+  .paso-btn .n { width: 24px; height: 24px; }
+  .escena { grid-template-columns: minmax(0, 1fr); }
+  .escena-img { border-right: 0; border-bottom: 1px solid var(--line); padding: 18px; }
+  .calc { grid-template-columns: minmax(0, 1fr); }
+  .calc-in { border-right: 0; border-bottom: 1px solid var(--line); }
+  .flujo { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .marco.tel { width: 100%; max-width: 300px; }
+  .marco.web, .marco.recorte { width: 100%; }
+  .escena-txt { padding: 20px 18px; }
+  .meta { text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+
+<header class="cab">
+  <div class="wrap">
+    <div class="cab-top">
+      <div>
+        <div class="marca"><i></i>TCONTROL · Asistencia</div>
+        <h1>Guía de Permisos</h1>
+        <p class="lead">Cómo pedir, aprobar y controlar vacaciones y permisos en la app y en el panel. Elige tu rol y sigue los pasos; toca cualquier captura para verla en grande.</p>
+      </div>
+      <div class="meta">Versión <b id="metaVersion"></b><br>Actualizada <b id="metaFecha"></b></div>
+    </div>
+  </div>
+</header>
+<nav class="tabs" aria-label="Secciones de la guía">
+  <div class="wrap" role="tablist" id="tabs"></div>
+</nav>
+<main id="main"><div class="wrap" id="vista"></div></main>
+<div class="visor" id="visor" hidden><button type="button" aria-label="Cerrar">×</button><img alt=""></div>
+
+<script>
+/* =====================================================================
+   CONTENIDO DE LA GUÍA
+   Para actualizarla: edita los textos de PASOS / tablas de abajo, cambia
+   VERSION y FECHA, agrega una línea en CAMBIOS y vuelve a publicar.
+   Las capturas viven en img/ (ver README.md en la misma carpeta).
+   ===================================================================== */
+const VERSION = '1.0';
+const FECHA = '18/11/2026';
+const CAMBIOS = [
+  ['18/11/2026', 'Primera versión: flujo completo (fases 1 a 5), permisos por horas según el horario pedido, vista de vacaciones en días completos y pie de la app con «Más».']
+];
+
+const VISTAS = [
+  { id: 'colaborador', ico: '1', nombre: 'Colaborador',
+    titulo: 'Pedir vacaciones o un permiso',
+    intro: 'Todo se hace desde la pestaña Permisos de la app. Tu jefe inmediato aprueba vacaciones y permisos personales; el permiso médico y la calamidad se registran al instante y solo piden documentos.' },
+  { id: 'jefe', ico: '2', nombre: 'Jefe inmediato',
+    titulo: 'Aprobar las solicitudes de tu equipo',
+    intro: 'Si alguien de tu equipo pide vacaciones o un permiso personal, te llega un aviso y la solicitud aparece en Permisos → Por aprobar. Tienes 8 horas laborables para responder.' },
+  { id: 'panel', ico: '3', nombre: 'TTHH y panel',
+    titulo: 'Bandeja de TTHH en el panel de supervisión',
+    intro: 'TTHH recibe lo que no tiene jefe o lo que el jefe no respondió, revisa los documentos de permisos médicos y calamidades, y configura el módulo. Todo está en el panel, sección Permisos.' },
+  { id: 'marcacion', ico: '4', nombre: 'Al marcar',
+    titulo: 'Permisos que nacen al marcar asistencia',
+    intro: 'Algunas opciones de la pantalla de marcación crean una solicitud de permiso automáticamente, para que el tiempo quede justificado con el mismo flujo de aprobación.' },
+  { id: 'reglas', ico: '5', nombre: 'Reglas y cálculo',
+    titulo: 'Cómo se cobra el tiempo',
+    intro: 'La bolsa de 4 horas, las horas que pasan a vacaciones y el descuento al rol. Prueba la calculadora con un permiso por horas.' }
+];
+
+const PASOS = {
+  colaborador: [
+    { t: 'Abre Permisos', img: '09-pie.png', marco: 'recorte',
+      h: '<p>En el pie de la app toca <span class="kbd">Permisos</span>. El pie tiene Credencial, Almuerzo, Permisos, Resumen y <span class="kbd">Más</span> (carné, perfil, pagos y el resto de opciones).</p><p>Si eres jefe, el ícono de Permisos muestra un número rojo cuando tienes solicitudes por aprobar.</p>' },
+    { t: 'Mira tu bolsa de 4 horas', img: '02-bolsa.png', marco: 'recorte',
+      h: '<p>Arriba está <b>Mi tiempo de permisos</b>. La primera tarjeta es la <b>bolsa de 4 horas</b> del período de nómina (del 26 al 25).</p><ul><li>Cubre atrasos, faltantes y permisos personales.</li><li>Se renueva el día 26. Lo que no uses <b>no pasa</b> al siguiente período.</li></ul><div class="nota info">El botón con la hora (arriba a la derecha) vuelve a calcular el resumen.</div>' },
+    { t: 'Revisa tus vacaciones', img: '03-vacaciones.png', marco: 'recorte',
+      h: '<p>La tarjeta <b>Vacaciones</b> muestra tu saldo en <b>días completos</b> y cuántos días se descontaron este año por permisos.</p><p>Cada 8 horas de permiso que la bolsa no alcanza a cubrir descuentan 1 día de vacaciones. El año de vacaciones va del 1 de diciembre al 30 de noviembre.</p><div class="nota info">Las fracciones (horas acumuladas hacia el próximo día) solo las ve el supervisor en el panel.</div>' },
+    { t: 'Revisa el descuento al rol', img: '04-rol.png', marco: 'recorte',
+      h: '<p>La tarjeta <b>Descuento al rol</b> suma lo que ni la bolsa ni las vacaciones cubren en el período de nómina:</p><ul><li><b>Atrasos, faltantes y permisos</b> que ya superaron la bolsa.</li><li><b>Permisos que vienen</b> sin saldo (aprobados o por aprobar).</li></ul><p>En verde «Sin descuento» si no hay nada que descontar.</p>' },
+    { t: 'Nueva solicitud: elige el tipo', img: '05-form-tipo.png', marco: 'tel',
+      h: '<p>Toca <span class="kbd">+ Nueva solicitud</span> y elige el tipo:</p><ul><li><span class="chip c-azul">Vacaciones</span> días completos, las aprueba tu jefe.</li><li><span class="chip c-violeta">Permiso personal</span> por horas o por días, lo aprueba tu jefe.</li><li><span class="chip c-verde">Permiso médico</span> se registra al instante; certificado en 72 h.</li><li><span class="chip c-rojo">Calamidad doméstica</span> puede registrarse después; documentos en 72 h.</li></ul>' },
+    { t: 'Vacaciones por días', img: '07-form-vacaciones.png', marco: 'tel',
+      h: '<p>Elige <b>Desde</b> y <b>Hasta</b>. La app cuenta solo días laborables (sin fines de semana ni feriados), te dice quién aprueba y tu saldo disponible.</p><p>El comentario es opcional. Toca <span class="kbd">Enviar solicitud</span>.</p><div class="nota warn">No se pueden pedir vacaciones con fecha anterior a hoy.</div>' },
+    { t: 'Permiso personal por horas', img: '06-form-horas.png', marco: 'tel',
+      h: '<p>Elige <b>Por horas</b>, la fecha, <b>Sale a las</b> y <b>Regresa a las</b>. Las horas van en formato de 24 h, cada 15 minutos, dentro de la jornada (07:30 a 16:15). La última opción es <b>16:15 · fin de la jornada</b>.</p><p>La app descuenta el receso (10:00–10:15) y el almuerzo (12:30–13:00): de 10:00 a 12:00 son <b>1 h 45 min</b>.</p><div class="nota warn">Si el permiso supera tu bolsa, aparece un aviso: esas horas se cargarán a tus vacaciones (o al rol si no tienes saldo). Debes marcar la casilla para aceptar el cargo antes de enviar.</div>' },
+    { t: 'Permiso médico o calamidad', img: '08-form-calamidad.png', marco: 'tel',
+      h: '<p>No necesitan aprobación: se registran al tocar <span class="kbd">Registrar</span> y se avisa a tu jefe y a TTHH.</p><ul><li><b>Permiso médico</b>: por horas o días, hasta 3 días después.</li><li><b>Calamidad</b>: por días, hasta 30 días después.</li></ul><p>Después tienes <b>72 horas</b> para subir el certificado o los documentos desde la tarjeta de la solicitud. Sin documentos, ese tiempo se descuenta del rol.</p>' },
+    { t: 'Sigue el estado', img: '21-tarjeta-no-aprobada.png', marco: 'recorte',
+      h: '<p>Debajo del resumen están <b>tus solicitudes</b>. Cada tarjeta muestra el tipo, las fechas, el estado y lo que pasó:</p><ul><li><span class="chip c-ambar">Espera a tu jefe</span> o <span class="chip c-ambar">Espera a TTHH</span>: puedes <b>cancelarla</b>.</li><li><span class="chip c-verde">Aprobada</span> o <span class="chip c-verde">Registrada</span>.</li><li><span class="chip c-rojo">No aprobada</span>: con el motivo del jefe.</li></ul><p>Cada cambio te llega por la campana y por WhatsApp.</p>' }
+  ],
+  jefe: [
+    { t: 'Te llega un aviso', img: null, icono: '🔔',
+      h: '<p>Cuando alguien de tu equipo pide vacaciones o un permiso personal recibes:</p><ul><li>Un aviso en la <b>campana</b> de la app.</li><li>Un <b>WhatsApp</b> con el nombre corto y el ID del colaborador. Los detalles (fechas, motivo) solo se ven en la app o el panel.</li></ul><p>El aprobador es el <b>jefe inmediato</b> que figura en la ficha del colaborador.</p>' },
+    { t: 'Abre «Por aprobar»', img: '10-jefe-pendientes.png', marco: 'tel',
+      h: '<p>En Permisos aparece la pestaña <span class="kbd">Por aprobar</span> con el número de pendientes. Cada tarjeta muestra quién pide, las fechas, el tiempo y el motivo.</p><p>Si el permiso supera la bolsa del colaborador, verás en naranja a dónde se cargaría (vacaciones o rol) y que él aceptó el cargo.</p><p>Toca <span class="kbd">Aprobar</span> y listo: se avisa al colaborador.</p>' },
+    { t: 'No aprobar con motivo', img: '11-no-aprobar.png', marco: 'tel',
+      h: '<p>Si no puedes aprobarla, toca <span class="kbd">No aprobar</span> y escribe el motivo. El colaborador lo verá en su tarjeta.</p><div class="nota warn">Un permiso no aprobado cuenta como tiempo <b>sin justificar</b> si la persona igual se ausentó: primero consume su bolsa y luego se descuenta del rol. Si lo rechazas antes de la hora de inicio, no cuenta.</div>' },
+    { t: 'Si no respondes en 8 h', img: null, icono: '⏱',
+      h: '<p>Si la solicitud sigue pendiente después de <b>8 horas laborables</b>, pasa automáticamente a <b>TTHH</b>, que puede aprobarla o no.</p><p>También va directo a TTHH cuando el colaborador no tiene jefe asignado, cuando su ficha lo tiene como su propio jefe o cuando el jefe está inactivo.</p><div class="nota info">Los permisos médicos y las calamidades no los apruebas: solo te llega el aviso.</div>' }
+  ],
+  panel: [
+    { t: 'Bandeja y filtros', img: '12-panel-filtros.png', marco: 'web',
+      h: '<p>En el panel, sección <b>Permisos</b>, pestaña <span class="kbd">Solicitudes</span>. Los filtros:</p><ul><li><b>Pendientes</b>: esperan al jefe o a TTHH.</li><li><b>Documentos por validar</b>: médicos y calamidades con archivos subidos.</li><li><b>Vencidos</b>: pasaron las 72 h sin documentos.</li><li><b>Faltan documentos</b>: aún dentro del plazo.</li><li><b>Todas</b>, con buscador por nombre, ID, área o motivo.</li></ul>' },
+    { t: 'Aprobar en lugar del jefe', img: '13-panel-pendientes.png', marco: 'web',
+      h: '<p>TTHH y los supervisores administradores pueden resolver cualquier pendiente. Si aún espera al jefe, el botón dice <span class="kbd">Aprobar (en lugar del jefe)</span>.</p><p>Las que pasaron a TTHH muestran el motivo: «El jefe no respondió en 8 horas laborables», «No tiene jefe inmediato asignado», etc.</p>' },
+    { t: 'Registrar a nombre de alguien', img: '15-panel-a-nombre.png', marco: 'web',
+      h: '<p>Con <span class="kbd">Registrar médico o calamidad</span> el jefe o TTHH registra un permiso médico o una calamidad a nombre de un colaborador que no puede hacerlo desde su teléfono.</p><p>Sigue el mismo plazo de 72 horas para los documentos.</p>' },
+    { t: 'Revisar documentos (72 h)', img: '23-tarjeta-validado.png', marco: 'recorte',
+      h: '<p>En los permisos médicos y calamidades, TTHH abre el archivo y decide:</p><ul><li><b>Validar</b>: el tiempo queda justificado.</li><li><b>Rechazar</b> el documento con motivo: el colaborador sube otro.</li><li>Si venció el plazo: dar <b>prórroga</b> (horas extra de plazo) o <b>confirmar el descuento</b> al rol.</li></ul><p>Los archivos se guardan en una carpeta privada de Drive.</p>' },
+    { t: 'Configuración', img: '14-panel-config.png', marco: 'web',
+      h: '<p>Pestaña <span class="kbd">Configuración</span>:</p><ul><li><b>Personas de TTHH</b>: quiénes reciben lo escalado, los avisos de médicos y calamidades, y pueden resolver cualquier solicitud.</li><li><b>Vista del colaborador</b>: con «Vacaciones solo en días completos» activo, el colaborador ve su saldo sin fracciones. Solo un administrador puede cambiarlo.</li></ul>' },
+    { t: 'Detalle de empleado', img: '16-panel-horas-vac.png', marco: 'recorte',
+      h: '<p>En la ficha de cada persona (Detalle de Empleado) está el bloque <b>Tiempo de permisos</b>, con el mismo cálculo de la app más el detalle que el colaborador no ve:</p><ul><li>Minutos acumulados hacia el próximo día de vacaciones (de 8 h).</li><li>Horas aprobadas y por aprobar.</li><li>Días descontados por horas y saldo exacto.</li></ul><div class="nota info">Lo que al 30/11 no llega a 8 h pasa al año de vacaciones siguiente.</div>' }
+  ],
+  marcacion: [
+    { t: '«Hoy no vengo»', img: null, icono: '📅',
+      h: '<p>Si el colaborador no va a trabajar, en la pantalla de marcación elige <span class="kbd">Hoy no vengo</span>. Se abre el formulario de Permisos con los tipos posibles para ese día: vacaciones, permiso personal, permiso médico o calamidad.</p><p>La solicitud sigue el flujo normal (aprobación del jefe o documentos en 72 h).</p>' },
+    { t: 'Salida justificada', img: null, icono: '🚪',
+      h: '<p>Al marcar una salida antes de las 16:15 con <span class="kbd">Salida justificada</span>, la app pide el <b>motivo</b> y crea un permiso por horas desde la hora de salida hasta el fin de la jornada, con el regreso <b>por confirmar</b>.</p><p>Si la persona vuelve y marca entrada, el permiso se ajusta a la hora real de regreso.</p>' },
+    { t: 'Entrada tardía con permiso', img: '20-tarjeta-medico-cancelada.png', marco: 'recorte',
+      h: '<p>Al marcar la entrada tarde con permiso (personal o médico), se crea la solicitud desde las 07:30 hasta la hora de entrada. La tarjeta indica «Registrado al marcar la entrada en la app».</p><p>Si el tiempo supera la bolsa, antes de guardar la marcación se pide aceptar el cargo a vacaciones o al rol.</p>' },
+    { t: 'Falta justificada', img: null, icono: '📄',
+      h: '<p>La antigua «Falta justificada» ahora es una <b>calamidad doméstica</b>: se registra al instante y pide documentos en 72 horas.</p>' },
+    { t: 'Permiso por horas: el horario pedido manda', img: null, icono: '🕙',
+      h: '<p>Con un permiso por horas aprobado <b>no hace falta marcar</b> la salida y el regreso del permiso. El sistema descuenta de la jornada el horario pedido.</p><ul><li>Si regresa <b>antes</b>, se cobra lo pedido.</li><li>Si regresa <b>tarde</b>, el exceso cuenta como faltante.</li><li>Si el permiso llega hasta las 16:15, no se aplica la penalización de 15 min por no marcar salida.</li></ul><p>Ese día la app muestra en el inicio el aviso «Hoy tienes permiso…», y no se le envía el recordatorio de «no registró entrada».</p>' }
+  ]
+};
+</script>
+
+<script>
+/* ====================== Comportamiento (no hace falta editar) ====================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const estadoPaso = {};
+try { Object.assign(estadoPaso, JSON.parse(localStorage.getItem('guiaPermisosPasos') || '{}')); } catch (e) { }
+const guardarPasos = () => { try { localStorage.setItem('guiaPermisosPasos', JSON.stringify(estadoPaso)); } catch (e) { } };
+
+$('#metaVersion').textContent = VERSION;
+$('#metaFecha').textContent = FECHA;
+
+function pintarTabs(actual) {
+  $('#tabs').innerHTML = VISTAS.map(v => `<button type="button" role="tab" class="tab" data-v="${v.id}" aria-selected="${v.id === actual}"><span class="ico">${v.ico}</span>${esc(v.nombre)}</button>`).join('');
+}
+
+function htmlTutorial(id) {
+  const pasos = PASOS[id];
+  return `<div class="tuto" data-tuto="${id}">
+    <ol class="pasos" aria-label="Pasos">${pasos.map((p, i) => `<li><button type="button" class="paso-btn" data-i="${i}"><span class="n">${i + 1}</span><span class="t">${esc(p.t)}</span></button></li>`).join('')}</ol>
+    <article class="escena" aria-live="polite"></article>
+  </div>`;
+}
+
+function pintarPaso(id, i) {
+  const pasos = PASOS[id];
+  i = Math.max(0, Math.min(pasos.length - 1, i));
+  estadoPaso[id] = i; guardarPasos();
+  const p = pasos[i];
+  const tuto = $(`[data-tuto="${id}"]`);
+  tuto.querySelectorAll('.paso-btn').forEach((b, k) => {
+    b.toggleAttribute('aria-current', k === i);
+    if (k === i) b.setAttribute('aria-current', 'step');
+    b.classList.toggle('visto', k < i);
+  });
+  const imgHtml = p.img
+    ? `<div class="escena-img"><div class="marco ${p.marco || 'tel'}" data-zoom="img/${p.img}" role="button" tabindex="0" aria-label="Ver captura en grande"><img src="img/${p.img}" alt="Captura: ${esc(p.t)}" loading="lazy"></div></div>`
+    : `<div class="escena-img vacia"><div class="sin-img"><div class="gran" aria-hidden="true">${p.icono || '•'}</div>Sin pantalla propia</div></div>`;
+  tuto.querySelector('.escena').innerHTML = `${imgHtml}
+    <div class="escena-txt">
+      <div class="eyebrow">Paso ${i + 1} de ${pasos.length}</div>
+      <h3>${esc(p.t)}</h3>
+      <div class="cuerpo">${p.h}</div>
+      <div class="nav-pasos">
+        <button type="button" class="btn" data-mover="-1" ${i === 0 ? 'disabled' : ''}>← Anterior</button>
+        <div class="prog" aria-hidden="true"><i style="width:${((i + 1) / pasos.length) * 100}%"></i></div>
+        ${i < pasos.length - 1 ? `<button type="button" class="btn pri" data-mover="1">Siguiente →</button>` : siguienteVista(id)}
+      </div>
+    </div>`;
+  const activo = tuto.querySelector(`.paso-btn[data-i="${i}"]`);
+  if (activo && window.matchMedia('(max-width: 900px)').matches) activo.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+function siguienteVista(id) {
+  const k = VISTAS.findIndex(v => v.id === id);
+  const sig = VISTAS[k + 1];
+  return sig ? `<button type="button" class="btn pri" data-ir="${sig.id}">${esc(sig.nombre)} →</button>` : '';
+}
+
+/* ---------- Bloques extra por vista ---------- */
+const TABLA_TIPOS = `<section class="bloque"><h2>Los cuatro tipos de un vistazo</h2>
+  <div class="tabla-wrap"><table>
+    <thead><tr><th>Tipo</th><th>Modalidad</th><th>¿Quién aprueba?</th><th>¿Cuándo se puede pedir?</th><th>¿Qué se carga?</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip c-azul">Vacaciones</span></td><td>Días</td><td>Jefe inmediato (TTHH si no responde en 8 h)</td><td>Desde hoy en adelante</td><td>Días de vacaciones</td></tr>
+      <tr><td><span class="chip c-violeta">Permiso personal</span></td><td>Horas o días</td><td>Jefe inmediato (TTHH si no responde en 8 h)</td><td>Desde hoy en adelante</td><td>Bolsa de 4 h, luego vacaciones, luego rol</td></tr>
+      <tr><td><span class="chip c-verde">Permiso médico</span></td><td>Horas o días</td><td>Nadie: se registra y avisa al jefe y a TTHH</td><td>Hasta 3 días después</td><td>Nada con certificado; sin él, rol</td></tr>
+      <tr><td><span class="chip c-rojo">Calamidad doméstica</span></td><td>Días</td><td>Nadie: se registra y avisa al jefe y a TTHH</td><td>Hasta 30 días después</td><td>Nada con documentos; sin ellos, rol</td></tr>
+    </tbody></table></div></section>`;
+
+const GALERIA_ESTADOS = `<section class="bloque"><h2>Cómo se ven las tarjetas</h2>
+  <p class="sub">Ejemplos reales de la ficha de prueba. Toca una para verla en grande.</p>
+  <div class="galeria">
+    <figure class="fig"><img src="img/21-tarjeta-no-aprobada.png" data-zoom="img/21-tarjeta-no-aprobada.png" alt="Tarjeta de permiso no aprobado"><figcaption><b>No aprobada.</b> Muestra el cargo aceptado, quién la rechazó y su motivo.</figcaption></figure>
+    <figure class="fig"><img src="img/23-tarjeta-validado.png" data-zoom="img/23-tarjeta-validado.png" alt="Tarjeta con documentos validados"><figcaption><b>Documentos validados.</b> El certificado quedó aceptado por TTHH.</figcaption></figure>
+    <figure class="fig"><img src="img/22-tarjeta-descontado.png" data-zoom="img/22-tarjeta-descontado.png" alt="Tarjeta descontada del rol"><figcaption><b>Descontado del rol.</b> Venció el plazo de 72 h sin documentos.</figcaption></figure>
+    <figure class="fig"><img src="img/20-tarjeta-medico-cancelada.png" data-zoom="img/20-tarjeta-medico-cancelada.png" alt="Tarjeta cancelada"><figcaption><b>Cancelada.</b> Creada al marcar la entrada y cancelada después.</figcaption></figure>
+  </div></section>`;
+
+const FLUJO = `<section class="bloque"><h2>Recorrido de una solicitud</h2>
+  <div class="flujo">
+    <div class="carril"><h3>Vacaciones y permiso personal</h3><p class="de">Necesitan aprobación</p>
+      <div class="cadena">
+        <div class="eslabon"><span class="flecha">●</span><p>El colaborador envía la solicitud (o nace al marcar).</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-ambar">Espera a tu jefe</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>Sin respuesta en 8 h laborables, sin jefe o jefe inactivo:</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-ambar">Espera a TTHH</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Aprobada</span><span class="chip c-rojo">No aprobada</span><span class="chip c-gris">Cancelada</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>Al aprobar se reparte el tiempo: bolsa, vacaciones y rol.</p></div>
+      </div></div>
+    <div class="carril"><h3>Permiso médico y calamidad</h3><p class="de">Sin aprobación, con documentos</p>
+      <div class="cadena">
+        <div class="eslabon"><span class="flecha">●</span><p>Se registra al instante y se avisa al jefe y a TTHH.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Registrada</span><span class="chip c-ambar">Faltan documentos</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>El colaborador sube el archivo dentro de 72 h.</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-verde">Validados</span><span class="chip c-rojo">Rechazado: subir otro</span></div></div>
+        <div class="eslabon"><span class="flecha">↓</span><p>Si vence el plazo:</p></div>
+        <div class="eslabon"><span class="flecha">↓</span><div class="ramas"><span class="chip c-azul">Prórroga</span><span class="chip c-rojo">Descontado del rol</span></div></div>
+      </div></div>
+  </div></section>`;
+
+const CALC = `<section class="bloque"><h2>Calculadora de un permiso por horas</h2>
+  <p class="sub">Simula cómo se cobra. Es una estimación con las mismas reglas de la app; el valor oficial es el que muestra la app al enviar.</p>
+  <div class="calc">
+    <div class="calc-in">
+      <div class="campo"><span class="lbl">Tipo</span><div class="seg" role="group" aria-label="Tipo de permiso"><button type="button" data-tipo="PERSONAL" aria-pressed="true">Personal</button><button type="button" data-tipo="MEDICO" aria-pressed="false">Médico</button></div></div>
+      <div class="fila2">
+        <div class="campo"><label for="cSale">Sale a las</label><select id="cSale"></select></div>
+        <div class="campo"><label for="cRegresa">Regresa a las</label><select id="cRegresa"></select></div>
+      </div>
+      <div class="campo"><label for="cBolsa">Bolsa libre: <span id="cBolsaTxt"></span></label><input type="range" id="cBolsa" min="0" max="240" step="15" value="120"></div>
+      <div class="campo"><label for="cVac">Saldo de vacaciones (días)</label><input type="number" id="cVac" min="0" max="60" step="1" value="11"></div>
+    </div>
+    <div class="calc-out">
+      <div><div class="cifra" id="cMin"></div></div>
+      <div><div class="linea-tiempo" id="cLinea"></div><div class="lt-eje"><span>07:30</span><span>10:00</span><span>12:30</span><span>16:15</span></div></div>
+      <div class="reparto" id="cReparto"></div>
+      <div class="leyenda" id="cLeyenda"></div>
+      <p class="explica" id="cExplica"></p>
+    </div>
+  </div></section>`;
+
+const FAQ = [
+  ['¿El tiempo de la bolsa pasa al mes siguiente?', 'No. La bolsa de 4 horas es por período de nómina (26 al 25) y se renueva completa. Lo que no se usa se pierde.'],
+  ['¿Las horas cargadas a vacaciones se pierden al cambiar de año?', 'No. Cada 8 horas se descuenta 1 día. Si al 30 de noviembre quedan horas que no llegan a 8, pasan al año de vacaciones siguiente.'],
+  ['¿Qué pasa si no tengo bolsa ni vacaciones?', 'Igual puedes pedir el permiso. La app te avisa que el tiempo se descontará del rol y debes aceptarlo antes de enviar.'],
+  ['¿Tengo que marcar la salida y la entrada de un permiso por horas?', 'No. El horario pedido manda: el sistema descuenta ese tramo de la jornada. Si marcas igual, no se cuenta dos veces.'],
+  ['¿Puedo cancelar una solicitud?', 'Sí, mientras espera al jefe o a TTHH. Una vez aprobada o registrada, habla con TTHH.'],
+  ['¿Qué ve el colaborador de sus vacaciones?', 'Con la opción activa en Configuración, solo días completos: saldo, días descontados por permisos y días pendientes. Las fracciones de hora las ve el supervisor en el panel.'],
+  ['¿Qué datos van en los WhatsApp?', 'Solo el nombre corto y el ID. Fechas, motivos y documentos se ven en la app o en el panel.']
+];
+
+function htmlFaq() {
+  return `<section class="bloque"><h2>Preguntas frecuentes</h2><div class="faq">${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><div class="resp"><p>${esc(a)}</p></div></details>`).join('')}</div></section>
+  <section class="bloque"><h2>Cambios de la guía</h2><div class="cambios"><ul>${CAMBIOS.map(([f, t]) => `<li><time>${esc(f)}</time><span>${esc(t)}</span></li>`).join('')}</ul></div></section>`;
+}
+
+const EXTRA = {
+  colaborador: TABLA_TIPOS + GALERIA_ESTADOS,
+  jefe: FLUJO,
+  panel: '',
+  marcacion: '',
+  reglas: ''
+};
+
+function pintarVista(id) {
+  const v = VISTAS.find(x => x.id === id) || VISTAS[0];
+  pintarTabs(v.id);
+  const intro = `<div class="intro"><h2>${esc(v.titulo)}</h2><p>${esc(v.intro)}</p></div>`;
+  if (v.id === 'reglas') {
+    $('#vista').innerHTML = intro + REGLAS + CALC + FLUJO + htmlFaq();
+    montarCalc();
+  } else {
+    $('#vista').innerHTML = intro + htmlTutorial(v.id) + (EXTRA[v.id] || '');
+    pintarPaso(v.id, estadoPaso[v.id] || 0);
+  }
+}
+
+const REGLAS = `<section class="bloque"><h2>Las tres reglas</h2>
+  <div class="galeria">
+    <figure class="fig"><img src="img/02-bolsa.png" data-zoom="img/02-bolsa.png" alt="Tarjeta de la bolsa de 4 horas"><figcaption><b>1. Bolsa de 4 horas.</b> Por período de nómina (26 al 25). Cubre atrasos, faltantes y permisos personales. No pasa al siguiente período.</figcaption></figure>
+    <figure class="fig"><img src="img/03-vacaciones.png" data-zoom="img/03-vacaciones.png" alt="Tarjeta de vacaciones"><figcaption><b>2. Vacaciones.</b> Lo que excede la bolsa se acumula: cada 8 h descuentan 1 día. Las horas sueltas pasan al año siguiente.</figcaption></figure>
+    <figure class="fig"><img src="img/04-rol.png" data-zoom="img/04-rol.png" alt="Tarjeta de descuento al rol"><figcaption><b>3. Descuento al rol.</b> Lo que no cubren ni la bolsa ni las vacaciones, los permisos no aprobados y los médicos sin certificado.</figcaption></figure>
+  </div></section>`;
+
+/* ---------- Calculadora ---------- */
+const INI = 450, FIN = 975, DESCANSOS = [[600, 615], [750, 780]];
+const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const dur = m => { const h = Math.floor(m / 60), r = m % 60; return h && r ? `${h} h ${r} min` : h ? `${h} h` : `${r} min`; };
+const calc = { tipo: 'PERSONAL', sale: 600, regresa: 720 };
+
+function montarCalc() {
+  const sSale = $('#cSale'), sReg = $('#cRegresa');
+  const opciones = (desde, hasta, elegida, finTxt) => { let h = ''; for (let m = desde; m <= hasta; m += 15) h += `<option value="${m}" ${m === elegida ? 'selected' : ''}>${hm(m)}${m === FIN && finTxt ? ' · fin de la jornada' : ''}</option>`; return h; };
+  const llenar = () => {
+    sSale.innerHTML = opciones(INI, FIN - 15, calc.sale);
+    if (calc.regresa <= calc.sale) calc.regresa = Math.min(FIN, calc.sale + 60);
+    sReg.innerHTML = opciones(calc.sale + 15, FIN, calc.regresa, true);
+  };
+  llenar();
+  sSale.addEventListener('change', () => { calc.sale = +sSale.value; llenar(); calcular(); });
+  sReg.addEventListener('change', () => { calc.regresa = +sReg.value; calcular(); });
+  $('#cBolsa').addEventListener('input', calcular);
+  $('#cVac').addEventListener('input', calcular);
+  document.querySelectorAll('[data-tipo]').forEach(b => b.addEventListener('click', () => {
+    calc.tipo = b.dataset.tipo;
+    document.querySelectorAll('[data-tipo]').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+    calcular();
+  }));
+  calcular();
+}
+
+function calcular() {
+  const a = calc.sale, b = calc.regresa, total = FIN - INI;
+  let desc = 0;
+  DESCANSOS.forEach(([x, y]) => { desc += Math.max(0, Math.min(b, y) - Math.max(a, x)); });
+  const min = Math.max(0, b - a - desc);
+  const bolsaLibre = +$('#cBolsa').value;
+  $('#cBolsaTxt').textContent = dur(bolsaLibre) === '0 min' ? '0 min' : dur(bolsaLibre);
+  const vacMin = Math.max(0, +$('#cVac').value || 0) * 480;
+  $('#cMin').innerHTML = `${dur(min)}<small>de permiso</small>`;
+  const pos = m => ((m - INI) / total * 100).toFixed(2) + '%';
+  $('#cLinea').innerHTML = `<span class="lt-permiso" style="left:${pos(a)};width:${((b - a) / total * 100).toFixed(2)}%"></span>` +
+    DESCANSOS.map(([x, y]) => `<span class="lt-desc" style="left:${pos(x)};width:${((y - x) / total * 100).toFixed(2)}%" title="${x === 600 ? 'Receso' : 'Almuerzo'}"></span>`).join('');
+  let partes, texto;
+  if (calc.tipo === 'MEDICO') {
+    partes = [['r-med', 'Tiempo médico (con certificado)', min]];
+    texto = `No usa la bolsa ni las vacaciones. Si en 72 h no hay certificado, estas ${dur(min)} se descuentan del rol.`;
+  } else {
+    const deBolsa = Math.min(bolsaLibre, min);
+    const deVac = Math.min(vacMin, min - deBolsa);
+    const deRol = min - deBolsa - deVac;
+    partes = [['r-bolsa', 'Bolsa de 4 horas', deBolsa], ['r-vac', 'A vacaciones', deVac], ['r-rol', 'Descuento al rol', deRol]];
+    texto = deBolsa === min ? 'La bolsa lo cubre todo: no hace falta aceptar ningún cargo.'
+      : `Supera la bolsa: el formulario pide aceptar el cargo de ${dur(min - deBolsa)}${deVac ? ` (${dur(deVac)} a vacaciones; cada 8 h acumuladas descuentan 1 día)` : ''}${deRol ? `${deVac ? ' y' : ''} ${dur(deRol)} al rol` : ''}.`;
+  }
+  $('#cReparto').innerHTML = min ? partes.map(([c, , m]) => `<i class="${c}" style="width:${(m / min * 100).toFixed(2)}%"></i>`).join('') : '';
+  $('#cLeyenda').innerHTML = partes.map(([c, t, m]) => `<div><i class="${c}"></i><span>${t}</span><b>${dur(m)}</b></div>`).join('');
+  const descTxt = desc ? ` Se restaron ${dur(desc)} de ${DESCANSOS.filter(([x, y]) => Math.min(b, y) > Math.max(a, x)).map(([x]) => x === 600 ? 'receso' : 'almuerzo').join(' y ')}.` : '';
+  $('#cExplica').textContent = texto + descTxt;
+}
+
+/* ---------- Navegación ---------- */
+function vistaDeHash() { const h = location.hash.replace('#', ''); return VISTAS.some(v => v.id === h) ? h : VISTAS[0].id; }
+function ir(id) { if (location.hash !== '#' + id) location.hash = id; else pintarVista(id); window.scrollTo({ top: 0 }); }
+window.addEventListener('hashchange', () => pintarVista(vistaDeHash()));
+
+document.addEventListener('click', e => {
+  const tab = e.target.closest('.tab'); if (tab) { ir(tab.dataset.v); return; }
+  const irA = e.target.closest('[data-ir]'); if (irA) { ir(irA.dataset.ir); return; }
+  const pb = e.target.closest('.paso-btn'); if (pb) { pintarPaso(pb.closest('[data-tuto]').dataset.tuto, +pb.dataset.i); return; }
+  const mv = e.target.closest('[data-mover]'); if (mv) { const id = mv.closest('[data-tuto]').dataset.tuto; pintarPaso(id, (estadoPaso[id] || 0) + +mv.dataset.mover); return; }
+  const z = e.target.closest('[data-zoom]'); if (z) { abrirVisor(z.dataset.zoom); return; }
+});
+document.addEventListener('keydown', e => {
+  if (!$('#visor').hidden) { if (e.key === 'Escape') cerrarVisor(); return; }
+  const z = e.target.closest && e.target.closest('[data-zoom]');
+  if (z && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrirVisor(z.dataset.zoom); return; }
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  const t = document.querySelector('[data-tuto]');
+  if (t && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { const id = t.dataset.tuto; pintarPaso(id, (estadoPaso[id] || 0) + (e.key === 'ArrowRight' ? 1 : -1)); }
+});
+
+function abrirVisor(src) { const v = $('#visor'); v.querySelector('img').src = src; v.hidden = false; v.querySelector('button').focus(); }
+function cerrarVisor() { $('#visor').hidden = true; }
+$('#visor').addEventListener('click', cerrarVisor);
+
+pintarVista(vistaDeHash());
+</script>

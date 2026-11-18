@@ -5,6 +5,8 @@
 .pm-hero { background: #fff; border: 1px solid var(--pm-borde); border-radius: 18px; padding: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; box-shadow: 0 4px 14px rgba(15, 23, 42, .05); }
 .pm-hero h2 { margin: 0; font-size: 19px; font-weight: 800; }
 .pm-hero p { margin: 2px 0 0; font-size: 13px; color: var(--pm-sub); }
+.pm-guia { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; font-weight: 700; color: #1d4ed8; text-decoration: none; }
+.pm-guia:hover, .pm-guia:focus-visible { text-decoration: underline; }
 .pm-tabs { display: flex; gap: 6px; background: #eef2f7; border-radius: 12px; padding: 4px; }
 .pm-tabs [data-tab] { flex: 1; border: 0; background: transparent; border-radius: 9px; padding: 8px 10px; font-weight: 700; font-size: 13px; color: var(--pm-sub); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .pm-tabs [aria-selected="true"] { background: #fff; color: var(--pm-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
