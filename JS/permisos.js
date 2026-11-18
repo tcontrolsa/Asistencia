@@ -1598,7 +1598,10 @@
           <button type="button" role="tab" data-tab="bandeja" aria-selected="true">Solicitudes</button>
           <button type="button" role="tab" data-tab="tthh" aria-selected="false">Configuración</button>
         </nav>
-        <button type="button" class="pm-btn pm-btn-sec" data-pm="a-nombre"><i class="fas fa-user-plus"></i> Registrar médico o calamidad</button>
+        <div class="pm-pacc">
+          <a class="pm-btn pm-btn-sec" href="./guias/permisos/guia-permisos.html#panel" target="_blank" rel="noopener" title="Abre la guía en otra pestaña"><i class="fas fa-book-open"></i> Guía</a>
+          <button type="button" class="pm-btn pm-btn-sec" data-pm="a-nombre"><i class="fas fa-user-plus"></i> Registrar médico o calamidad</button>
+        </div>
       </div>
       <div class="pm-cuerpo"></div></div>`;
     const cuerpo = cont.querySelector('.pm-cuerpo');

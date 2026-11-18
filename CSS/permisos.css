@@ -79,6 +79,8 @@ textarea.pm-campo { resize: vertical; }
 .pm-panel { display: grid; gap: 14px; }
 .pm-pcab { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .pm-pcab .pm-tabs { max-width: 420px; flex: 1 1 300px; }
+.pm-pacc { display: flex; flex-wrap: wrap; gap: 8px; }
+a.pm-btn { text-decoration: none; }
 .pm-cuerpo { display: grid; gap: 12px; }
 .pm-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .pm-buscar { max-width: 320px; flex: 1 1 220px; }
