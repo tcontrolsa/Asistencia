@@ -1486,9 +1486,12 @@
     const yo = { id: String(opts.empleado.id), nombre: opts.empleado.nombre || '' };
     const st = { tab: 'mias', mias: null, aprobar: null, tthh: false, esJefe: false, errMias: '', errAprobar: '', subs: [], enlace: opts.enlace || null };
     cont.innerHTML = `<div class="pm-app">
-      <header class="pm-hero"><div><h2>Permisos y vacaciones</h2><p>Pide vacaciones o permisos y sigue su estado.</p>
-        <a class="pm-guia" href="./guias/permisos/guia-permisos.html" target="_blank" rel="noopener"><i class="fas fa-book-open"></i> ¿Cómo funciona? Ver la guía paso a paso</a></div>
-        <button type="button" class="pm-btn pm-btn-pri" data-pm="nueva"><i class="fas fa-plus"></i> Nueva solicitud</button></header>
+      <header class="pm-hero"><div><h2>Permisos y vacaciones</h2><p>Pide vacaciones o permisos y sigue su estado.</p></div>
+        <button type="button" class="pm-btn pm-btn-pri" data-pm="nueva"><i class="fas fa-plus"></i> Nueva solicitud</button>
+        <a class="pm-guia" href="./guias/permisos/guia-permisos.html" target="_blank" rel="noopener">
+          <span class="pm-guia-ico"><i class="fas fa-book-open"></i></span>
+          <span class="pm-guia-txt"><strong>¿Cómo funciona? Mira la guía paso a paso</strong><small>Tipos de permiso, bolsa de 4 horas, vacaciones y aprobaciones, con capturas</small></span>
+          <i class="fas fa-chevron-right pm-guia-flecha"></i></a></header>
       <section class="pm-tiempo" aria-live="polite"></section>
       <nav class="pm-tabs" role="tablist" hidden>
         <button type="button" role="tab" data-tab="mias" aria-selected="true">Mis solicitudes</button>
@@ -1599,7 +1602,7 @@
           <button type="button" role="tab" data-tab="tthh" aria-selected="false">Configuración</button>
         </nav>
         <div class="pm-pacc">
-          <a class="pm-btn pm-btn-sec" href="./guias/permisos/guia-permisos.html#panel" target="_blank" rel="noopener" title="Abre la guía en otra pestaña"><i class="fas fa-book-open"></i> Guía</a>
+          <a class="pm-btn pm-btn-guia" href="./guias/permisos/guia-permisos.html#panel" target="_blank" rel="noopener" title="Abre la guía en otra pestaña"><i class="fas fa-book-open"></i> Guía paso a paso</a>
           <button type="button" class="pm-btn pm-btn-sec" data-pm="a-nombre"><i class="fas fa-user-plus"></i> Registrar médico o calamidad</button>
         </div>
       </div>
