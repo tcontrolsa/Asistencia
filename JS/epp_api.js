@@ -1,5 +1,5 @@
 // Módulo EPP: conexión real (PostgREST api.epp; respaldo de red: Apps Script evalRpc).
-// Sesión: el token de PIN de Desempeño y Visitas. Reemplaza a EppDatos con la misma interfaz que usan las pantallas.
+// Sesión: el token de contraseña de Desempeño y Visitas. Reemplaza a EppDatos con la misma interfaz que usan las pantallas.
 // En localhost con ?demo sigue la demostración de epp_datos.js.
 (() => {
   const base = window.EppDatos;
@@ -24,7 +24,7 @@
     try { sessionStorage.removeItem(KEY_SESION); } catch (e) { }
     st.ses = null;
   }
-  const vencida = () => Object.assign(new Error('Tu sesión venció. Ingresa tu PIN de nuevo.'), { sesion: true });
+  const vencida = () => Object.assign(new Error('Tu sesión venció. Ingresa tu contraseña de nuevo.'), { sesion: true });
 
   async function pedir(p) {
     const fb = window.FirebaseBackend;
@@ -82,9 +82,9 @@
       app.innerHTML = `<div class="epp-login"><form class="epp-login-card">
         <span class="epp-ico"><i class="fas fa-hard-hat"></i></span>
         <h1>${st.modo === 'despacho' ? 'Despacho de EPP' : 'Mis EPP'}</h1>
-        <p>Ingresa con el ID y el PIN de la app.</p>
+        <p>Ingresa con el ID y la contraseña de la app.</p>
         <label>ID<input name="id" inputmode="numeric" autocomplete="off" required value="${esc(id)}"></label>
-        <label>PIN<input name="pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off" required></label>
+        <label>Contraseña<input name="pin" type="password" autocomplete="off" required></label>
         <p class="epp-error" hidden></p>
         <button class="epp-btn primario ancho">Entrar</button>
       </form></div>`;
@@ -95,7 +95,7 @@
         msg.hidden = true;
         try {
           const r = await window.FirebaseBackend._post({ accion: 'tokenEvaluacion', empleadoId: f.id.value.trim(), pin: f.pin.value });
-          if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu PIN.');
+          if (!r || !r.ok || !r.token) throw new Error((r && r.error) || 'No se pudo verificar tu contraseña.');
           const s = { token: r.token, exp: r.exp, empleadoId: f.id.value.trim(), equipo: r.equipo || [], rrhh: !!r.rrhh, master: !!r.master };
           try { sessionStorage.setItem(KEY_SESION, JSON.stringify(s)); } catch (e) { }
           resolve(s);

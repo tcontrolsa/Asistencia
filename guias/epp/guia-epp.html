@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Guía de uso · EPP</title>
+<style>
+  :root{--bg:#f8fafc;--tx:#0f172a;--mu:#475569;--card:#fff;--bd:#e2e8f0;--ac:#d97706;--acbg:#fffbeb;--ok:#15803d;--er:#b91c1c}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f172a;--tx:#e2e8f0;--mu:#94a3b8;--card:#1e293b;--bd:#334155;--ac:#fbbf24;--acbg:#2a2412;--ok:#4ade80;--er:#f87171}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+  main{max-width:760px;margin:0 auto;padding:20px 16px 48px}
+  h1{font-size:26px;margin:8px 0 4px}
+  h2{font-size:19px;margin:28px 0 10px}
+  p.sub{color:var(--mu);margin:0 0 18px}
+  .tabs{display:flex;gap:8px;margin:16px 0}
+  .tabs button{flex:1;padding:12px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:12px;font:inherit;font-weight:600;cursor:pointer}
+  .tabs button[aria-selected=true]{background:var(--ac);border-color:var(--ac);color:#111}
+  section[hidden]{display:none}
+  ol.pasos{list-style:none;counter-reset:p;padding:0;margin:0}
+  ol.pasos li{counter-increment:p;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 14px 14px 56px;margin:10px 0;position:relative}
+  ol.pasos li::before{content:counter(p);position:absolute;left:14px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--ac);color:#111;font-weight:700;display:grid;place-items:center}
+  ol.pasos b{display:block}
+  .nota,.alerta{border-radius:12px;padding:12px 14px;margin:12px 0;border:1px solid var(--bd);background:var(--acbg)}
+  .alerta{border-color:var(--er)}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden;font-size:15px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--bd);vertical-align:top}
+  th{color:var(--mu);font-size:13px;text-transform:uppercase;letter-spacing:.04em}
+  details{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 14px;margin:8px 0}
+  summary{cursor:pointer;font-weight:600}
+  .pie{color:var(--mu);font-size:13px;margin-top:32px}
+</style>
+</head>
+<body>
+<main>
+  <h1>🦺 Guía de uso · EPP</h1>
+  <p class="sub">Cómo pedir, entregar y firmar el equipo de protección personal en TCONTROL.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="t-desp" aria-selected="true" aria-controls="p-desp">Despachador (bodega)</button>
+    <button role="tab" id="t-col" aria-selected="false" aria-controls="p-col">Colaborador</button>
+  </div>
+
+  <!-- ================= DESPACHADOR ================= -->
+  <section id="p-desp" role="tabpanel" aria-labelledby="t-desp">
+    <h2>Cómo entrar</h2>
+    <ol class="pasos">
+      <li><b>Abre la app TCONTROL</b>Si tu cargo es de bodega, en <i>Más</i> aparece el botón <b>EPP</b> (casco). Tócalo.</li>
+      <li><b>Ingresa con tu ID y tu contraseña</b>Son los mismos de la app. Si tu cargo no es de bodega verás «Solo para el personal de bodega».</li>
+    </ol>
+    <div class="nota">La página tiene tres secciones: <b>Solicitudes</b>, <b>Inventario</b> y <b>Entregas</b>. Arriba hay cuatro contadores (Pendientes, Por retirar, Sin firma, Stock bajo); al tocarlos filtran la lista.</div>
+
+    <h2>Atender una solicitud</h2>
+    <ol class="pasos">
+      <li><b>Revisa la solicitud (estado Pendiente)</b>Cada tarjeta muestra qué pidió, talla, motivo y si hay stock («Stock 12» o «Falta · hay 0»).</li>
+      <li><b>Toca «Preparar»</b>Separas el equipo. La solicitud pasa a <i>Por retirar</i>.</li>
+      <li><b>Cuando la persona venga, toca «Entregar»</b>Se abre un recuadro: pídele que firme con el dedo y toca <b>Entregar con firma</b>.</li>
+      <li><b>Si no puede firmar en ese momento</b>Toca <b>Entregar sin firma</b>. La entrega es válida y queda en seguimiento.</li>
+    </ol>
+    <div class="nota">«Entregar» no se habilita si falta stock. Registra primero el ingreso en Inventario.</div>
+
+    <h2>Rechazar una solicitud</h2>
+    <p>En Pendiente o Por retirar toca <b>Rechazar</b> y escribe el motivo: el colaborador lo verá en su app.</p>
+
+    <h2>Firmas pendientes</h2>
+    <ul>
+      <li>Una entrega sin firma queda en <b>Sin firma</b>. El colaborador puede firmar desde su app («Recibí») o en bodega con <b>Firmar aquí</b>.</li>
+      <li>Si la persona tiene varias entregas sin firma, <b>una sola firma las cubre todas</b>.</li>
+      <li>A los <b>7 días</b> la entrega aparece en rojo («pasó el plazo»). Sigue siendo válida: pide la firma cuando vuelva a bodega. <b>Nunca se niega EPP por falta de firma.</b></li>
+      <li>Con <b>Recordar</b> dejas anotado que ya le avisaste (todavía no envía WhatsApp).</li>
+      <li><b>Ver firma</b> muestra la firma guardada.</li>
+    </ul>
+
+    <h2>Inventario</h2>
+    <ol class="pasos">
+      <li><b>Entra a la pestaña Inventario</b>Cada fila es un artículo y talla, con su stock, mínimo y estado (Disponible, Stock bajo, Agotado).</li>
+      <li><b>Busca o filtra</b>Usa el buscador o marca «Solo stock bajo».</li>
+      <li><b>Cuando llegue mercadería toca «+ Ingreso»</b>Escribe la cantidad recibida y toca Registrar. El stock baja solo al entregar.</li>
+    </ol>
+    <div class="alerta"><b>Pendiente de arranque:</b> el stock inicial está en cero. Antes de entregar, la bodega debe cargarlo con «+ Ingreso» en cada fila.</div>
+
+    <h2>Entregas</h2>
+    <p>Historial de lo entregado. Busca por colaborador, EPP o número (EPP-0001) y marca «Solo sin firma» para ver lo que falta firmar.</p>
+
+    <h2>Preguntas frecuentes</h2>
+    <details><summary>No veo el botón EPP en «Más».</summary><p>Solo aparece si tu cargo incluye «bodega». Si tu cargo cambió, pide a TTHH que lo actualice y vuelve a abrir la app.</p></details>
+    <details><summary>Dice «Tu sesión venció».</summary><p>Ingresa de nuevo tu ID y contraseña. La sesión dura poco por seguridad.</p></details>
+    <details><summary>Me equivoqué al entregar.</summary><p>Avisa a Sistemas con el número de solicitud (EPP-xxxx) para corregirlo.</p></details>
+  </section>
+
+  <!-- ================= COLABORADOR ================= -->
+  <section id="p-col" role="tabpanel" aria-labelledby="t-col" hidden>
+    <h2>Pedir EPP</h2>
+    <ol class="pasos">
+      <li><b>Abre «Mis EPP»</b>Entra con tu ID y contraseña. Verás el equipo que te corresponde según tu puesto.</li>
+      <li><b>Elige tu trabajo</b>Solo si tienes más de un puesto asignado.</li>
+      <li><b>Marca lo que necesitas</b>Ya aparece marcado lo que toca reponer según el tiempo de uso.</li>
+      <li><b>Indica talla, cantidad y motivo</b>Luego toca <b>Enviar</b>. Recibe un número de solicitud (EPP-xxxx).</li>
+      <li><b>Espera el aviso «Por retirar»</b>Pasa por bodega. Puedes cancelar la solicitud mientras siga pendiente.</li>
+    </ol>
+
+    <h2>Firmar lo recibido</h2>
+    <ul>
+      <li>En bodega firmas con el dedo en la pantalla del despachador al retirar.</li>
+      <li>Si no firmaste, puedes hacerlo después desde tu app con el botón <b>Recibí</b>.</li>
+      <li>No te niegan el EPP por no firmar, pero tienes <b>7 días</b> para dejar la firma.</li>
+    </ul>
+
+    <h2>Si te rechazan</h2>
+    <p>Verás el motivo escrito por bodega. Si no lo entiendes, habla con tu jefe inmediato.</p>
+  </section>
+
+  <p class="pie">Guía v1 · 2026-11-18 · El módulo aún muestra «Próximamente» en producción hasta que se habilite.</p>
+</main>
+<script>
+  (function () {
+    var t = document.querySelectorAll('[role=tab]');
+    t.forEach(function (b) {
+      b.addEventListener('click', function () {
+        t.forEach(function (x) {
+          var on = x === b;
+          x.setAttribute('aria-selected', on);
+          document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

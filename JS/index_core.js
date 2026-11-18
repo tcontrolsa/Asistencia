@@ -9186,6 +9186,13 @@ function actualizarInterfazSegunCargo() {
         navItemAdmin.style.display = esAdmin ? 'flex' : 'none';
     }
 
+    // Acceso directo al despacho de EPP: quien tiene cargo de bodega (misma regla que el servidor) o el Master
+    const navItemEpp = document.getElementById('navItemEpp');
+    if (navItemEpp) {
+        const despachaEpp = cargoNormalizado.includes('bodega') || empleado.id === ADMIN_ID;
+        navItemEpp.style.display = despachaEpp ? 'flex' : 'none';
+    }
+
     // Lógica para la pestaña de Estado de Emergencias / Simulacros (OCULTADO SIEMPRE)
     const navItemEstado = document.getElementById('navItemEstado');
     if (navItemEstado) {
@@ -9576,6 +9583,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigateTo(item.dataset.page);
             }
         });
+    });
+    // Despacho de EPP (página aparte; pide la contraseña de la app)
+    document.getElementById('navItemEpp')?.addEventListener('click', () => {
+        if (!isAuthenticated) return;
+        cerrarMenuMas();
+        window.open('epp_despacho.html', '_blank');
     });
     // Hoja «Más» del pie
     const btnMas = document.getElementById('navItemMas');
