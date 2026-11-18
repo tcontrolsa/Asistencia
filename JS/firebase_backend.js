@@ -3253,12 +3253,26 @@ window.FirebaseBackend = {
                 return { ok: false, error: "No es posible registrar solicitudes para fechas pasadas." };
             }
 
+            // Ficha del solicitante (Taller y Sup. Admin se deciden con lo guardado en Firestore, no con lo que manda la app)
+            let dataEmp = null;
+            if (params.empleadoId && typeof db !== 'undefined' && db) {
+                try {
+                    const empDoc = await db.collection('empleados').doc(params.empleadoId.toString()).get();
+                    if (empDoc.exists) dataEmp = empDoc.data() || {};
+                } catch (eDoc) {
+                    console.warn("Aviso leyendo la ficha del solicitante:", eDoc);
+                }
+            }
+            const esSupAdmin = String(params.empleadoId || '') === '1058'
+                || (dataEmp && (String(dataEmp.supervisor || '') + ' ' + String(dataEmp.rol || '')).toUpperCase().includes('ADMIN'));
+
             // 1. Validaciones de horario límite (RIGEN ÚNICAMENTE SI LA SOLICITUD ES PARA EL MISMO DÍA)
             if (esParaHoy) {
                 if (tipoSolicitud === 'ALMUERZO_EXTRA' || subtipo === 'ALMUERZO_EXTRA') {
-                    // Máximo hasta las 09:40 (9 * 60 + 40 = 580)
-                    if (minActual > 580) {
-                        return { ok: false, error: "Las solicitudes de Almuerzo Extra para hoy cerraron a las 09:40. Puede programar su solicitud anticipada seleccionando una fecha futura." };
+                    // Hasta las 09:30 (570); los Sup. Admin hasta las 11:00 (660)
+                    const limite = esSupAdmin ? 660 : 570;
+                    if (minActual > limite) {
+                        return { ok: false, error: `Las solicitudes de Almuerzo Extra para hoy cerraron a las ${esSupAdmin ? '11:00' : '09:30'}. Puede programar su solicitud anticipada seleccionando una fecha futura.` };
                     }
                 } else if (subtipo === 'REFRIGERIO_SANDUCHE' || (tipoSolicitud === 'REFRIGERIO' && !subtipo.includes('GALLETA'))) {
                     // Sánduches máximo hasta las 08:40 (8 * 60 + 40 = 520)
@@ -3275,19 +3289,11 @@ window.FirebaseBackend = {
                 return { ok: false, error: "Esta opción no está disponible para personal del área de Taller." };
             }
 
-            if (params.empleadoId && typeof db !== 'undefined' && db) {
-                try {
-                    const empDoc = await db.collection('empleados').doc(params.empleadoId.toString()).get();
-                    if (empDoc.exists) {
-                        const dataEmp = empDoc.data() || {};
-                        const docAreaCargo = ((dataEmp.area || '') + ' ' + (dataEmp.cargo || '')).toUpperCase()
-                            .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                        if (docAreaCargo.includes('TALLER')) {
-                            return { ok: false, error: "Esta opción no está disponible para personal del área de Taller." };
-                        }
-                    }
-                } catch (eDoc) {
-                    console.warn("Aviso verificando área de empleado:", eDoc);
+            if (dataEmp) {
+                const docAreaCargo = ((dataEmp.area || '') + ' ' + (dataEmp.cargo || '')).toUpperCase()
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                if (docAreaCargo.includes('TALLER')) {
+                    return { ok: false, error: "Esta opción no está disponible para personal del área de Taller." };
                 }
             }
 
@@ -3299,6 +3305,29 @@ window.FirebaseBackend = {
             const empleadoArea = (params.empleadoArea || '').trim();
             const horaServicio = (params.horaServicio || '').trim();
             const observaciones = (params.observaciones || '').trim();
+
+            // Refrigerios: solo para el anfitrión y sus invitados (al menos un invitado; máximo invitados + 1)
+            const esAlmuerzoExtra = (tipoSolicitud === 'ALMUERZO_EXTRA' || subtipo === 'ALMUERZO_EXTRA');
+            let cantidadInvitados = parseInt(params.cantidadInvitados, 10);
+            const incluyeAnfitrion = params.incluyeAnfitrion === true || params.incluyeAnfitrion === 'true';
+            if (!esAlmuerzoExtra) {
+                if (!(cantidadInvitados >= 1)) {
+                    return { ok: false, error: "Los refrigerios son solo para el anfitrión y sus invitados: indique cuántos invitados atiende." };
+                }
+                if (cantidad !== cantidadInvitados + (incluyeAnfitrion ? 1 : 0)) {
+                    return { ok: false, error: "La cantidad de refrigerios debe ser igual a sus invitados" + (incluyeAnfitrion ? " más usted." : ".") };
+                }
+            }
+
+            // Almuerzo extra: ticket para el invitado, válido solo el día de la visita (ticket_almuerzo.html?t=...)
+            const telInvitado = String(params.invitadoTelefono || '').replace(/\D/g, '');
+            let ticket = '', codigoTicket = '';
+            if (esAlmuerzoExtra) {
+                const az = 'abcdefghijkmnpqrstuvwxyz23456789';
+                const rnd = n => { const b = new Uint8Array(n); crypto.getRandomValues(b); return Array.from(b, x => az[x % az.length]).join(''); };
+                ticket = rnd(20);
+                codigoTicket = 'A-' + rnd(4).toUpperCase();
+            }
 
             const horaActualStr = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}:${String(ahora.getSeconds()).padStart(2, '0')}`;
 
@@ -3329,6 +3358,7 @@ window.FirebaseBackend = {
                 observacionesCompletas: obsCompleta,
                 estado: 'SOLICITADO',
                 creadoPor: params.creadoPor || 'USUARIO',
+                ...(esAlmuerzoExtra ? { ticket, codigoTicket, invitadoTelefono: telInvitado } : { cantidadInvitados, incluyeAnfitrion }),
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             };
 

@@ -7627,6 +7627,34 @@ function esUsuarioTaller(emp) {
 }
 window.esUsuarioTaller = esUsuarioTaller;
 
+// Almuerzo extra para el mismo día: hasta las 09:30 para todos; los Sup. Admin (1058 o rol con ADMIN) hasta las 11:00.
+// La misma regla la valida firebase_backend.js (crearSolicitudInvitado) con la ficha de Firestore.
+const LIMITE_EXTRA_MIN = 570;        // 09:30
+const LIMITE_EXTRA_ADMIN_MIN = 660;  // 11:00
+function esSupAdminAlmuerzo(emp) {
+    if (!emp) return false;
+    if (String(emp.id) === '1058') return true;
+    if (window._supAdminAlm === true) return true;
+    return String(emp.supervisor || '').toUpperCase().includes('ADMIN') || String(emp.rol || '').toUpperCase().includes('ADMIN');
+}
+function limiteAlmuerzoExtra(emp) {
+    const admin = esSupAdminAlmuerzo(emp);
+    return { min: admin ? LIMITE_EXTRA_ADMIN_MIN : LIMITE_EXTRA_MIN, texto: admin ? '11:00' : '09:30', admin };
+}
+// La sesión guardada puede no traer el rol: se consulta la ficha una vez y se repinta si es Sup. Admin
+function verificarSupAdminAlmuerzo(emp) {
+    if (window._supAdminAlm !== undefined || !emp || !emp.id || typeof db === 'undefined' || !db) return;
+    window._supAdminAlm = false;
+    db.collection('empleados').doc(String(emp.id)).get().then(d => {
+        const x = d.exists ? (d.data() || {}) : {};
+        const rol = String(x.supervisor || '') + ' ' + String(x.rol || '');
+        if (rol.toUpperCase().includes('ADMIN')) {
+            window._supAdminAlm = true;
+            if (typeof currentPage !== 'undefined' && currentPage === 'almuerzo') renderAlmuerzoPage();
+        }
+    }).catch(() => { window._supAdminAlm = undefined; });
+}
+
 function renderAlmuerzoPage() {
     const mainContent = document.getElementById('mainContent');
     const esCumpleanosHoy = esCumpleanos(empleado.fechaNacimiento);
@@ -7832,7 +7860,9 @@ function renderAlmuerzoPage() {
 
     if (!esTaller) {
         const ahoraMin = ahora.getHours() * 60 + ahora.getMinutes();
-        const almuerzoExtraHoyAbierto = ahoraMin <= 580; // 09:40
+        verificarSupAdminAlmuerzo(empleado);
+        const limExtra = limiteAlmuerzoExtra(empleado);
+        const almuerzoExtraHoyAbierto = ahoraMin <= limExtra.min; // 09:30 (Sup. Admin 11:00)
         const refrigerioSanducheHoyAbierto = ahoraMin <= 520; // 08:40
         const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().slice(0, 10);
 
@@ -7889,6 +7919,11 @@ function renderAlmuerzoPage() {
                                         ${s.horaServicio ? `<div style="font-size: 10.5px; color: #64748b;">Hora req: <strong>${s.horaServicio}</strong></div>` : ''}
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 6px;">
+                                        ${isAlm && s.ticket ? `
+                                            <button onclick="window.verTicketAlmuerzo('${s.id}')" title="Ticket del invitado" style="border: none; background: #dbeafe; color: #1d4ed8; border-radius: 8px; height: 26px; padding: 0 8px; display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10.5px; font-weight: 700;">
+                                                <i class="fas fa-ticket-alt"></i> Ticket
+                                            </button>
+                                        ` : ''}
                                         <span style="font-size: 9.5px; font-weight: 700; padding: 3px 8px; border-radius: 20px; background: ${s.estado === 'CONFIRMADO' ? '#dcfce7' : '#fef9c3'}; color: ${s.estado === 'CONFIRMADO' ? '#15803d' : '#854d0e'};">
                                             ${s.estado === 'CONFIRMADO' ? '✓ Confirmado' : '⏳ Solicitado'}
                                         </span>
@@ -7922,7 +7957,7 @@ function renderAlmuerzoPage() {
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
                                 <span style="font-size: 22px;">🍱</span>
                                 <span style="font-size: 9px; font-weight: 750; padding: 2px 6px; border-radius: 6px; background: ${almuerzoExtraHoyAbierto ? '#dbeafe' : '#f1f5f9'}; color: ${almuerzoExtraHoyAbierto ? '#1e40af' : '#64748b'};">
-                                    ${almuerzoExtraHoyAbierto ? 'HOY HASTA 09:40' : 'HOY CERRADO · ANTICIPADO'}
+                                    ${almuerzoExtraHoyAbierto ? 'HOY HASTA ' + limExtra.texto : 'HOY CERRADO · ANTICIPADO'}
                                 </span>
                             </div>
                             <div style="font-weight: 700; font-size: 12.5px; color: #0f172a; line-height: 1.2; margin-bottom: 3px;">Almuerzo Extra</div>
@@ -8084,7 +8119,7 @@ window.abrirModalSolicitudInvitado = function (tipo) {
     const mananaStr = getLocalHoyStr(manana);
 
     const minDia = ahora.getHours() * 60 + ahora.getMinutes();
-    const almuerzoExtraHoyAbierto = minDia <= 580; // 09:40
+    const almuerzoExtraHoyAbierto = minDia <= limiteAlmuerzoExtra(empleado).min; // 09:30 (Sup. Admin 11:00)
 
     // Si para hoy ya cerró el almuerzo extra, sugerir mañana por defecto
     const fechaInicial = (tipo === 'ALMUERZO_EXTRA' && !almuerzoExtraHoyAbierto) ? mananaStr : hoyStr;
@@ -8146,8 +8181,8 @@ window.abrirModalSolicitudInvitado = function (tipo) {
 
                     <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px;">
                         <div>
-                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Cantidad</label>
-                            <input type="number" id="solCantidad" min="1" max="50" value="1" required class="form-control form-control-sm" style="font-size: 13px; font-weight: 700; border-radius: 8px; text-align: center;">
+                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">${isAlm ? 'Cantidad' : 'Invitados'}</label>
+                            <input type="number" id="solCantidad" min="1" max="50" value="1" required class="form-control form-control-sm" style="font-size: 13px; font-weight: 700; border-radius: 8px; text-align: center;" ${!isAlm ? 'oninput="window.actualizarTotalRefrigerio()"' : ''}>
                         </div>
                         <div>
                             <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Empresa / Visita</label>
@@ -8155,10 +8190,26 @@ window.abrirModalSolicitudInvitado = function (tipo) {
                         </div>
                     </div>
 
+                    ${!isAlm ? `
+                        <label style="display: flex; gap: 8px; align-items: flex-start; font-size: 11.5px; color: #334155; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 8px 10px; cursor: pointer; margin: 0;">
+                            <input type="checkbox" id="solIncluyeAnfitrion" checked onchange="window.actualizarTotalRefrigerio()" style="margin-top: 2px;">
+                            <span><strong>Incluirme (anfitrión)</strong><br><span style="color: #9a3412; font-size: 10.5px;">Los refrigerios son solo para el anfitrión y sus invitados, no para otros colaboradores.</span></span>
+                        </label>
+                        <div id="solTotalRefrigerio" style="font-size: 11.5px; font-weight: 700; color: #9a3412; text-align: right; margin-top: -4px;"></div>
+                    ` : ''}
+
                     <div>
-                        <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">Nombre del Invitado o Motivo *</label>
+                        <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">${isAlm ? 'Nombre del invitado *' : 'Nombre del invitado o de la visita *'}</label>
                         <input type="text" id="solInvitado" required placeholder="Nombre de la persona que asiste" class="form-control form-control-sm" style="font-size: 12.5px; border-radius: 8px;">
                     </div>
+
+                    ${isAlm ? `
+                        <div>
+                            <label style="font-size: 11.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;"><i class="fab fa-whatsapp" style="color: #16a34a;"></i> WhatsApp del invitado (opcional)</label>
+                            <input type="tel" id="solTelInvitado" inputmode="tel" placeholder="09XXXXXXXX" class="form-control form-control-sm" style="font-size: 12.5px; border-radius: 8px;">
+                            <small style="font-size: 10.5px; color: #64748b; display: block; margin-top: 3px;">Le llega su <strong>ticket de almuerzo</strong>, válido solo ese día. Si no tiene, te llega a ti para que se lo compartas.</small>
+                        </div>
+                    ` : ''}
 
                     ${!isAlm ? `
                         <div>
@@ -8190,6 +8241,15 @@ window.abrirModalSolicitudInvitado = function (tipo) {
 
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     window.actualizarAvisosModalInvitado(tipo);
+    if (!isAlm) window.actualizarTotalRefrigerio();
+};
+
+// Refrigerios: total = invitados + el anfitrión (si se incluye)
+window.actualizarTotalRefrigerio = function () {
+    const n = parseInt(document.getElementById('solCantidad')?.value, 10) || 0;
+    const yo = !!document.getElementById('solIncluyeAnfitrion')?.checked;
+    const el = document.getElementById('solTotalRefrigerio');
+    if (el) el.textContent = n > 0 ? `Total: ${n + (yo ? 1 : 0)} refrigerio${n + (yo ? 1 : 0) === 1 ? '' : 's'} (${n} invitado${n === 1 ? '' : 's'}${yo ? ' + tú' : ''})` : '';
 };
 
 window.actualizarAvisosModalInvitado = function (tipo) {
@@ -8199,7 +8259,8 @@ window.actualizarAvisosModalInvitado = function (tipo) {
     const ahora = new Date();
     const hoyStr = (typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : ahora.toISOString().slice(0, 10);
     const minDia = ahora.getHours() * 60 + ahora.getMinutes();
-    const almuerzoExtraAbierto = minDia <= 580; // 09:40
+    const limExtra = limiteAlmuerzoExtra(empleado);
+    const almuerzoExtraAbierto = minDia <= limExtra.min; // 09:30 (Sup. Admin 11:00)
     const refrigerioSanducheAbierto = minDia <= 520; // 08:40
 
     const esMismoDia = (fechaSeleccionada === hoyStr);
@@ -8254,7 +8315,7 @@ window.actualizarAvisosModalInvitado = function (tipo) {
                     alertaDiv.style.border = '1px solid #fecaca';
                     alertaDiv.style.borderRadius = '6px';
                     alertaDiv.style.padding = '6px 8px';
-                    alertaDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Cerrado para hoy (09:40):</strong> Selecciona mañana o una fecha posterior para registrar tu pedido con anticipación.';
+                    alertaDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <strong>Cerrado para hoy (${limExtra.texto}):</strong> Selecciona mañana o una fecha posterior para registrar tu pedido con anticipación.`;
                 }
                 if (btnEnviar) btnEnviar.disabled = true;
             } else {
@@ -8265,7 +8326,7 @@ window.actualizarAvisosModalInvitado = function (tipo) {
                     alertaDiv.style.border = '1px solid #bfdbfe';
                     alertaDiv.style.borderRadius = '6px';
                     alertaDiv.style.padding = '6px 8px';
-                    alertaDiv.innerHTML = '<i class="fas fa-clock"></i> <strong>Mismo día:</strong> Solicitudes de hoy habilitadas hasta las 09:40.';
+                    alertaDiv.innerHTML = `<i class="fas fa-clock"></i> <strong>Mismo día:</strong> Solicitudes de hoy habilitadas hasta las ${limExtra.texto}${limExtra.admin ? ' (Sup. Admin)' : ''}.`;
                 }
                 if (btnEnviar) btnEnviar.disabled = false;
             }
@@ -8348,7 +8409,16 @@ window.enviarSolicitudInvitado = async function (e, tipo) {
     if (btn) btn.disabled = true;
 
     const fecha = document.getElementById('solFecha')?.value || ((typeof getLocalHoyStr === 'function') ? getLocalHoyStr() : new Date().toISOString().slice(0, 10));
-    const cantidad = parseInt(document.getElementById('solCantidad')?.value) || 1;
+    const cantidadCampo = parseInt(document.getElementById('solCantidad')?.value) || 1;
+    const incluyeAnfitrion = tipo !== 'ALMUERZO_EXTRA' && !!document.getElementById('solIncluyeAnfitrion')?.checked;
+    // Refrigerios: el campo es el número de invitados; el anfitrión suma uno si se incluye
+    const cantidad = tipo === 'ALMUERZO_EXTRA' ? cantidadCampo : cantidadCampo + (incluyeAnfitrion ? 1 : 0);
+    const invitadoTelefono = (document.getElementById('solTelInvitado')?.value || '').replace(/\D/g, '');
+    if (invitadoTelefono && !/^(09\d{8}|5939\d{8})$/.test(invitadoTelefono)) {
+        mostrarToast("Revisa el WhatsApp del invitado: celular de Ecuador (09XXXXXXXX), o déjalo vacío.", "warning");
+        if (btn) btn.disabled = false;
+        return;
+    }
     const invitado = document.getElementById('solInvitado')?.value.trim();
     const empresa = document.getElementById('solEmpresa')?.value.trim();
     const horaServicio = document.getElementById('solHoraServicio')?.value || '';
@@ -8376,7 +8446,10 @@ window.enviarSolicitudInvitado = async function (e, tipo) {
             invitado: invitado,
             empresa: empresa || 'TCONTROL',
             horaServicio: horaServicio,
-            observaciones: observaciones
+            observaciones: observaciones,
+            invitadoTelefono: invitadoTelefono,
+            cantidadInvitados: tipo === 'ALMUERZO_EXTRA' ? '' : cantidadCampo,
+            incluyeAnfitrion: incluyeAnfitrion
         });
 
         if (res && res.ok !== false) {
@@ -8384,6 +8457,11 @@ window.enviarSolicitudInvitado = async function (e, tipo) {
             window.cerrarModalSolicitudInvitado();
             window._misSolicitudesInvitadosHoy = undefined; // Forzar recarga
             renderAlmuerzoPage();
+
+            // Ticket de almuerzo: al invitado si dejó su WhatsApp; si no, al anfitrión para que se lo comparta
+            if (res.data && res.data.ticket) {
+                window.enviarTicketAlmuerzo(res.data).catch(eT => console.warn("Ticket de almuerzo:", eT));
+            }
 
             // Notificar automáticamente a los Sup. Admin vía WhatsApp
             if (window.OpenWAService && typeof window.OpenWAService.notificarSupAdminsSolicitudInvitado === 'function') {
@@ -8412,6 +8490,81 @@ window.enviarSolicitudInvitado = async function (e, tipo) {
     }
 };
 
+// ===== Ticket de almuerzo del invitado (ticket_almuerzo.html?t=...) =====
+function urlTicketAlmuerzo(token) {
+    const base = location.origin.includes('localhost') || location.origin.includes('127.0.0.1') ? location.origin : 'https://asistencia.tcontrolsa.com';
+    return `${base}/ticket_almuerzo.html?t=${encodeURIComponent(token)}`;
+}
+function fechaTicketTexto(f) {
+    const p = String(f || '').split('-');
+    if (p.length !== 3) return f || '';
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return d.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+// Envía el ticket por WhatsApp. Sin WhatsApp del invitado (o si falla el envío) llega al anfitrión;
+// si tampoco se puede, se abre la ventana para compartirlo a mano.
+window.enviarTicketAlmuerzo = async function (sol) {
+    const url = urlTicketAlmuerzo(sol.ticket);
+    const cant = parseInt(sol.cantidad, 10) || 1;
+    const fechaTxt = fechaTicketTexto(sol.fecha);
+    const anfitrion = (typeof extraerPrimerNombre === 'function' ? extraerPrimerNombre(sol.empleadoNombre || empleado.nombre) : (sol.empleadoNombre || ''));
+    const textoInvitado =
+        `🍱 *TCONTROL · Ticket de almuerzo*\n\n` +
+        `Hola ${sol.invitado || ''}, ${anfitrion} te invita a almorzar en TCONTROL.\n` +
+        `📅 Válido solo el *${fechaTxt}*${cant > 1 ? ` · ${cant} almuerzos` : ''}\n` +
+        `🎫 Código *${sol.codigoTicket}*\n\n` +
+        `Muestra este ticket en el comedor:\n${url}`;
+    const wa = window.OpenWAService;
+    const puede = wa && typeof wa.enviarMensajeTexto === 'function';
+
+    if (puede && sol.invitadoTelefono) {
+        try {
+            const r = await wa.enviarMensajeTexto(sol.invitadoTelefono, textoInvitado);
+            if (r && r.ok !== false) { mostrarToast("Ticket de almuerzo enviado al invitado por WhatsApp", "success"); return; }
+        } catch (e) { console.warn("Ticket al invitado:", e); }
+    }
+    const telAnf = empleado && (empleado.telefono || empleado.celular);
+    if (puede && telAnf) {
+        const textoAnf =
+            `🍱 *TCONTROL · Ticket de almuerzo para tu invitado*\n\n` +
+            `${sol.invitadoTelefono ? 'No pudimos enviárselo a' : 'No registraste el WhatsApp de'} *${sol.invitado || 'tu invitado'}*. ` +
+            `Reenvíale este mensaje o muéstrale el ticket en tu teléfono.\n\n` +
+            `📅 Válido solo el *${fechaTxt}*${cant > 1 ? ` · ${cant} almuerzos` : ''}\n` +
+            `🎫 Código *${sol.codigoTicket}*\n${url}`;
+        try {
+            const r = await wa.enviarMensajeTexto(telAnf, textoAnf);
+            if (r && r.ok !== false) { mostrarToast("Te enviamos el ticket por WhatsApp para que se lo compartas a tu invitado", "info"); return; }
+        } catch (e) { console.warn("Ticket al anfitrión:", e); }
+    }
+    window.verTicketAlmuerzo(sol);
+};
+
+// Ventana para ver / compartir el ticket a mano (también desde «Mis solicitudes»)
+window.verTicketAlmuerzo = function (solOId) {
+    const sol = typeof solOId === 'string' ? (window._misSolicitudesInvitadosHoy || []).find(s => s.id === solOId) : solOId;
+    if (!sol || !sol.ticket) { mostrarToast("Esta solicitud no tiene ticket.", "warning"); return; }
+    const url = urlTicketAlmuerzo(sol.ticket);
+    const cant = parseInt(sol.cantidad, 10) || 1;
+    const msg = encodeURIComponent(`🍱 TCONTROL · Ticket de almuerzo para ${sol.invitado || 'ti'}. Válido solo el ${fechaTicketTexto(sol.fecha)}${cant > 1 ? ` (${cant} almuerzos)` : ''}. Código ${sol.codigoTicket}. Muéstralo en el comedor: ${url}`);
+    document.getElementById('modalTicketAlmuerzo')?.remove();
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="modalTicketAlmuerzo" class="almuerzo-modal-overlay" onclick="if(event.target === this) this.remove()">
+            <div class="almuerzo-modal-card" style="max-width: 360px; text-align: center; padding: 22px 20px;">
+                <button class="almuerzo-modal-close" onclick="document.getElementById('modalTicketAlmuerzo').remove()">&times;</button>
+                <div style="font-size: 30px;">🎫</div>
+                <h6 style="font-weight: 800; color: #0f172a; margin: 6px 0 2px; font-size: 15px;">Ticket de almuerzo</h6>
+                <div style="font-size: 12px; color: #64748b;">${escapeHtml(sol.invitado || 'Invitado')} · válido solo el ${escapeHtml(fechaTicketTexto(sol.fecha))}${cant > 1 ? ` · ${cant} almuerzos` : ''}</div>
+                <div style="font-size: 26px; font-weight: 800; letter-spacing: 2px; color: #1d4ed8; margin: 12px 0;">${escapeHtml(sol.codigoTicket || '')}</div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <a class="btn btn-sm" href="https://wa.me/?text=${msg}" target="_blank" rel="noopener" style="background: #16a34a; color: #fff; font-weight: 700; border-radius: 8px;"><i class="fab fa-whatsapp"></i> Enviar por WhatsApp</a>
+                    <a class="btn btn-sm btn-light" href="${url}" target="_blank" rel="noopener" style="font-weight: 600; border-radius: 8px;"><i class="fas fa-eye"></i> Ver el ticket</a>
+                    <button type="button" class="btn btn-sm btn-light" style="font-weight: 600; border-radius: 8px;" onclick="navigator.clipboard && navigator.clipboard.writeText('${url}').then(() => mostrarToast('Enlace copiado', 'success'))"><i class="fas fa-copy"></i> Copiar enlace</button>
+                </div>
+            </div>
+        </div>`);
+};
+
 window.cancelarSolicitudInvitado = async function (id, tipo) {
     const ahora = new Date();
     const minActual = ahora.getHours() * 60 + ahora.getMinutes();
@@ -8424,8 +8577,9 @@ window.cancelarSolicitudInvitado = async function (id, tipo) {
     const esParaHoy = (fechaSol === hoyStrLocal || !fechaSol);
 
     if (esParaHoy) {
-        if (tipo === 'ALMUERZO_EXTRA' && minActual > 580) {
-            mostrarToast("El horario para modificar almuerzos de hoy expiró a las 09:40.", "warning");
+        const limExtra = limiteAlmuerzoExtra(empleado);
+        if (tipo === 'ALMUERZO_EXTRA' && minActual > limExtra.min) {
+            mostrarToast(`El horario para modificar almuerzos de hoy expiró a las ${limExtra.texto}.`, "warning");
             return;
         }
         if (tipo === 'REFRIGERIO_SANDUCHE' && minActual > 520) {

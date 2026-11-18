@@ -6,7 +6,8 @@
  * extra (p. ej. encargados del catering) que se agregan en el panel: WhatsApp → 2. Automatizaciones (Aviso diario de almuerzos).
  *
  * Configuración en Firestore `configuracion/aviso_almuerzos`:
- *   activo (bool), hora ('HH:mm'), incluir_admins (bool), contactos [{nombre, telefono}]
+ *   activo (bool), hora ('HH:mm'), incluir_admins (bool), contactos [{nombre, telefono}],
+ *   colaboradores [{id, nombre}] (fichas elegidas en el panel, p. ej. un usuario de producción: el teléfono sale de la ficha)
  *   y lo escribe este script: ultimo_envio ('YYYY-MM-DD'), ultimo_resultado (texto), ultimo_total.
  *
  * Cuenta igual que el panel y la página de Catering, con UN SOLO pedido para Empresa y Servicios externos:
@@ -132,11 +133,20 @@ function destinatariosAvisoAlm_(cfg) {
     vistos[numero] = true;
     lista.push({ nombre: nombre || numero, numero: numero });
   };
+  var empleados = null;
+  var fichas = function () { return empleados || (empleados = listarEmpleadosFirestore_()); };
   if (cfg.incluir_admins !== false) {
-    listarEmpleadosFirestore_().forEach(function (e) {
+    fichas().forEach(function (e) {
       if (String(e.activo || 'SI').toUpperCase() === 'NO') return;
       var rol = String(e.supervisor || e.rol || '').toUpperCase();
       if (e.id === '1058' || rol.indexOf('ADMIN') !== -1) agregar(e.nombre, e.telefono || e.celular);
+    });
+  }
+  var ids = (cfg.colaboradores || []).map(function (k) { return k && String(k.id || '').trim(); }).filter(Boolean);
+  if (ids.length) {
+    fichas().forEach(function (e) {
+      if (ids.indexOf(String(e.id)) === -1 || String(e.activo || 'SI').toUpperCase() === 'NO') return;
+      agregar(e.nombre, e.telefono || e.celular);
     });
   }
   (cfg.contactos || []).forEach(function (k) { if (k && k.activo !== false) agregar(k.nombre, k.telefono); });

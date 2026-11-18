@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Ticket de almuerzo · TCONTROL</title>
+  <link rel="icon" href="./assets/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #eef2f7; color: #0f172a; display: flex; flex-direction: column; align-items: center; padding: 16px; }
+    .tk-top { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 420px; margin-bottom: 14px; }
+    .tk-top img { height: 34px; width: auto; }
+    .tk-top strong { display: block; font-size: 15px; }
+    .tk-top span { font-size: 11.5px; color: #64748b; }
+    .tk-card { width: 100%; max-width: 420px; background: #fff; border-radius: 22px; box-shadow: 0 10px 30px rgba(15,23,42,.08); overflow: hidden; }
+    .tk-estado { padding: 22px 20px; text-align: center; color: #fff; }
+    .tk-estado i { font-size: 40px; display: block; margin-bottom: 8px; }
+    .tk-estado strong { display: block; font-size: 22px; letter-spacing: .5px; }
+    .tk-estado span { font-size: 13px; opacity: .92; }
+    .tk-ok { background: linear-gradient(135deg, #15803d, #16a34a); }
+    .tk-espera { background: linear-gradient(135deg, #b45309, #d97706); }
+    .tk-mal { background: linear-gradient(135deg, #b91c1c, #dc2626); }
+    .tk-cuerpo { padding: 20px; position: relative; }
+    .tk-cuerpo::before { content: ''; position: absolute; top: -1px; left: 18px; right: 18px; border-top: 2px dashed #e2e8f0; }
+    .tk-codigo { text-align: center; font-size: 34px; font-weight: 800; letter-spacing: 4px; color: #1d4ed8; margin: 4px 0 16px; }
+    .tk-fecha { text-align: center; font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+    dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; font-size: 14px; }
+    dt { color: #64748b; font-weight: 600; }
+    dd { margin: 0; font-weight: 700; text-align: right; }
+    .tk-nota { font-size: 11.5px; color: #64748b; text-align: center; margin: 16px 0 0; line-height: 1.5; }
+    .tk-reloj { font-size: 12px; color: #475569; text-align: center; margin-top: 10px; font-variant-numeric: tabular-nums; }
+    .tk-cargando { padding: 40px 20px; text-align: center; color: #64748b; }
+    button { margin-top: 14px; width: 100%; padding: 11px; border: 0; border-radius: 10px; background: #1d4ed8; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header class="tk-top">
+    <img src="./assets/images/Logotipo T Control.png" alt="TCONTROL">
+    <div><strong>Ticket de almuerzo</strong><span>TCONTROL S.A. · Comedor</span></div>
+  </header>
+  <main class="tk-card" id="tkApp" aria-live="polite">
+    <div class="tk-cargando"><i class="fas fa-spinner fa-spin"></i> Consultando el ticket…</div>
+  </main>
+  <noscript><p style="text-align:center">Active JavaScript para ver el ticket.</p></noscript>
+  <script>
+  /**
+   * TCONTROL · Ticket de almuerzo del invitado (ticket_almuerzo.html?t=<token>)
+   * Lo genera el almuerzo extra que pide el anfitrión (firebase_backend.js · crearSolicitudInvitado) y se envía por WhatsApp
+   * al invitado o, si no tiene, al anfitrión. Se muestra en el comedor; es válido solo el día de la visita.
+   */
+  (function () {
+    'use strict';
+    const PROYECTO = 'tcontrol-asistencia';
+    const API_KEY = 'AIzaSyDHAOvwmq4nt4IdalNdowYcak0clwEvFc4';
+    const app = document.getElementById('tkApp');
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const token = new URLSearchParams(location.search).get('t') || '';
+
+    // Fecha de hoy en Ecuador, sin depender de la zona horaria del teléfono
+    const hoyEc = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const fechaLarga = f => { const p = String(f).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, c => c.toUpperCase()); };
+    const nombreCorto = n => { const p = String(n || '').trim().split(/\s+/); return p.length >= 3 ? p[2] + ' ' + p[0] : p.join(' '); };
+    const valor = v => v == null ? '' : ('stringValue' in v ? v.stringValue : 'integerValue' in v ? Number(v.integerValue) : 'doubleValue' in v ? v.doubleValue : 'booleanValue' in v ? v.booleanValue : '');
+
+    function estadoHtml(clase, icono, titulo, texto) {
+      return `<div class="tk-estado ${clase}" role="status"><i class="fas ${icono}" aria-hidden="true"></i><strong>${titulo}</strong><span>${texto}</span></div>`;
+    }
+
+    let sol = null;
+    function pintar() {
+      if (!sol) return;
+      const hoy = hoyEc();
+      const estado = String(sol.estado || '').toUpperCase();
+      let cab;
+      if (estado === 'CANCELADO') cab = estadoHtml('tk-mal', 'fa-circle-xmark', 'TICKET ANULADO', 'El anfitrión canceló este almuerzo.');
+      else if (sol.fecha === hoy) cab = estadoHtml('tk-ok', 'fa-circle-check', 'VÁLIDO HOY', 'Presente este ticket en el comedor.');
+      else if (sol.fecha > hoy) cab = estadoHtml('tk-espera', 'fa-calendar-day', 'AÚN NO VÁLIDO', 'Solo sirve el día de la visita.');
+      else cab = estadoHtml('tk-mal', 'fa-clock-rotate-left', 'TICKET VENCIDO', 'Era válido solo el día de la visita.');
+      const cant = parseInt(sol.cantidad, 10) || 1;
+      app.innerHTML = `${cab}
+        <div class="tk-cuerpo">
+          <div class="tk-codigo">${esc(sol.codigoTicket || '')}</div>
+          <div class="tk-fecha"><i class="far fa-calendar"></i> ${esc(fechaLarga(sol.fecha))}</div>
+          <dl>
+            <dt>Invitado</dt><dd>${esc(sol.invitado || 'Invitado')}</dd>
+            ${sol.empresa && sol.empresa !== 'TCONTROL' ? `<dt>Empresa</dt><dd>${esc(sol.empresa)}</dd>` : ''}
+            <dt>Almuerzos</dt><dd>${cant}</dd>
+            <dt>Anfitrión</dt><dd>${esc(nombreCorto(sol.empleadoNombre))}</dd>
+          </dl>
+          <div class="tk-reloj" id="tkReloj"></div>
+          <p class="tk-nota">Ticket personal emitido por TCONTROL S.A. Válido solo en la fecha indicada y por el número de almuerzos señalado.</p>
+        </div>`;
+      reloj();
+    }
+    function reloj() {
+      const el = document.getElementById('tkReloj');
+      if (el) el.textContent = 'Hora de Ecuador: ' + new Date().toLocaleTimeString('es-EC', { timeZone: 'America/Guayaquil', hour12: false });
+    }
+
+    function error(titulo, texto, reintentar) {
+      app.innerHTML = estadoHtml('tk-mal', 'fa-ticket', titulo, texto) +
+        (reintentar ? '<div class="tk-cuerpo"><button type="button" id="tkReintentar">Reintentar</button></div>' : '');
+      if (reintentar) document.getElementById('tkReintentar').addEventListener('click', consultar);
+    }
+
+    async function consultar() {
+      if (!/^[a-z0-9]{12,40}$/.test(token)) { error('TICKET NO VÁLIDO', 'El enlace está incompleto. Pida al anfitrión que se lo reenvíe.'); return; }
+      app.innerHTML = '<div class="tk-cargando"><i class="fas fa-spinner fa-spin"></i> Consultando el ticket…</div>';
+      try {
+        const r = await fetch(`https://firestore.googleapis.com/v1/projects/${PROYECTO}/databases/(default)/documents:runQuery?key=${API_KEY}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ structuredQuery: {
+            from: [{ collectionId: 'solicitudes_invitados' }],
+            where: { fieldFilter: { field: { fieldPath: 'ticket' }, op: 'EQUAL', value: { stringValue: token } } },
+            limit: 1
+          } })
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const filas = (await r.json()).filter(x => x.document);
+        if (!filas.length) { error('TICKET NO VÁLIDO', 'Este ticket no existe o fue eliminado. Consulte al anfitrión.'); return; }
+        const f = filas[0].document.fields || {};
+        sol = {};
+        Object.keys(f).forEach(k => { sol[k] = valor(f[k]); });
+        pintar();
+      } catch (e) {
+        error('SIN CONEXIÓN', 'No se pudo consultar el ticket. Revise el internet e intente de nuevo.', true);
+      }
+    }
+
+    consultar();
+    setInterval(() => { reloj(); if (sol) { const h = hoyEc(); if (h !== pintar._hoy) { pintar._hoy = h; pintar(); } } }, 1000);
+  })();
+  </script>
+</body>
+</html>
