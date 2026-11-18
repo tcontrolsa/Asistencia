@@ -9209,6 +9209,9 @@ function cargarPanelActual() {
   else if (panelActual === 'whatsapp') {
     if (typeof window.inicializarPanelWhatsApp === 'function') window.inicializarPanelWhatsApp();
   }
+  else if (panelActual === 'desempeno') {
+    cargarPanelDesempeno();   // al cambiar Empresa / Servicios externos se vuelve a leer la lista del grupo
+  }
   else if (panelActual === 'detalle' && window.idDetalleActual) {
     mostrarDetalle(window.idDetalleActual, window.indexPeriodoDetalleActual || 0, window.customInicioDetalleActual, window.customFinDetalleActual);
   }
