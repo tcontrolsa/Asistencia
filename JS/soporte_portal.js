@@ -189,11 +189,27 @@
       .update(new firebase.firestore.FieldPath('vinculos', chatId), firebase.firestore.FieldValue.delete())
       .catch(e => console.warn('Soporte: no se quitó el vínculo', e));
   }
-  function marcarTicket(ticketId, estado) {
+  // Guarda el estado en Firestore. Si las reglas lo rechazan por no haber sesión de Firebase (la sesión del
+  // portal se restaura sin abrir la de Firebase), pide la contraseña una vez y reintenta.
+  async function marcarTicket(ticketId, estado) {
     const v = { estado, por: SP.ses.empleadoId, ts: new Date().toISOString() };
+    const previo = SP.tick[ticketId];
     SP.tick[ticketId] = v;
-    db().collection('configuracion').doc('soporte_tickets').set({ tickets: { [ticketId]: v } }, { merge: true })
-      .catch(e => { console.warn('Soporte: estado del requerimiento', e); aviso('No se guardó el estado. Revisa la conexión.'); });
+    const guardar = () => db().collection('configuracion').doc('soporte_tickets').set({ tickets: { [ticketId]: v } }, { merge: true });
+    try { await guardar(); return true; } catch (e) {
+      console.warn('Soporte: estado del requerimiento', e);
+      const rechazo = e && (e.code === 'permission-denied' || /permission/i.test(e.message || ''));
+      const sinSesion = !(window.firebase && firebase.auth && firebase.auth().currentUser);
+      if (rechazo && sinSesion && window.SesionFirebase) {
+        const r = await window.SesionFirebase.asegurar(SP.ses.empleadoId, { siempre: true, obligatoria: true, motivo: 'Para guardar el estado del requerimiento.' });
+        if (r && r.ok) { try { await guardar(); aviso('Estado guardado'); return true; } catch (e2) { console.warn('Soporte: reintento', e2); } }
+      }
+      if (previo) SP.tick[ticketId] = previo; else delete SP.tick[ticketId];
+      aviso(rechazo ? (sinSesion ? 'No se guardó: confirma tu contraseña y vuelve a intentarlo.' : 'No se guardó: tu usuario no tiene permiso en Firestore (revisa las reglas publicadas).')
+        : 'No se guardó el estado. Revisa la conexión.');
+      pintar();
+      return false;
+    }
   }
   // ¿Escribió de verdad (no «gracias» ni otro reporte) hasta 3 días después de cerrarse? Después de eso es otra conversación
   const VENTANA_REABRIR_MS = 3 * 86400000;
@@ -365,9 +381,9 @@
   window.spAvisos = () => { SP.verAvisos = !SP.verAvisos; pintar(); };
   window.spRespuesta = i => { const t = $('spTexto'); if (t) { t.value = RESPUESTAS[i]; t.focus(); } };
   window.spTecla = ev => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); window.spEnviar(); } };
-  window.spEstado = function (ticketId, estado) {
-    marcarTicket(ticketId, estado);
-    aviso(estado === 'resuelto' ? 'Requerimiento marcado como resuelto' : 'Requerimiento reabierto');
+  window.spEstado = async function (ticketId, estado) {
+    pintar();
+    if (await marcarTicket(ticketId, estado)) aviso(estado === 'resuelto' ? 'Requerimiento marcado como resuelto' : 'Requerimiento reabierto');
     pintar();
   };
   window.spEnviar = async function () {
