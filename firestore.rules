@@ -163,6 +163,23 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Colección 'sugerencias' (comentarios, sugerencias e ideas, JS/sugerencias.js)
+    // Con sesión: cada persona crea y lee solo lo suyo; los gestores leen todo y responden
+    // (solo estado y respuesta). No se borra: queda como historial.
+    match /sugerencias/{sugerenciaId} {
+      allow create: if conSesion()
+                    && request.resource.data.empleadoId == request.auth.uid
+                    && request.resource.data.tipo in ['COMENTARIO', 'SUGERENCIA', 'IDEA']
+                    && request.resource.data.estado == 'NUEVA'
+                    && request.resource.data.texto is string
+                    && request.resource.data.texto.size() >= 10
+                    && request.resource.data.texto.size() <= 1000;
+      allow read: if esGestor() || (conSesion() && resource.data.empleadoId == request.auth.uid);
+      allow update: if esGestor()
+                    && camposCambiados().hasOnly(['estado', 'respuesta', 'respondido_por', 'respondido_en']);
+      allow delete: if false;
+    }
+
     // Colección 'empleados_desvinculados' (Historial laboral pasivo LOPDP)
     // Custodia de registros pasivos: no pueden eliminarse desde clientes.
     match /empleados_desvinculados/{desvinculadoId} {

@@ -22,6 +22,7 @@
     { clave: 'desempeno', nombre: 'Desempeño', icono: 'fa-seedling', nav: '[data-panel="desempeno"]' },
     { clave: 'visitas', nombre: 'Visitas', icono: 'fa-id-card-alt', nav: '[data-panel="visitas"]' },
     { clave: 'permisos', nombre: 'Permisos', icono: 'fa-calendar-alt', nav: '[data-panel="permisos"]' },
+    { clave: 'sugerencias', nombre: 'Sugerencias', icono: 'fa-comments', nav: '[data-panel="sugerencias"]' },
     { clave: 'whatsapp', nombre: 'Notificaciones WhatsApp', icono: 'fa-whatsapp fab', nav: '[data-panel="whatsapp"]' },
     { clave: 'soporte', nombre: 'Portal de soporte', icono: 'fa-headset', nav: '#navItemSoporte' },
     { clave: 'opciones', nombre: 'Opciones adicionales', icono: 'fa-sliders-h', nav: '[data-panel="opciones"]', soloMaster: true },

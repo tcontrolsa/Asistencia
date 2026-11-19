@@ -7283,7 +7283,8 @@ function cambiarPanel(panel) {
     opciones: 'Opciones adicionales',
     whatsapp: 'Notificaciones WhatsApp',
     desempeno: 'Evaluación de desempeño',
-    permisos: 'Permisos y vacaciones'
+    permisos: 'Permisos y vacaciones',
+    sugerencias: 'Comentarios, sugerencias e ideas'
   };
   const titleText = titles[panel] || 'Supervisor';
   if ($('pageTitle')) $('pageTitle').textContent = titleText;
@@ -7317,6 +7318,9 @@ function cambiarPanel(panel) {
     }
     else if (panel === 'permisos') {
       cargarPanelPermisos();
+    }
+    else if (panel === 'sugerencias') {
+      cargarPanelSugerencias();
     }
     else if (panel === 'opciones') {
       if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
@@ -9376,6 +9380,26 @@ function cargarPanelPermisos(enlace) {
   });
 }
 
+// Comentarios, sugerencias e ideas (JS/sugerencias.js): bandeja para responder
+function cargarPanelSugerencias() {
+  const cont = $('sgPanelSugerencias');
+  if (!cont || !window.Sugerencias) return;
+  let ses = {};
+  try { ses = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+  const yo = (empCache || []).find(e => String(e.id) === String(ses.id)) || {};
+  window.Sugerencias.montarPanel(cont, {
+    usuario: { id: String(ses.id || ''), nombre: ses.nombre || yo.nombre || (String(ses.id) === '1058' ? 'Admin Master' : '') },
+    onNuevas: pintarInsigniaSugerenciasPanel
+  });
+}
+
+function pintarInsigniaSugerenciasPanel(n) {
+  const b = $('badgeSugerenciasPanel');
+  if (!b) return;
+  b.style.display = n ? 'inline-block' : 'none';
+  b.textContent = n > 99 ? '99+' : String(n || 0);
+}
+
 function pintarInsigniaPermisosPanel(n) {
   const b = $('badgePermisosPanel');
   if (!b) return;
@@ -9757,6 +9781,9 @@ function mostrarInformacionSupervisor(session) {
   try {
     if (window.Permisos && session && session.id) window.Permisos.contarPorAprobar(session.id).then(pintarInsigniaPermisosPanel).catch(() => { });
   } catch (e) { console.warn('Permisos:', e); }
+  try {
+    if (window.Sugerencias) window.Sugerencias.contarNuevas().then(pintarInsigniaSugerenciasPanel).catch(() => { });
+  } catch (e) { console.warn('Sugerencias:', e); }
   if (!session) return;
 
   const id = session.id || "";

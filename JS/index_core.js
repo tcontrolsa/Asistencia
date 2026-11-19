@@ -8804,6 +8804,8 @@ async function navigateTo(page) {
             renderPermisosPage();
         } else if (page === 'carne') {
             renderCarnePage();
+        } else if (page === 'sugerencias') {
+            renderSugerenciasPage();
         }
         ajustarLayout();
     };
@@ -8869,6 +8871,18 @@ function renderPermisosPage() {
         empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area, cargo: empleado.cargo },
         onPendientes: pintarInsigniaPermisos
     });
+}
+
+// Comentarios, sugerencias e ideas (JS/sugerencias.js)
+function renderSugerenciasPage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `<div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;"><div id="sgSugerenciasApp"></div></div>`;
+    const cont = document.getElementById('sgSugerenciasApp');
+    if (!window.Sugerencias || !empleado) {
+        cont.innerHTML = '<div class="glass-card text-center" style="background:white; border-radius:20px; padding:30px;">No se pudo cargar esta sección. Recarga la app.</div>';
+        return;
+    }
+    window.Sugerencias.montarApp(cont, { empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area } });
 }
 
 function pintarInsigniaPermisos(n) {
