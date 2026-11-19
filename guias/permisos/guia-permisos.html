@@ -1,4 +1,6 @@
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
 <title>Guía de Permisos</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -227,6 +229,59 @@ td b { font-weight: 600; }
   .escena-txt { padding: 20px 18px; }
   .meta { text-align: left; }
 }
+/* ---------- Teléfonos ---------- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, .marco, .tab, .paso-btn { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.escena { scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 58px); }
+.desliza { display: none; }
+@media (max-width: 640px) {
+  body { font-size: 15.5px; }
+  .cab .wrap { padding-block: 16px 0; gap: 10px; }
+  .cab h1 { font-size: 27px; margin-top: 6px; }
+  .cab .lead { font-size: 14.5px; line-height: 1.5; }
+  .meta { font-size: 11px; padding-bottom: 12px; }
+  .meta br { display: none; }
+  .meta b:first-of-type::after { content: " · "; color: var(--muted); }
+  .tab { padding: 12px 10px 10px; font-size: 14.5px; gap: 6px; }
+  main .wrap { padding-block: 18px 40px; gap: 22px; }
+  .intro h2 { font-size: 21px; }
+  .intro p { font-size: 14.5px; }
+  .tuto { gap: 14px; }
+  .pasos { margin-inline: -16px; padding-inline: 16px; scroll-padding-inline: 16px; scrollbar-width: none; }
+  .pasos::-webkit-scrollbar { display: none; }
+  .escena { min-height: 0; border-radius: 14px; overflow: clip; }
+  .escena-img { padding: 14px; }
+  .marco { border-width: 4px; border-radius: 14px; }
+  .marco.tel { width: min(100%, 250px, 30vh); max-width: none; }
+  .marco.web { border-width: 0; border-top-width: 18px; }
+  .marco.web::before { top: -12px; }
+  .escena-txt { padding: 16px 16px 0; gap: 10px; }
+  .escena-txt h3 { font-size: 19px; }
+  .escena-txt .cuerpo { gap: 10px; }
+  .desliza { display: block; font-size: 12.5px; color: var(--muted); text-align: center; margin-top: -4px; }
+  .nav-pasos { position: sticky; bottom: 0; z-index: 2; margin: 4px -16px 0; padding: 10px 16px max(10px, env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--line); flex-wrap: nowrap; }
+  .nav-pasos .prog { min-width: 40px; }
+  .btn { padding: 11px 14px; min-height: 44px; }
+  .bloque > h2 { font-size: 19px; }
+  .tabla-wrap { overflow: visible; background: none; border: 0; border-radius: 0; }
+  .tabla-wrap table, .tabla-wrap tbody, .tabla-wrap tr, .tabla-wrap td { display: block; min-width: 0; width: 100%; }
+  .tabla-wrap thead { display: none; }
+  .tabla-wrap tbody { display: grid; gap: 10px; }
+  .tabla-wrap tr { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px 14px; }
+  .tabla-wrap td { border-bottom: 1px solid var(--line); padding: 9px 0; }
+  .tabla-wrap tr td:last-child { border-bottom: 0; }
+  .tabla-wrap td[data-l]::before { content: attr(data-l); display: block; font: 600 11px/1.3 var(--f-body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .tabla-wrap td:first-child::before { display: none; }
+  .tabla-wrap td:first-child { font-weight: 600; }
+  .calc-in, .calc-out { padding: 16px; }
+  .cifra { font-size: 34px; }
+  .carril { padding: 14px; }
+  .faq summary { padding: 13px 14px; }
+  .faq .resp { padding: 0 14px 14px; }
+  .cambios li { grid-template-columns: 1fr; gap: 2px; }
+  .visor { padding: 8px; }
+  .visor img { border-radius: 8px; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
 
@@ -255,9 +310,10 @@ td b { font-weight: 600; }
    VERSION y FECHA, agrega una línea en CAMBIOS y vuelve a publicar.
    Las capturas viven en img/ (ver README.md en la misma carpeta).
    ===================================================================== */
-const VERSION = '1.0';
-const FECHA = '18/11/2026';
+const VERSION = '1.1';
+const FECHA = '19/11/2026';
 const CAMBIOS = [
+  ['19/11/2026', 'Adaptada a teléfonos: texto a tamaño normal, tablas en tarjetas, botones Anterior/Siguiente siempre a mano y cambio de paso deslizando la captura.'],
   ['18/11/2026', 'Primera versión: flujo completo (fases 1 a 5), permisos por horas según el horario pedido, vista de vacaciones en días completos y pie de la app con «Más».']
 ];
 
@@ -362,7 +418,7 @@ function htmlTutorial(id) {
   </div>`;
 }
 
-function pintarPaso(id, i) {
+function pintarPaso(id, i, desplazar) {
   const pasos = PASOS[id];
   i = Math.max(0, Math.min(pasos.length - 1, i));
   estadoPaso[id] = i; guardarPasos();
@@ -381,6 +437,7 @@ function pintarPaso(id, i) {
       <div class="eyebrow">Paso ${i + 1} de ${pasos.length}</div>
       <h3>${esc(p.t)}</h3>
       <div class="cuerpo">${p.h}</div>
+      <p class="desliza">Desliza la captura o usa los botones para cambiar de paso</p>
       <div class="nav-pasos">
         <button type="button" class="btn" data-mover="-1" ${i === 0 ? 'disabled' : ''}>← Anterior</button>
         <div class="prog" aria-hidden="true"><i style="width:${((i + 1) / pasos.length) * 100}%"></i></div>
@@ -388,7 +445,12 @@ function pintarPaso(id, i) {
       </div>
     </div>`;
   const activo = tuto.querySelector(`.paso-btn[data-i="${i}"]`);
-  if (activo && window.matchMedia('(max-width: 900px)').matches) activo.scrollIntoView({ inline: 'center', block: 'nearest' });
+  if (activo && window.matchMedia('(max-width: 900px)').matches) {
+    const fila = activo.closest('.pasos');
+    fila.scrollTo({ left: activo.offsetLeft - (fila.clientWidth - activo.offsetWidth) / 2, behavior: 'smooth' });
+  }
+  const escena = tuto.querySelector('.escena');
+  if (desplazar && esMovil() && escena.getBoundingClientRect().top < 0) escena.scrollIntoView({ block: 'start' });
 }
 
 function siguienteVista(id) {
@@ -494,6 +556,7 @@ function pintarVista(id) {
     $('#vista').innerHTML = intro + htmlTutorial(v.id) + (EXTRA[v.id] || '');
     pintarPaso(v.id, estadoPaso[v.id] || 0);
   }
+  etiquetarTablas();
 }
 
 const REGLAS = `<section class="bloque"><h2>Las tres reglas</h2>
@@ -569,7 +632,7 @@ document.addEventListener('click', e => {
   const tab = e.target.closest('.tab'); if (tab) { ir(tab.dataset.v); return; }
   const irA = e.target.closest('[data-ir]'); if (irA) { ir(irA.dataset.ir); return; }
   const pb = e.target.closest('.paso-btn'); if (pb) { pintarPaso(pb.closest('[data-tuto]').dataset.tuto, +pb.dataset.i); return; }
-  const mv = e.target.closest('[data-mover]'); if (mv) { const id = mv.closest('[data-tuto]').dataset.tuto; pintarPaso(id, (estadoPaso[id] || 0) + +mv.dataset.mover); return; }
+  const mv = e.target.closest('[data-mover]'); if (mv) { const id = mv.closest('[data-tuto]').dataset.tuto; pintarPaso(id, (estadoPaso[id] || 0) + +mv.dataset.mover, true); return; }
   const z = e.target.closest('[data-zoom]'); if (z) { abrirVisor(z.dataset.zoom); return; }
 });
 document.addEventListener('keydown', e => {
@@ -584,6 +647,26 @@ document.addEventListener('keydown', e => {
 function abrirVisor(src) { const v = $('#visor'); v.querySelector('img').src = src; v.hidden = false; v.querySelector('button').focus(); }
 function cerrarVisor() { $('#visor').hidden = true; }
 $('#visor').addEventListener('click', cerrarVisor);
+
+/* ---------- Teléfonos: tablas en tarjetas y deslizar entre pasos ---------- */
+const esMovil = () => window.matchMedia('(max-width: 640px)').matches;
+function etiquetarTablas() {
+  document.querySelectorAll('.tabla-wrap table').forEach(t => {
+    const cab = [...t.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    t.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, k) => { if (cab[k]) td.dataset.l = cab[k]; }));
+  });
+}
+let toque = null;
+document.addEventListener('touchstart', e => {
+  const esc = e.target.closest('.escena');
+  toque = esc && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, id: esc.closest('[data-tuto]').dataset.tuto } : null;
+}, { passive: true });
+document.addEventListener('touchend', e => {
+  if (!toque) return;
+  const dx = e.changedTouches[0].clientX - toque.x, dy = e.changedTouches[0].clientY - toque.y;
+  const id = toque.id; toque = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) pintarPaso(id, (estadoPaso[id] || 0) + (dx < 0 ? 1 : -1), true);
+}, { passive: true });
 
 pintarVista(vistaDeHash());
 </script>
