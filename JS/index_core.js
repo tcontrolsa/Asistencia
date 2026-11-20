@@ -4582,7 +4582,7 @@ function volverAPIN() {
 
 function esFeriado(fechaStr) {
     if (!fechaStr) return false;
-    if (fechaStr === '2026-06-26') return true; // Feriado imprevisto 26/06/2026
+    if (fechaStr === '2026-06-26' || fechaStr === '2026-11-20') return true; // Feriados imprevistos: 26/06/2026 y 20/11/2026
     let fecha = new Date(fechaStr + 'T12:00:00');
     const m = fecha.getMonth() + 1;
     const d = fecha.getDate();

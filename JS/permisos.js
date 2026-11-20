@@ -32,7 +32,7 @@
   const JORNADA = { ini: 7 * 60 + 30, fin: 16 * 60 + 15 };   // 07:30–16:15 (HORA_ENTRADA_REF / HORA_SALIDA_REF)
   const DIAS_ATRAS_CALAMIDAD = 30;
   const FERIADOS_MD = ['1/1', '2/16', '2/17', '4/3', '4/30', '5/1', '5/25', '8/10', '10/9', '11/2', '11/3', '12/6', '12/25'];
-  const FERIADOS_FECHA = ['2026-06-26'];
+  const FERIADOS_FECHA = ['2026-06-26', '2026-11-20'];
 
   const TIPOS = {
     VACACIONES: { label: 'Vacaciones', icono: 'fa-umbrella-beach', color: 'pm-c-azul', aprobacion: true, modalidades: ['DIAS'], registro: 'VACACIONES',

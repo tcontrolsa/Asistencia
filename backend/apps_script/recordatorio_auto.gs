@@ -23,7 +23,7 @@
 
 var REC_TZ = 'America/Guayaquil';
 var REC_FERIADOS = ['1/1', '2/16', '2/17', '4/3', '4/30', '5/1', '5/25', '8/10', '10/9', '11/2', '11/3', '12/6', '12/25'];
-var REC_FERIADOS_FECHA = ['2026-06-26'];
+var REC_FERIADOS_FECHA = ['2026-06-26', '2026-11-20'];
 var REC_DIAS = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
 
 // ---------------------------------------------------------------- activador (cada 5 min)

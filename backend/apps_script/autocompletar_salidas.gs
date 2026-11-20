@@ -3,7 +3,7 @@
  * 
  * Reglas de Horario:
  * - Días laborables (Lunes a Viernes): Salida oficial 16:15:00.
- * - Fines de semana (Sábado y Domingo): Salida hasta las 15:15:00.
+ * - Fines de semana (Sábado y Domingo) y feriados: Salida hasta las 15:15:00.
  * 
  * Funciones Principales:
  * 1. autoCompletarSalidasFaltantesSheets():
@@ -39,6 +39,16 @@ function extraerMinutosDelDia(val) {
     }
   } catch (e) {}
   return null;
+}
+
+// Feriados: la salida automática es a las 15:15, igual que sábado y domingo (mismas fechas que reglas_jornada.js).
+var AUTO_FERIADOS_MD = ['1/1', '2/16', '2/17', '4/3', '4/30', '5/1', '5/25', '8/10', '10/9', '11/2', '11/3', '12/6', '12/25'];
+var AUTO_FERIADOS_FECHA = ['2026-06-26', '2026-11-20'];   // feriados imprevistos
+function esFeriadoFechaAuto_(fechaIso) {
+  var p = String(fechaIso || '').split('-');
+  if (p.length < 3) return false;
+  return AUTO_FERIADOS_FECHA.indexOf(p[0] + '-' + p[1] + '-' + p[2]) !== -1 ||
+         AUTO_FERIADOS_MD.indexOf(parseInt(p[1], 10) + '/' + parseInt(p[2], 10)) !== -1;
 }
 
 /**
@@ -444,8 +454,8 @@ function autoCompletarSalidasFaltantesSheets() {
         const dayOfWeek = tempD.getDay(); // 0 = Domingo, 6 = Sábado
         const diaSemana = diasSemana[dayOfWeek];
 
-        // Regla: En fines de semana salida a las 15:15:00; entre semana a las 16:15:00
-        const esFinDeSemana = (dayOfWeek === 0 || dayOfWeek === 6);
+        // Regla: en fines de semana y feriados salida a las 15:15:00; entre semana a las 16:15:00
+        const esFinDeSemana = (dayOfWeek === 0 || dayOfWeek === 6 || esFeriadoFechaAuto_(fecha));
         const horaSalida = esFinDeSemana ? '15:15:00' : '16:15:00';
         const horaNum = esFinDeSemana ? 15 : 16;
         const dateObj = new Date(y, m, d, horaNum, 15, 0);
