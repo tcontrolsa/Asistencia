@@ -48,7 +48,7 @@
     if (!m) return '';
     return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
-  const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '';
+  const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit' }) : '';
   const codigoBonito = c => String(c || '').replace(/^(.{4})(.{4})$/, '$1-$2');
 
   function toast(msg) {

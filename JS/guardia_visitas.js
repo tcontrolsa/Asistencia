@@ -21,7 +21,7 @@
   const KEY = 'tcontrol_sesion_porteria';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const codigoBonito = c => String(c || '').replace(/^(.{4})(.{4})$/, '$1-$2');
-  const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '';
+  const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit' }) : '';
   const st = { ses: null, lista: [], ficha: null, error: '', escaneando: false, stream: null, cargando: false,
     cargandoLista: false, listaTs: 0, buscando: '', registrando: '', abriendoCamara: false, filtro: 'todas',
     // Lista: vista 'hoy' | 'historial', texto del buscador de hoy, historial consultado y confirmación del último registro

@@ -26,7 +26,7 @@
   const hoyLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const fechaCorta = f => { const m = String(f || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
   const fechaLarga = f => { const m = String(f || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('es-EC', { weekday: 'short', day: 'numeric', month: 'short' }) : ''; };
-  const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '';
+  const horaDe = ts => ts ? new Date(ts).toLocaleTimeString('es-EC', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit' }) : '';
   // Llamada del guardia al anfitrión (visitante sin cita): resultado, intentos y aviso por el bot
   const TXT_LLAMADA = { viene: 'contestó: venía a recibirlo', espera: 'contestó: pidió que espere', no_contesto: 'no contestó',
     equivocado: 'número equivocado', sin_telefono: 'sin celular registrado' };
