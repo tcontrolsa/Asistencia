@@ -6,7 +6,7 @@
   const KEY_SESION = 'tcontrol_sesion_eval';
   const app = document.getElementById('exApp');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null };
+  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [] };
   const fb = () => window.FirebaseBackend;
   const quitarTildes = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
@@ -53,6 +53,18 @@
     return r.body;
   }
   async function recargar() { st.d = await rpc({ accion: 'inicio' }); }
+
+  // Directorio de empleados (Firestore, solo datos no sensibles) para ligar a cada persona con su ID
+  async function cargarEmpleados() {
+    try {
+      const snap = await firebase.firestore().collection('empleados').get();
+      st.emps = snap.docs.map(d => d.data()).filter(e => e && e.id && String(e.activo ?? 'SI').toUpperCase() !== 'NO')
+        .map(e => ({ id: String(e.id).trim(), nombre: String(e.nombre || '').trim(), correo: String(e.correo || '').trim().toLowerCase(), area: e.area || '', cargo: e.cargo || '' }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    } catch (e) { st.emps = []; }
+  }
+  const empPorId = id => st.emps.find(e => e.id === String(id).trim());
+  const etiquetaEmp = e => `${e.id} · ${e.nombre}${e.cargo ? ' · ' + e.cargo : ''}`;
   function aviso(texto, tipo) { st.msg = texto ? { texto, tipo: tipo || 'ok' } : null; }
 
   async function ejecutar(fn, btn) {
@@ -193,12 +205,13 @@
 
   function vistaPersonas() {
     const d = st.d, cat = d.catalogo;
-    const fila = f => `<tr><td>${esc(f.nombre)}</td><td>${esc(f.correo)}</td><td>${esc(f.empleadoId || 'Externo')}</td><td>${esc(f.rol === 'EVALUADO' ? f.perfil + (f.lineas.length ? ' · ' + f.lineas.join(', ') : ' · todas') : 'Evaluador')}</td>
+    const fila = f => `<tr><td>${esc(f.nombre)}</td><td>${esc(f.correo)}</td><td>${f.empleadoId ? esc(f.empleadoId) : '<span class="sub">Externo</span>'}</td><td>${esc(f.rol === 'EVALUADO' ? f.perfil + (f.lineas.length ? ' · ' + f.lineas.join(', ') : ' · todas') : 'Evaluador')}</td>
       <td>${f.rol === 'EVALUADOR' && !d.master ? '' : `<button class="btn chico peligro" data-baja="${f.id}">Quitar</button>`}</td></tr>`;
     return `<div class="ex-card"><h2>Agregar persona</h2>
       <div class="fila"><label>Rol<select id="pRol"><option value="EVALUADO">Evaluado</option>${d.master ? '<option value="EVALUADOR">Evaluador</option>' : ''}</select></label>
         <label>Nombre<input id="pNombre"></label><label>Correo electrónico<input id="pCorreo" type="email"></label>
-        <label>ID de empleado <span class="sub">(vacío = candidato externo)</span><input id="pEmp" inputmode="numeric"></label>
+        <label>Buscar empleado <span class="sub">(ID o nombre; vacío = candidato externo)</span><input id="pBuscar" list="pEmps" autocomplete="off" placeholder="Ej. 1036 o Hernandez"><datalist id="pEmps">${st.emps.map(e => `<option value="${esc(etiquetaEmp(e))}">`).join('')}</datalist></label>
+        <label>ID de empleado<input id="pEmp" inputmode="numeric" readonly placeholder="Se llena al elegir un empleado"></label>
         <label>Perfil<select id="pPerfil">${(cat.PERFIL || []).map(v => `<option>${esc(v)}</option>`).join('')}</select></label></div>
       <div class="sub">Líneas de negocio del evaluado (varias; sin marcar = todas)</div>${chips('lineas_persona', cat.LINEA || [])}
       <button class="btn primario" id="pGuardar">Guardar</button></div>
@@ -277,6 +290,17 @@
       st.banco.lista = (await rpc({ accion: 'banco_listar' })).preguntas; await recargar();
     }, b));
 
+    const pb = document.getElementById('pBuscar');
+    if (pb) pb.oninput = () => {
+      const v = pb.value.trim();
+      const e = st.emps.find(x => etiquetaEmp(x) === v) || (/^\d+$/.test(v) ? empPorId(v) : null);
+      document.getElementById('pEmp').value = e ? e.id : '';
+      if (e) {
+        document.getElementById('pNombre').value = e.nombre;
+        document.getElementById('pCorreo').value = e.correo;
+        document.getElementById('pCorreo').placeholder = e.correo ? '' : 'Sin correo en su ficha: escríbelo';
+      }
+    };
     const pg = document.getElementById('pGuardar');
     if (pg) pg.onclick = () => ejecutar(async () => {
       await rpc({ accion: 'perfil_guardar', rol: val('pRol'), nombre: val('pNombre'), correo: val('pCorreo'), empleadoId: val('pEmp'), perfil: val('pPerfil'), lineas: st.sel.lineas_persona });
@@ -308,6 +332,7 @@
         return;
       }
     }
+    await cargarEmpleados();
     pintar();
   }
   iniciar();
