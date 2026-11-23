@@ -619,6 +619,11 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(proxyVisitaPublica(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Página del examen (examenes.gs): respaldo de la red, se identifica con el token del enlace
+      if (data.accion === 'examenRpc' && typeof proxyExamenPublico === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(proxyExamenPublico(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
       // Registro propio de colaboradores (registro.gs): respaldo de la página pública
       if (data.accion === 'registroRpc' && typeof proxyRegistroPublico === 'function') {
         return ContentService.createTextOutput(JSON.stringify(proxyRegistroPublico(data)))

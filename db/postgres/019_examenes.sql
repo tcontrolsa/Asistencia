@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS historico.exam_examenes (
     vigencia_dias int NOT NULL DEFAULT 7 CHECK (vigencia_dias BETWEEN 1 AND 60),
     creado_en     timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS exigir_pantalla boolean NOT NULL DEFAULT true;
 
 -- Un intento por evaluado: sus preguntas sorteadas, su enlace y su estado
 CREATE TABLE IF NOT EXISTS historico.exam_intentos (
@@ -93,6 +94,36 @@ CREATE TABLE IF NOT EXISTS historico.exam_intentos (
     creado_en   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS exam_intentos_examen ON historico.exam_intentos (examen_id);
+ALTER TABLE historico.exam_intentos ADD COLUMN IF NOT EXISTS acepto_en timestamptz;
+ALTER TABLE historico.exam_intentos ADD COLUMN IF NOT EXISTS pantalla_ok boolean;
+ALTER TABLE historico.exam_intentos ADD COLUMN IF NOT EXISTS limite_en timestamptz;
+ALTER TABLE historico.exam_intentos ADD COLUMN IF NOT EXISTS motivo_cierre text;
+
+-- Fase 2: lo que contesta el evaluado, lo que ocurre durante la prueba y las capturas de pantalla
+CREATE TABLE IF NOT EXISTS historico.exam_respuestas (
+    intento_id   bigint NOT NULL REFERENCES historico.exam_intentos (id) ON DELETE CASCADE,
+    pregunta_id  bigint NOT NULL,
+    respuesta    text NOT NULL DEFAULT '',
+    actualizada  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (intento_id, pregunta_id)
+);
+CREATE TABLE IF NOT EXISTS historico.exam_eventos (
+    id          bigserial PRIMARY KEY,
+    intento_id  bigint NOT NULL REFERENCES historico.exam_intentos (id) ON DELETE CASCADE,
+    tipo        text NOT NULL,
+    detalle     text,
+    segundos    int,                         -- cuánto estuvo fuera, si aplica
+    creado_en   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS exam_eventos_intento ON historico.exam_eventos (intento_id);
+CREATE TABLE IF NOT EXISTS historico.exam_capturas (
+    id          bigserial PRIMARY KEY,
+    intento_id  bigint NOT NULL REFERENCES historico.exam_intentos (id) ON DELETE CASCADE,
+    motivo      text,
+    imagen      bytea NOT NULL,
+    creada_en   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS exam_capturas_intento ON historico.exam_capturas (intento_id);
 
 -- ---------------------------------------------------------------------
 -- Helpers
@@ -167,6 +198,7 @@ DECLARE
     v_res    jsonb := '[]';
     v_tok    text;
     v_pid    bigint;
+    v_det    record;
 BEGIN
     IF v_yo IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'error', 'No tienes permiso de evaluador. Pide al administrador que te agregue.');
@@ -174,6 +206,9 @@ BEGIN
 
     -- ===== Inicio: catálogos, personas, exámenes y conteo del banco =====
     IF v_acc = 'inicio' THEN
+        -- Lo que se quedó sin entregar y ya pasó su tiempo se cierra aquí
+        UPDATE exam_intentos SET estado = 'ENTREGADO', entregado_en = limite_en, motivo_cierre = 'tiempo'
+         WHERE estado = 'INICIADO' AND limite_en IS NOT NULL AND now() > limite_en + interval '20 seconds';
         RETURN jsonb_build_object('ok', true, 'yo', v_yo, 'master', v_master,
             'catalogo', (SELECT coalesce(jsonb_object_agg(t, vs), '{}') FROM (
                 SELECT tipo AS t, jsonb_agg(valor ORDER BY orden, valor) AS vs FROM exam_catalogo GROUP BY tipo) z),
@@ -181,10 +216,14 @@ BEGIN
                            FROM exam_perfiles f WHERE f.activo),
             'preguntas', (SELECT count(*) FROM exam_preguntas q WHERE q.activa AND (v_master OR q.propietario = v_yo)),
             'examenes', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'nombre', e.nombre, 'cantidad', e.cantidad,
-                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros,
+                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros, 'exigirPantalla', e.exigir_pantalla,
                     'intentos', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'perfilId', i.perfil_id, 'nombre', f.nombre,
                             'correo', f.correo, 'estado', i.estado, 'enviadoEn', i.enviado_en, 'errorEnvio', i.error_envio,
-                            'preguntas', cardinality(i.preguntas), 'expiraEn', i.expira_en) ORDER BY f.nombre), '[]')
+                            'preguntas', cardinality(i.preguntas), 'expiraEn', i.expira_en,
+                            'iniciadoEn', i.iniciado_en, 'entregadoEn', i.entregado_en, 'motivoCierre', i.motivo_cierre,
+                            'respondidas', (SELECT count(*) FROM exam_respuestas r WHERE r.intento_id = i.id AND btrim(r.respuesta) <> ''),
+                            'incidencias', (SELECT count(*) FROM exam_eventos v WHERE v.intento_id = i.id AND v.tipo IN ('oculta', 'blur', 'sale_pantalla_completa', 'pegar', 'copiar', 'compartir_detenido', 'sin_compartir_pantalla_completa')),
+                            'capturas', (SELECT count(*) FROM exam_capturas c WHERE c.intento_id = i.id)) ORDER BY f.nombre), '[]')
                          FROM exam_intentos i JOIN exam_perfiles f ON f.id = i.perfil_id WHERE i.examen_id = e.id)
                 ) ORDER BY e.creado_en DESC), '[]') FROM exam_examenes e WHERE v_master OR e.propietario = v_yo));
     END IF;
@@ -344,10 +383,11 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'error', 'Elige al menos un evaluado.');
         END IF;
 
-        INSERT INTO exam_examenes (propietario, nombre, filtros, cantidad, minutos, vigencia_dias)
+        INSERT INTO exam_examenes (propietario, nombre, filtros, cantidad, minutos, vigencia_dias, exigir_pantalla)
         VALUES (v_yo, btrim(p->>'nombre'), jsonb_build_object('perfiles', to_jsonb(v_filt_perf), 'lineas', to_jsonb(v_filt_lin),
                 'tipos', to_jsonb(v_filt_tipo), 'dificultades', to_jsonb(v_filt_dif)),
-                (p->>'cantidad')::int, (p->>'minutos')::int, coalesce((p->>'vigenciaDias')::int, 7))
+                (p->>'cantidad')::int, (p->>'minutos')::int, coalesce((p->>'vigenciaDias')::int, 7),
+                coalesce((p->>'exigirPantalla')::boolean, true))
         RETURNING * INTO v_ex;
 
         FOR v_pid IN SELECT x::bigint FROM jsonb_array_elements_text(p->'perfilIds') x LOOP
@@ -418,6 +458,32 @@ BEGIN
         RETURN jsonb_build_object('ok', true);
     END IF;
 
+    -- ===== Revisión de un intento: respuestas, incidencias y capturas =====
+    IF v_acc = 'intento_detalle' THEN
+        SELECT i.*, f.nombre AS nombre INTO v_det
+          FROM exam_intentos i JOIN exam_perfiles f ON f.id = i.perfil_id JOIN exam_examenes e ON e.id = i.examen_id
+         WHERE i.id = (p->>'intentoId')::bigint AND (v_master OR e.propietario = v_yo);
+        IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Intento no encontrado.'); END IF;
+        RETURN jsonb_build_object('ok', true, 'nombre', v_det.nombre, 'estado', v_det.estado, 'iniciadoEn', v_det.iniciado_en,
+            'entregadoEn', v_det.entregado_en, 'motivoCierre', v_det.motivo_cierre, 'pantallaOk', v_det.pantalla_ok,
+            'preguntas', (SELECT coalesce(jsonb_agg(jsonb_build_object('n', u.ord, 'codigo', q.codigo, 'tipo', q.tipo, 'pregunta', q.pregunta,
+                    'respuestaModelo', q.respuesta_modelo, 'respuesta', coalesce(r.respuesta, '')) ORDER BY u.ord), '[]')
+                FROM unnest(v_det.preguntas) WITH ORDINALITY u(pid, ord)
+                JOIN exam_preguntas q ON q.id = u.pid
+                LEFT JOIN exam_respuestas r ON r.intento_id = v_det.id AND r.pregunta_id = u.pid),
+            'eventos', (SELECT coalesce(jsonb_agg(jsonb_build_object('tipo', v.tipo, 'detalle', v.detalle, 'segundos', v.segundos, 'en', v.creado_en) ORDER BY v.id), '[]')
+                FROM exam_eventos v WHERE v.intento_id = v_det.id),
+            'capturas', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'motivo', c.motivo, 'en', c.creada_en) ORDER BY c.id), '[]')
+                FROM exam_capturas c WHERE c.intento_id = v_det.id));
+    END IF;
+
+    IF v_acc = 'captura_ver' THEN
+        RETURN coalesce((SELECT jsonb_build_object('ok', true, 'imagen', 'data:image/jpeg;base64,' || encode(c.imagen, 'base64'))
+                  FROM exam_capturas c JOIN exam_intentos i ON i.id = c.intento_id JOIN exam_examenes e ON e.id = i.examen_id
+                 WHERE c.id = (p->>'capturaId')::bigint AND (v_master OR e.propietario = v_yo)),
+                jsonb_build_object('ok', false, 'error', 'Captura no encontrada.'));
+    END IF;
+
     IF v_acc = 'examen_anular' THEN
         UPDATE exam_intentos SET estado = 'ANULADO', token_hash = NULL
          WHERE id = (p->>'intentoId')::bigint AND estado IN ('GENERADO', 'ENVIADO')
@@ -428,6 +494,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'Acción no válida.');
 END $$;
 
+REVOKE ALL ON historico.exam_respuestas, historico.exam_eventos, historico.exam_capturas FROM PUBLIC, tcontrol_lector, tcontrol_anon;
 REVOKE EXECUTE ON FUNCTION api.examenes(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.examenes(jsonb) TO tcontrol_lector;
 REVOKE EXECUTE ON FUNCTION historico.exam_evaluador() FROM PUBLIC;

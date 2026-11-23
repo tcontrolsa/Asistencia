@@ -64,3 +64,14 @@ function enviarCorreosExamen(d) {
   rpcTunel_('examenes', JSON.stringify({ accion: 'envio_marcar', ok: enviados, fallos: fallos }), token);
   return { ok: true, enviados: enviados.length, fallos: fallos.length, detalle: fallos };
 }
+
+/**
+ * Respaldo de la página del examen (examen.html) para redes que bloquean *.trycloudflare.com.
+ * Solo reenvía a api.examen_publico, que se identifica por el token del enlace (sin sesión).
+ * Las capturas de pantalla son JPEG en base64, por eso el tope es mayor que en otras funciones.
+ */
+function proxyExamenPublico(d) {
+  var cuerpo = typeof d.p === 'string' ? d.p : JSON.stringify(d.p || {});
+  if (cuerpo.length > 450000) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
+  return rpcTunel_('examen_publico', cuerpo, '');
+}

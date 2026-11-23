@@ -6,7 +6,7 @@
   const KEY_SESION = 'tcontrol_sesion_eval';
   const app = document.getElementById('exApp');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
+  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, detalle: null, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
   const fb = () => window.FirebaseBackend;
   const quitarTildes = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
@@ -204,26 +204,49 @@
   const chips = (clave, valores) => `<div class="chips">${valores.map(v =>
     `<span class="chip ${st.sel[clave].includes(v) ? 'on' : ''}" data-chip="${clave}" data-v="${esc(v)}">${esc(v)}</span>`).join('')}</div>`;
 
+  const hora = t => t ? new Date(t).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  const NOMBRE_EVENTO = { oculta: 'Cambió de pestaña / minimizó', blur: 'Ventana sin foco', sale_pantalla_completa: 'Salió de pantalla completa', copiar: 'Intentó copiar', cortar: 'Intentó cortar',
+    pegar: 'Intentó pegar', menu_contextual: 'Clic derecho', tecla: 'Tecla de riesgo', cierre_pagina: 'Intentó cerrar/recargar', reanudo: 'Volvió a abrir el examen',
+    compartir_iniciado: 'Compartió pantalla', compartir_detenido: 'Dejó de compartir pantalla' };
+  function vistaDetalle() {
+    const x = st.detalle;
+    if (!x) return '';
+    const ev = x.eventos.map(e => `<tr><td>${hora(e.en)}</td><td>${esc(NOMBRE_EVENTO[e.tipo] || e.tipo)}</td><td class="sub">${esc(e.detalle || '')}${e.segundos ? ` · ${e.segundos} s fuera` : ''}</td></tr>`).join('');
+    const preg = x.preguntas.map(q => `<div style="margin:10px 0;padding-top:10px;border-top:1px solid var(--linea)"><div class="sub">${q.n}. ${esc(q.codigo)} · ${esc(q.tipo)}</div>
+      <div style="white-space:pre-wrap"><b>${esc(q.pregunta)}</b></div>
+      <div style="white-space:pre-wrap;margin-top:6px">${q.respuesta ? esc(q.respuesta) : '<span class="sub">(sin respuesta)</span>'}</div>
+      ${q.respuestaModelo ? `<details><summary class="sub">Respuesta modelo</summary><div style="white-space:pre-wrap" class="sub">${esc(q.respuestaModelo)}</div></details>` : ''}</div>`).join('');
+    return `<div class="ex-card"><div class="ex-top"><div><h2 style="margin:0">${esc(x.nombre)}</h2><small>${x.estado}${x.iniciadoEn ? ' · inició ' + hora(x.iniciadoEn) : ''}${x.entregadoEn ? ' · entregó ' + hora(x.entregadoEn) : ''}${x.motivoCierre === 'tiempo' ? ' (por tiempo)' : ''}${x.pantallaOk ? ' · compartió pantalla' : ''}</small></div>
+      <div><button class="btn chico" data-revisar="${x.id}">Actualizar</button> <button class="btn chico" id="exCerrarDet">Cerrar</button></div></div>
+      <h3>Incidencias (${x.eventos.length})</h3>${ev ? `<div class="scroll"><table class="tabla"><tr><th>Hora</th><th>Qué pasó</th><th>Detalle</th></tr>${ev}</table></div>` : '<p class="sub">Sin incidencias registradas.</p>'}
+      <h3>Capturas de pantalla (${x.capturas.length})</h3>
+      <div>${x.capturas.map(c => `<button class="btn chico" data-captura="${c.id}" style="margin:0 6px 6px 0">${hora(c.en)} · ${esc(c.motivo || '')}</button>`).join('') || '<p class="sub">Sin capturas.</p>'}</div>
+      <div id="exCaptura"></div>
+      <h3>Respuestas</h3>${preg}</div>`;
+  }
+
   function vistaExamenes() {
     const d = st.d, cat = d.catalogo;
     const evaluados = d.perfiles.filter(f => f.rol === 'EVALUADO');
     const filas = d.examenes.map(e => {
       const pend = e.intentos.filter(i => i.estado === 'GENERADO').length;
-      return `<div class="ex-card"><div class="ex-top"><div><b>${esc(e.nombre)}</b><br><small>${e.cantidad} preguntas · ${e.minutos} min · ${new Date(e.creadoEn).toLocaleString('es-EC')}</small></div>
+      return `<div class="ex-card"><div class="ex-top"><div><b>${esc(e.nombre)}</b><br><small>${e.cantidad} preguntas · ${e.minutos} min${e.exigirPantalla ? ' · con pantalla compartida' : ''} · ${new Date(e.creadoEn).toLocaleString('es-EC')}</small></div>
         <div><button class="btn chico primario" data-enviar="${e.id}" ${e.intentos.some(i => i.estado === 'GENERADO' || i.estado === 'ENVIADO') ? '' : 'disabled'}><i class="fas fa-paper-plane"></i> ${pend ? `Enviar pendientes (${pend})` : 'Reenviar a todos'}</button></div></div>
-        <div class="scroll"><table class="tabla"><tr><th>Evaluado</th><th>Correo</th><th>Preguntas</th><th>Estado</th><th></th></tr>
+        <div class="scroll"><table class="tabla"><tr><th>Evaluado</th><th>Correo</th><th>Preguntas</th><th>Estado</th><th>Avance</th><th></th></tr>
         ${e.intentos.map(i => `<tr><td>${esc(i.nombre)}</td><td>${esc(i.correo)}</td><td>${i.preguntas}</td>
-          <td><span class="etq ${i.estado}">${i.estado}</span>${i.errorEnvio ? `<br><small style="color:#fca5a5">${esc(i.errorEnvio)}</small>` : ''}</td>
-          <td style="white-space:nowrap">${i.estado === 'GENERADO' || i.estado === 'ENVIADO' ? `<button class="btn chico" data-enviar="${e.id}" data-intento="${i.id}">${i.estado === 'ENVIADO' ? 'Reenviar' : 'Enviar'}</button> <button class="btn chico peligro" data-anular="${i.id}">Anular</button>` : ''}</td></tr>`).join('')}
+          <td><span class="etq ${i.estado}">${i.estado}</span>${i.motivoCierre === 'tiempo' ? '<br><small class="sub">por tiempo</small>' : ''}${i.errorEnvio ? `<br><small style="color:#fca5a5">${esc(i.errorEnvio)}</small>` : ''}</td>
+          <td>${i.iniciadoEn ? `<small>${i.respondidas}/${i.preguntas} respondidas<br>${i.incidencias ? `<span style="color:#fcd34d">${i.incidencias} incidencia(s)</span>` : 'sin incidencias'} · ${i.capturas} captura(s)</small>` : '<small class="sub">—</small>'}</td>
+          <td style="white-space:nowrap">${i.iniciadoEn ? `<button class="btn chico primario" data-revisar="${i.id}">Revisar</button> ` : ''}${i.estado === 'GENERADO' || i.estado === 'ENVIADO' ? `<button class="btn chico" data-enviar="${e.id}" data-intento="${i.id}">${i.estado === 'ENVIADO' ? 'Reenviar' : 'Enviar'}</button> <button class="btn chico peligro" data-anular="${i.id}">Anular</button>` : ''}</td></tr>`).join('')}
         </table></div></div>`;
     }).join('');
-    return `<div class="ex-card"><h2>Nuevo examen</h2>
+    return `${vistaDetalle()}<div class="ex-card"><h2>Nuevo examen</h2>
       ${d.preguntas === 0 ? '<p class="msg aviso">Primero carga preguntas en la pestaña «Banco de preguntas».</p>' : ''}
       ${evaluados.length === 0 ? '<p class="msg aviso">Primero agrega evaluados en la pestaña «Personas».</p>' : ''}
       <div class="fila"><label>Nombre del examen<input id="exNombre" placeholder="Ej. Evaluación de ingreso Q4"></label>
         <label>Cantidad de preguntas<input id="exCant" type="number" min="1" max="100" value="10"></label>
         <label>Tiempo (minutos)<input id="exMin" type="number" min="1" max="600" value="45"></label>
         <label>Vigencia del enlace (días)<input id="exVig" type="number" min="1" max="60" value="7"></label></div>
+      <label class="chk-inline" style="margin:4px 0 8px"><input type="checkbox" id="exPant" ${st.exigirPantalla === false ? '' : 'checked'}> Exigir que el evaluado comparta toda su pantalla (se toman capturas periódicas)</label>
       <h3>¿A quién evalúas?</h3>
       <div class="lista-eval">${evaluados.length ? evaluados.map(f => `<label><input type="checkbox" data-eval="${f.id}" ${st.evaluados.has(f.id) ? 'checked' : ''}> <b>${esc(f.nombre)}</b> <span class="sub">· ${esc(f.perfil)}${f.lineas.length ? ' · ' + esc(f.lineas.join(', ')) : ' · todas las líneas'}</span></label>`).join('') : '<p class="vacio">Sin evaluados.</p>'}</div>
       <button class="btn chico" data-todos="1">Marcar / desmarcar todos</button>
@@ -234,7 +257,7 @@
       <div class="sub">Dificultad</div>${chips('dificultades', cat.DIFICULTAD || [])}
       <button class="btn primario" id="exGenerar"><i class="fas fa-wand-magic-sparkles"></i> Generar examen</button>
       <span class="sub"> Se sortean preguntas distintas para cada persona. Después podrás enviarles el correo.</span></div>
-      <h2>Exámenes generados</h2>${filas || '<p class="vacio">Aún no generas ningún examen.</p>'}`;
+      <div class="ex-top"><h2 style="margin:0">Exámenes generados</h2><button class="btn chico" id="exActualizar"><i class="fas fa-rotate"></i> Actualizar</button></div>${filas || '<p class="vacio">Aún no generas ningún examen.</p>'}`;
   }
 
   function vistaBanco() {
@@ -326,10 +349,25 @@
     });
     const salir = document.getElementById('exSalir'); if (salir) salir.onclick = () => { cerrarSesion(); location.reload(); };
 
+    q('[data-revisar]', b => b.onclick = () => ejecutar(async () => {
+      const id = Number(b.dataset.revisar);
+      st.detalle = Object.assign((await rpc({ accion: 'intento_detalle', intentoId: id })), { id });
+      await recargar();
+    }, b));
+    const cd = document.getElementById('exCerrarDet'); if (cd) cd.onclick = () => { st.detalle = null; pintar(); };
+    q('[data-captura]', b => b.onclick = async () => {
+      const box = document.getElementById('exCaptura');
+      box.innerHTML = '<p class="sub">Cargando captura…</p>';
+      try {
+        const r = await rpc({ accion: 'captura_ver', capturaId: Number(b.dataset.captura) });
+        box.innerHTML = `<img src="${r.imagen}" alt="Captura" style="max-width:100%;border:1px solid var(--linea);border-radius:10px;margin-top:6px">`;
+      } catch (e) { box.innerHTML = `<p class="msg mal">${esc(e.message)}</p>`; }
+    });
+    const act = document.getElementById('exActualizar'); if (act) act.onclick = () => ejecutar(async () => { await recargar(); aviso('Actualizado.'); }, act);
     const gen = document.getElementById('exGenerar');
     if (gen) gen.onclick = () => ejecutar(async () => {
       const r = await rpc({ accion: 'examen_generar', nombre: val('exNombre'), cantidad: Number(val('exCant')), minutos: Number(val('exMin')),
-        vigenciaDias: Number(val('exVig')), perfilIds: [...st.evaluados], filtros: { perfiles: st.sel.perfiles, lineas: st.sel.lineas, tipos: st.sel.tipos, dificultades: st.sel.dificultades } });
+        vigenciaDias: Number(val('exVig')), exigirPantalla: document.getElementById('exPant').checked, perfilIds: [...st.evaluados], filtros: { perfiles: st.sel.perfiles, lineas: st.sel.lineas, tipos: st.sel.tipos, dificultades: st.sel.dificultades } });
       const notas = r.detalle.filter(x => !x.ok || x.faltan).map(x => x.ok ? `${esc(x.nombre)}: solo ${x.preguntas} preguntas disponibles (faltan ${x.faltan})` : `${esc(x.nombre)}: ${esc(x.error)}`);
       aviso('Examen generado. ' + (notas.length ? 'Ojo: <br>' + notas.join('<br>') : 'Ya puedes enviar los correos.'), notas.length ? 'aviso' : 'ok');
       st.evaluados.clear(); await recargar();
