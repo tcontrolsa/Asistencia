@@ -49,7 +49,7 @@
     const r = await fb()._post({ accion: 'evalRpc', token: st.ses.token, fn: 'examenes', p: JSON.stringify(p) });
     if (!r || typeof r.status !== 'number') throw new Error('Sin conexión con el servidor de evaluaciones.');
     if (r.status === 401) { cerrarSesion(); throw vencida(); }
-    if (!r.body || r.body.ok === false) throw new Error((r.body && r.body.error) || 'No se pudo completar');
+    if (!r.body || r.body.ok !== true) throw new Error((r.body && (r.body.error || r.body.message)) || 'No se pudo completar');
     return r.body;
   }
   async function recargar() { st.d = await rpc({ accion: 'inicio' }); }
