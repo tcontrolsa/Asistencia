@@ -69,6 +69,26 @@ def main():
         check("perfil inexistente se rechaza", rpc({"accion": "perfil_guardar", "rol": "EVALUADO", "nombre": "X", "correo": "x@x.com", "perfil": "Rey"})["ok"] is False)
         check("correo inválido se rechaza", rpc({"accion": "perfil_guardar", "rol": "EVALUADO", "nombre": "X", "correo": "x", "perfil": "Pasante"})["ok"] is False)
 
+        r = rpc({"accion": "perfil_guardar", "rol": "EVALUADO", "empleadoId": "T950", "nombre": "Lider Uno", "correo": "lider@x.com", "perfil": "Líder", "lineas": ["Baja Tensión"]})
+        check("perfil Líder y vínculo con ID", r["ok"], r)
+        r2 = rpc({"accion": "perfil_guardar", "rol": "EVALUADO", "empleadoId": "T950", "nombre": "Lider Uno", "correo": "nuevo@x.com", "perfil": "Especialista de ingeniería", "lineas": []})
+        check("volver a guardar al mismo ID actualiza, no duplica", r2["ok"] and r2["id"] == r["id"], r2)
+        como(master)
+        r = rpc({"accion": "perfil_guardar", "rol": "EVALUADOR", "empleadoId": "T951", "nombre": "Sin Correo", "correo": ""})
+        r2 = rpc({"accion": "perfil_guardar", "rol": "EVALUADOR", "empleadoId": "T952", "nombre": "Sin Correo 2", "correo": ""})
+        check("evaluadores sin correo (varios)", r["ok"] and r2["ok"], (r, r2))
+        check("evaluado sin correo se rechaza", rpc({"accion": "perfil_guardar", "rol": "EVALUADO", "empleadoId": "T953", "nombre": "X", "correo": "", "perfil": "Pasante"})["ok"] is False)
+        r = rpc({"accion": "perfil_guardar", "rol": "EVALUADO", "empleadoId": "T951", "nombre": "Sin Correo", "correo": "sc@x.com", "perfil": "Pasante"})
+        check("la misma persona puede ser evaluador y evaluado", r["ok"], r)
+        cur.execute("RESET ROLE")
+        cur.execute("SELECT coalesce(correo,'') FROM historico.empleados WHERE coalesce(correo,'')<>'' LIMIT 1")
+        fila = cur.fetchone()
+        cur.execute("SELECT id FROM historico.empleados WHERE coalesce(correo,'')<>'' LIMIT 1")
+        eid = cur.fetchone()[0]
+        como(evalu)
+        r = rpc({"accion": "directorio_correos", "ids": [eid, "NOEXISTE"]})
+        check("correos desde la nómina", r["ok"] and eid in r["correos"] and "NOEXISTE" not in r["correos"], r)
+
         print("Banco")
         filas = [
             {"fila": 2, "codigo": "P001", "perfiles": ["Pasante", "Ingeniero"], "lineas": ["Baja Tensión"], "tipo": "Técnica", "pregunta": "¿Seccionador vs disyuntor?", "respuestaModelo": "..."},

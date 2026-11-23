@@ -38,3 +38,11 @@ textarea { min-height: 70px; resize: vertical; }
 .login { max-width: 360px; margin: 12vh auto 0; }
 .sub { color: var(--sub); font-size: 13px; }
 .scroll { overflow-x: auto; }
+.filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.filtros input[type=search], .filtros select { width: auto; min-width: 170px; margin: 0; }
+.chk-inline { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--txt); }
+.chk-inline input, .chk { width: auto; margin: 0; }
+.sel-chico { width: auto; min-width: 120px; margin: 0; padding: 6px 8px; font-size: 13px; }
+.sel-chico.falta { border-color: var(--aviso); }
+.fila-cambio { background: rgba(59, 130, 246, .10); }
+.chips.mini { margin: 0; gap: 4px; } .chips.mini .chip { padding: 2px 8px; font-size: 12px; }

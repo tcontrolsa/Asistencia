@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS historico.exam_catalogo (
 INSERT INTO historico.exam_catalogo (tipo, valor, orden) VALUES
     ('LINEA', 'Baja Tensión', 1), ('LINEA', 'Media Tensión', 2), ('LINEA', 'Electromecánica', 3),
     ('LINEA', 'Motion y Automation', 4),
-    ('PERFIL', 'Pasante', 1), ('PERFIL', 'Ingeniero', 2),
+    ('PERFIL', 'Pasante', 1), ('PERFIL', 'Ingeniero', 2), ('PERFIL', 'Especialista de ingeniería', 3), ('PERFIL', 'Líder', 4),
     ('TIPO', 'Técnica', 1), ('TIPO', 'Proceso', 2), ('TIPO', 'Ejercicio', 3), ('TIPO', 'Capacitación', 4),
     ('DIFICULTAD', 'Bajo', 1), ('DIFICULTAD', 'Medio', 2), ('DIFICULTAD', 'Alto', 3)
 ON CONFLICT DO NOTHING;
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS historico.exam_perfiles (
     id           bigserial PRIMARY KEY,
     empleado_id  text,                              -- vacío = candidato externo
     nombre       text NOT NULL,
-    correo       text NOT NULL,
+    correo       text NOT NULL DEFAULT '',          -- obligatorio para evaluados; el evaluador puede no tenerlo aún
     rol          text NOT NULL CHECK (rol IN ('EVALUADO', 'EVALUADOR')),
     perfil       text,                              -- catálogo PERFIL (evaluados)
     lineas       text[] NOT NULL DEFAULT '{}',      -- catálogo LINEA (evaluados)
@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS historico.exam_perfiles (
     creado_por   text,
     creado_en    timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS exam_perfiles_correo_rol ON historico.exam_perfiles (lower(correo), rol);
+DROP INDEX IF EXISTS historico.exam_perfiles_correo_rol;
+CREATE UNIQUE INDEX IF NOT EXISTS exam_perfiles_emp_rol ON historico.exam_perfiles (empleado_id, rol) WHERE empleado_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS exam_perfiles_ext_rol ON historico.exam_perfiles (lower(correo), rol) WHERE empleado_id IS NULL;
 
 -- Banco de preguntas. Arreglo vacío en perfiles / lineas = aplica a todos.
 CREATE TABLE IF NOT EXISTS historico.exam_preguntas (
@@ -200,11 +202,16 @@ BEGIN
 
     -- ===== Personas =====
     IF v_acc = 'perfil_guardar' THEN
-        IF btrim(coalesce(p->>'nombre', '')) = '' OR coalesce(p->>'correo', '') !~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN
-            RETURN jsonb_build_object('ok', false, 'error', 'Escribe el nombre y un correo válido.');
-        END IF;
         IF coalesce(p->>'rol', '') NOT IN ('EVALUADO', 'EVALUADOR') THEN
             RETURN jsonb_build_object('ok', false, 'error', 'Rol no válido.');
+        END IF;
+        IF btrim(coalesce(p->>'nombre', '')) = '' THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Escribe el nombre.');
+        END IF;
+        -- Al evaluado se le envía el examen: correo obligatorio. Al evaluador se le pedirá más adelante (resultados).
+        IF (p->>'rol' = 'EVALUADO' OR btrim(coalesce(p->>'correo', '')) <> '')
+           AND coalesce(p->>'correo', '') !~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Escribe un correo válido para ' || btrim(p->>'nombre') || '.');
         END IF;
         IF p->>'rol' = 'EVALUADOR' AND NOT v_master THEN
             RETURN jsonb_build_object('ok', false, 'error', 'Solo el administrador master asigna evaluadores.');
@@ -222,22 +229,39 @@ BEGIN
             END IF;
         END IF;
         IF nullif(p->>'id', '') IS NOT NULL THEN
-            UPDATE exam_perfiles SET nombre = btrim(p->>'nombre'), correo = lower(btrim(p->>'correo')),
+            UPDATE exam_perfiles SET nombre = btrim(p->>'nombre'), correo = lower(btrim(coalesce(p->>'correo', ''))),
                    empleado_id = nullif(btrim(coalesce(p->>'empleadoId', '')), ''),
                    perfil = CASE WHEN rol = 'EVALUADO' THEN p->>'perfil' END,
                    lineas = CASE WHEN rol = 'EVALUADO' THEN v_lin ELSE '{}' END,
                    activo = coalesce((p->>'activo')::boolean, true)
              WHERE id = (p->>'id')::bigint RETURNING id INTO v_id;
         ELSE
-            INSERT INTO exam_perfiles (empleado_id, nombre, correo, rol, perfil, lineas, creado_por)
-            VALUES (nullif(btrim(coalesce(p->>'empleadoId', '')), ''), btrim(p->>'nombre'), lower(btrim(p->>'correo')), p->>'rol',
-                    CASE WHEN p->>'rol' = 'EVALUADO' THEN p->>'perfil' END,
-                    CASE WHEN p->>'rol' = 'EVALUADO' THEN v_lin ELSE '{}' END, v_yo)
-            ON CONFLICT (lower(correo), rol) DO UPDATE SET nombre = EXCLUDED.nombre, empleado_id = EXCLUDED.empleado_id,
-                perfil = EXCLUDED.perfil, lineas = EXCLUDED.lineas, activo = true
-            RETURNING id INTO v_id;
+            IF nullif(btrim(coalesce(p->>'empleadoId', '')), '') IS NOT NULL THEN
+                INSERT INTO exam_perfiles (empleado_id, nombre, correo, rol, perfil, lineas, creado_por)
+                VALUES (btrim(p->>'empleadoId'), btrim(p->>'nombre'), lower(btrim(coalesce(p->>'correo', ''))), p->>'rol',
+                        CASE WHEN p->>'rol' = 'EVALUADO' THEN p->>'perfil' END,
+                        CASE WHEN p->>'rol' = 'EVALUADO' THEN v_lin ELSE '{}' END, v_yo)
+                ON CONFLICT (empleado_id, rol) WHERE empleado_id IS NOT NULL DO UPDATE SET nombre = EXCLUDED.nombre,
+                    correo = EXCLUDED.correo, perfil = EXCLUDED.perfil, lineas = EXCLUDED.lineas, activo = true
+                RETURNING id INTO v_id;
+            ELSE
+                INSERT INTO exam_perfiles (empleado_id, nombre, correo, rol, perfil, lineas, creado_por)
+                VALUES (NULL, btrim(p->>'nombre'), lower(btrim(coalesce(p->>'correo', ''))), p->>'rol',
+                        CASE WHEN p->>'rol' = 'EVALUADO' THEN p->>'perfil' END,
+                        CASE WHEN p->>'rol' = 'EVALUADO' THEN v_lin ELSE '{}' END, v_yo)
+                ON CONFLICT (lower(correo), rol) WHERE empleado_id IS NULL DO UPDATE SET nombre = EXCLUDED.nombre,
+                    perfil = EXCLUDED.perfil, lineas = EXCLUDED.lineas, activo = true
+                RETURNING id INTO v_id;
+            END IF;
         END IF;
         RETURN jsonb_build_object('ok', true, 'id', v_id);
+    END IF;
+
+    -- Correos de empleados desde la copia de la nómina (la ficha de Firestore no trae correo)
+    IF v_acc = 'directorio_correos' THEN
+        RETURN jsonb_build_object('ok', true, 'correos', (
+            SELECT coalesce(jsonb_object_agg(e.id, lower(btrim(e.correo))), '{}') FROM historico.empleados e
+             WHERE coalesce(btrim(e.correo), '') <> '' AND jsonb_typeof(p->'ids') = 'array' AND p->'ids' @> to_jsonb(e.id)));
     END IF;
 
     IF v_acc = 'perfil_baja' THEN
