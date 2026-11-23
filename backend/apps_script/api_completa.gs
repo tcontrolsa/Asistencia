@@ -599,6 +599,12 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
 
+      // Plataforma de evaluación técnica (examenes.gs): envío de correos con el enlace del examen
+      if (data.accion === 'examenEnviar' && typeof enviarCorreosExamen === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(enviarCorreosExamen(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Registro de visitas (visitas.gs): token de portería y respaldo de la página pública, solo por POST
       if (data.accion === 'tokenGuardia' && typeof emitirTokenGuardia === 'function') {
         return ContentService.createTextOutput(JSON.stringify(emitirTokenGuardia(data)))

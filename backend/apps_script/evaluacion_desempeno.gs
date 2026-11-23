@@ -147,7 +147,8 @@ var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar', 'ev
   'visita_anfitrion', 'visita_guardia',    // registro de visitas (visitas.gs)
   'epp',                                   // módulo de EPP (db/postgres/016_epp.sql)
   'registro_admin',                        // registro propio: revisión en el panel (017_registro.sql)
-  'visita_frecuente'];                     // visitantes frecuentes: credenciales (018_visitantes_frecuentes.sql)
+  'visita_frecuente',
+  'examenes'];                          // plataforma de evaluación técnica (019_examenes.sql)                     // visitantes frecuentes: credenciales (018_visitantes_frecuentes.sql)
 
 function proxyEvaluacion(d) {
   var fn = String(d.fn || '');
