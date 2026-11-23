@@ -6,7 +6,7 @@
   const KEY_SESION = 'tcontrol_sesion_eval';
   const app = document.getElementById('exApp');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, detalle: null, adj: null, mv: { items: [], subiendo: false, resumen: '' }, pq: null, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
+  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, detalle: null, adj: null, nx: null, rev: null, revModal: null, mv: { items: [], subiendo: false, resumen: '' }, pq: null, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
   const fb = () => window.FirebaseBackend;
   const quitarTildes = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
@@ -136,7 +136,6 @@
     st.pers.edits.set(id, c);
   };
 
-  function aviso(texto, tipo) { st.msg = texto ? { texto, tipo: tipo || 'ok' } : null; }
 
   async function ejecutar(fn, btn) {
     if (btn) btn.disabled = true;
@@ -306,28 +305,6 @@
     return { guardadas, errores, total: items.length };
   }
 
-  // ---------- calificar con IA (por tandas: cada llamada resuelve unas pocas respuestas) ----------
-  async function calificarIA(examenId, intentoId, recalificar) {
-    const pre = await rpcRes({ accion: 'ia_pendientes', examenId, intentoId, recalificar, limite: 1 });
-    if (!pre.restantes) { aviso(recalificar ? 'No hay respuestas calificadas por la IA para volver a calificar.' : 'No hay respuestas pendientes de calificar con IA.', 'aviso'); return; }
-    if (!confirm(`Se calificarán ${pre.restantes} respuesta(s) con IA.\n\nA la IA (Claude, de Anthropic) se envían la pregunta, la respuesta modelo y la respuesta escrita, SIN nombres ni correos. Los archivos adjuntos no se envían.\nLas notas quedarán marcadas «IA» y podrás cambiarlas; las que ya calificaste a mano no se tocan.\n\n¿Continuar?`)) return;
-    const total = { guardadas: 0, tokens: 0, errores: [] };
-    let restantes = pre.restantes, sinAvance = 0;
-    for (let vuelta = 0; vuelta < 400 && restantes > 0; vuelta++) {
-      aviso(`Calificando con IA… ${total.guardadas} listas, ${restantes} pendientes.`, 'aviso'); pintar();
-      const r = await fb()._post({ accion: 'examenCalificarIA', token: st.ses.token, examenId, intentoId, recalificar });
-      if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } throw new Error((r && r.error) || 'No se pudo calificar con IA'); }
-      total.guardadas += r.guardadas; total.tokens += r.tokens || 0; total.errores.push(...(r.errores || []));
-      restantes = r.restantes;
-      if (!r.guardadas) { if (++sinAvance >= 2) break; } else sinAvance = 0;
-    }
-    if (st.detalle) st.detalle = Object.assign(await rpc({ accion: 'intento_detalle', intentoId: st.detalle.id }), { id: st.detalle.id });
-    aviso(`<b>${total.guardadas}</b> respuesta(s) calificadas con IA (≈ ${total.tokens.toLocaleString('es-EC')} tokens).` + (restantes ? ` Quedan ${restantes} sin calificar.` : '')
-      + (total.errores.length ? `<br>Con problema (${total.errores.length}): ` + total.errores.slice(0, 5).map(e => `${esc(e.id)}: ${esc(e.error)}`).join(' · ') : '')
-      + '<br>Revisa las notas marcadas «IA»: la decisión final es tuya.', restantes || total.errores.length ? 'aviso' : 'ok');
-    await recargar();
-  }
-
   // ---------- Excel ----------
   const COLS = { id: 'codigo', usuario: 'perfiles', 'linea de negocio': 'lineas', lineas: 'lineas', 'tipo de pregunta': 'tipo', tipo: 'tipo',
     dificultad: 'dificultad', pregunta: 'pregunta', 'respuesta modelo': 'respuestaModelo', respuesta: 'respuestaModelo', enlaces: 'enlaces', enlace: 'enlaces', adjuntos: 'enlaces', puntos: 'puntos', valor: 'puntos' };
@@ -409,73 +386,449 @@
   const chips = (clave, valores) => `<div class="chips">${valores.map(v =>
     `<span class="chip ${st.sel[clave].includes(v) ? 'on' : ''}" data-chip="${clave}" data-v="${esc(v)}">${esc(v)}</span>`).join('')}</div>`;
 
+  // ---------- avisos flotantes y ventanas ----------
+  // Un solo aviso a la vez, junto a donde actúa la persona (no en una franja arriba de la página)
+  function aviso(texto, tipo) {
+    let host = document.getElementById('exToasts');
+    if (!host) { host = document.createElement('div'); host.id = 'exToasts'; host.setAttribute('aria-live', 'polite'); document.body.appendChild(host); }
+    clearTimeout(aviso._t); host.innerHTML = '';
+    if (!texto) return;
+    tipo = tipo || 'ok';
+    const t = document.createElement('div');
+    t.className = 'toast ' + tipo;
+    t.innerHTML = `<i class="fas ${tipo === 'ok' ? 'fa-circle-check' : tipo === 'mal' ? 'fa-circle-exclamation' : 'fa-circle-info'}"></i><div>${texto}</div><button aria-label="Cerrar">×</button>`;
+    t.querySelector('button').onclick = () => t.remove();
+    host.appendChild(t);
+    if (tipo !== 'mal') aviso._t = setTimeout(() => t.remove(), tipo === 'aviso' ? 12000 : 7000);
+  }
+
+  const modales = [];
+  function modal(html, o = {}) {
+    const ov = document.createElement('div');
+    ov.className = 'mdl';
+    ov.innerHTML = `<div class="mdl-box" style="max-width:${o.ancho || 560}px" role="dialog" aria-modal="true">${html}</div>`;
+    document.body.appendChild(ov);
+    document.body.classList.add('mdl-abierto');
+    const m = {
+      el: ov, box: ov.firstElementChild, cerrable: o.cerrable !== false,
+      set(h) { m.box.innerHTML = h; },
+      cerrar() {
+        if (!ov.isConnected) return;
+        if (o.antesCerrar) o.antesCerrar();
+        ov.remove(); modales.splice(modales.indexOf(m), 1);
+        if (!modales.length) document.body.classList.remove('mdl-abierto');
+        if (o.alCerrar) o.alCerrar();
+      },
+      intentarCerrar() { if (o.puedeCerrar && !o.puedeCerrar()) return; m.cerrar(); }
+    };
+    ov.addEventListener('mousedown', e => { if (e.target === ov && m.cerrable) m.intentarCerrar(); });
+    modales.push(m);
+    return m;
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && modales.length) { const m = modales[modales.length - 1]; if (m.cerrable) m.intentarCerrar(); } });
+
+  // Confirmación con texto claro (reemplaza al cuadro gris del navegador)
+  function preguntar({ titulo, texto, si, no, peligro, icono, escribir, alAbrir }) {
+    return new Promise(resolve => {
+      const m = modal(`<div class="mdl-body centro"><div class="gran-ico ${peligro ? 'rojo' : ''}"><i class="fas ${icono || (peligro ? 'fa-triangle-exclamation' : 'fa-circle-question')}"></i></div>
+        <h2>${esc(titulo)}</h2><div class="txt-ayuda">${texto}</div>
+        ${escribir ? `<label class="confirma-txt">Para confirmar, escribe <b>${esc(escribir)}</b><input id="pgEscribir" autocomplete="off" placeholder="${esc(escribir)}"></label>` : ''}</div>
+        <div class="mdl-pie"><button class="btn" data-no>${esc(no || 'Cancelar')}</button><button class="btn ${peligro ? 'peligro-lleno' : 'primario'}" data-si ${escribir ? 'disabled' : ''}>${esc(si || 'Aceptar')}</button></div>`, { ancho: 500, alCerrar: () => resolve(false) });
+      const bsi = m.box.querySelector('[data-si]');
+      m.box.querySelector('[data-no]').onclick = () => m.cerrar();
+      bsi.onclick = () => { m.cerrable = false; resolve(true); m.el.remove(); modales.splice(modales.indexOf(m), 1); if (!modales.length) document.body.classList.remove('mdl-abierto'); };
+      if (escribir) { const inp = m.box.querySelector('#pgEscribir'); inp.oninput = () => { bsi.disabled = inp.value.trim().toLowerCase() !== String(escribir).trim().toLowerCase(); }; inp.focus(); }
+      if (alAbrir) alAbrir(m);
+    });
+  }
+  function elegirArchivo(accept, cb) {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = accept; i.style.display = 'none';
+    i.onchange = () => { const f = i.files[0]; i.remove(); if (f) cb(f); };
+    document.body.appendChild(i); i.click();
+  }
+
+  // ---------- ayudas de presentación ----------
   const hora = t => t ? new Date(t).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-  const NOMBRE_EVENTO = { oculta: 'Cambió de pestaña / minimizó', blur: 'Ventana sin foco', sale_pantalla_completa: 'Salió de pantalla completa', copiar: 'Intentó copiar', cortar: 'Intentó cortar',
-    pegar: 'Intentó pegar', menu_contextual: 'Clic derecho', tecla: 'Tecla de riesgo', cierre_pagina: 'Intentó cerrar/recargar', reanudo: 'Volvió a abrir el examen',
-    compartir_iniciado: 'Compartió pantalla', compartir_detenido: 'Dejó de compartir pantalla' };
-  function vistaDetalle() {
-    const x = st.detalle;
-    if (!x) return '';
-    const ev = x.eventos.map(e => `<tr><td>${hora(e.en)}</td><td>${esc(NOMBRE_EVENTO[e.tipo] || e.tipo)}</td><td class="sub">${esc(e.detalle || '')}${e.segundos ? ` · ${e.segundos} s fuera` : ''}</td></tr>`).join('');
-    const preg = x.preguntas.map(q => `<div style="margin:10px 0;padding-top:10px;border-top:1px solid var(--linea)"><div class="sub">${q.n}. ${esc(q.codigo)} · ${esc(q.tipo)}</div>
-      <div style="white-space:pre-wrap"><b>${esc(q.pregunta)}</b></div>
-      <div style="white-space:pre-wrap;margin-top:6px">${q.respuesta ? esc(q.respuesta) : '<span class="sub">(sin respuesta)</span>'}</div>
-      ${(q.archivos || []).length ? `<div style="margin-top:6px">${q.archivos.map(a => `<button class="btn chico" data-ver="${a.id}" data-nombre="${esc(a.nombre)}" data-mime="${esc(a.mime)}" style="margin:0 6px 6px 0"><i class="fas ${icoMime(a.mime)}"></i> ${esc(a.nombre)} · ${tam(a.tamano)}</button>`).join('')}</div>` : ''}
-      ${q.respuestaModelo ? `<details><summary class="sub">Respuesta modelo</summary><div style="white-space:pre-wrap" class="sub">${esc(q.respuestaModelo)}</div></details>` : ''}
-      <div class="calif"><label>Puntos <span class="sub">(máx. ${Number(q.puntosMax)})</span><input type="number" min="0" max="${Number(q.puntosMax)}" step="0.5" data-cn="${q.n}" value="${q.calificacion == null ? '' : Number(q.calificacion)}"></label>
-        <label class="grow">Comentario<input data-cc="${q.n}" value="${esc(q.comentario || '')}" placeholder="Opcional"></label>${q.origenCalif === 'EXCEL' ? '<span class="etq ENVIADO" title="Cargada desde el Excel">Excel</span>' : q.origenCalif === 'IA' ? '<span class="etq INICIADO" title="La calificó la IA: revísala y cámbiala si no estás de acuerdo">IA</span>' : ''}</div></div>`).join('');
-    const exDet = st.d.examenes.find(e => e.intentos.some(i => i.id === x.id));
-    const botonIA = exDet && exDet.iaPermitida ? `<button class="btn chico" data-ia="${exDet.id}" data-ia-int="${x.id}"><i class="fas fa-wand-magic-sparkles"></i> Calificar con IA</button> <button class="btn chico" data-ia="${exDet.id}" data-ia-int="${x.id}" data-ia-re="1" title="Vuelve a pedir la nota de las respuestas que ya calificó la IA (no toca las manuales)">Recalificar IA</button>` : '';
-    return `<div class="ex-card"><div class="ex-top"><div><h2 style="margin:0">${esc(x.nombre)}</h2><small>${x.estado}${x.iniciadoEn ? ' · inició ' + hora(x.iniciadoEn) : ''}${x.entregadoEn ? ' · entregó ' + hora(x.entregadoEn) : ''}${x.motivoCierre === 'tiempo' ? ' (por tiempo)' : ''}${x.pantallaOk ? ' · compartió pantalla' : ''}</small></div>
-      <div><button class="btn chico" data-revisar="${x.id}">Actualizar</button> <button class="btn chico" id="exCerrarDet">Cerrar</button></div></div>
-      <h3>Incidencias (${x.eventos.length})</h3>${ev ? `<div class="scroll"><table class="tabla"><tr><th>Hora</th><th>Qué pasó</th><th>Detalle</th></tr>${ev}</table></div>` : '<p class="sub">Sin incidencias registradas.</p>'}
-      <h3>Capturas de pantalla (${x.capturas.length})</h3>
-      <div>${x.capturas.map(c => `<button class="btn chico" data-captura="${c.id}" style="margin:0 6px 6px 0">${hora(c.en)} · ${esc(c.motivo || '')}</button>`).join('') || '<p class="sub">Sin capturas.</p>'}</div>
-      <div id="exCaptura"></div>
-      <div class="ex-top"><h3>Respuestas y calificación</h3><div>${botonIA} <b>${x.puntos == null ? '—' : Number(x.puntos)} / ${Number(x.maximo)} pts</b>${x.puntos != null && Number(x.maximo) ? ` (${(100 * Number(x.puntos) / Number(x.maximo)).toFixed(1)} %)` : ''} <button class="btn chico primario" data-calif="${x.id}"><i class="fas fa-check"></i> Guardar calificación</button></div></div>${preg}
-      <button class="btn primario" data-calif="${x.id}"><i class="fas fa-check"></i> Guardar calificación</button></div>`;
+  const fechaCorta = t => t ? new Date(t).toLocaleString('es-EC', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const fmtPts = n => { const x = Number(n); return Number.isInteger(x) ? String(x) : x.toFixed(1).replace('.', ','); };
+  const pct = (a, b) => (b ? Math.round(100 * Number(a) / Number(b)) : 0);
+  const barra = (a, b) => { const p = Math.min(100, pct(a, b)); return `<div class="barra-nota" title="${p} %"><i class="${p >= 80 ? 'alta' : p >= 60 ? 'media' : 'baja'}" style="width:${p}%"></i></div>`; };
+  const ESTADO_TXT = { GENERADO: ['Sin enviar', 'gris'], ENVIADO: ['Invitado', 'azul'], INICIADO: ['Rindiendo', 'ambar'], ENTREGADO: ['Entregó', 'verde'], ANULADO: ['Anulado', 'rojo'] };
+  const insignia = est => { const [t, c] = ESTADO_TXT[est] || [est, 'gris']; return `<span class="ins ${c}">${esc(t)}</span>`; };
+  const NOMBRE_EVENTO = { oculta: 'Cambió de pestaña o minimizó', blur: 'Pasó a otra ventana', sale_pantalla_completa: 'Salió de la pantalla completa', copiar: 'Intentó copiar', cortar: 'Intentó cortar',
+    pegar: 'Intentó pegar texto', menu_contextual: 'Clic derecho', tecla: 'Usó una tecla de riesgo', cierre_pagina: 'Intentó cerrar o recargar', reanudo: 'Volvió a abrir el examen',
+    compartir_iniciado: 'Compartió la pantalla', compartir_detenido: 'Dejó de compartir la pantalla' };
+  const GRAVES = ['oculta', 'blur', 'sale_pantalla_completa', 'pegar', 'copiar', 'cortar', 'compartir_detenido'];
+
+  function resumenExamen(e) {
+    const vivos = e.intentos.filter(i => i.estado !== 'ANULADO');
+    const entregaron = vivos.filter(i => i.estado === 'ENTREGADO');
+    return { vivos, entregaron,
+      sinEnviar: vivos.filter(i => i.estado === 'GENERADO'),
+      enviadas: vivos.filter(i => i.estado !== 'GENERADO'),
+      rindiendo: vivos.filter(i => i.estado === 'INICIADO'),
+      calificadas: entregaron.filter(i => (i.calificadas || 0) >= i.preguntas),
+      porCalificar: entregaron.filter(i => (i.calificadas || 0) < i.preguntas) };
+  }
+
+  // ---------- pestaña Exámenes ----------
+  function tarjetaExamen(e) {
+    const r = resumenExamen(e);
+    const meta = [`${e.minutos} min`, `${e.cantidad} preguntas`, e.exigirPantalla && 'Pantalla compartida', e.permitirAdjuntos && 'Admite archivos', e.iaPermitida && 'Con IA']
+      .filter(Boolean).map(t => `<span class="meta">${esc(t)}</span>`).join('');
+    // El siguiente paso lógico es el único botón destacado
+    let paso = null;
+    if (r.sinEnviar.length) paso = { txt: `Enviar invitaciones (${r.sinEnviar.length})`, ico: 'fa-paper-plane', attr: `data-enviar="${e.id}"` };
+    else if (e.iaPermitida && r.porCalificar.length) paso = { txt: 'Calificar con IA', ico: 'fa-wand-magic-sparkles', attr: `data-ia="${e.id}"` };
+    else if (r.entregaron.length && !e.resultadosEnviadoEn) paso = { txt: 'Enviar resultados a mi correo', ico: 'fa-envelope', attr: `data-xmail="${e.id}"` };
+    const hayInicio = e.intentos.some(i => i.iniciadoEn);
+    const items = [
+      hayInicio && `<button data-xl="${e.id}"><i class="fas fa-file-excel"></i> Descargar Excel de resultados</button>`,
+      hayInicio && !(paso && paso.attr.startsWith('data-xmail')) && `<button data-xmail="${e.id}"><i class="fas fa-envelope"></i> Enviar resultados a mi correo</button>`,
+      hayInicio && `<button data-xcarga="${e.id}"><i class="fas fa-upload"></i> Cargar calificaciones desde Excel</button>`,
+      e.iaPermitida && r.entregaron.length && !(paso && paso.attr.startsWith('data-ia')) && `<button data-ia="${e.id}"><i class="fas fa-wand-magic-sparkles"></i> Calificar con IA</button>`,
+      e.iaPermitida && r.entregaron.length && `<button data-ia="${e.id}" data-ia-re="1"><i class="fas fa-rotate"></i> Volver a calificar lo que hizo la IA</button>`,
+      e.intentos.some(i => i.estado === 'ENVIADO') && `<button data-enviar="${e.id}"><i class="fas fa-paper-plane"></i> Reenviar invitaciones a quienes no han entregado</button>`,
+      `<div class="menu-sep"></div><button class="peligro-item" data-elim-ex="${e.id}"><i class="fas fa-trash"></i> Eliminar este examen…</button>`
+    ].filter(Boolean);
+    const stat = (n, de, txt) => `<div class="stat"><b>${n}</b><span>${de != null ? ' de ' + de : ''}</span><small>${txt}</small></div>`;
+    const estadoRes = e.resultadosEnviadoEn
+      ? `<p class="linea-ok"><i class="fas fa-circle-check"></i> Resultados enviados a tu correo el ${esc(fechaCorta(e.resultadosEnviadoEn))}</p>`
+      : e.resultadosError ? `<p class="msg aviso">Los resultados no se pudieron enviar solos: ${esc(e.resultadosError)}. Usa «Enviar resultados a mi correo» o «Descargar Excel».</p>` : '';
+    const filas = e.intentos.map(i => {
+      const nota = i.estado === 'ANULADO' ? '' : (i.calificadas > 0
+        ? `<b>${fmtPts(i.puntos)}</b> / ${fmtPts(i.maximo)} <span class="sub">· ${pct(i.puntos, i.maximo)} %</span>${barra(i.puntos, i.maximo)}${i.calificadas < i.preguntas ? `<div class="sub">Parcial: ${i.calificadas} de ${i.preguntas} preguntas</div>` : ''}`
+        : (i.estado === 'ENTREGADO' ? '<span class="sub">Sin calificar</span>' : '<span class="sub">—</span>'));
+      const acc = [
+        i.iniciadoEn ? `<button class="btn chico ${i.estado === 'ENTREGADO' ? 'primario' : ''}" data-revisar="${i.id}">${i.estado === 'ENTREGADO' ? 'Revisar y calificar' : 'Ver avance'}</button>` : '',
+        (i.estado === 'GENERADO' || i.estado === 'ENVIADO') ? `<button class="btn chico" data-enviar="${e.id}" data-intento="${i.id}">${i.estado === 'ENVIADO' ? 'Reenviar' : 'Enviar'}</button> <button class="btn chico enlace-mal" data-anular="${i.id}">Anular</button>` : `<button class="btn chico enlace-mal" data-elim-int="${i.id}" title="Borrar el resultado de esta persona">Eliminar</button>`
+      ].join(' ');
+      return `<tr class="${i.estado === 'ANULADO' ? 'tenue' : ''}"><td><b>${esc(i.nombre)}</b><div class="sub">${esc(i.correo)}</div></td>
+        <td>${insignia(i.estado)}${i.motivoCierre === 'tiempo' ? '<div class="sub">se acabó el tiempo</div>' : ''}${i.errorEnvio ? `<div class="sub mal">No se pudo enviar el correo: ${esc(i.errorEnvio)}</div>` : ''}</td>
+        <td>${i.iniciadoEn ? `${i.respondidas} de ${i.preguntas} respondidas` : '<span class="sub">—</span>'}</td>
+        <td>${nota}</td>
+        <td>${i.incidencias ? `<span class="alerta" title="Salidas de la ventana, intentos de pegar, etc."><i class="fas fa-triangle-exclamation"></i> ${i.incidencias}</span>` : (i.iniciadoEn ? '<span class="sub">Ninguna</span>' : '')}</td>
+        <td class="acc">${acc}</td></tr>`;
+    }).join('');
+    return `<div class="ex-card examen"><div class="ex-top"><div><h3 class="titulo">${esc(e.nombre)}</h3><div class="metas">${meta}<span class="meta tenue">${esc(fechaCorta(e.creadoEn))}</span></div></div>
+        <div class="acciones">${paso ? `<button class="btn primario" ${paso.attr}><i class="fas ${paso.ico}"></i> ${paso.txt}</button>` : ''}
+          ${items.length ? `<details class="menu"><summary class="btn">Más <i class="fas fa-chevron-down"></i></summary><div class="menu-lista">${items.join('')}</div></details>` : ''}</div></div>
+      <div class="stats">${stat(r.enviadas.length, r.vivos.length, 'invitadas')}${stat(r.entregaron.length, r.vivos.length, 'entregaron')}${stat(r.calificadas.length, r.entregaron.length, 'calificadas')}</div>
+      ${estadoRes}
+      <div class="scroll"><table class="tabla gente"><tr><th>Evaluado</th><th>Estado</th><th>Avance</th><th>Nota</th><th>Incidencias</th><th></th></tr>${filas}</table></div></div>`;
   }
 
   function vistaExamenes() {
-    const d = st.d, cat = d.catalogo;
-    const evaluados = d.perfiles.filter(f => f.rol === 'EVALUADO');
-    const filas = d.examenes.map(e => {
-      const pend = e.intentos.filter(i => i.estado === 'GENERADO').length;
-      return `<div class="ex-card"><div class="ex-top"><div><b>${esc(e.nombre)}</b><br><small>${e.cantidad} preguntas · ${e.minutos} min${e.exigirPantalla ? ' · con pantalla compartida' : ''}${e.permitirAdjuntos ? ' · con archivos adjuntos' : ''}${e.iaPermitida ? ' · calificación con IA' : ''} · ${new Date(e.creadoEn).toLocaleString('es-EC')}</small></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${e.intentos.some(i => i.iniciadoEn) ? `<button class="btn chico" data-xl="${e.id}"><i class="fas fa-file-excel"></i> Descargar Excel</button>
-          <button class="btn chico" data-xmail="${e.id}"><i class="fas fa-envelope"></i> Enviar Excel a mi correo</button>
-          ${e.iaPermitida ? `<button class="btn chico primario" data-ia="${e.id}"><i class="fas fa-wand-magic-sparkles"></i> Calificar con IA</button>` : ''}
-          <label class="btn chico" style="margin:0;cursor:pointer"><i class="fas fa-upload"></i> Cargar calificaciones<input type="file" accept=".xlsx,.xls" hidden data-xcarga="${e.id}"></label>` : ''}<button class="btn chico primario" data-enviar="${e.id}" ${e.intentos.some(i => i.estado === 'GENERADO' || i.estado === 'ENVIADO') ? '' : 'disabled'}><i class="fas fa-paper-plane"></i> ${pend ? `Enviar pendientes (${pend})` : 'Reenviar a todos'}</button></div></div>
-        ${e.resultadosEnviadoEn ? `<p class="sub" style="margin:4px 0"><i class="fas fa-circle-check" style="color:var(--ok)"></i> Resultados enviados por correo el ${new Date(e.resultadosEnviadoEn).toLocaleString('es-EC')}</p>` : e.resultadosError ? `<p class="msg aviso">No se pudieron enviar los resultados solos: ${esc(e.resultadosError)}. Usa «Enviar Excel a mi correo» o «Descargar Excel».</p>` : ''}
-        <div class="scroll"><table class="tabla"><tr><th>Evaluado</th><th>Correo</th><th>Preguntas</th><th>Estado</th><th>Avance</th><th></th></tr>
-        ${e.intentos.map(i => `<tr><td>${esc(i.nombre)}</td><td>${esc(i.correo)}</td><td>${i.preguntas}</td>
-          <td><span class="etq ${i.estado}">${i.estado}</span>${i.motivoCierre === 'tiempo' ? '<br><small class="sub">por tiempo</small>' : ''}${i.errorEnvio ? `<br><small style="color:#fca5a5">${esc(i.errorEnvio)}</small>` : ''}</td>
-          <td>${i.iniciadoEn ? `<small>${i.respondidas}/${i.preguntas} respondidas<br>${i.incidencias ? `<span style="color:#fcd34d">${i.incidencias} incidencia(s)</span>` : 'sin incidencias'} · ${i.capturas} captura(s)</small>${i.calificadas ? `<br><b>${Number(i.puntos)} / ${Number(i.maximo)} pts</b>` : ''}` : '<small class="sub">—</small>'}</td>
-          <td style="white-space:nowrap">${i.iniciadoEn ? `<button class="btn chico primario" data-revisar="${i.id}">Revisar</button> ` : ''}${i.estado === 'GENERADO' || i.estado === 'ENVIADO' ? `<button class="btn chico" data-enviar="${e.id}" data-intento="${i.id}">${i.estado === 'ENVIADO' ? 'Reenviar' : 'Enviar'}</button> <button class="btn chico peligro" data-anular="${i.id}">Anular</button>` : ''}</td></tr>`).join('')}
-        </table></div></div>`;
-    }).join('');
-    return `${vistaDetalle()}<div class="ex-card"><h2>Nuevo examen</h2>
-      ${d.preguntas === 0 ? '<p class="msg aviso">Primero carga preguntas en la pestaña «Banco de preguntas».</p>' : ''}
-      ${evaluados.length === 0 ? '<p class="msg aviso">Primero agrega evaluados en la pestaña «Personas».</p>' : ''}
-      <div class="fila"><label>Nombre del examen<input id="exNombre" placeholder="Ej. Evaluación de ingreso Q4"></label>
-        <label>Cantidad de preguntas<input id="exCant" type="number" min="1" max="100" value="10"></label>
-        <label>Tiempo (minutos)<input id="exMin" type="number" min="1" max="600" value="45"></label>
-        <label>Vigencia del enlace (días)<input id="exVig" type="number" min="1" max="60" value="7"></label></div>
-      <label class="chk-inline" style="margin:4px 0 8px"><input type="checkbox" id="exPant" ${st.exigirPantalla === false ? '' : 'checked'}> Exigir que el evaluado comparta toda su pantalla (se toman capturas periódicas)</label>
-      <label class="chk-inline" style="margin:0 0 8px"><input type="checkbox" id="exIA"> Permitir calificar con IA (se les avisa a los evaluados; la IA recibe las respuestas sin sus nombres)</label>
-      <label class="chk-inline" style="margin:0 0 8px"><input type="checkbox" id="exPerm"> Permitir que el evaluado adjunte archivos a sus respuestas (hasta 3 por pregunta, 10 MB cada uno)</label>
-      <h3>¿A quién evalúas?</h3>
-      <div class="lista-eval">${evaluados.length ? evaluados.map(f => `<label><input type="checkbox" data-eval="${f.id}" ${st.evaluados.has(f.id) ? 'checked' : ''}> <b>${esc(f.nombre)}</b> <span class="sub">· ${esc(f.perfil)}${f.lineas.length ? ' · ' + esc(f.lineas.join(', ')) : ' · todas las líneas'}</span></label>`).join('') : '<p class="vacio">Sin evaluados.</p>'}</div>
-      <button class="btn chico" data-todos="1">Marcar / desmarcar todos</button>
-      <h3>Qué preguntas entran <span class="sub">(sin marcar = según el perfil y las líneas de cada evaluado)</span></h3>
-      <div class="sub">Perfil</div>${chips('perfiles', cat.PERFIL || [])}
-      <div class="sub">Línea de negocio (se pueden marcar varias)</div>${chips('lineas', cat.LINEA || [])}
-      <div class="sub">Tipo de pregunta</div>${chips('tipos', cat.TIPO || [])}
-      <div class="sub">Dificultad</div>${chips('dificultades', cat.DIFICULTAD || [])}
-      <button class="btn primario" id="exGenerar"><i class="fas fa-wand-magic-sparkles"></i> Generar examen</button>
-      <span class="sub"> Se sortean preguntas distintas para cada persona. Después podrás enviarles el correo.</span></div>
-      <div class="ex-top"><h2 style="margin:0">Exámenes generados</h2><button class="btn chico" id="exActualizar"><i class="fas fa-rotate"></i> Actualizar</button></div>${filas || '<p class="vacio">Aún no generas ningún examen.</p>'}`;
+    const d = st.d;
+    return `<div class="ex-top"><div><h2 style="margin:0">Mis exámenes</h2><small class="sub">Crea un examen, envía las invitaciones y califica lo que te entreguen.</small></div>
+      <div style="display:flex;gap:8px;align-items:center"><button class="btn" id="exActualizar" title="Actualizar"><i class="fas fa-rotate"></i></button><button class="btn primario" data-nuevo><i class="fas fa-plus"></i> Nuevo examen</button></div></div>
+      ${d.examenes.length ? d.examenes.map(tarjetaExamen).join('')
+        : `<div class="ex-card vacio-grande"><i class="fas fa-clipboard-list"></i><h3>Aún no has creado ningún examen</h3><p class="sub">Elige a quién evaluar, cuántas preguntas y cuánto tiempo. Les llegará un enlace por correo.</p><button class="btn primario" data-nuevo><i class="fas fa-plus"></i> Crear mi primer examen</button></div>`}`;
   }
+
+  // ---------- ventana «Nuevo examen» ----------
+  const FILTROS = [['perfiles', 'Perfil', 'PERFIL'], ['lineas', 'Línea de negocio', 'LINEA'], ['tipos', 'Tipo de pregunta', 'TIPO'], ['dificultades', 'Dificultad', 'DIFICULTAD']];
+  function nxNuevo() { return { nombre: '', cant: 10, min: 45, vig: 7, pant: true, ia: false, adj: false, ev: new Set(), q: '', f: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, error: '' }; }
+
+  function nxListaPersonas() {
+    const n = st.nx, q = quitarTildes(n.q);
+    const todos = st.d.perfiles.filter(f => f.rol === 'EVALUADO');
+    const vis = todos.filter(f => !q || quitarTildes(`${f.nombre} ${f.perfil} ${f.correo}`).includes(q));
+    return `<div class="lista-eval">${vis.length ? vis.map(f => `<label class="fila-chk"><input type="checkbox" data-nxev="${f.id}" ${n.ev.has(f.id) ? 'checked' : ''}><span><b>${esc(f.nombre)}</b> <span class="sub">· ${esc(f.perfil)}${f.lineas.length ? ' · ' + esc(f.lineas.join(', ')) : ' · todas las líneas'}</span></span></label>`).join('')
+      : `<p class="vacio">${todos.length ? 'Nadie coincide con la búsqueda.' : 'Aún no hay personas para evaluar.'}</p>`}</div>`;
+  }
+
+  function nxHtml() {
+    const d = st.d, n = st.nx;
+    const avisos = [d.preguntas === 0 ? 'Todavía no tienes preguntas. <a href="#" data-ir="banco">Carga o escribe algunas en «Banco de preguntas»</a>.' : '',
+      !d.perfiles.some(f => f.rol === 'EVALUADO') ? 'Todavía no hay personas para evaluar. <a href="#" data-ir="personas">Agrégalas en «Personas»</a>.' : ''].filter(Boolean);
+    const sw = (id, on, titulo, ayuda) => `<label class="sw"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}><span class="knob"></span><span class="sw-txt"><b>${titulo}</b><small>${ayuda}</small></span></label>`;
+    const nFiltros = FILTROS.reduce((a, [k]) => a + n.f[k].length, 0);
+    return `<div class="mdl-head"><h2>Nuevo examen</h2><button class="x" data-cerrar aria-label="Cerrar">×</button></div>
+      <div class="mdl-body">
+        ${avisos.map(a => `<p class="msg aviso">${a}</p>`).join('')}
+        <section><h3><span class="paso">1</span> Datos del examen</h3>
+          <div class="fila"><label>Nombre<input id="nxNombre" value="${esc(n.nombre)}" placeholder="Ej. Evaluación de ingreso Q4" maxlength="80"></label>
+            <label>Preguntas por persona<input id="nxCant" type="number" min="1" max="100" value="${n.cant}"></label>
+            <label>Tiempo (minutos)<input id="nxMin" type="number" min="1" max="600" value="${n.min}"></label>
+            <label>El enlace vale (días)<input id="nxVig" type="number" min="1" max="60" value="${n.vig}"></label></div></section>
+        <section><h3><span class="paso">2</span> ¿A quién evalúas? <span class="sub" id="nxCuenta">${n.ev.size ? n.ev.size + ' elegido(s)' : ''}</span></h3>
+          <div class="barra-lista"><input type="search" id="nxBuscar" placeholder="Buscar persona" value="${esc(n.q)}"><button class="btn chico" data-nxtodos>Marcar / desmarcar todos</button></div>
+          <div id="nxPersonas">${nxListaPersonas()}</div></section>
+        <section><h3><span class="paso">3</span> Opciones</h3>
+          ${sw('nxPant', n.pant, 'Exigir compartir toda la pantalla', 'Se toman capturas durante el examen para detectar si buscan respuestas en otro lugar.')}
+          ${sw('nxAdj', n.adj, 'Permitir adjuntar archivos', 'Cada persona puede subir hasta 3 archivos por pregunta (10 MB cada uno).')}
+          ${sw('nxIA', n.ia, 'Permitir calificar con IA', 'Les avisamos antes de empezar. La IA solo ve la pregunta y la respuesta, nunca nombres ni correos. Tú decides cuándo usarla.')}</section>
+        <details class="avanzado" ${nFiltros ? 'open' : ''}><summary>Elegir qué preguntas entran <span class="sub">(opcional${nFiltros ? ' · ' + nFiltros + ' filtro(s)' : ': por defecto, según el perfil y las líneas de cada persona'})</span></summary>
+          ${FILTROS.map(([k, tit, cat]) => `<div class="sub" style="margin-top:8px">${tit}</div><div class="chips">${(d.catalogo[cat] || []).map(v => `<span class="chip ${n.f[k].includes(v) ? 'on' : ''}" data-nxchip="${k}" data-v="${esc(v)}">${esc(v)}</span>`).join('')}</div>`).join('')}</details>
+        <p class="msg mal" id="nxError" ${n.error ? '' : 'hidden'}>${esc(n.error)}</p>
+      </div>
+      <div class="mdl-pie"><span class="sub">Cada persona recibe preguntas distintas, sorteadas al azar.</span><button class="btn" data-cerrar>Cancelar</button><button class="btn primario" id="nxCrear"><i class="fas fa-check"></i> Crear examen</button></div>`;
+  }
+
+  function nxLeer() {
+    const n = st.nx, g = id => document.getElementById(id);
+    if (!n || !g('nxNombre')) return;
+    Object.assign(n, { nombre: g('nxNombre').value, cant: Number(g('nxCant').value), min: Number(g('nxMin').value), vig: Number(g('nxVig').value), pant: g('nxPant').checked, adj: g('nxAdj').checked, ia: g('nxIA').checked });
+  }
+
+  function abrirNuevoExamen() {
+    if (!st.nx) st.nx = nxNuevo();
+    const m = modal(nxHtml(), { ancho: 760, antesCerrar: nxLeer });
+    const rear = () => { nxLeer(); m.set(nxHtml()); enlazar2(); };
+    const enlazar2 = () => {
+      const b = m.box, n = st.nx;
+      b.querySelectorAll('[data-cerrar]').forEach(x => x.onclick = () => m.cerrar());
+      b.querySelectorAll('[data-ir]').forEach(a => a.onclick = ev => { ev.preventDefault(); m.cerrar(); st.tab = a.dataset.ir; pintar(); if (st.tab === 'banco') ejecutar(async () => { st.banco = Object.assign(st.banco || {}, { lista: (await rpc({ accion: 'banco_listar' })).preguntas }); }); });
+      const lista = () => { const w = b.querySelector('#nxPersonas'); w.innerHTML = nxListaPersonas(); ligarPersonas(); b.querySelector('#nxCuenta').textContent = n.ev.size ? n.ev.size + ' elegido(s)' : ''; };
+      const ligarPersonas = () => b.querySelectorAll('[data-nxev]').forEach(c => c.onchange = () => { const id = Number(c.dataset.nxev); c.checked ? n.ev.add(id) : n.ev.delete(id); b.querySelector('#nxCuenta').textContent = n.ev.size ? n.ev.size + ' elegido(s)' : ''; });
+      ligarPersonas();
+      b.querySelector('#nxBuscar').oninput = ev => { n.q = ev.target.value; lista(); const i = b.querySelector('#nxBuscar'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); };
+      b.querySelector('[data-nxtodos]').onclick = () => {
+        const q = quitarTildes(n.q), ids = st.d.perfiles.filter(f => f.rol === 'EVALUADO' && (!q || quitarTildes(`${f.nombre} ${f.perfil} ${f.correo}`).includes(q))).map(f => f.id);
+        if (ids.every(i => n.ev.has(i))) ids.forEach(i => n.ev.delete(i)); else ids.forEach(i => n.ev.add(i));
+        lista();
+      };
+      b.querySelectorAll('[data-nxchip]').forEach(c => c.onclick = () => { const a = n.f[c.dataset.nxchip], v = c.dataset.v, i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); rear(); });
+      b.querySelector('#nxCrear').onclick = async ev => {
+        nxLeer();
+        const falla = !n.nombre.trim() ? 'Ponle un nombre al examen.' : !n.ev.size ? 'Elige al menos una persona para evaluar.'
+          : !(n.cant >= 1 && n.cant <= 100) ? 'Las preguntas por persona deben ser entre 1 y 100.' : !(n.min >= 1 && n.min <= 600) ? 'El tiempo debe estar entre 1 y 600 minutos.' : !(n.vig >= 1 && n.vig <= 60) ? 'El enlace puede valer entre 1 y 60 días.' : '';
+        const err = b.querySelector('#nxError');
+        if (falla) { n.error = falla; err.textContent = falla; err.hidden = false; return; }
+        n.error = ''; err.hidden = true;
+        const btn = ev.currentTarget; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando…';
+        try {
+          const r = await rpc({ accion: 'examen_generar', nombre: n.nombre.trim(), cantidad: n.cant, minutos: n.min, vigenciaDias: n.vig, exigirPantalla: n.pant, permitirAdjuntos: n.adj, iaPermitida: n.ia, perfilIds: [...n.ev], filtros: n.f });
+          const notas = r.detalle.filter(x => !x.ok || x.faltan).map(x => x.ok ? `${esc(x.nombre)}: solo hay ${x.preguntas} preguntas disponibles (faltan ${x.faltan})` : `${esc(x.nombre)}: ${esc(x.error)}`);
+          st.nx = null; m.cerrar(); await recargar(); pintar();
+          aviso('<b>Examen creado.</b> ' + (notas.length ? 'Ojo:<br>' + notas.join('<br>') : 'Ahora envía las invitaciones desde su tarjeta.'), notas.length ? 'aviso' : 'ok');
+        } catch (e) {
+          if (e.sesion) { setTimeout(() => location.reload(), 1200); }
+          n.error = e.message; err.textContent = e.message; err.hidden = false; btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Crear examen';
+        }
+      };
+    };
+    enlazar2();
+  }
+
+  // ---------- ventana «Revisar» ----------
+  async function abrirRevision(intentoId, tab) {
+    const d = await rpc({ accion: 'intento_detalle', intentoId });
+    const previo = st.rev && st.rev.id === intentoId ? st.rev : null;
+    st.rev = Object.assign(d, { id: intentoId, tab: tab || (previo && previo.tab) || 'resp', edit: previo ? previo.edit : {}, sucio: previo ? previo.sucio : false });
+    if (!st.revModal || !st.revModal.el.isConnected) {
+      st.revModal = modal('', { ancho: 1000, alCerrar: () => { st.rev = null; st.revModal = null; }, puedeCerrar: () => !st.rev || !st.rev.sucio || window.confirm('Tienes notas sin guardar. ¿Cerrar sin guardarlas?') });
+    }
+    pintarRevision();
+  }
+
+  const valorCalif = (x, q) => { const e = x.edit[q.n]; return e ? e : { puntos: q.calificacion == null ? '' : String(Number(q.calificacion)), comentario: q.comentario || '' }; };
+  function totalesRevision() {
+    const x = st.rev; let suma = 0, n = 0;
+    x.preguntas.forEach(q => { const v = valorCalif(x, q); if (v.puntos !== '' && !isNaN(Number(v.puntos))) { suma += Number(v.puntos); n++; } });
+    return { suma, n, total: x.preguntas.length, maximo: Number(x.maximo) };
+  }
+  function leerCalif() {
+    const x = st.rev, m = st.revModal; if (!x || !m) return;
+    m.box.querySelectorAll('[data-cn]').forEach(i => { const n = Number(i.dataset.cn), c = m.box.querySelector(`[data-cc="${n}"]`); x.edit[n] = { puntos: i.value, comentario: c ? c.value : '' }; });
+  }
+  function refrescarTotales() {
+    const x = st.rev, m = st.revModal; if (!x || !m) return;
+    const t = totalesRevision(), g = id => m.box.querySelector(id);
+    if (g('#revNota')) { g('#revNota').textContent = t.n ? fmtPts(t.suma) : '—'; g('#revPct').textContent = t.n ? `${pct(t.suma, t.maximo)} %` : ''; g('#revBarra').innerHTML = barra(t.suma, t.maximo); g('#revCont').textContent = `${t.n} de ${t.total} preguntas calificadas`; }
+    const gu = g('#revGuardar'); if (gu) gu.disabled = !x.sucio;
+    const av = g('#revSucio'); if (av) av.hidden = !x.sucio;
+  }
+
+  function pintarRevision() {
+    const x = st.rev, m = st.revModal; if (!x || !m) return;
+    const ex = st.d.examenes.find(e => e.intentos.some(i => i.id === x.id));
+    const t = totalesRevision();
+    const hayIA = x.preguntas.some(q => q.origenCalif === 'IA' && !x.edit[q.n]);
+    const graves = x.eventos.filter(e => GRAVES.includes(e.tipo));
+    const tabs = [['resp', 'Respuestas', x.preguntas.length, ''], ['inc', 'Incidencias', graves.length, graves.length ? 'alerta' : ''], ['cap', 'Capturas', x.capturas.length, '']];
+    const resumenTxt = ESTADO_TXT[x.estado] ? ESTADO_TXT[x.estado][0] : x.estado;
+    let cuerpo = '';
+    if (x.tab === 'resp') {
+      cuerpo = x.preguntas.map(q => {
+        const v = valorCalif(x, q), max = Number(q.puntosMax);
+        const origen = x.edit[q.n] ? '<span class="ins azul">Editada</span>' : q.origenCalif === 'IA' ? '<span class="ins morado" title="La calificó la IA: revísala y cámbiala si no estás de acuerdo">Sugerida por la IA</span>' : q.origenCalif === 'EXCEL' ? '<span class="ins gris">Cargada de Excel</span>' : q.origenCalif === 'MANUAL' ? '<span class="ins gris">Manual</span>' : '';
+        return `<article class="preg"><header><span class="num">${q.n}</span><span class="enc">${esc(q.tipo)} · ${esc(q.codigo)}</span><span class="vale">Vale ${fmtPts(max)} pts</span></header>
+          <p class="enunciado">${esc(q.pregunta)}</p>
+          <div class="resp-caja"><div class="et">Respuesta del evaluado</div>${q.respuesta ? `<div class="txt">${esc(q.respuesta)}</div>` : '<div class="sub">No respondió.</div>'}
+            ${(q.archivos || []).length ? `<div class="adjs">${q.archivos.map(a => `<button class="btn chico" data-ver="${a.id}" data-nombre="${esc(a.nombre)}" data-mime="${esc(a.mime)}"><i class="fas ${icoMime(a.mime)}"></i> ${esc(a.nombre)} · ${tam(a.tamano)}</button>`).join('')}</div>` : ''}</div>
+          ${q.respuestaModelo ? `<details class="modelo"><summary>Ver la respuesta modelo</summary><div class="txt">${esc(q.respuestaModelo)}</div></details>` : '<p class="sub" style="margin:6px 0">Esta pregunta no tiene respuesta modelo.</p>'}
+          <div class="calif2"><div class="pts"><label>Nota</label><div class="entrada-pts"><input type="number" min="0" max="${max}" step="0.5" data-cn="${q.n}" value="${esc(v.puntos)}" placeholder="—"><span>/ ${fmtPts(max)}</span></div>
+              <div class="rapidos"><button data-rap="0" data-n="${q.n}" data-max="${max}">0</button><button data-rap="mitad" data-n="${q.n}" data-max="${max}">Mitad</button><button data-rap="max" data-n="${q.n}" data-max="${max}">Completa</button></div></div>
+            <div class="com"><label>Comentario <span class="sub">(opcional)</span></label><textarea rows="2" data-cc="${q.n}" placeholder="Qué estuvo bien o qué faltó">${esc(v.comentario)}</textarea></div><div class="orig">${origen}</div></div></article>`;
+      }).join('');
+    } else if (x.tab === 'inc') {
+      const cuenta = {}; x.eventos.forEach(e => { cuenta[e.tipo] = (cuenta[e.tipo] || 0) + 1; });
+      const fuera = x.eventos.reduce((a, e) => a + (Number(e.segundos) || 0), 0);
+      cuerpo = !x.eventos.length ? '<div class="vacio-grande chico"><i class="fas fa-shield-check"></i><h3>Sin incidencias</h3><p class="sub">No salió de la ventana ni intentó copiar o pegar.</p></div>'
+        : `<div class="resumen-inc">${graves.length ? `<b>${graves.length} cosa(s) para revisar</b>` : '<b>Nada grave</b>'}${fuera ? ` · estuvo fuera de la ventana ${fuera} s en total` : ''}<div class="sub">${Object.entries(cuenta).map(([k, n]) => `${esc(NOMBRE_EVENTO[k] || k)}: ${n}`).join(' · ')}</div></div>
+          <div class="scroll"><table class="tabla"><tr><th>Hora</th><th>Qué pasó</th><th>Detalle</th></tr>${x.eventos.map(e => `<tr class="${GRAVES.includes(e.tipo) ? 'fila-alerta' : ''}"><td>${hora(e.en)}</td><td>${esc(NOMBRE_EVENTO[e.tipo] || e.tipo)}</td><td class="sub">${esc(e.detalle || '')}${e.segundos ? ` · ${e.segundos} s fuera` : ''}</td></tr>`).join('')}</table></div>`;
+    } else {
+      cuerpo = !x.capturas.length ? `<div class="vacio-grande chico"><i class="fas fa-camera"></i><h3>Sin capturas</h3><p class="sub">${x.pantallaOk ? 'No se guardó ninguna.' : 'Esta persona no compartió su pantalla.'}</p></div>`
+        : `<p class="sub">Toca una hora para ver lo que había en su pantalla en ese momento.</p><div class="caps">${x.capturas.map(c => `<button class="btn chico" data-captura="${c.id}"><i class="fas fa-camera"></i> ${hora(c.en)} <span class="sub">${esc(c.motivo || '')}</span></button>`).join('')}</div><div id="revCap"></div>`;
+    }
+    m.set(`<div class="mdl-head sticky"><div><h2>${esc(x.nombre)}</h2><div class="sub">${esc(resumenTxt)}${x.iniciadoEn ? ' · empezó ' + esc(fechaCorta(x.iniciadoEn)) : ''}${x.entregadoEn ? ' · entregó ' + esc(fechaCorta(x.entregadoEn)) : ''}${x.motivoCierre === 'tiempo' ? ' (se acabó el tiempo)' : ''}</div></div><button class="x" data-rcerrar aria-label="Cerrar">×</button></div>
+      <div class="rev-resumen"><div class="nota-bloque"><div class="nota-grande"><b id="revNota">${t.n ? fmtPts(t.suma) : '—'}</b><span> / ${fmtPts(t.maximo)} puntos</span> <em id="revPct">${t.n ? pct(t.suma, t.maximo) + ' %' : ''}</em></div><div id="revBarra">${barra(t.suma, t.maximo)}</div><div class="sub" id="revCont">${t.n} de ${t.total} preguntas calificadas</div></div>
+        <div class="rev-acciones">${ex && ex.iaPermitida ? `<button class="btn ${t.n < t.total ? 'primario' : ''}" id="revIA"><i class="fas fa-wand-magic-sparkles"></i> Calificar con IA</button>` : ''}
+          <button class="btn primario" id="revGuardar" ${x.sucio ? '' : 'disabled'}><i class="fas fa-floppy-disk"></i> Guardar notas</button></div></div>
+      <div class="sub aviso-sucio" id="revSucio" ${x.sucio ? '' : 'hidden'}>Tienes cambios sin guardar.</div>
+      ${hayIA ? '<p class="aviso-ia"><i class="fas fa-wand-magic-sparkles"></i> Hay notas sugeridas por la IA. Revísalas: puedes cambiar cualquiera y luego pulsar «Guardar notas».</p>' : ''}
+      <div class="tabs-mini">${tabs.map(([k, n, c, cl]) => `<button data-rtab="${k}" class="${x.tab === k ? 'on' : ''}">${n} <span class="cnt ${cl}">${c}</span></button>`).join('')}</div>
+      <div class="mdl-body">${cuerpo}</div>`);
+    enlazarRevision();
+  }
+
+  function enlazarRevision() {
+    const x = st.rev, m = st.revModal, b = m.box;
+    b.querySelector('[data-rcerrar]').onclick = () => m.intentarCerrar();
+    b.querySelectorAll('[data-rtab]').forEach(t => t.onclick = () => { leerCalif(); x.tab = t.dataset.rtab; pintarRevision(); });
+    b.querySelectorAll('[data-ver]').forEach(v => v.onclick = () => verArchivo(Number(v.dataset.ver), v.dataset.nombre, v.dataset.mime));
+    b.querySelectorAll('[data-captura]').forEach(c => c.onclick = async () => {
+      const box = b.querySelector('#revCap'); box.innerHTML = '<p class="sub">Cargando captura…</p>';
+      try { const r = await rpc({ accion: 'captura_ver', capturaId: Number(c.dataset.captura) }); box.innerHTML = `<img class="cap-img" src="${r.imagen}" alt="Captura de pantalla">`; }
+      catch (e) { box.innerHTML = `<p class="msg mal">${esc(e.message)}</p>`; }
+    });
+    const marcar = () => { x.sucio = true; leerCalif(); refrescarTotales(); };
+    b.querySelectorAll('[data-cn],[data-cc]').forEach(i => i.oninput = marcar);
+    b.querySelectorAll('[data-rap]').forEach(r => r.onclick = () => {
+      const inp = b.querySelector(`[data-cn="${r.dataset.n}"]`), max = Number(r.dataset.max);
+      inp.value = r.dataset.rap === '0' ? '0' : r.dataset.rap === 'max' ? String(max) : String(Math.round(max / 2 * 2) / 2);
+      marcar();
+    });
+    const ia = b.querySelector('#revIA');
+    if (ia) ia.onclick = () => { const ex = st.d.examenes.find(e => e.intentos.some(i => i.id === x.id)); calificarIA(ex.id, x.id, false).catch(e => aviso(esc(e.message), 'mal')); };
+    const gu = b.querySelector('#revGuardar');
+    if (gu) gu.onclick = () => ejecutar(async () => {
+      leerCalif();
+      const items = x.preguntas.map(q => ({ n: q.n, puntos: x.edit[q.n] ? x.edit[q.n].puntos : (q.calificacion == null ? '' : String(q.calificacion)), comentario: x.edit[q.n] ? x.edit[q.n].comentario : (q.comentario || '') }));
+      const r = await rpcRes({ accion: 'calificar', intentoId: x.id, items });
+      x.edit = {}; x.sucio = false;
+      await recargar(); await abrirRevision(x.id);
+      aviso(`<b>Notas guardadas.</b> ${fmtPts(r.puntos || 0)} de ${fmtPts(r.maximo)} puntos.`);
+    }, gu);
+  }
+
+  // ---------- calificar con IA: explicación, avance y resumen ----------
+  async function calificarIA(examenId, intentoId, recalificar) {
+    const pre = await rpcRes({ accion: 'ia_pendientes', examenId, intentoId, recalificar, limite: 1 });
+    if (!pre.restantes) { aviso(recalificar ? 'La IA todavía no ha calificado nada que se pueda volver a calificar.' : 'No hay nada pendiente: todas las respuestas ya tienen nota.', 'aviso'); return; }
+    const total = pre.restantes;
+    const m = modal(`<div class="mdl-body centro"><div class="gran-ico morado"><i class="fas fa-wand-magic-sparkles"></i></div>
+        <h2>Calificar ${total} respuesta${total === 1 ? '' : 's'} con IA</h2>
+        <ul class="lista-ayuda"><li><i class="fas fa-check"></i><span>La IA <b>sugiere</b> una nota y un comentario para cada respuesta. Tú decides: puedes cambiar cualquiera.</span></li>
+          <li><i class="fas fa-user-shield"></i><span>No ve nombres ni correos: solo la pregunta, la respuesta modelo y lo que escribió la persona.</span></li>
+          <li><i class="fas fa-hand"></i><span>Las notas que ya pusiste a mano <b>no se tocan</b>.</span></li></ul></div>
+        <div class="mdl-pie"><button class="btn" data-no>Cancelar</button><button class="btn primario" data-si><i class="fas fa-wand-magic-sparkles"></i> Calificar ${total}</button></div>`, { ancho: 500 });
+    m.box.querySelector('[data-no]').onclick = () => m.cerrar();
+    m.box.querySelector('[data-si]').onclick = () => correrIA(m, { examenId, intentoId, recalificar, total });
+  }
+
+  async function correrIA(m, { examenId, intentoId, recalificar, total }) {
+    m.cerrable = false;
+    let parar = false;
+    m.set(`<div class="mdl-body centro"><div class="gran-ico morado"><i class="fas fa-wand-magic-sparkles fa-beat-fade"></i></div><h2>La IA está calificando…</h2>
+      <p id="iaTxt" class="txt-ayuda">Preparando…</p><div class="barra-prog"><i id="iaBar" style="width:0%"></i></div>
+      <p class="sub">Tarda unos segundos por cada 6 respuestas. Puedes esperar aquí.</p></div>
+      <div class="mdl-pie"><button class="btn" id="iaStop">Detener</button></div>`);
+    m.box.querySelector('#iaStop').onclick = e => { parar = true; e.currentTarget.disabled = true; e.currentTarget.textContent = 'Deteniendo…'; };
+    const tot = { guardadas: 0, tokens: 0, errores: [] };
+    let restantes = total, sinAvance = 0, fallo = '';
+    for (let vuelta = 0; vuelta < 400 && restantes > 0 && !parar; vuelta++) {
+      const hechas = total - restantes;
+      const t = m.box.querySelector('#iaTxt'), bar = m.box.querySelector('#iaBar');
+      if (t) t.textContent = `${hechas} de ${total} respuestas`; if (bar) bar.style.width = `${Math.round(100 * hechas / total)}%`;
+      let r;
+      try { r = await fb()._post({ accion: 'examenCalificarIA', token: st.ses.token, examenId, intentoId, recalificar }); }
+      catch (e) { fallo = 'Se perdió la conexión.'; break; }
+      if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } fallo = (r && r.error) || 'No se pudo calificar con IA.'; break; }
+      tot.guardadas += r.guardadas; tot.tokens += r.tokens || 0; tot.errores.push(...(r.errores || []));
+      restantes = r.restantes;
+      if (!r.guardadas) { if (++sinAvance >= 2) break; } else sinAvance = 0;
+    }
+    m.cerrable = true;
+    try { await recargar(); if (st.rev) { st.rev = Object.assign(await rpc({ accion: 'intento_detalle', intentoId: st.rev.id }), { id: st.rev.id, tab: st.rev.tab, edit: st.rev.edit, sucio: st.rev.sucio }); pintarRevision(); } pintar(); } catch (e) { /* se vuelve a cargar al actualizar */ }
+    const ok = !fallo && !restantes && !tot.errores.length, parcial = tot.guardadas > 0;
+    const lleno = restantes === 0 && !fallo;
+    const primero = st.d.examenes.flatMap(e => e.intentos).filter(i => i.estado === 'ENTREGADO' && i.calificadas > 0).find(i => !intentoId || i.id === intentoId);
+    m.set(`<div class="mdl-body centro"><div class="gran-ico ${ok ? 'verde' : parcial ? 'ambar' : 'rojo'}"><i class="fas ${ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i></div>
+        <h2>${ok ? 'Listo: la IA calificó ' + tot.guardadas + ' respuesta' + (tot.guardadas === 1 ? '' : 's') : parcial ? `Se calificaron ${tot.guardadas} de ${total}` : 'No se pudo calificar'}</h2>
+        ${fallo ? `<p class="msg mal" style="text-align:left">${esc(fallo)}</p>` : ''}
+        ${tot.errores.length ? `<p class="msg aviso" style="text-align:left">${tot.errores.length} respuesta(s) con problema: ${tot.errores.slice(0, 3).map(e => esc(e.error)).join(' · ')}</p>` : ''}
+        ${lleno || parcial ? '<p class="txt-ayuda">Las notas quedaron marcadas como <span class="ins morado">Sugerida por la IA</span>. <b>Revísalas</b> y cambia las que no te convenzan.</p>' : ''}
+        ${!lleno && (fallo || restantes) ? '<p class="sub">Puedes volver a pulsar «Calificar con IA» para continuar con lo que falta.</p>' : ''}
+        ${tot.tokens ? `<p class="sub">Uso de IA: ≈ ${tot.tokens.toLocaleString('es-EC')} tokens</p>` : ''}</div>
+      <div class="mdl-pie"><button class="btn ${primero && !st.rev ? '' : 'primario'}" data-cerrar>Entendido</button>${primero && !st.rev && parcial ? '<button class="btn primario" data-ver-notas>Revisar las notas</button>' : ''}</div>`);
+    m.box.querySelector('[data-cerrar]').onclick = () => m.cerrar();
+    const vn = m.box.querySelector('[data-ver-notas]');
+    if (vn) vn.onclick = () => { m.cerrar(); ejecutar(() => abrirRevision(primero.id), null); };
+  }
+
+  // ---------- acciones de las tarjetas ----------
+  function enlazarExamenes(q) {
+    q('[data-nuevo]', b => b.onclick = () => abrirNuevoExamen());
+    const act = document.getElementById('exActualizar'); if (act) act.onclick = () => ejecutar(async () => { await recargar(); aviso('Lista actualizada.'); }, act);
+    q('[data-revisar]', b => b.onclick = () => ejecutar(() => abrirRevision(Number(b.dataset.revisar)), b));
+    q('[data-ia]', b => b.onclick = () => ejecutar(() => calificarIA(Number(b.dataset.ia), undefined, !!b.dataset.iaRe), b));
+    q('[data-enviar]', b => b.onclick = () => ejecutar(async () => {
+      aviso('Enviando invitaciones…', 'aviso');
+      const r = await fb()._post({ accion: 'examenEnviar', token: st.ses.token, examenId: Number(b.dataset.enviar), intentoIds: b.dataset.intento ? [Number(b.dataset.intento)] : undefined });
+      if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } throw new Error((r && r.error) || 'No se pudieron enviar las invitaciones'); }
+      await recargar();
+      aviso(`<b>${r.enviados} invitación(es) enviada(s).</b>${r.fallos ? ` ${r.fallos} no se pudieron enviar: míralas en la tabla.` : ' Cada persona recibirá un enlace por correo.'}`, r.fallos ? 'aviso' : 'ok');
+    }, b));
+    q('[data-anular]', b => b.onclick = async () => {
+      if (await preguntar({ titulo: 'Anular esta invitación', texto: 'El enlace dejará de funcionar y la persona ya no podrá rendir este examen.', si: 'Sí, anular', no: 'No', peligro: true })) {
+        ejecutar(async () => { await rpc({ accion: 'examen_anular', intentoId: Number(b.dataset.anular) }); await recargar(); aviso('Invitación anulada.'); }, b);
+      }
+    });
+    q('[data-elim-ex]', b => b.onclick = async () => {
+      const e = st.d.examenes.find(x => x.id === Number(b.dataset.elimEx)); if (!e) return;
+      const r = resumenExamen(e), n = a => a.length;
+      const resp = e.intentos.reduce((a, i) => a + (i.respondidas || 0), 0), caps = e.intentos.reduce((a, i) => a + (i.capturas || 0), 0);
+      const conDatos = n(r.entregaron) || n(r.rindiendo) || resp || caps;
+      const ok = await preguntar({
+        titulo: `Eliminar «${e.nombre}»`, peligro: true, si: 'Eliminar para siempre', no: 'Cancelar', escribir: conDatos ? e.nombre : null,
+        texto: `<p>Se borrará <b>todo</b> lo de este examen y <b>no se puede deshacer</b>:</p>
+          <ul class="lista-ayuda"><li><i class="fas fa-users"></i><span>${n(e.intentos)} persona(s) con sus invitaciones y enlaces</span></li>
+            ${conDatos ? `<li><i class="fas fa-file-lines"></i><span>${resp} respuesta(s), ${caps} captura(s) de pantalla, incidencias y notas</span></li>` : ''}
+            <li><i class="fas fa-shield-halved"></i><span>Tu banco de preguntas y las personas <b>no</b> se borran</span></li></ul>
+          ${n(r.entregaron) ? '<p><button class="btn chico" data-dlxl><i class="fas fa-file-excel"></i> Descargar el Excel de resultados antes</button></p>' : ''}`,
+        alAbrir: m => { const d = m.box.querySelector('[data-dlxl]'); if (d) d.onclick = () => ejecutar(async () => { descargarResultados((await rpcRes({ accion: 'resultados', examenId: e.id })).resultados); aviso('Excel descargado. Ya puedes eliminar el examen.'); }, d); }
+      });
+      if (ok) ejecutar(async () => { await rpc({ accion: 'examen_eliminar', examenId: e.id }); if (st.rev) st.revModal && st.revModal.cerrar(); await recargar(); aviso(`Examen «${esc(e.nombre)}» eliminado.`); }, b);
+    });
+    q('[data-elim-int]', b => b.onclick = async () => {
+      const id = Number(b.dataset.elimInt), e = st.d.examenes.find(x => x.intentos.some(i => i.id === id)), i = e && e.intentos.find(x => x.id === id); if (!i) return;
+      const ok = await preguntar({ titulo: `Eliminar el resultado de ${i.nombre}`, peligro: true, si: 'Eliminar resultado', no: 'Cancelar',
+        texto: `<p>Se borrarán para siempre sus respuestas, incidencias, capturas y notas <b>de este examen</b>.</p><p class="sub">${i.estado === 'ANULADO' ? 'Su invitación ya estaba anulada.' : 'Su enlace dejará de funcionar.'} El examen y las demás personas no cambian.</p>` });
+      if (ok) ejecutar(async () => { await rpc({ accion: 'intento_eliminar', intentoId: id }); if (st.rev && st.rev.id === id && st.revModal) st.revModal.cerrar(); await recargar(); aviso(`Se eliminó el resultado de ${esc(i.nombre)}.`); }, b);
+    });
+    q('[data-xl]', b => b.onclick = () => ejecutar(async () => { descargarResultados((await rpcRes({ accion: 'resultados', examenId: Number(b.dataset.xl) })).resultados); aviso('Se descargó el Excel de resultados.'); }, b));
+    q('[data-xmail]', b => b.onclick = () => ejecutar(async () => {
+      aviso('Preparando el Excel y enviándolo a tu correo…', 'aviso');
+      const r = await fb()._post({ accion: 'examenResultados', token: st.ses.token, examenId: Number(b.dataset.xmail) });
+      if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } throw new Error((r && r.error) || 'No se pudo enviar'); }
+      await recargar(); aviso(`<b>Listo.</b> Te enviamos el Excel a ${esc(r.destinatario)}.`);
+    }, b));
+    q('[data-xcarga]', b => b.onclick = () => elegirArchivo('.xlsx,.xls', f => ejecutar(async () => {
+      aviso('Cargando calificaciones…', 'aviso');
+      const r = await cargarCalificaciones(f, Number(b.dataset.xcarga));
+      if (st.rev) st.rev = Object.assign(await rpc({ accion: 'intento_detalle', intentoId: st.rev.id }), { id: st.rev.id, tab: st.rev.tab, edit: {}, sucio: false });
+      await recargar(); if (st.rev) pintarRevision();
+      aviso(`<b>${r.guardadas}</b> calificación(es) cargadas de ${r.total} fila(s).` + (r.errores.length ? `<br>Con error (${r.errores.length}): ` + r.errores.slice(0, 5).map(e => `${esc(e.id)}: ${esc(e.error)}`).join(' · ') : ''), r.errores.length ? 'aviso' : 'ok');
+    }, null)));
+    q('.menu', d => d.addEventListener('click', ev => { if (ev.target.closest('button')) d.open = false; }));
+  }
+
+  // Los menús «Más» se cierran al tocar fuera
+  document.addEventListener('click', ev => document.querySelectorAll('details.menu[open]').forEach(m => { if (!m.contains(ev.target)) m.open = false; }));
 
   // ---------- formulario de una pregunta ----------
   function nuevaPregunta(q) {
@@ -506,7 +859,7 @@
       ${b.lista.map(q => `<tr><td>${esc(q.codigo)}</td><td>${esc(q.perfiles.join(', ') || 'Todos')}</td><td>${esc(q.lineas.join(', ') || 'Todas')}</td><td>${esc(q.tipo)}</td><td>${esc(q.dificultad || '')}</td><td>${Number(q.puntos)}</td>
         <td>${esc(q.pregunta)}${q.respuestaModelo ? `<br><small class="sub">Modelo: ${esc(q.respuestaModelo.slice(0, 160))}${q.respuestaModelo.length > 160 ? '…' : ''}</small>` : ''}</td>
         <td><button class="btn chico" data-adj="${q.id}"><i class="fas fa-paperclip"></i> ${(q.adjuntos || []).length}</button></td>
-        <td style="white-space:nowrap"><button class="btn chico" data-editar="${q.id}">Editar</button> <button class="btn chico peligro" data-borrar="${q.id}">Quitar</button></td></tr>`).join('')}</table></div>` : '<p class="vacio">Cargando…</p>';
+        <td style="white-space:nowrap"><button class="btn chico" data-editar="${q.id}">Editar</button> <button class="btn chico peligro" data-borrar="${q.id}">Eliminar</button></td></tr>`).join('')}</table></div>` : '<p class="vacio">Cargando…</p>';
     const qa = st.adj && b && b.lista ? b.lista.find(x => x.id === st.adj) : null;
     const panel = qa ? `<div class="ex-card"><div class="ex-top"><div><h2 style="margin:0">Adjuntos de ${esc(qa.codigo)}</h2><small class="sub">${esc(qa.pregunta.slice(0, 140))}</small></div><button class="btn chico" id="adjCerrar">Cerrar</button></div>
       <p class="sub">Material que verá el evaluado dentro de la pregunta: imágenes, audio, video, PDF o documentos (hasta 25 MB cada uno), o enlaces https (YouTube, Drive, SharePoint…). Máximo 5 por pregunta.</p>
@@ -586,7 +939,7 @@
         <label>Perfil<select id="xPerfil">${(cat.PERFIL || []).map(v => `<option>${esc(v)}</option>`).join('')}</select></label></div>
       <div class="sub">Líneas de negocio (varias; sin marcar = todas)</div>${chips('lineas_ext', cat.LINEA || [])}
       <button class="btn primario" id="xGuardar">Agregar candidato</button>
-      ${ext.length ? `<div class="scroll"><table class="tabla"><tr><th>Nombre</th><th>Correo</th><th>Perfil</th><th></th></tr>${ext.map(f => `<tr><td>${esc(f.nombre)}</td><td>${esc(f.correo)}</td><td>${esc(f.perfil + (f.lineas.length ? ' · ' + f.lineas.join(', ') : ' · todas'))}</td><td><button class="btn chico peligro" data-baja="${f.id}">Quitar</button></td></tr>`).join('')}</table></div>` : ''}</div>
+      ${ext.length ? `<div class="scroll"><table class="tabla"><tr><th>Nombre</th><th>Correo</th><th>Perfil</th><th></th></tr>${ext.map(f => `<tr><td>${esc(f.nombre)}</td><td>${esc(f.correo)}</td><td>${esc(f.perfil + (f.lineas.length ? ' · ' + f.lineas.join(', ') : ' · todas'))}</td><td><button class="btn chico peligro" data-baja="${f.id}">Eliminar</button></td></tr>`).join('')}</table></div>` : ''}</div>
       <div class="ex-card"><h2>Catálogos</h2><p class="sub">Agrega opciones nuevas que luego podrás usar en perfiles, en el Excel y en los filtros.</p>
       <div class="fila"><label>Catálogo<select id="cTipo"><option value="PERFIL">Perfil</option><option value="LINEA">Línea de negocio</option><option value="TIPO">Tipo de pregunta</option><option value="DIFICULTAD">Dificultad</option></select></label>
       <label>Nuevo valor<input id="cValor"></label></div><button class="btn" id="cAgregar">Agregar</button></div>`;
@@ -599,7 +952,6 @@
     app.innerHTML = `<div class="ex-top"><div><h1><i class="fas fa-clipboard-question"></i> Evaluaciones técnicas</h1><small>Evaluador ${esc(st.d.yo)}${st.d.master ? ' · master' : ''}</small></div>
       <button class="btn chico" id="exSalir">Salir</button></div>
       <div class="ex-tabs">${tabs.map(t => `<button data-tab="${t[0]}" class="${st.tab === t[0] ? 'on' : ''}"><i class="fas ${t[2]}"></i> ${t[1]}</button>`).join('')}</div>
-      ${st.msg ? `<div class="msg ${st.msg.tipo}">${st.msg.texto}</div>` : ''}
       ${st.tab === 'examenes' ? vistaExamenes() : st.tab === 'banco' ? vistaBanco() : vistaPersonas()}`;
     enlazar();
   }
@@ -625,38 +977,7 @@
     });
     const salir = document.getElementById('exSalir'); if (salir) salir.onclick = () => { cerrarSesion(); location.reload(); };
 
-    q('[data-revisar]', b => b.onclick = () => ejecutar(async () => {
-      const id = Number(b.dataset.revisar);
-      st.detalle = Object.assign((await rpc({ accion: 'intento_detalle', intentoId: id })), { id });
-      await recargar();
-    }, b));
-    const cd = document.getElementById('exCerrarDet'); if (cd) cd.onclick = () => { st.detalle = null; pintar(); };
-    q('[data-captura]', b => b.onclick = async () => {
-      const box = document.getElementById('exCaptura');
-      box.innerHTML = '<p class="sub">Cargando captura…</p>';
-      try {
-        const r = await rpc({ accion: 'captura_ver', capturaId: Number(b.dataset.captura) });
-        box.innerHTML = `<img src="${r.imagen}" alt="Captura" style="max-width:100%;border:1px solid var(--linea);border-radius:10px;margin-top:6px">`;
-      } catch (e) { box.innerHTML = `<p class="msg mal">${esc(e.message)}</p>`; }
-    });
-    const act = document.getElementById('exActualizar'); if (act) act.onclick = () => ejecutar(async () => { await recargar(); aviso('Actualizado.'); }, act);
-    const gen = document.getElementById('exGenerar');
-    if (gen) gen.onclick = () => ejecutar(async () => {
-      const r = await rpc({ accion: 'examen_generar', nombre: val('exNombre'), cantidad: Number(val('exCant')), minutos: Number(val('exMin')),
-        vigenciaDias: Number(val('exVig')), exigirPantalla: document.getElementById('exPant').checked, permitirAdjuntos: document.getElementById('exPerm').checked, iaPermitida: document.getElementById('exIA').checked, perfilIds: [...st.evaluados], filtros: { perfiles: st.sel.perfiles, lineas: st.sel.lineas, tipos: st.sel.tipos, dificultades: st.sel.dificultades } });
-      const notas = r.detalle.filter(x => !x.ok || x.faltan).map(x => x.ok ? `${esc(x.nombre)}: solo ${x.preguntas} preguntas disponibles (faltan ${x.faltan})` : `${esc(x.nombre)}: ${esc(x.error)}`);
-      aviso('Examen generado. ' + (notas.length ? 'Ojo: <br>' + notas.join('<br>') : 'Ya puedes enviar los correos.'), notas.length ? 'aviso' : 'ok');
-      st.evaluados.clear(); await recargar();
-    }, gen);
-
-    q('[data-enviar]', b => b.onclick = () => ejecutar(async () => {
-      aviso('Enviando correos…', 'aviso'); pintar();
-      const r = await fb()._post({ accion: 'examenEnviar', token: st.ses.token, examenId: Number(b.dataset.enviar), intentoIds: b.dataset.intento ? [Number(b.dataset.intento)] : undefined });
-      if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } throw new Error((r && r.error) || 'No se pudo enviar'); }
-      aviso(`Correos enviados: ${r.enviados}${r.fallos ? `. Con error: ${r.fallos} (míralos en la tabla)` : ''}.`, r.fallos ? 'aviso' : 'ok');
-      await recargar();
-    }, b));
-    q('[data-anular]', b => b.onclick = () => { if (confirm('¿Anular este examen? El enlace dejará de funcionar.')) ejecutar(async () => { await rpc({ accion: 'examen_anular', intentoId: Number(b.dataset.anular) }); await recargar(); }, b); });
+    enlazarExamenes(q);
 
     const arch = document.getElementById('exArchivo');
     if (arch) arch.onchange = () => ejecutar(async () => {
@@ -685,28 +1006,6 @@
     });
     const pg1 = document.getElementById('pqGuardar'); if (pg1) pg1.onclick = () => ejecutar(() => guardarPregunta(false), pg1);
     const pg2 = document.getElementById('pqGuardarAdj'); if (pg2) pg2.onclick = () => ejecutar(() => guardarPregunta(true), pg2);
-    q('[data-ia]', b => b.onclick = () => ejecutar(() => calificarIA(Number(b.dataset.ia), b.dataset.iaInt ? Number(b.dataset.iaInt) : undefined, !!b.dataset.iaRe), b));
-    q('[data-xl]', b => b.onclick = () => ejecutar(async () => { descargarResultados((await rpcRes({ accion: 'resultados', examenId: Number(b.dataset.xl) })).resultados); }, b));
-    q('[data-xmail]', b => b.onclick = () => ejecutar(async () => {
-      aviso('Preparando el Excel y enviándolo a tu correo…', 'aviso'); pintar();
-      const r = await fb()._post({ accion: 'examenResultados', token: st.ses.token, examenId: Number(b.dataset.xmail) });
-      if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } throw new Error((r && r.error) || 'No se pudo enviar'); }
-      aviso(`Listo: enviamos el Excel a ${esc(r.destinatario)}.`); await recargar();
-    }, b));
-    q('[data-xcarga]', inp => inp.onchange = () => ejecutar(async () => {
-      const f = inp.files[0]; if (!f) return;
-      aviso('Cargando calificaciones…', 'aviso'); pintar();
-      const r = await cargarCalificaciones(f, Number(inp.dataset.xcarga));
-      aviso(`<b>${r.guardadas}</b> calificación(es) cargadas de ${r.total} fila(s).` + (r.errores.length ? `<br>Con error (${r.errores.length}):<br>` + r.errores.slice(0, 10).map(e => `${esc(e.id)}: ${esc(e.error)}`).join('<br>') : ''), r.errores.length ? 'aviso' : 'ok');
-      if (st.detalle) st.detalle = Object.assign(await rpc({ accion: 'intento_detalle', intentoId: st.detalle.id }), { id: st.detalle.id });
-      await recargar();
-    }, null));
-    q('[data-calif]', b => b.onclick = () => ejecutar(async () => {
-      const items = [...document.querySelectorAll('[data-cn]')].map(i => ({ n: Number(i.dataset.cn), puntos: i.value, comentario: (document.querySelector(`[data-cc="${i.dataset.cn}"]`) || {}).value || '' }));
-      const r = await rpcRes({ accion: 'calificar', intentoId: Number(b.dataset.calif), items });
-      st.detalle = Object.assign(await rpc({ accion: 'intento_detalle', intentoId: Number(b.dataset.calif) }), { id: Number(b.dataset.calif) });
-      aviso(`Calificación guardada: ${Number(r.puntos || 0)} de ${Number(r.maximo)} puntos.`); await recargar();
-    }, b));
     q('[data-ver]', b => b.onclick = () => verArchivo(Number(b.dataset.ver), b.dataset.nombre, b.dataset.mime));
     q('[data-adj]', b => b.onclick = () => { st.adj = Number(b.dataset.adj); pintar(); document.getElementById('adjCerrar')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
     const ac = document.getElementById('adjCerrar'); if (ac) ac.onclick = () => { st.adj = null; pintar(); };
@@ -730,10 +1029,12 @@
     if (ae) ae.onclick = () => ejecutar(async () => {
       await rpcArch({ accion: 'enlace_agregar', preguntaId: st.adj, url: val('adjUrl'), titulo: val('adjTit') }); await refrescarBanco();
     }, ae);
-    q('[data-borrar]', b => b.onclick = () => ejecutar(async () => {
-      await rpc({ accion: 'pregunta_baja', id: Number(b.dataset.borrar) });
-      st.banco.lista = (await rpc({ accion: 'banco_listar' })).preguntas; await recargar();
-    }, b));
+    q('[data-borrar]', b => b.onclick = async () => {
+      const x = (st.banco.lista || []).find(y => y.id === Number(b.dataset.borrar));
+      const ok = await preguntar({ titulo: `Eliminar la pregunta ${x ? x.codigo : ''}`, peligro: true, si: 'Eliminar pregunta', no: 'Cancelar',
+        texto: `<p>${x ? '«' + esc(x.pregunta.slice(0, 140)) + (x.pregunta.length > 140 ? '…' : '') + '»' : ''}</p><p class="sub">Sale del banco y no se sortea en exámenes nuevos. Los exámenes que ya se hicieron conservan su texto.</p>` });
+      if (ok) ejecutar(async () => { await rpc({ accion: 'pregunta_baja', id: Number(b.dataset.borrar) }); st.banco.lista = (await rpc({ accion: 'banco_listar' })).preguntas; await recargar(); aviso('Pregunta eliminada.'); }, b);
+    });
 
     // Personas
     const P = st.pers;
@@ -790,7 +1091,12 @@
       await rpc({ accion: 'perfil_guardar', rol: 'EVALUADO', nombre: val('xNombre'), correo: val('xCorreo'), perfil: val('xPerfil'), lineas: st.sel.lineas_ext });
       st.sel.lineas_ext = []; aviso('Candidato agregado.'); await recargar();
     }, xg);
-    q('[data-baja]', b => b.onclick = () => { if (confirm('¿Quitar a esta persona?')) ejecutar(async () => { await rpc({ accion: 'perfil_baja', id: Number(b.dataset.baja) }); await recargar(); }, b); });
+    q('[data-baja]', b => b.onclick = async () => {
+      const f = st.d.perfiles.find(y => y.id === Number(b.dataset.baja));
+      const ok = await preguntar({ titulo: `Eliminar a ${f ? f.nombre : 'esta persona'}`, peligro: true, si: 'Eliminar', no: 'Cancelar',
+        texto: '<p>Ya no aparecerá para crear exámenes nuevos.</p><p class="sub">Sus exámenes anteriores y resultados se conservan; para borrarlos usa «Eliminar» en la tarjeta del examen.</p>' });
+      if (ok) ejecutar(async () => { await rpc({ accion: 'perfil_baja', id: Number(b.dataset.baja) }); await recargar(); aviso('Persona eliminada de la lista.'); }, b);
+    });
     const ca = document.getElementById('cAgregar');
     if (ca) ca.onclick = () => ejecutar(async () => { await rpc({ accion: 'catalogo_agregar', tipo: val('cTipo'), valor: val('cValor') }); aviso('Opción agregada.'); await recargar(); }, ca);
   }

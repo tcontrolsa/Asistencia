@@ -146,6 +146,20 @@ CREATE TABLE IF NOT EXISTS historico.exam_calificaciones (
 ALTER TABLE historico.exam_calificaciones DROP CONSTRAINT IF EXISTS exam_calificaciones_origen_check;
 ALTER TABLE historico.exam_calificaciones ADD CONSTRAINT exam_calificaciones_origen_check CHECK (origen IN ('MANUAL', 'EXCEL', 'IA'));
 
+-- Bitácora de eliminaciones: quién borró qué y cuánto contenía (nunca guarda las respuestas ni datos de personas)
+CREATE TABLE IF NOT EXISTS historico.exam_eliminaciones (
+    id         bigserial PRIMARY KEY,
+    que        text NOT NULL CHECK (que IN ('EXAMEN', 'INTENTO')),
+    nombre     text,
+    por        text NOT NULL,
+    personas   int NOT NULL DEFAULT 0,
+    respuestas int NOT NULL DEFAULT 0,
+    capturas   int NOT NULL DEFAULT 0,
+    archivos   int NOT NULL DEFAULT 0,
+    en         timestamptz NOT NULL DEFAULT now()
+);
+REVOKE ALL ON historico.exam_eliminaciones FROM PUBLIC, tcontrol_lector, tcontrol_anon;
+
 -- Puntos desde texto: NULL si está vacío, -1 si no es un número válido (hasta 4 enteros y 2 decimales)
 CREATE OR REPLACE FUNCTION historico.exam_puntos(t text) RETURNS numeric
 LANGUAGE sql IMMUTABLE AS $$
@@ -237,6 +251,10 @@ DECLARE
     v_pid    bigint;
     v_det    record;
     v_pts    numeric;
+    v_c1     int;
+    v_c2     int;
+    v_c3     int;
+    v_c4     int;
 BEGIN
     IF v_yo IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'error', 'No tienes permiso de evaluador. Pide al administrador que te agregue.');
@@ -578,6 +596,41 @@ BEGIN
                   FROM exam_capturas c JOIN exam_intentos i ON i.id = c.intento_id JOIN exam_examenes e ON e.id = i.examen_id
                  WHERE c.id = (p->>'capturaId')::bigint AND (v_master OR e.propietario = v_yo)),
                 jsonb_build_object('ok', false, 'error', 'Captura no encontrada.'));
+    END IF;
+
+    -- ===== Eliminar de verdad: un examen completo o el resultado de una sola persona =====
+    -- Borra en cascada respuestas, incidencias, capturas, calificaciones y archivos de lo eliminado.
+    -- No se puede mientras alguien lo está rindiendo (con tiempo vigente). Queda constancia en exam_eliminaciones.
+    IF v_acc = 'examen_eliminar' THEN
+        SELECT * INTO v_ex FROM exam_examenes WHERE id = (p->>'examenId')::bigint AND (v_master OR propietario = v_yo);
+        IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Examen no encontrado.'); END IF;
+        IF EXISTS (SELECT 1 FROM exam_intentos WHERE examen_id = v_ex.id AND estado = 'INICIADO' AND limite_en > now()) THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Hay alguien rindiendo este examen ahora mismo. Espera a que termine o anula su invitación.');
+        END IF;
+        SELECT (SELECT count(*) FROM exam_intentos WHERE examen_id = v_ex.id),
+               (SELECT count(*) FROM exam_respuestas r JOIN exam_intentos i ON i.id = r.intento_id WHERE i.examen_id = v_ex.id),
+               (SELECT count(*) FROM exam_capturas c JOIN exam_intentos i ON i.id = c.intento_id WHERE i.examen_id = v_ex.id),
+               (SELECT count(*) FROM exam_archivos a JOIN exam_intentos i ON i.id = a.intento_id WHERE i.examen_id = v_ex.id)
+          INTO v_c1, v_c2, v_c3, v_c4;
+        INSERT INTO exam_eliminaciones (que, nombre, por, personas, respuestas, capturas, archivos) VALUES ('EXAMEN', v_ex.nombre, v_yo, v_c1, v_c2, v_c3, v_c4);
+        DELETE FROM exam_examenes WHERE id = v_ex.id;
+        RETURN jsonb_build_object('ok', true);
+    END IF;
+
+    IF v_acc = 'intento_eliminar' THEN
+        SELECT i.* INTO v_det FROM exam_intentos i JOIN exam_examenes e ON e.id = i.examen_id
+         WHERE i.id = (p->>'intentoId')::bigint AND (v_master OR e.propietario = v_yo);
+        IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Intento no encontrado.'); END IF;
+        IF v_det.estado = 'INICIADO' AND v_det.limite_en > now() THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Esta persona está rindiendo el examen ahora mismo. Espera a que termine.');
+        END IF;
+        SELECT (SELECT count(*) FROM exam_respuestas WHERE intento_id = v_det.id), (SELECT count(*) FROM exam_capturas WHERE intento_id = v_det.id),
+               (SELECT count(*) FROM exam_archivos WHERE intento_id = v_det.id)
+          INTO v_c2, v_c3, v_c4;
+        INSERT INTO exam_eliminaciones (que, nombre, por, personas, respuestas, capturas, archivos)
+        VALUES ('INTENTO', (SELECT nombre FROM exam_examenes WHERE id = v_det.examen_id), v_yo, 1, v_c2, v_c3, v_c4);
+        DELETE FROM exam_intentos WHERE id = v_det.id;
+        RETURN jsonb_build_object('ok', true);
     END IF;
 
     IF v_acc = 'examen_anular' THEN
