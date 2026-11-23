@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS historico.exam_preguntas (
     actualizado_en   timestamptz NOT NULL DEFAULT now(),
     UNIQUE (propietario, codigo)
 );
+-- Fase 4: valor de cada pregunta (puntos máximos)
+ALTER TABLE historico.exam_preguntas ADD COLUMN IF NOT EXISTS puntos numeric(6, 2) NOT NULL DEFAULT 10 CHECK (puntos > 0 AND puntos <= 1000);
 
 CREATE TABLE IF NOT EXISTS historico.exam_examenes (
     id            bigserial PRIMARY KEY,
@@ -78,6 +80,8 @@ CREATE TABLE IF NOT EXISTS historico.exam_examenes (
 );
 ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS exigir_pantalla boolean NOT NULL DEFAULT true;
 ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS permitir_adjuntos boolean NOT NULL DEFAULT false;
+ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS resultados_enviados_en timestamptz;
+ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS resultados_error text;
 
 -- Un intento por evaluado: sus preguntas sorteadas, su enlace y su estado
 CREATE TABLE IF NOT EXISTS historico.exam_intentos (
@@ -125,6 +129,25 @@ CREATE TABLE IF NOT EXISTS historico.exam_capturas (
     creada_en   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS exam_capturas_intento ON historico.exam_capturas (intento_id);
+-- Fase 4: calificación de cada respuesta (a mano, desde el Excel que devuelve la IA, o ambas; manda la última)
+CREATE TABLE IF NOT EXISTS historico.exam_calificaciones (
+    intento_id    bigint NOT NULL REFERENCES historico.exam_intentos (id) ON DELETE CASCADE,
+    pregunta_id   bigint NOT NULL,
+    puntos        numeric(6, 2) NOT NULL CHECK (puntos >= 0),
+    comentario    text,
+    origen        text NOT NULL DEFAULT 'MANUAL' CHECK (origen IN ('MANUAL', 'EXCEL')),
+    calificado_por text,
+    actualizada   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (intento_id, pregunta_id)
+);
+
+-- Puntos desde texto: NULL si está vacío, -1 si no es un número válido (hasta 4 enteros y 2 decimales)
+CREATE OR REPLACE FUNCTION historico.exam_puntos(t text) RETURNS numeric
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE WHEN btrim(coalesce(t, '')) = '' THEN NULL
+                WHEN btrim(t) ~ '^[0-9]{1,4}([.,][0-9]{1,2})?$' THEN replace(btrim(t), ',', '.')::numeric
+                ELSE -1 END
+$$;
 
 -- ---------------------------------------------------------------------
 -- Helpers
@@ -170,7 +193,7 @@ CREATE OR REPLACE FUNCTION historico.exam_pregunta_json(q historico.exam_pregunt
 LANGUAGE sql STABLE AS $$
     SELECT jsonb_build_object('id', q.id, 'codigo', q.codigo, 'perfiles', to_jsonb(q.perfiles),
         'lineas', to_jsonb(q.lineas), 'tipo', q.tipo, 'dificultad', q.dificultad, 'pregunta', q.pregunta,
-        'respuestaModelo', q.respuesta_modelo, 'adjuntos', q.adjuntos, 'activa', q.activa)
+        'respuestaModelo', q.respuesta_modelo, 'adjuntos', q.adjuntos, 'activa', q.activa, 'puntos', q.puntos)
 $$;
 
 CREATE OR REPLACE FUNCTION historico.exam_perfil_json(f historico.exam_perfiles) RETURNS jsonb
@@ -208,6 +231,7 @@ DECLARE
     v_tok    text;
     v_pid    bigint;
     v_det    record;
+    v_pts    numeric;
 BEGIN
     IF v_yo IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'error', 'No tienes permiso de evaluador. Pide al administrador que te agregue.');
@@ -225,14 +249,17 @@ BEGIN
                            FROM exam_perfiles f WHERE f.activo),
             'preguntas', (SELECT count(*) FROM exam_preguntas q WHERE q.activa AND (v_master OR q.propietario = v_yo)),
             'examenes', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'nombre', e.nombre, 'cantidad', e.cantidad,
-                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros, 'exigirPantalla', e.exigir_pantalla, 'permitirAdjuntos', e.permitir_adjuntos,
+                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros, 'exigirPantalla', e.exigir_pantalla, 'permitirAdjuntos', e.permitir_adjuntos, 'resultadosEnviadoEn', e.resultados_enviados_en, 'resultadosError', e.resultados_error,
                     'intentos', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'perfilId', i.perfil_id, 'nombre', f.nombre,
                             'correo', f.correo, 'estado', i.estado, 'enviadoEn', i.enviado_en, 'errorEnvio', i.error_envio,
                             'preguntas', cardinality(i.preguntas), 'expiraEn', i.expira_en,
                             'iniciadoEn', i.iniciado_en, 'entregadoEn', i.entregado_en, 'motivoCierre', i.motivo_cierre,
                             'respondidas', (SELECT count(*) FROM exam_respuestas r WHERE r.intento_id = i.id AND btrim(r.respuesta) <> ''),
                             'incidencias', (SELECT count(*) FROM exam_eventos v WHERE v.intento_id = i.id AND v.tipo IN ('oculta', 'blur', 'sale_pantalla_completa', 'pegar', 'copiar', 'compartir_detenido', 'sin_compartir_pantalla_completa')),
-                            'capturas', (SELECT count(*) FROM exam_capturas c WHERE c.intento_id = i.id)) ORDER BY f.nombre), '[]')
+                            'capturas', (SELECT count(*) FROM exam_capturas c WHERE c.intento_id = i.id),
+                            'puntos', (SELECT sum(k.puntos) FROM exam_calificaciones k WHERE k.intento_id = i.id),
+                            'calificadas', (SELECT count(*) FROM exam_calificaciones k WHERE k.intento_id = i.id),
+                            'maximo', (SELECT coalesce(sum(q.puntos), 0) FROM exam_preguntas q WHERE q.id = ANY (i.preguntas))) ORDER BY f.nombre), '[]')
                          FROM exam_intentos i JOIN exam_perfiles f ON f.id = i.perfil_id WHERE i.examen_id = e.id)
                 ) ORDER BY e.creado_en DESC), '[]') FROM exam_examenes e WHERE v_master OR e.propietario = v_yo));
     END IF;
@@ -337,6 +364,11 @@ BEGIN
             v_dif := nullif(btrim(coalesce(v_i->>'dificultad', '')), '');
             v_perf := historico.exam_lista(v_i->'perfiles');
             v_lin := historico.exam_lista(v_i->'lineas');
+            v_pts := historico.exam_puntos(v_i->>'puntos');
+            IF v_pts IS NOT NULL AND (v_pts <= 0 OR v_pts > 1000) THEN
+                v_errs := v_errs || jsonb_build_object('fila', v_fila, 'codigo', v_cod, 'error', 'Puntos no válidos (usa un número mayor que 0)');
+                CONTINUE;
+            END IF;
             IF v_cod = '' OR btrim(coalesce(v_i->>'pregunta', '')) = '' THEN
                 v_errs := v_errs || jsonb_build_object('fila', v_fila, 'error', 'Falta el ID o la pregunta');
                 CONTINUE;
@@ -359,11 +391,11 @@ BEGIN
                 v_errs := v_errs || jsonb_build_object('fila', v_fila, 'codigo', v_cod, 'error', 'Dificultad desconocida: ' || v_dif);
                 CONTINUE;
             END IF;
-            INSERT INTO exam_preguntas (propietario, codigo, perfiles, lineas, tipo, dificultad, pregunta, respuesta_modelo, adjuntos)
-            VALUES (v_yo, v_cod, v_perf, v_lin, v_tipo, v_dif, btrim(v_i->>'pregunta'), nullif(btrim(coalesce(v_i->>'respuestaModelo', '')), ''), historico.exam_enlaces(v_i->'enlaces'))
+            INSERT INTO exam_preguntas (propietario, codigo, perfiles, lineas, tipo, dificultad, pregunta, respuesta_modelo, adjuntos, puntos)
+            VALUES (v_yo, v_cod, v_perf, v_lin, v_tipo, v_dif, btrim(v_i->>'pregunta'), nullif(btrim(coalesce(v_i->>'respuestaModelo', '')), ''), historico.exam_enlaces(v_i->'enlaces'), coalesce(v_pts, 10))
             ON CONFLICT (propietario, codigo) DO UPDATE SET perfiles = EXCLUDED.perfiles, lineas = EXCLUDED.lineas,
                 tipo = EXCLUDED.tipo, dificultad = EXCLUDED.dificultad, pregunta = EXCLUDED.pregunta,
-                respuesta_modelo = EXCLUDED.respuesta_modelo, activa = true, actualizado_en = now(),
+                respuesta_modelo = EXCLUDED.respuesta_modelo, activa = true, actualizado_en = now(), puntos = coalesce(v_pts, exam_preguntas.puntos),
                 adjuntos = (SELECT coalesce(jsonb_agg(a), '[]') FROM jsonb_array_elements(exam_preguntas.adjuntos) a WHERE a->>'tipo' = 'archivo') || EXCLUDED.adjuntos;
             v_ok := v_ok + 1;
         END LOOP;
@@ -378,6 +410,8 @@ BEGIN
         v_perf := historico.exam_lista(p->'perfiles');
         v_lin := historico.exam_lista(p->'lineas');
         IF btrim(coalesce(p->>'pregunta', '')) = '' THEN RETURN jsonb_build_object('ok', false, 'error', 'Escribe la pregunta.'); END IF;
+        v_pts := historico.exam_puntos(p->>'puntos');
+        IF v_pts IS NOT NULL AND (v_pts <= 0 OR v_pts > 1000) THEN RETURN jsonb_build_object('ok', false, 'error', 'Los puntos deben ser un número mayor que 0 (hasta 1000).'); END IF;
         v_bad := historico.exam_fuera_catalogo('PERFIL', v_perf);
         IF cardinality(v_bad) > 0 THEN RETURN jsonb_build_object('ok', false, 'error', 'Perfil desconocido: ' || array_to_string(v_bad, ', ')); END IF;
         v_bad := historico.exam_fuera_catalogo('LINEA', v_lin);
@@ -387,7 +421,7 @@ BEGIN
         IF nullif(p->>'id', '') IS NOT NULL THEN
             IF v_cod = '' THEN RETURN jsonb_build_object('ok', false, 'error', 'El ID de la pregunta no puede quedar vacío.'); END IF;
             BEGIN
-                UPDATE exam_preguntas SET codigo = v_cod, perfiles = v_perf, lineas = v_lin, tipo = v_tipo, dificultad = v_dif,
+                UPDATE exam_preguntas SET codigo = v_cod, perfiles = v_perf, lineas = v_lin, tipo = v_tipo, dificultad = v_dif, puntos = coalesce(v_pts, puntos),
                        pregunta = btrim(p->>'pregunta'), respuesta_modelo = nullif(btrim(coalesce(p->>'respuestaModelo', '')), ''), actualizado_en = now()
                  WHERE id = (p->>'id')::bigint AND activa AND (v_master OR propietario = v_yo) RETURNING id INTO v_id;
             EXCEPTION WHEN unique_violation THEN
@@ -400,9 +434,9 @@ BEGIN
                   INTO v_cod FROM exam_preguntas WHERE propietario = v_yo;
             END IF;
             -- Si el ID existe y la pregunta estaba quitada, se reactiva; si está activa, no se pisa
-            INSERT INTO exam_preguntas (propietario, codigo, perfiles, lineas, tipo, dificultad, pregunta, respuesta_modelo)
-            VALUES (v_yo, v_cod, v_perf, v_lin, v_tipo, v_dif, btrim(p->>'pregunta'), nullif(btrim(coalesce(p->>'respuestaModelo', '')), ''))
-            ON CONFLICT (propietario, codigo) DO UPDATE SET perfiles = EXCLUDED.perfiles, lineas = EXCLUDED.lineas, tipo = EXCLUDED.tipo,
+            INSERT INTO exam_preguntas (propietario, codigo, perfiles, lineas, tipo, dificultad, pregunta, respuesta_modelo, puntos)
+            VALUES (v_yo, v_cod, v_perf, v_lin, v_tipo, v_dif, btrim(p->>'pregunta'), nullif(btrim(coalesce(p->>'respuestaModelo', '')), ''), coalesce(v_pts, 10))
+            ON CONFLICT (propietario, codigo) DO UPDATE SET puntos = coalesce(v_pts, 10), perfiles = EXCLUDED.perfiles, lineas = EXCLUDED.lineas, tipo = EXCLUDED.tipo,
                 dificultad = EXCLUDED.dificultad, pregunta = EXCLUDED.pregunta, respuesta_modelo = EXCLUDED.respuesta_modelo,
                 activa = true, actualizado_en = now() WHERE NOT exam_preguntas.activa
             RETURNING id INTO v_id;
@@ -517,13 +551,17 @@ BEGIN
         IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Intento no encontrado.'); END IF;
         RETURN jsonb_build_object('ok', true, 'nombre', v_det.nombre, 'estado', v_det.estado, 'iniciadoEn', v_det.iniciado_en,
             'entregadoEn', v_det.entregado_en, 'motivoCierre', v_det.motivo_cierre, 'pantallaOk', v_det.pantalla_ok,
+            'puntos', (SELECT sum(k.puntos) FROM exam_calificaciones k WHERE k.intento_id = v_det.id),
+            'maximo', (SELECT coalesce(sum(q2.puntos), 0) FROM exam_preguntas q2 WHERE q2.id = ANY (v_det.preguntas)),
             'preguntas', (SELECT coalesce(jsonb_agg(jsonb_build_object('n', u.ord, 'codigo', q.codigo, 'tipo', q.tipo, 'pregunta', q.pregunta,
+                    'puntosMax', q.puntos, 'calificacion', cal.puntos, 'comentario', cal.comentario, 'origenCalif', cal.origen,
                     'respuestaModelo', q.respuesta_modelo, 'respuesta', coalesce(r.respuesta, ''), 'adjuntos', q.adjuntos,
                     'archivos', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'nombre', a.nombre, 'mime', a.mime, 'tamano', a.tamano) ORDER BY a.id), '[]')
                                    FROM exam_archivos a WHERE a.intento_id = v_det.id AND a.pregunta_id = u.pid AND a.origen = 'RESPUESTA' AND a.estado = 'LISTO')) ORDER BY u.ord), '[]')
                 FROM unnest(v_det.preguntas) WITH ORDINALITY u(pid, ord)
                 JOIN exam_preguntas q ON q.id = u.pid
-                LEFT JOIN exam_respuestas r ON r.intento_id = v_det.id AND r.pregunta_id = u.pid),
+                LEFT JOIN exam_respuestas r ON r.intento_id = v_det.id AND r.pregunta_id = u.pid
+                LEFT JOIN exam_calificaciones cal ON cal.intento_id = v_det.id AND cal.pregunta_id = u.pid),
             'eventos', (SELECT coalesce(jsonb_agg(jsonb_build_object('tipo', v.tipo, 'detalle', v.detalle, 'segundos', v.segundos, 'en', v.creado_en) ORDER BY v.id), '[]')
                 FROM exam_eventos v WHERE v.intento_id = v_det.id),
             'capturas', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'motivo', c.motivo, 'en', c.creada_en) ORDER BY c.id), '[]')

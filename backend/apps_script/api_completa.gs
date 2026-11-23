@@ -619,6 +619,12 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(proxyVisitaPublica(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Resultados de un examen por correo (examenes.gs), lo pide el evaluador
+      if (data.accion === 'examenResultados' && typeof enviarResultadosExamen === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(enviarResultadosExamen(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Página del examen (examenes.gs): respaldo de la red, se identifica con el token del enlace
       if (data.accion === 'examenRpc' && typeof proxyExamenPublico === 'function') {
         return ContentService.createTextOutput(JSON.stringify(proxyExamenPublico(data)))

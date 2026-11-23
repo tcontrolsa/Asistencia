@@ -3,7 +3,7 @@ Prueba la página pública del examen (020_examen_publico.sql, 021_examen_adjunt
 DENTRO DE UNA TRANSACCIÓN QUE SE REVIERTE.
 
     python db/etl/probar_examen_publico.py            # prueba (revierte todo)
-    python db/etl/probar_examen_publico.py --aplicar  # aplica 019, 021 y 020 de verdad
+    python db/etl/probar_examen_publico.py --aplicar  # aplica 019, 021, 020 y 022 de verdad
 """
 import base64
 import json
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from migrar_sheets_a_postgres import conectar, leer_env_local  # noqa: E402
 
 PG = Path(__file__).resolve().parent.parent / "postgres"
-SQLS = [PG / "019_examenes.sql", PG / "021_examen_adjuntos.sql", PG / "020_examen_publico.sql"]
+SQLS = [PG / "019_examenes.sql", PG / "021_examen_adjuntos.sql", PG / "020_examen_publico.sql", PG / "022_examen_resultados.sql"]
 fallos = 0
 
 
@@ -32,7 +32,7 @@ def main():
             for f in SQLS:
                 con.execute(f.read_text(encoding="utf-8"))
             con.commit()
-        print("019, 021 y 020 aplicados")
+        print("019, 021, 020 y 022 aplicados")
         return
 
     with conectar() as con, con.cursor() as cur:
