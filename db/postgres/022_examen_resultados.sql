@@ -111,11 +111,14 @@ DECLARE
     v_ok     int := 0;
     v_errs   jsonb := '[]';
     v_partes text[];
+    v_lim    int;
+    v_cnt    int;
+    v_items  jsonb;
 BEGIN
     IF v_yo IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'No tienes permiso de evaluador.'); END IF;
 
     -- ===== Resultados de un examen (hojas del Excel) =====
-    IF v_acc IN ('resultados', 'resultados_marcar', 'calificar_lote') THEN
+    IF v_acc IN ('resultados', 'resultados_marcar', 'calificar_lote', 'ia_pendientes', 'calificar_ia') THEN
         SELECT * INTO v_e FROM exam_examenes WHERE id = (p->>'examenId')::bigint AND (v_master OR propietario = v_yo);
         IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Examen no encontrado.'); END IF;
     END IF;
@@ -186,6 +189,62 @@ BEGIN
             ON CONFLICT (intento_id, pregunta_id) DO UPDATE SET puntos = EXCLUDED.puntos, comentario = EXCLUDED.comentario,
                 origen = 'EXCEL', calificado_por = v_yo, actualizada = now();
             v_ok := v_ok + 1;
+        END LOOP;
+        RETURN jsonb_build_object('ok', true, 'guardadas', v_ok, 'errores', v_errs);
+    END IF;
+
+    -- ===== Calificación con IA (fase 5): solo en exámenes que lo anunciaron al evaluado =====
+    IF v_acc IN ('ia_pendientes', 'calificar_ia') AND NOT v_e.ia_permitida THEN
+        RETURN jsonb_build_object('ok', false, 'error', 'Este examen no tiene activada la calificación con IA.');
+    END IF;
+
+    -- Respuestas por calificar (entregadas, sin calificación; con «recalificar» también las que ya calificó la IA).
+    -- Nunca se incluyen las que tienen calificación manual ni las que solo trajeron archivos. Sin nombres de personas.
+    IF v_acc = 'ia_pendientes' THEN
+        v_lim := least(greatest(coalesce((p->>'limite')::int, 6), 1), 10);
+        WITH pend AS (
+            SELECT i.id || '-' || q.id AS id, q.tipo, q.dificultad, q.pregunta, q.respuesta_modelo AS modelo, coalesce(r.respuesta, '') AS respuesta, q.puntos AS pmax,
+                   (SELECT count(*)::int FROM exam_archivos a WHERE a.intento_id = i.id AND a.pregunta_id = q.id AND a.origen = 'RESPUESTA' AND a.estado = 'LISTO') AS archivos,
+                   i.id * 1000000 + u.ord AS ord
+              FROM exam_intentos i
+              CROSS JOIN LATERAL unnest(i.preguntas) WITH ORDINALITY u(pid, ord)
+              JOIN exam_preguntas q ON q.id = u.pid
+              LEFT JOIN exam_respuestas r ON r.intento_id = i.id AND r.pregunta_id = q.id
+              LEFT JOIN exam_calificaciones k ON k.intento_id = i.id AND k.pregunta_id = q.id
+             WHERE i.examen_id = v_e.id AND i.estado = 'ENTREGADO'
+               AND (nullif(p->>'intentoId', '') IS NULL OR i.id = (p->>'intentoId')::bigint)
+               AND (k.intento_id IS NULL OR (coalesce((p->>'recalificar')::boolean, false) AND k.origen = 'IA'))
+               AND NOT (btrim(coalesce(r.respuesta, '')) = '' AND EXISTS (SELECT 1 FROM exam_archivos a WHERE a.intento_id = i.id AND a.pregunta_id = q.id AND a.origen = 'RESPUESTA' AND a.estado = 'LISTO')))
+        SELECT (SELECT count(*) FROM pend),
+               (SELECT coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'tipo', t.tipo, 'dificultad', t.dificultad, 'pregunta', t.pregunta, 'respuestaModelo', t.modelo,
+                        'respuesta', t.respuesta, 'puntosMax', t.pmax, 'archivos', t.archivos) ORDER BY t.ord), '[]')
+                  FROM (SELECT * FROM pend ORDER BY ord LIMIT v_lim) t)
+          INTO v_cnt, v_items;
+        RETURN jsonb_build_object('ok', true, 'items', v_items, 'restantes', v_cnt);
+    END IF;
+
+    -- Guarda lo que calificó la IA: ni sale del rango ni pisa una calificación manual
+    IF v_acc = 'calificar_ia' THEN
+        IF jsonb_typeof(p->'items') <> 'array' OR jsonb_array_length(p->'items') > 20 THEN RETURN jsonb_build_object('ok', false, 'error', 'Envía hasta 20 filas por llamada.'); END IF;
+        FOR v_x IN SELECT * FROM jsonb_array_elements(p->'items') LOOP
+            v_partes := regexp_split_to_array(btrim(coalesce(v_x->>'id', '')), '-');
+            IF cardinality(v_partes) <> 2 OR v_partes[1] !~ '^[0-9]{1,15}$' OR v_partes[2] !~ '^[0-9]{1,15}$' THEN
+                v_errs := v_errs || jsonb_build_object('id', v_x->>'id', 'error', 'ID_RESPUESTA no válido'); CONTINUE;
+            END IF;
+            SELECT * INTO v_i FROM exam_intentos WHERE id = v_partes[1]::bigint AND examen_id = v_e.id AND estado = 'ENTREGADO';
+            IF NOT FOUND OR NOT (v_partes[2]::bigint = ANY (v_i.preguntas)) THEN
+                v_errs := v_errs || jsonb_build_object('id', v_x->>'id', 'error', 'No pertenece a este examen'); CONTINUE;
+            END IF;
+            v_pts := historico.exam_puntos(v_x->>'puntos');
+            SELECT puntos INTO v_max FROM exam_preguntas WHERE id = v_partes[2]::bigint;
+            IF v_pts IS NULL OR v_pts < 0 OR v_pts > v_max THEN
+                v_errs := v_errs || jsonb_build_object('id', v_x->>'id', 'error', 'Puntos fuera de rango (0 a ' || v_max || ')'); CONTINUE;
+            END IF;
+            INSERT INTO exam_calificaciones (intento_id, pregunta_id, puntos, comentario, origen, calificado_por)
+            VALUES (v_i.id, v_partes[2]::bigint, v_pts, left(nullif(btrim(coalesce(v_x->>'comentario', '')), ''), 2000), 'IA', v_yo)
+            ON CONFLICT (intento_id, pregunta_id) DO UPDATE SET puntos = EXCLUDED.puntos, comentario = EXCLUDED.comentario,
+                origen = 'IA', calificado_por = v_yo, actualizada = now() WHERE exam_calificaciones.origen <> 'MANUAL';
+            IF FOUND THEN v_ok := v_ok + 1; END IF;
         END LOOP;
         RETURN jsonb_build_object('ok', true, 'guardadas', v_ok, 'errores', v_errs);
     END IF;

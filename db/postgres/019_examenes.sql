@@ -82,6 +82,8 @@ ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS exigir_pantalla boo
 ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS permitir_adjuntos boolean NOT NULL DEFAULT false;
 ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS resultados_enviados_en timestamptz;
 ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS resultados_error text;
+-- Fase 5: el examen avisa que sus respuestas (sin nombres) podrán analizarse con IA
+ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS ia_permitida boolean NOT NULL DEFAULT false;
 
 -- Un intento por evaluado: sus preguntas sorteadas, su enlace y su estado
 CREATE TABLE IF NOT EXISTS historico.exam_intentos (
@@ -135,11 +137,14 @@ CREATE TABLE IF NOT EXISTS historico.exam_calificaciones (
     pregunta_id   bigint NOT NULL,
     puntos        numeric(6, 2) NOT NULL CHECK (puntos >= 0),
     comentario    text,
-    origen        text NOT NULL DEFAULT 'MANUAL' CHECK (origen IN ('MANUAL', 'EXCEL')),
+    origen        text NOT NULL DEFAULT 'MANUAL',
     calificado_por text,
     actualizada   timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (intento_id, pregunta_id)
 );
+
+ALTER TABLE historico.exam_calificaciones DROP CONSTRAINT IF EXISTS exam_calificaciones_origen_check;
+ALTER TABLE historico.exam_calificaciones ADD CONSTRAINT exam_calificaciones_origen_check CHECK (origen IN ('MANUAL', 'EXCEL', 'IA'));
 
 -- Puntos desde texto: NULL si está vacío, -1 si no es un número válido (hasta 4 enteros y 2 decimales)
 CREATE OR REPLACE FUNCTION historico.exam_puntos(t text) RETURNS numeric
@@ -249,7 +254,7 @@ BEGIN
                            FROM exam_perfiles f WHERE f.activo),
             'preguntas', (SELECT count(*) FROM exam_preguntas q WHERE q.activa AND (v_master OR q.propietario = v_yo)),
             'examenes', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'nombre', e.nombre, 'cantidad', e.cantidad,
-                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros, 'exigirPantalla', e.exigir_pantalla, 'permitirAdjuntos', e.permitir_adjuntos, 'resultadosEnviadoEn', e.resultados_enviados_en, 'resultadosError', e.resultados_error,
+                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros, 'exigirPantalla', e.exigir_pantalla, 'permitirAdjuntos', e.permitir_adjuntos, 'iaPermitida', e.ia_permitida, 'resultadosEnviadoEn', e.resultados_enviados_en, 'resultadosError', e.resultados_error,
                     'intentos', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'perfilId', i.perfil_id, 'nombre', f.nombre,
                             'correo', f.correo, 'estado', i.estado, 'enviadoEn', i.enviado_en, 'errorEnvio', i.error_envio,
                             'preguntas', cardinality(i.preguntas), 'expiraEn', i.expira_en,
@@ -468,11 +473,11 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'error', 'Elige al menos un evaluado.');
         END IF;
 
-        INSERT INTO exam_examenes (propietario, nombre, filtros, cantidad, minutos, vigencia_dias, exigir_pantalla, permitir_adjuntos)
+        INSERT INTO exam_examenes (propietario, nombre, filtros, cantidad, minutos, vigencia_dias, exigir_pantalla, permitir_adjuntos, ia_permitida)
         VALUES (v_yo, btrim(p->>'nombre'), jsonb_build_object('perfiles', to_jsonb(v_filt_perf), 'lineas', to_jsonb(v_filt_lin),
                 'tipos', to_jsonb(v_filt_tipo), 'dificultades', to_jsonb(v_filt_dif)),
                 (p->>'cantidad')::int, (p->>'minutos')::int, coalesce((p->>'vigenciaDias')::int, 7),
-                coalesce((p->>'exigirPantalla')::boolean, true), coalesce((p->>'permitirAdjuntos')::boolean, false))
+                coalesce((p->>'exigirPantalla')::boolean, true), coalesce((p->>'permitirAdjuntos')::boolean, false), coalesce((p->>'iaPermitida')::boolean, false))
         RETURNING * INTO v_ex;
 
         FOR v_pid IN SELECT x::bigint FROM jsonb_array_elements_text(p->'perfilIds') x LOOP

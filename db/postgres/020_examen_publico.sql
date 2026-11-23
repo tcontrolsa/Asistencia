@@ -72,7 +72,7 @@ BEGIN
     -- ===== abrir =====
     IF v_acc = 'abrir' THEN
         RETURN jsonb_build_object('ok', true, 'estado', v_i.estado, 'nombre', v_nom, 'examen', v_e.nombre, 'minutos', v_e.minutos,
-            'preguntas', cardinality(v_i.preguntas), 'exigirPantalla', v_e.exigir_pantalla, 'permitirAdjuntos', v_e.permitir_adjuntos, 'restante', v_rest);
+            'preguntas', cardinality(v_i.preguntas), 'exigirPantalla', v_e.exigir_pantalla, 'permitirAdjuntos', v_e.permitir_adjuntos, 'iaPermitida', v_e.ia_permitida, 'restante', v_rest);
     END IF;
 
     -- ===== iniciar (o continuar) =====

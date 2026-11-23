@@ -4714,7 +4714,7 @@ function renderFaltasMasivas() {
         const diaStr = d.toLocaleDateString('es-EC', { weekday: 'short', day: 'numeric', month: 'short' });
         return `
                 <div class="falta-row" style="display: flex; align-items: center; gap: 12px; padding: 10px; border-bottom: 1px solid #f1f5f9;">
-                    <input type="checkbox" id="chk-${idx}" class="falta-chk" value="${fecha}" checked style="width: 20px; height: 20px; accent-color: #3b82f6;">
+                    <input type="checkbox" id="chk-${idx}" class="falta-chk" value="${fecha}" style="width: 20px; height: 20px; accent-color: #3b82f6;">
                     <label for="chk-${idx}" style="flex: 1; font-weight: 500; font-size: 14px; margin: 0;">${diaStr}</label>
                 </div>
             `;
@@ -4726,7 +4726,7 @@ function renderFaltasMasivas() {
                     <div style="text-align: center; margin-bottom: 20px;">
                         <i class="fas fa-calendar-check" style="font-size: 40px; color: #3b82f6; margin-bottom: 10px;"></i>
                         <h3 style="font-size: 20px; color: #0f172a; margin: 0; font-weight: 800;">Justificar Asistencias</h3>
-                        <p style="font-size: 13px; color: #64748b; margin-top: 5px;">Selecciona los días y el motivo</p>
+                        <p style="font-size: 13px; color: #64748b; margin-top: 5px;">Marca solo los días en que no trabajaste y elige el motivo. Si ese día registraste entrada o salida, no lo justifiques.</p>
                     </div>
 
                     <div id="listaFaltas" style="max-height: 200px; overflow-y: auto; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
@@ -4775,6 +4775,8 @@ window.procesarJustificacionMasiva = async function () {
     showLoading(true);
     let exitos = 0;
     let errores = 0;
+    let sinVerificar = 0;
+    const conMarcaciones = []; // días que sí tienen marcaciones: no se justifican
 
     try {
         // Procesamos uno por uno SECUENCIALMENTE para evitar errores de bloqueo en Google Sheets
@@ -4785,13 +4787,17 @@ window.procesarJustificacionMasiva = async function () {
                 tipo: 'FALTA',
                 fecha_falta: fecha,
                 razon_permiso: motivo,
+                razon_ausencia: motivo,
+                quien_justifica: 'Colaborador (app)',
                 dispositivo: deviceToken
             };
             try {
                 const res = await guardarRegistroAPI(datos);
                 if (res.error) {
                     console.error(`Error en día ${fecha}:`, res.error);
-                    errores++;
+                    if (res.tieneMarcaciones) conMarcaciones.push(fecha);
+                    else if (res.noVerificado) sinVerificar++;
+                    else errores++;
                 } else {
                     exitos++;
                 }
@@ -4808,10 +4814,16 @@ window.procesarJustificacionMasiva = async function () {
         if (errores > 0) {
             mostrarToast(`${errores} error(es) al procesar. Revisa tu conexión.`, 'error');
         }
+        if (sinVerificar > 0) {
+            mostrarToast(`${sinVerificar} día(s) sin guardar: no se pudo comprobar si tienes marcaciones. Intenta más tarde.`, 'error');
+        }
+        if (conMarcaciones.length > 0) {
+            mostrarToast(`${conMarcaciones.length} día(s) ya tienen marcaciones: no se cambiaron.`, 'info');
+        }
 
         // Refrescar datos y volver al home si ya no hay faltas
         await obtenerRegistrosEmpleado();
-        const faltasActualizadas = obtenerDiasFaltantes();
+        const faltasActualizadas = obtenerDiasFaltantes().filter(f => !conMarcaciones.includes(f));
         if (faltasActualizadas.length === 0) {
             renderHomePage();
         } else {

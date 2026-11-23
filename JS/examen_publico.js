@@ -126,9 +126,10 @@
         <li>Responde con tus propias palabras. Las respuestas se guardan solas.</li>
         <li>Se <b>registra</b> si sales de esta ventana o cambias de pestaña, y los intentos de copiar o pegar. Pegar está bloqueado.</li>
         ${compartir ? '<li>Debes <b>compartir toda tu pantalla</b> (no una pestaña) durante el examen. Se tomarán capturas periódicas. Necesitas un computador con Chrome, Edge o Firefox.</li>' : ''}
+        ${i.iaPermitida ? '<li>Tus respuestas podrán revisarse con <b>apoyo de inteligencia artificial</b> (sin tu nombre); la nota final la decide una persona.</li>' : ''}
         ${i.permitirAdjuntos ? '<li>Puedes <b>adjuntar archivos</b> a tus respuestas (hasta 3 por pregunta, 10 MB cada uno).</li>' : ''}
         <li>Busca un lugar tranquilo y con buena conexión. Usa pantalla completa.</li></ul>
-      <label class="chk"><input type="checkbox" id="acepto"><span>Entiendo y acepto que durante la evaluación se registren estos datos${compartir ? ' y capturas de mi pantalla' : ''}. Se usarán solo para evaluar la prueba y los verá únicamente el equipo evaluador, según la política de datos personales de TCONTROL.</span></label>
+      <label class="chk"><input type="checkbox" id="acepto"><span>Entiendo y acepto que durante la evaluación se registren estos datos${compartir ? ' y capturas de mi pantalla' : ''}. Se usarán solo para evaluar la prueba y los verá únicamente el equipo evaluador, según la política de datos personales de TCONTROL.${i.iaPermitida ? ' Mis respuestas escritas, sin mi nombre, podrán ser analizadas con una herramienta de inteligencia artificial de un proveedor externo (Anthropic) como apoyo a la calificación; la decisión final es de la persona evaluadora.' : ''}</span></label>
       <p class="msg mal" id="err" hidden></p>
       <button class="btn" id="ini" disabled>${continuar ? 'Continuar' : 'Iniciar'} examen</button></div></div>`;
     const chk = document.getElementById('acepto'), btn = document.getElementById('ini'), err = document.getElementById('err');

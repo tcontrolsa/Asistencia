@@ -114,7 +114,7 @@ def main():
         check("Resumen de Beto: sin calificar, sin %", beto[3] == "INICIADO" and beto[11] is None and beto[13] is None, beto)
         check("Respuestas: una fila por persona y pregunta, con la respuesta modelo", len(hojas["Respuestas"]) == 5 and any(f[7] == "SECRETA1" for f in hojas["Respuestas"]))
         fila_ana_q1 = [f for f in hojas["Respuestas"] if f[1] == "Ana Prueba" and f[3] == "Q1"][0]
-        check("Respuestas: ID_RESPUESTA intento-pregunta, respuesta y calificación", fila_ana_q1[0].startswith(f"{ia}-") and fila_ana_q1[8] == "Respuesta de Ana 1" and float(fila_ana_q1[11]) == 7.5 and fila_ana_q1[12] == "Falta detalle", fila_ana_q1)
+        check("Respuestas: ID_RESPUESTA intento-pregunta, respuesta y calificación", fila_ana_q1[0].startswith(f"{ia}-") and fila_ana_q1[8] == f"Respuesta de Ana {n_q1}" and float(fila_ana_q1[11]) == 7.5 and fila_ana_q1[12] == "Falta detalle", fila_ana_q1)
         check("Incidencias y hoja de instrucciones", len(hojas["Incidencias"]) == 2 and hojas["Incidencias"][1][2] == "oculta" and len(hojas["Instrucciones para IA"]) > 5)
         check("el destinatario es el correo del evaluador", r["destinatario"] == "jefe@x.com", r["destinatario"])
 
@@ -130,6 +130,65 @@ def main():
         det = adm({"accion": "intento_detalle", "intentoId": ia})
         q1 = [q for q in det["preguntas"] if q["codigo"] == "Q1"][0]
         check("la carga reemplaza la anterior y marca el origen EXCEL", float(q1["calificacion"]) == 9 and q1["origenCalif"] == "EXCEL", q1)
+
+
+        print("Calificación con IA")
+        como(master)
+        r = res({"accion": "ia_pendientes", "examenId": ex})
+        check("un examen sin «IA permitida» rechaza la calificación con IA", r["ok"] is False and "no tiene activada" in r["error"], r)
+        r = res({"accion": "calificar_ia", "examenId": ex, "items": []})
+        check("y tampoco guarda calificaciones de IA", r["ok"] is False)
+
+        exi = adm({"accion": "examen_generar", "nombre": "Con IA", "perfilIds": [pa, pb], "cantidad": 2, "minutos": 30, "exigirPantalla": False, "iaPermitida": True, "permitirAdjuntos": True})["examenId"]
+        check("el examen guarda iaPermitida", [e for e in adm({"accion": "inicio"})["examenes"] if e["id"] == exi][0]["iaPermitida"] is True)
+        env = {e["nombre"]: e for e in adm({"accion": "envio_preparar", "examenId": exi})["envios"]}
+        tia, tib = env["Ana Prueba"]["token"], env["Beto Prueba"]["token"]
+        iia, iib = env["Ana Prueba"]["intentoId"], env["Beto Prueba"]["intentoId"]
+        como(None)
+        check("la página pública sabe que debe avisar", pub({"accion": "abrir", "token": tia})["iaPermitida"] is True)
+        ra = pub({"accion": "iniciar", "token": tia, "acepto": True})
+        pub({"accion": "guardar", "token": tia, "respuestas": [{"n": 1, "texto": "Respuesta A1 con datos"}, {"n": 2, "texto": "   "}]})
+        pub({"accion": "entregar", "token": tia})
+        rb = pub({"accion": "iniciar", "token": tib, "acepto": True})
+        pub({"accion": "guardar", "token": tib, "respuestas": [{"n": 1, "texto": "Solo archivo en la 1"}, {"n": 2, "texto": "Respuesta B2"}]})
+        fid = pub({"accion": "subir_inicio", "token": tib, "n": 1, "nombre": "esquema.png", "mime": "image/png", "tamano": 4})["archivoId"]
+        import base64 as _b64
+        pub({"accion": "subir_parte", "token": tib, "archivoId": fid, "n": 1, "datos": _b64.b64encode(b"\x89PNG").decode()})
+        pub({"accion": "subir_fin", "token": tib, "archivoId": fid})
+        pub({"accion": "guardar", "token": tib, "respuestas": [{"n": 1, "texto": ""}]})        # la 1 queda vacía pero con archivo
+        pub({"accion": "entregar", "token": tib})
+        como(master)
+        r = res({"accion": "ia_pendientes", "examenId": exi})
+        ids = {it["id"] for it in r["items"]}
+        check("pendientes: 4 respuestas menos la que solo trajo archivo", r["ok"] and r["restantes"] == 3 and len(r["items"]) == 3, r)
+        txt = json.dumps(r)
+        check("no viajan nombres, correos ni tokens de personas", "Ana" not in txt and "Beto" not in txt and "@x.com" not in txt and ta not in txt)
+        check("trae pregunta, modelo, respuesta y puntos máximos", all(k in r["items"][0] for k in ("pregunta", "respuestaModelo", "respuesta", "puntosMax", "archivos")), r["items"][0])
+        r2 = res({"accion": "ia_pendientes", "examenId": exi, "limite": 2})
+        check("respeta el tamaño del lote y avisa cuántas faltan", len(r2["items"]) == 2 and r2["restantes"] == 3, r2)
+        r3 = res({"accion": "ia_pendientes", "examenId": exi, "intentoId": iia})
+        check("se puede limitar a un solo intento", r3["restantes"] == 2 and all(it["id"].startswith(f"{iia}-") for it in r3["items"]), r3)
+
+        lista = r["items"]
+        mio = lista[0]["id"]
+        codigos = {q["id"]: q["codigo"] for q in adm({"accion": "banco_listar"})["preguntas"]}
+        int_mio = int(mio.split("-")[0])
+        n_mio = [q["n"] for q in adm({"accion": "intento_detalle", "intentoId": int_mio})["preguntas"] if q["codigo"] == codigos[int(mio.split("-")[1])]][0]
+        res({"accion": "calificar", "intentoId": int_mio, "items": [{"n": n_mio, "puntos": "1", "comentario": "manual"}]})
+        r4 = res({"accion": "calificar_ia", "examenId": exi, "items": [{"id": i["id"], "puntos": "3", "comentario": "IA: bien"} for i in lista]})
+        check("la IA guarda sus calificaciones pero no pisa la manual", r4["ok"] and r4["guardadas"] == len(lista) - 1, r4)
+        det = adm({"accion": "intento_detalle", "intentoId": int(mio.split("-")[0])})
+        origs = sorted(q["origenCalif"] for q in det["preguntas"] if q["origenCalif"])
+        check("quedan marcadas MANUAL e IA", "MANUAL" in origs and ("IA" in origs or len(lista) == 1), origs)
+        r5 = res({"accion": "calificar_ia", "examenId": exi, "items": [{"id": lista[-1]["id"], "puntos": "999", "comentario": "x"}, {"id": "9999-1", "puntos": "1"}, {"id": "malo", "puntos": "1"}]})
+        check("fuera de rango o de otro examen se rechaza", r5["guardadas"] == 0 and len(r5["errores"]) == 3, r5)
+        r6 = res({"accion": "ia_pendientes", "examenId": exi})
+        check("ya calificadas dejan de estar pendientes", r6["restantes"] == 0, r6)
+        r7 = res({"accion": "ia_pendientes", "examenId": exi, "recalificar": True})
+        check("recalificar vuelve a incluir solo las de IA, no las manuales", r7["restantes"] == len(lista) - 1, r7)
+        como(otro)
+        check("otro evaluador no usa la IA sobre mis exámenes", res({"accion": "ia_pendientes", "examenId": exi})["ok"] is False)
+        como(master)
 
         print("Permisos")
         como(otro)

@@ -1236,24 +1236,38 @@ window.FirebaseBackend = {
         if (esAusenciaTipo(data.tipo) && (esFechaPasada || String(data.docId || '').startsWith('arch_'))) {
             console.log(`ℹ️ [guardarRegistro] Ausencia en fecha pasada o archivada (${fechaStr}). Actualizando directamente en REGISTROS sin crear duplicado en Firestore.`);
             
-            // 1. Limpiar cualquier documento huérfano previo en Firestore para evitar que se archive
-            try {
-                await this.eliminarRegistroFirestorePorFecha(empleadoId, fechaStr);
-            } catch (eClean) { }
+            // 1. Un día con marcaciones reales no se convierte en ausencia: antes se borraban sus marcaciones
+            //    (noviembre de 2026: la app no las vio y la persona «justificó» días que sí trabajó).
+            const ver = await this._marcacionesDelDia(empleadoId, fechaStr);
+            if (ver.noVerificado) return { error: `No se pudo comprobar si hay marcaciones el ${fechaStr}. Intenta más tarde con mejor conexión.`, noVerificado: true };
+            if (ver.marcaciones.length > 0) {
+                return { error: `El ${fechaStr} tiene marcaciones registradas (${ver.marcaciones.join(', ')}): no se registra como ausencia.`, tieneMarcaciones: true, fecha: fechaStr };
+            }
 
             // 2. Actualizar directamente en Google Sheets REGISTROS
             const modoAus = data.modo || "OFICINA";
+            const razonAus = data.razon_ausencia || data.observacion || data.razon_justificac || data.razon_permiso || data.tipo;
             const sheetsRes = await this.actualizarRegistroGeneral({
                 empleadoId: empleadoId,
                 tipo: data.tipo,
                 fecha: fechaStr,
                 campo: 'justificado',
                 valor: 'SI',
-                razon_justificac: data.razon_ausencia || data.observacion || data.razon_justificac || data.tipo,
-                razon_ausencia: data.razon_ausencia || data.observacion || data.razon_justificac || data.tipo,
+                razon_justificac: razonAus,
+                razon_ausencia: razonAus,
                 quien_justifica: data.quien_justifica || 'Supervisor',
-                modo: modoAus
+                modo: modoAus,
+                protegerMarcaciones: 'SI'
             });
+
+            // 3. Guardada la ausencia, quitar de Firestore solo los documentos de ausencia huérfanos de ese día
+            //    (se archivarían otra vez). Las marcaciones nunca se borran aquí.
+            if (sheetsRes && sheetsRes.ok) {
+                for (const idDoc of ver.docsAusencia) {
+                    try { await db.collection('registros').doc(idDoc).delete(); }
+                    catch (eClean) { console.warn('Ausencia huérfana no quitada:', idDoc, eClean.message || eClean); }
+                }
+            }
 
             return sheetsRes || { ok: true, msg: `${data.tipo} actualizado con éxito en REGISTROS` };
         }
@@ -2058,7 +2072,8 @@ window.FirebaseBackend = {
                     horasExtra: params.horasExtra,
                     justificado: params.justificado,
                     razon_justificac: params.razon_justificac,
-                    quien_justifica: params.quien_justifica
+                    quien_justifica: params.quien_justifica,
+                    protegerMarcaciones: params.protegerMarcaciones
                 }, 0, 2, 35000);
             } catch (e) {
                 console.info("ℹ️ Aviso de sincronización Sheets:", e.message);
@@ -2383,6 +2398,40 @@ window.FirebaseBackend = {
             return { ok: true };
         }
         return { error: "ID de documento faltante" };
+    },
+
+    // Marcaciones reales (no ausencias ni salidas autocompletadas) de una persona en un día, leídas del servidor:
+    // Firestore sin caché + histórico archivado. noVerificado = alguna de las dos fuentes no respondió.
+    async _marcacionesDelDia(empleadoId, fecha) {
+        const TIPOS = ['ENTRADA', 'SALIDA', 'ENTRADA_CAMPO', 'SALIDA_CAMPO', 'RETORNO_CAMPO', 'SALIDA_PASANTE'];
+        const eid = String(empleadoId).trim();
+        const marcaciones = [], docsAusencia = [];
+        const anotar = (tipo, hora) => {
+            const t = `${tipo} ${String(hora || '').slice(0, 5)}`.trim();
+            if (!marcaciones.includes(t)) marcaciones.push(t);
+        };
+        const esAuto = r => String(r.dispositivo || '').toUpperCase() === 'AUTO_COMPLETAR';
+        try {
+            const snap = await db.collection('registros').where('empleadoId', '==', eid).get({ source: 'server' });
+            snap.forEach(doc => {
+                const d = this._processDoc(doc.id, doc.data());
+                if (!d || this._normFecha(d.fecha) !== fecha) return;
+                const t = String(d.tipo || '').toUpperCase();
+                if (TIPOS.includes(t)) { if (!esAuto(d)) anotar(t, d.hora); }
+                else if (!['ESTADO', 'SOLO_ALMUERZO'].includes(t)) docsAusencia.push(doc.id);
+            });
+            const res = await this._obtenerRegistrosArchivados({ empleadoId: eid }, 1, 20000);
+            if (!res || !res.ok || !Array.isArray(res.registros)) throw new Error((res && res.error) || 'histórico sin respuesta');
+            res.registros.forEach(r => {
+                if (String(r.empleadoId || r.id_empleado || '').trim() !== eid || this._normFecha(r.fecha) !== fecha) return;
+                const t = String(r.tipo || '').toUpperCase();
+                if (TIPOS.includes(t) && !esAuto(r)) anotar(t, this._limpiarHora(r.hora));
+            });
+        } catch (e) {
+            console.warn('Marcaciones del día no verificadas:', e.message || e);
+            return { noVerificado: true, marcaciones, docsAusencia };
+        }
+        return { noVerificado: false, marcaciones, docsAusencia };
     },
 
     async eliminarRegistroFirestorePorFecha(empleadoId, fecha) {

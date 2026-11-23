@@ -619,6 +619,12 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify(proxyVisitaPublica(data)))
           .setMimeType(ContentService.MimeType.JSON);
       }
+      // Calificación con IA de las respuestas de un examen (examenes.gs), por tandas
+      if (data.accion === 'examenCalificarIA' && typeof calificarConIA === 'function') {
+        return ContentService.createTextOutput(JSON.stringify(calificarConIA(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Resultados de un examen por correo (examenes.gs), lo pide el evaluador
       if (data.accion === 'examenResultados' && typeof enviarResultadosExamen === 'function') {
         return ContentService.createTextOutput(JSON.stringify(enviarResultadosExamen(data)))
@@ -4040,14 +4046,33 @@ function actualizarRegistroArchivado(params) {
     if (filaIndex === -1 && filaFallback !== -1) {
       filaIndex = filaFallback;
     }
-    var tipoFilaObj = filaIndex !== -1 ? String(data[filaIndex - 1][COLUMNAS.TIPO] || '').trim().toUpperCase() : '';
-    var convertirAusencia = cambiaHora && (esAusenciaTipo(tipoFilaObj) || tipoFilaObj === 'FALTA');
-    // Eliminar filas duplicadas de ausencia para este empleado y fecha (ej: FALTA previa que fue reemplazada)
-    for (let d = 0; d < dupIndices.length; d++) {
-      if (dupIndices[d] !== filaIndex) {
-        try { sheet.deleteRow(dupIndices[d]); } catch(eDup) {}
+    // Ausencia declarada desde la app (o guardarRegistro con protegerMarcaciones): un día con marcaciones reales no
+    // se convierte en ausencia. Las versiones antiguas de la app envían tipo FALTA con razón 'FALTA'. Igual en Postgres (023).
+    if (campo === 'justificado' && (params.protegerMarcaciones === 'SI' ||
+        (targetTipoNorm === 'FALTA' && String(params.razon_justificac || '').trim().toUpperCase() === 'FALTA'))) {
+      for (let k = 1; k < data.length; k++) {
+        if (String(data[k][COLUMNAS.ID] || '').trim() !== eid || normFechaStr(data[k][COLUMNAS.FECHA]) !== targetFechaNorm) continue;
+        const tMarca = String(data[k][COLUMNAS.TIPO] || '').trim().toUpperCase();
+        if (!['ENTRADA', 'SALIDA', 'ENTRADA_CAMPO', 'SALIDA_CAMPO', 'RETORNO_CAMPO', 'SALIDA_PASANTE'].includes(tMarca)) continue;
+        if (String(data[k][COLUMNAS.DISPOSITIVO] || '').trim().toUpperCase() === 'AUTO_COMPLETAR') continue;
+        return { ok: false, tieneMarcaciones: true, error: 'El día ' + targetFechaNorm + ' tiene marcaciones registradas: no se convierte en ausencia.' };
       }
     }
+    var tipoFilaObj = filaIndex !== -1 ? String(data[filaIndex - 1][COLUMNAS.TIPO] || '').trim().toUpperCase() : '';
+    var convertirAusencia = cambiaHora && (esAusenciaTipo(tipoFilaObj) || tipoFilaObj === 'FALTA');
+    // Eliminar filas duplicadas de ausencia para este empleado y fecha (ej: FALTA previa que fue reemplazada).
+    // dupIndices va de abajo hacia arriba. Al borrar una fila anterior a filaIndex, esta sube un puesto: sin el ajuste
+    // el cambio se escribía en la fila siguiente (la de otra persona).
+    let filasBorradasAntes = 0;
+    for (let d = 0; d < dupIndices.length; d++) {
+      if (dupIndices[d] !== filaIndex) {
+        try {
+          sheet.deleteRow(dupIndices[d]);
+          if (filaIndex !== -1 && dupIndices[d] < filaIndex) filasBorradasAntes++;
+        } catch(eDup) {}
+      }
+    }
+    if (filasBorradasAntes) filaIndex -= filasBorradasAntes;
 
     // Si se está actualizando a un tipo distinto de VACACIONES, limpiar cualquier registro huérfano en la hoja VACACIONES
     if (targetTipoNorm && targetTipoNorm !== 'VACACIONES' && targetTipoNorm !== 'VACACION') {

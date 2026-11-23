@@ -5168,28 +5168,41 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     })();
   }
 
-  let entT = regs.filter(r => r.tipo === 'ENTRADA').length;
-  let salT = regs.filter(r => r.tipo === 'SALIDA').length;
-  const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
-  let almP = resAlm.almPlanta;
-  let almF = resAlm.almFuera;
-  let dias = new Set(regs.filter(r => r.tipo === 'ENTRADA').map(r => r.fecha)).size;
+  // Se recalculan en cada rebuildTable: el histórico llega después y las tarjetas quedaban con lo que había al abrir
+  let entT, salT, almP, almF, dias, tardT, pE, pS, puntualidadVal, puntualidadColor;
+  function calcularTarjetas() {
+    entT = regs.filter(r => r.tipo === 'ENTRADA').length;
+    salT = regs.filter(r => r.tipo === 'SALIDA').length;
+    const resAlm = calcularAlmuerzosPeriodo(e, R_INI, R_FIN);
+    almP = resAlm.almPlanta;
+    almF = resAlm.almFuera;
+    dias = new Set(regs.filter(r => r.tipo === 'ENTRADA').map(r => r.fecha)).size;
 
-  let sE = 0, cE = 0, sS = 0, cS = 0, tardT = 0;
-  regs.forEach(r => {
-    let m = obtenerMinutos(r.hora);
-    if (m === null) return;
-    if (r.tipo === 'ENTRADA') {
-      sE += m;
-      cE++;
-      const esFestivo = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-      const refEnt = esFestivo ? 420 : HORA_ENTRADA_REF;
-      if (!esFestivo && m > refEnt + 5) tardT++;
-    }
-    else { sS += m; cS++; }
-  });
-  let pE = cE ? Math.round(sE / cE) : null;
-  let pS = cS ? Math.round(sS / cS) : null;
+    let sE = 0, cE = 0, sS = 0, cS = 0;
+    tardT = 0;
+    regs.forEach(r => {
+      let m = obtenerMinutos(r.hora);
+      if (m === null) return;
+      if (r.tipo === 'ENTRADA') {
+        sE += m;
+        cE++;
+        const esFestivo = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
+        if (!esFestivo && m > HORA_ENTRADA_REF + 5) tardT++;
+      } else if (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO') { // las ausencias (hora 00:00) no cuentan en el promedio
+        sS += m;
+        cS++;
+      }
+    });
+    pE = cE ? Math.round(sE / cE) : null;
+    pS = cS ? Math.round(sS / cS) : null;
+    puntualidadVal = dias ? Math.max(0, Math.round((1 - tardT / dias) * 100)) : 100;
+    puntualidadColor = puntualidadVal >= 90 ? 'var(--green)' : puntualidadVal >= 70 ? 'var(--amber)' : 'var(--red)';
+  }
+  const diasTrabHtml = () => `${dias} <span style="font-size:10px; color:#94a3b8; font-weight:500;">(${entT}e/${salT}s)</span>`;
+  const chipPuntualHtml = () => tardT > 0
+    ? `<span id="detChipPuntual" class="emp-chip chip-warning" title="${tardT} tardanzas"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>`
+    : `<span id="detChipPuntual" class="emp-chip chip-success" title="Sin atrasos"><i class="fas fa-check-circle"></i> Puntual</span>`;
+  calcularTarjetas();
 
   let totTP = 0, totTM = 0, totTJ = 0, totHoras = 0, totAtrasos = 0, totDescanso = 0;
   let totDescontarTarjeta = 0; // la tarjeta muestra lo mismo que el total de la columna T. Descontar
@@ -6225,6 +6238,21 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     const kpiPJ = document.getElementById('kpiDetPorJustificar');
     if (kpiPJ) { kpiPJ.textContent = minutosAHHMMSS(totDescontarTarjeta); kpiPJ.style.color = totDescontarTarjeta > 0 ? '#dc2626' : '#10b981'; }
 
+    // Tarjetas Asistencia y Permisos y Almuerzos: mismos registros que la tabla
+    calcularTarjetas();
+    const ponerTarjeta = (idEl, html) => { const el = document.getElementById(idEl); if (el) el.innerHTML = html; return el; };
+    ponerTarjeta('kpiDetDias', diasTrabHtml());
+    const elPunt = ponerTarjeta('kpiDetPuntualidad', `${puntualidadVal}%`);
+    if (elPunt) elPunt.style.color = puntualidadColor;
+    ponerTarjeta('kpiDetPromEnt', minsToHHMM(pE));
+    ponerTarjeta('kpiDetPromSal', minsToHHMM(pS));
+    ponerTarjeta('kpiDetTP', minutosAHHMMSS(totTP));
+    ponerTarjeta('kpiDetTM', minutosAHHMMSS(totTM));
+    ponerTarjeta('kpiDetAlmP', `${almP}d`);
+    ponerTarjeta('kpiDetAlmF', `${almF}d`);
+    const chipPunt = document.getElementById('detChipPuntual');
+    if (chipPunt) chipPunt.outerHTML = chipPuntualHtml();
+
     return { filas, tfootRow, fechasARegularizar };
   }
 
@@ -6301,8 +6329,6 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     }
   }
 
-  let puntualidadVal = dias ? Math.max(0, Math.round((1 - tardT / dias) * 100)) : 100;
-  let puntualidadColor = puntualidadVal >= 90 ? 'var(--green)' : puntualidadVal >= 70 ? 'var(--amber)' : 'var(--red)';
   let optionsPeriodos = periodos.map((p, i) => `<option value="${i}" ${i === indexPeriodo ? 'selected' : ''}>${p.label}</option>`).join('');
 
   const rawTel = (e.telefono || e.celular || e.whatsapp || '').toString().trim();
@@ -6368,10 +6394,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
                   `<span class="emp-chip chip-desvinculado" title="Colaborador Desvinculado"><i class="fas fa-user-slash"></i> Desvinculado ${(e.fecha_salida || e.fechaDesvinculacion) ? ' (' + (normalizarFechaStr(e.fecha_salida || e.fechaDesvinculacion) || e.fecha_salida) + ')' : ''}</span>` :
                   (e.esEliminado ? `<span class="emp-chip chip-eliminado" title="Colaborador Inactivo / Eliminado en base"><i class="fas fa-user-minus"></i> Inactivo en Base</span>` : '')
                 }
-                ${tardT > 0 ?
-                  `<span class="emp-chip chip-warning" title="${tardT} tardanzas"><i class="fas fa-clock"></i> ${tardT} tardanzas</span>` :
-                  `<span class="emp-chip chip-success" title="Sin atrasos"><i class="fas fa-check-circle"></i> Puntual</span>`
-                }
+                ${chipPuntualHtml()}
               </div>
             </div>
           </div>
@@ -6426,19 +6449,19 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           <div class="kpi-card-stats-grid">
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Días Trab.</span>
-              <div class="kpi-stat-val-hero">${dias} <span style="font-size:10px; color:#94a3b8; font-weight:500;">(${entT}e/${salT}s)</span></div>
+              <div class="kpi-stat-val-hero" id="kpiDetDias">${diasTrabHtml()}</div>
             </div>
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Puntualidad</span>
-              <div class="kpi-stat-val-hero" style="color:${puntualidadColor};">${puntualidadVal}%</div>
+              <div class="kpi-stat-val-hero" id="kpiDetPuntualidad" style="color:${puntualidadColor};">${puntualidadVal}%</div>
             </div>
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Prom. Ent.</span>
-              <div class="kpi-stat-val-sub" style="color:#334155;">${minsToHHMM(pE)}</div>
+              <div class="kpi-stat-val-sub" id="kpiDetPromEnt" style="color:#334155;">${minsToHHMM(pE)}</div>
             </div>
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Prom. Sal.</span>
-              <div class="kpi-stat-val-sub" style="color:#334155;">${minsToHHMM(pS)}</div>
+              <div class="kpi-stat-val-sub" id="kpiDetPromSal" style="color:#334155;">${minsToHHMM(pS)}</div>
             </div>
           </div>
         </div>
@@ -6478,19 +6501,19 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           <div class="kpi-card-stats-grid">
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">T. Personal</span>
-              <div class="kpi-stat-val-sub" style="color:#6366f1;">${minutosAHHMMSS(totTP)}</div>
+              <div class="kpi-stat-val-sub" id="kpiDetTP" style="color:#6366f1;">${minutosAHHMMSS(totTP)}</div>
             </div>
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">T. Médico</span>
-              <div class="kpi-stat-val-sub" style="color:#0d9488;">${minutosAHHMMSS(totTM)}</div>
+              <div class="kpi-stat-val-sub" id="kpiDetTM" style="color:#0d9488;">${minutosAHHMMSS(totTM)}</div>
             </div>
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Alm. Planta</span>
-              <div class="kpi-stat-val-sub" style="color:#8b5cf6;">${almP}d</div>
+              <div class="kpi-stat-val-sub" id="kpiDetAlmP" style="color:#8b5cf6;">${almP}d</div>
             </div>
             <div class="kpi-stat-item">
               <span class="kpi-stat-label">Alm. Fuera</span>
-              <div class="kpi-stat-val-sub" style="color:#64748b;">${almF}d</div>
+              <div class="kpi-stat-val-sub" id="kpiDetAlmF" style="color:#64748b;">${almF}d</div>
             </div>
           </div>
         </div>

@@ -306,6 +306,28 @@
     return { guardadas, errores, total: items.length };
   }
 
+  // ---------- calificar con IA (por tandas: cada llamada resuelve unas pocas respuestas) ----------
+  async function calificarIA(examenId, intentoId, recalificar) {
+    const pre = await rpcRes({ accion: 'ia_pendientes', examenId, intentoId, recalificar, limite: 1 });
+    if (!pre.restantes) { aviso(recalificar ? 'No hay respuestas calificadas por la IA para volver a calificar.' : 'No hay respuestas pendientes de calificar con IA.', 'aviso'); return; }
+    if (!confirm(`Se calificarán ${pre.restantes} respuesta(s) con IA.\n\nA la IA (Claude, de Anthropic) se envían la pregunta, la respuesta modelo y la respuesta escrita, SIN nombres ni correos. Los archivos adjuntos no se envían.\nLas notas quedarán marcadas «IA» y podrás cambiarlas; las que ya calificaste a mano no se tocan.\n\n¿Continuar?`)) return;
+    const total = { guardadas: 0, tokens: 0, errores: [] };
+    let restantes = pre.restantes, sinAvance = 0;
+    for (let vuelta = 0; vuelta < 400 && restantes > 0; vuelta++) {
+      aviso(`Calificando con IA… ${total.guardadas} listas, ${restantes} pendientes.`, 'aviso'); pintar();
+      const r = await fb()._post({ accion: 'examenCalificarIA', token: st.ses.token, examenId, intentoId, recalificar });
+      if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } throw new Error((r && r.error) || 'No se pudo calificar con IA'); }
+      total.guardadas += r.guardadas; total.tokens += r.tokens || 0; total.errores.push(...(r.errores || []));
+      restantes = r.restantes;
+      if (!r.guardadas) { if (++sinAvance >= 2) break; } else sinAvance = 0;
+    }
+    if (st.detalle) st.detalle = Object.assign(await rpc({ accion: 'intento_detalle', intentoId: st.detalle.id }), { id: st.detalle.id });
+    aviso(`<b>${total.guardadas}</b> respuesta(s) calificadas con IA (≈ ${total.tokens.toLocaleString('es-EC')} tokens).` + (restantes ? ` Quedan ${restantes} sin calificar.` : '')
+      + (total.errores.length ? `<br>Con problema (${total.errores.length}): ` + total.errores.slice(0, 5).map(e => `${esc(e.id)}: ${esc(e.error)}`).join(' · ') : '')
+      + '<br>Revisa las notas marcadas «IA»: la decisión final es tuya.', restantes || total.errores.length ? 'aviso' : 'ok');
+    await recargar();
+  }
+
   // ---------- Excel ----------
   const COLS = { id: 'codigo', usuario: 'perfiles', 'linea de negocio': 'lineas', lineas: 'lineas', 'tipo de pregunta': 'tipo', tipo: 'tipo',
     dificultad: 'dificultad', pregunta: 'pregunta', 'respuesta modelo': 'respuestaModelo', respuesta: 'respuestaModelo', enlaces: 'enlaces', enlace: 'enlaces', adjuntos: 'enlaces', puntos: 'puntos', valor: 'puntos' };
@@ -401,14 +423,16 @@
       ${(q.archivos || []).length ? `<div style="margin-top:6px">${q.archivos.map(a => `<button class="btn chico" data-ver="${a.id}" data-nombre="${esc(a.nombre)}" data-mime="${esc(a.mime)}" style="margin:0 6px 6px 0"><i class="fas ${icoMime(a.mime)}"></i> ${esc(a.nombre)} · ${tam(a.tamano)}</button>`).join('')}</div>` : ''}
       ${q.respuestaModelo ? `<details><summary class="sub">Respuesta modelo</summary><div style="white-space:pre-wrap" class="sub">${esc(q.respuestaModelo)}</div></details>` : ''}
       <div class="calif"><label>Puntos <span class="sub">(máx. ${Number(q.puntosMax)})</span><input type="number" min="0" max="${Number(q.puntosMax)}" step="0.5" data-cn="${q.n}" value="${q.calificacion == null ? '' : Number(q.calificacion)}"></label>
-        <label class="grow">Comentario<input data-cc="${q.n}" value="${esc(q.comentario || '')}" placeholder="Opcional"></label>${q.origenCalif === 'EXCEL' ? '<span class="etq ENVIADO" title="Cargada desde el Excel">Excel</span>' : ''}</div></div>`).join('');
+        <label class="grow">Comentario<input data-cc="${q.n}" value="${esc(q.comentario || '')}" placeholder="Opcional"></label>${q.origenCalif === 'EXCEL' ? '<span class="etq ENVIADO" title="Cargada desde el Excel">Excel</span>' : q.origenCalif === 'IA' ? '<span class="etq INICIADO" title="La calificó la IA: revísala y cámbiala si no estás de acuerdo">IA</span>' : ''}</div></div>`).join('');
+    const exDet = st.d.examenes.find(e => e.intentos.some(i => i.id === x.id));
+    const botonIA = exDet && exDet.iaPermitida ? `<button class="btn chico" data-ia="${exDet.id}" data-ia-int="${x.id}"><i class="fas fa-wand-magic-sparkles"></i> Calificar con IA</button> <button class="btn chico" data-ia="${exDet.id}" data-ia-int="${x.id}" data-ia-re="1" title="Vuelve a pedir la nota de las respuestas que ya calificó la IA (no toca las manuales)">Recalificar IA</button>` : '';
     return `<div class="ex-card"><div class="ex-top"><div><h2 style="margin:0">${esc(x.nombre)}</h2><small>${x.estado}${x.iniciadoEn ? ' · inició ' + hora(x.iniciadoEn) : ''}${x.entregadoEn ? ' · entregó ' + hora(x.entregadoEn) : ''}${x.motivoCierre === 'tiempo' ? ' (por tiempo)' : ''}${x.pantallaOk ? ' · compartió pantalla' : ''}</small></div>
       <div><button class="btn chico" data-revisar="${x.id}">Actualizar</button> <button class="btn chico" id="exCerrarDet">Cerrar</button></div></div>
       <h3>Incidencias (${x.eventos.length})</h3>${ev ? `<div class="scroll"><table class="tabla"><tr><th>Hora</th><th>Qué pasó</th><th>Detalle</th></tr>${ev}</table></div>` : '<p class="sub">Sin incidencias registradas.</p>'}
       <h3>Capturas de pantalla (${x.capturas.length})</h3>
       <div>${x.capturas.map(c => `<button class="btn chico" data-captura="${c.id}" style="margin:0 6px 6px 0">${hora(c.en)} · ${esc(c.motivo || '')}</button>`).join('') || '<p class="sub">Sin capturas.</p>'}</div>
       <div id="exCaptura"></div>
-      <div class="ex-top"><h3>Respuestas y calificación</h3><div><b>${x.puntos == null ? '—' : Number(x.puntos)} / ${Number(x.maximo)} pts</b>${x.puntos != null && Number(x.maximo) ? ` (${(100 * Number(x.puntos) / Number(x.maximo)).toFixed(1)} %)` : ''} <button class="btn chico primario" data-calif="${x.id}"><i class="fas fa-check"></i> Guardar calificación</button></div></div>${preg}
+      <div class="ex-top"><h3>Respuestas y calificación</h3><div>${botonIA} <b>${x.puntos == null ? '—' : Number(x.puntos)} / ${Number(x.maximo)} pts</b>${x.puntos != null && Number(x.maximo) ? ` (${(100 * Number(x.puntos) / Number(x.maximo)).toFixed(1)} %)` : ''} <button class="btn chico primario" data-calif="${x.id}"><i class="fas fa-check"></i> Guardar calificación</button></div></div>${preg}
       <button class="btn primario" data-calif="${x.id}"><i class="fas fa-check"></i> Guardar calificación</button></div>`;
   }
 
@@ -417,9 +441,10 @@
     const evaluados = d.perfiles.filter(f => f.rol === 'EVALUADO');
     const filas = d.examenes.map(e => {
       const pend = e.intentos.filter(i => i.estado === 'GENERADO').length;
-      return `<div class="ex-card"><div class="ex-top"><div><b>${esc(e.nombre)}</b><br><small>${e.cantidad} preguntas · ${e.minutos} min${e.exigirPantalla ? ' · con pantalla compartida' : ''}${e.permitirAdjuntos ? ' · con archivos adjuntos' : ''} · ${new Date(e.creadoEn).toLocaleString('es-EC')}</small></div>
+      return `<div class="ex-card"><div class="ex-top"><div><b>${esc(e.nombre)}</b><br><small>${e.cantidad} preguntas · ${e.minutos} min${e.exigirPantalla ? ' · con pantalla compartida' : ''}${e.permitirAdjuntos ? ' · con archivos adjuntos' : ''}${e.iaPermitida ? ' · calificación con IA' : ''} · ${new Date(e.creadoEn).toLocaleString('es-EC')}</small></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${e.intentos.some(i => i.iniciadoEn) ? `<button class="btn chico" data-xl="${e.id}"><i class="fas fa-file-excel"></i> Descargar Excel</button>
           <button class="btn chico" data-xmail="${e.id}"><i class="fas fa-envelope"></i> Enviar Excel a mi correo</button>
+          ${e.iaPermitida ? `<button class="btn chico primario" data-ia="${e.id}"><i class="fas fa-wand-magic-sparkles"></i> Calificar con IA</button>` : ''}
           <label class="btn chico" style="margin:0;cursor:pointer"><i class="fas fa-upload"></i> Cargar calificaciones<input type="file" accept=".xlsx,.xls" hidden data-xcarga="${e.id}"></label>` : ''}<button class="btn chico primario" data-enviar="${e.id}" ${e.intentos.some(i => i.estado === 'GENERADO' || i.estado === 'ENVIADO') ? '' : 'disabled'}><i class="fas fa-paper-plane"></i> ${pend ? `Enviar pendientes (${pend})` : 'Reenviar a todos'}</button></div></div>
         ${e.resultadosEnviadoEn ? `<p class="sub" style="margin:4px 0"><i class="fas fa-circle-check" style="color:var(--ok)"></i> Resultados enviados por correo el ${new Date(e.resultadosEnviadoEn).toLocaleString('es-EC')}</p>` : e.resultadosError ? `<p class="msg aviso">No se pudieron enviar los resultados solos: ${esc(e.resultadosError)}. Usa «Enviar Excel a mi correo» o «Descargar Excel».</p>` : ''}
         <div class="scroll"><table class="tabla"><tr><th>Evaluado</th><th>Correo</th><th>Preguntas</th><th>Estado</th><th>Avance</th><th></th></tr>
@@ -437,6 +462,7 @@
         <label>Tiempo (minutos)<input id="exMin" type="number" min="1" max="600" value="45"></label>
         <label>Vigencia del enlace (días)<input id="exVig" type="number" min="1" max="60" value="7"></label></div>
       <label class="chk-inline" style="margin:4px 0 8px"><input type="checkbox" id="exPant" ${st.exigirPantalla === false ? '' : 'checked'}> Exigir que el evaluado comparta toda su pantalla (se toman capturas periódicas)</label>
+      <label class="chk-inline" style="margin:0 0 8px"><input type="checkbox" id="exIA"> Permitir calificar con IA (se les avisa a los evaluados; la IA recibe las respuestas sin sus nombres)</label>
       <label class="chk-inline" style="margin:0 0 8px"><input type="checkbox" id="exPerm"> Permitir que el evaluado adjunte archivos a sus respuestas (hasta 3 por pregunta, 10 MB cada uno)</label>
       <h3>¿A quién evalúas?</h3>
       <div class="lista-eval">${evaluados.length ? evaluados.map(f => `<label><input type="checkbox" data-eval="${f.id}" ${st.evaluados.has(f.id) ? 'checked' : ''}> <b>${esc(f.nombre)}</b> <span class="sub">· ${esc(f.perfil)}${f.lineas.length ? ' · ' + esc(f.lineas.join(', ')) : ' · todas las líneas'}</span></label>`).join('') : '<p class="vacio">Sin evaluados.</p>'}</div>
@@ -617,7 +643,7 @@
     const gen = document.getElementById('exGenerar');
     if (gen) gen.onclick = () => ejecutar(async () => {
       const r = await rpc({ accion: 'examen_generar', nombre: val('exNombre'), cantidad: Number(val('exCant')), minutos: Number(val('exMin')),
-        vigenciaDias: Number(val('exVig')), exigirPantalla: document.getElementById('exPant').checked, permitirAdjuntos: document.getElementById('exPerm').checked, perfilIds: [...st.evaluados], filtros: { perfiles: st.sel.perfiles, lineas: st.sel.lineas, tipos: st.sel.tipos, dificultades: st.sel.dificultades } });
+        vigenciaDias: Number(val('exVig')), exigirPantalla: document.getElementById('exPant').checked, permitirAdjuntos: document.getElementById('exPerm').checked, iaPermitida: document.getElementById('exIA').checked, perfilIds: [...st.evaluados], filtros: { perfiles: st.sel.perfiles, lineas: st.sel.lineas, tipos: st.sel.tipos, dificultades: st.sel.dificultades } });
       const notas = r.detalle.filter(x => !x.ok || x.faltan).map(x => x.ok ? `${esc(x.nombre)}: solo ${x.preguntas} preguntas disponibles (faltan ${x.faltan})` : `${esc(x.nombre)}: ${esc(x.error)}`);
       aviso('Examen generado. ' + (notas.length ? 'Ojo: <br>' + notas.join('<br>') : 'Ya puedes enviar los correos.'), notas.length ? 'aviso' : 'ok');
       st.evaluados.clear(); await recargar();
@@ -659,6 +685,7 @@
     });
     const pg1 = document.getElementById('pqGuardar'); if (pg1) pg1.onclick = () => ejecutar(() => guardarPregunta(false), pg1);
     const pg2 = document.getElementById('pqGuardarAdj'); if (pg2) pg2.onclick = () => ejecutar(() => guardarPregunta(true), pg2);
+    q('[data-ia]', b => b.onclick = () => ejecutar(() => calificarIA(Number(b.dataset.ia), b.dataset.iaInt ? Number(b.dataset.iaInt) : undefined, !!b.dataset.iaRe), b));
     q('[data-xl]', b => b.onclick = () => ejecutar(async () => { descargarResultados((await rpcRes({ accion: 'resultados', examenId: Number(b.dataset.xl) })).resultados); }, b));
     q('[data-xmail]', b => b.onclick = () => ejecutar(async () => {
       aviso('Preparando el Excel y enviándolo a tu correo…', 'aviso'); pintar();
