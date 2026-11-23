@@ -39,3 +39,10 @@ textarea:focus { outline: 2px solid var(--azul); }
 .velo { position: fixed; inset: 0; background: rgba(2, 6, 23, .96); z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; }
 .velo .tarjeta { max-width: 460px; }
 .aviso-sup { background: #422006; color: #fde68a; padding: 8px 16px; font-size: 14px; text-align: center; }
+.material { display: grid; gap: 10px; margin: 0 0 14px; }
+.adj { background: #0b1220; border: 1px solid var(--linea); border-radius: 12px; padding: 10px 12px; overflow-wrap: anywhere; }
+.adj a { color: #93c5fd; } .adj-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 3px 0; }
+.adj-vista { margin-top: 8px; text-align: center; } .adj-vista img, .adj-vista video { max-width: 100%; max-height: 70vh; border-radius: 8px; }
+.adj-vista audio { width: 100%; } .adj-vista iframe { width: 100%; height: 70vh; border: 0; background: #fff; border-radius: 8px; }
+.btn.chico { padding: 5px 12px; font-size: 13px; border-radius: 8px; }
+.mis-archivos { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--linea); border-radius: 12px; }

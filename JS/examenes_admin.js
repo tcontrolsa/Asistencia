@@ -6,7 +6,7 @@
   const KEY_SESION = 'tcontrol_sesion_eval';
   const app = document.getElementById('exApp');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, detalle: null, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
+  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, detalle: null, adj: null, mv: { items: [], subiendo: false, resumen: '' }, pq: null, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
   const fb = () => window.FirebaseBackend;
   const quitarTildes = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
@@ -45,13 +45,33 @@
   }
 
   // ---------- llamadas ----------
-  async function rpc(p) {
-    const r = await fb()._post({ accion: 'evalRpc', token: st.ses.token, fn: 'examenes', p: JSON.stringify(p) });
+  // Directo al servidor por el túnel (rápido: hace falta para subir archivos) y, si la red lo bloquea, por Apps Script
+  async function llamar(fn, p) {
+    const f = fb();
+    for (let i = 0; i < 2 && f._urlHistorico; i++) {
+      let url = '';
+      try { url = await f._urlHistorico(i > 0); } catch (e) { url = ''; }
+      if (!url) break;
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 25000);
+      try {
+        const r = await fetch(`${url}/rpc/${fn}`, { method: 'POST', signal: ctrl.signal, headers: { Authorization: 'Bearer ' + st.ses.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ p }) });
+        if (r.status === 401) { cerrarSesion(); throw vencida(); }
+        if (r.ok) return await r.json();
+      } catch (e) { if (e.sesion) throw e; } finally { clearTimeout(t); }
+    }
+    const r = await f._post({ accion: 'evalRpc', token: st.ses.token, fn, p: JSON.stringify(p) });
     if (!r || typeof r.status !== 'number') throw new Error('Sin conexión con el servidor de evaluaciones.');
     if (r.status === 401) { cerrarSesion(); throw vencida(); }
-    if (!r.body || r.body.ok !== true) throw new Error((r.body && (r.body.error || r.body.message)) || 'No se pudo completar');
     return r.body;
   }
+  async function rpcFn(fn, p) {
+    const b = await llamar(fn, p);
+    if (!b || b.ok !== true) throw new Error((b && (b.error || b.message)) || 'No se pudo completar');
+    return b;
+  }
+  const rpc = p => rpcFn('examenes', p);
+  const rpcArch = p => rpcFn('examenes_archivos', p);
   async function recargar() { st.d = await rpc({ accion: 'inicio' }); }
 
   // Directorio de empleados (Firestore: unidad, cargo, status y evaluador que ya maneja Desempeño).
@@ -125,9 +145,138 @@
     pintar();
   }
 
+  // ---------- archivos (se suben y bajan en partes de 300 KB) ----------
+  const PARTE = 300000;
+  const MIME_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', pdf: 'application/pdf',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', aac: 'audio/aac', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', txt: 'text/plain',
+    doc: 'application/msword', xls: 'application/vnd.ms-excel', ppt: 'application/vnd.ms-powerpoint',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+  const mimeDe = f => (f.type && f.type !== 'application/octet-stream') ? f.type : (MIME_EXT[(f.name.split('.').pop() || '').toLowerCase()] || '');
+  function aB64(buf) {
+    const u = new Uint8Array(buf); let s = '';
+    for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  const tam = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const icoMime = m => /^image/.test(m) ? 'fa-image' : /^audio/.test(m) ? 'fa-headphones' : /^video/.test(m) ? 'fa-film' : /pdf/.test(m) ? 'fa-file-pdf' : 'fa-file-lines';
+
+  async function subirMaterial(file, preguntaId, progreso) {
+    const mime = mimeDe(file);
+    if (!mime) throw new Error(`«${file.name}»: tipo de archivo no reconocido.`);
+    const ini = await rpcArch({ accion: 'subir_inicio', preguntaId, nombre: file.name, mime, tamano: file.size });
+    for (let n = 1; n <= ini.partes; n++) {
+      await rpcArch({ accion: 'subir_parte', archivoId: ini.archivoId, n, datos: aB64(await file.slice((n - 1) * PARTE, n * PARTE).arrayBuffer()) });
+      progreso(n / ini.partes);
+    }
+    await rpcArch({ accion: 'subir_fin', archivoId: ini.archivoId });
+  }
+
+  // Baja un archivo completo (todas las partes) y lo muestra en un visor dentro de la página
+  async function verArchivo(id, nombre, mime) {
+    const v = document.createElement('div');
+    v.className = 'visor';
+    v.innerHTML = `<div class="visor-in"><div class="ex-top"><b>${esc(nombre)}</b><button class="btn chico" data-x>Cerrar</button></div><div class="visor-c"><p class="sub" id="visorMsg">Descargando…</p></div></div>`;
+    document.body.appendChild(v);
+    let url = '';
+    v.querySelector('[data-x]').onclick = () => { v.remove(); if (url) URL.revokeObjectURL(url); };
+    try {
+      const partes = []; let total = 1;
+      for (let n = 1; n <= total; n++) {
+        const r = await rpcArch({ accion: 'archivo_parte', archivoId: id, n });
+        total = r.partes; partes.push(Uint8Array.from(atob(r.datos), c => c.charCodeAt(0)));
+        const m = v.querySelector('#visorMsg'); if (m) m.textContent = `Descargando… ${Math.round(n / total * 100)} %`;
+      }
+      url = URL.createObjectURL(new Blob(partes, { type: mime }));
+      const c = v.querySelector('.visor-c');
+      c.innerHTML = /^image/.test(mime) ? `<img src="${url}" alt="">` : /^audio/.test(mime) ? `<audio src="${url}" controls autoplay></audio>`
+        : /^video/.test(mime) ? `<video src="${url}" controls autoplay></video>` : mime === 'application/pdf' ? `<iframe src="${url}"></iframe>`
+        : `<p><a class="btn primario" href="${url}" download="${esc(nombre)}"><i class="fas fa-download"></i> Descargar ${esc(nombre)}</a></p>`;
+    } catch (e) { v.querySelector('.visor-c').innerHTML = `<p class="msg mal">${esc(e.message)}</p>`; }
+  }
+
+  // ---------- carga masiva de material: carpeta, varios archivos o ZIP; se asignan por el código de la pregunta ----------
+  const MAX_MATERIAL = 26214400;
+  const limpiarNombre = n => String(n || '').replace(/^.*[\\/]/, '').replace(/[^\p{L}\p{N} ._()\-]/gu, '_').slice(0, 120).toLowerCase();
+  const sinExt = n => n.replace(/\.[^.]+$/, '');
+
+  async function aArchivos(lista) {   // expande ZIP y descarta basura de sistema
+    const out = [];
+    for (const f of lista) {
+      const ruta = f.webkitRelativePath || f.name;
+      if (/\.zip$/i.test(f.name)) {
+        if (!window.JSZip) throw new Error('No se pudo cargar el lector de ZIP. Revisa tu conexión y recarga la página.');
+        const z = await JSZip.loadAsync(f);
+        for (const [nombre, ent] of Object.entries(z.files)) {
+          if (ent.dir || /(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db)/i.test(nombre) || /(^|\/)\./.test(nombre)) continue;
+          const base = nombre.split('/').pop();
+          out.push({ file: new File([await ent.async('blob')], base, { type: MIME_EXT[(base.split('.').pop() || '').toLowerCase()] || '' }), ruta: nombre });
+        }
+      } else if (!/(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i.test(ruta)) out.push({ file: f, ruta });
+    }
+    return out;
+  }
+
+  // Código de pregunta que le corresponde a un archivo: «P001.png», «P001_diagrama.png», «P001 - foto.jpg» o dentro de una carpeta «P001/»
+  function preguntaDe(ruta, lista) {
+    const segs = ruta.split('/').map(x => quitarTildes(x));
+    const base = sinExt(segs[segs.length - 1]);
+    const codigos = [...lista].sort((a, b) => b.codigo.length - a.codigo.length);
+    for (const q of codigos) {
+      const c = quitarTildes(q.codigo);
+      if (base === c || (base.startsWith(c) && /^[\s_\-.()]/.test(base.slice(c.length)))) return q.id;
+    }
+    for (const q of codigos) if (segs.slice(0, -1).includes(quitarTildes(q.codigo))) return q.id;
+    return null;
+  }
+
+  function evaluarMasivo() {
+    const lista = (st.banco && st.banco.lista) || [], usados = new Map();
+    st.mv.items.forEach(it => {
+      if (it.estado === 'subido' || it.estado === 'error') return;
+      const q = lista.find(x => x.id === it.preguntaId);
+      it.estado = 'listo'; it.motivo = '';
+      if (!mimeDe(it.file)) { it.estado = 'no'; it.motivo = 'Tipo de archivo no permitido'; }
+      else if (it.file.size > MAX_MATERIAL) { it.estado = 'no'; it.motivo = 'Supera 25 MB'; }
+      else if (!q) { it.estado = 'no'; it.motivo = 'Sin pregunta: elige una o se omite'; }
+      else if ((q.adjuntos || []).some(a => a.tipo === 'archivo' && String(a.nombre).toLowerCase() === limpiarNombre(it.file.name))) { it.estado = 'no'; it.motivo = 'Ya está adjunto'; }
+      else {
+        const n = (q.adjuntos || []).length + (usados.get(q.id) || 0);
+        if (n >= 5) { it.estado = 'no'; it.motivo = 'La pregunta ya tiene 5 adjuntos'; } else usados.set(q.id, (usados.get(q.id) || 0) + 1);
+      }
+    });
+  }
+
+  async function agregarMasivo(lista) {
+    const arch = await aArchivos(lista);
+    const preguntas = (st.banco && st.banco.lista) || [];
+    arch.forEach(a => st.mv.items.push({ file: a.file, ruta: a.ruta, preguntaId: preguntaDe(a.ruta, preguntas), estado: 'listo', motivo: '' }));
+    st.mv.resumen = '';
+    evaluarMasivo();
+  }
+
+  async function subirMasivo() {
+    const m = st.mv;
+    const todo = m.items.filter(it => it.estado === 'listo');
+    m.subiendo = true; pintar();
+    let ok = 0;
+    for (const [k, it] of todo.entries()) {
+      try {
+        await subirMaterial(it.file, it.preguntaId, x => { const e = document.getElementById('mvProg'); if (e) e.textContent = `Subiendo ${k + 1} de ${todo.length}: ${it.file.name} ${Math.round(x * 100)} %`; });
+        it.estado = 'subido'; ok++;
+      } catch (e) { it.estado = 'error'; it.motivo = e.message; }
+    }
+    m.subiendo = false;
+    const fallos = m.items.filter(it => it.estado === 'error').length;
+    m.resumen = `${ok} archivo(s) subido(s)${fallos ? `; ${fallos} con error (reintenta con «Subir pendientes»)` : ''}.`;
+    m.items = m.items.filter(it => it.estado !== 'subido');
+    st.banco.lista = (await rpc({ accion: 'banco_listar' })).preguntas;
+    evaluarMasivo();
+  }
+
   // ---------- Excel ----------
   const COLS = { id: 'codigo', usuario: 'perfiles', 'linea de negocio': 'lineas', lineas: 'lineas', 'tipo de pregunta': 'tipo', tipo: 'tipo',
-    dificultad: 'dificultad', pregunta: 'pregunta', 'respuesta modelo': 'respuestaModelo', respuesta: 'respuestaModelo' };
+    dificultad: 'dificultad', pregunta: 'pregunta', 'respuesta modelo': 'respuestaModelo', respuesta: 'respuestaModelo', enlaces: 'enlaces', enlace: 'enlaces', adjuntos: 'enlaces' };
   const ALIAS = { procesos: 'Proceso', procesos_: 'Proceso', tecnica: 'Técnica', capacitacion: 'Capacitación', 'especialista de ingenieria': 'Especialista de ingeniería', lider: 'Líder' };
 
   function normalizar(tipo, valor) {
@@ -163,7 +312,8 @@
         fila, codigo: String(o.codigo ?? '').trim(), pregunta: String(o.pregunta ?? '').trim(),
         perfiles: partir('PERFIL', o.perfiles), lineas: partir('LINEA', o.lineas),
         tipo: o.tipo ? normalizar('TIPO', String(o.tipo).split(';')[0]) : '', dificultad: o.dificultad ? normalizar('DIFICULTAD', String(o.dificultad).split(';')[0]) : '',
-        respuestaModelo: String(o.respuestaModelo ?? '').trim()
+        respuestaModelo: String(o.respuestaModelo ?? '').trim(),
+        enlaces: String(o.enlaces ?? '').split(/[;\n ]+/).map(x => x.trim()).filter(Boolean)
       });
     });
     return { preguntas, descartadas };
@@ -189,9 +339,9 @@
   function descargarPlantilla() {
     const c = st.d.catalogo;
     const wb = XLSX.utils.book_new();
-    const filas = [['ID', 'Usuario', 'Linea de negocio', 'Dificultad', 'Tipo de pregunta', 'Pregunta', 'Respuesta modelo'],
-      ['P001', 'Pasante;Ingeniero', 'Baja Tensión', 'Medio', 'Técnica', '¿Cuál es la diferencia entre un seccionador y un disyuntor?', 'El seccionador aísla sin carga; el disyuntor interrumpe bajo carga.'],
-      ['P002', '', '', 'Bajo', 'Proceso', 'Pregunta que aplica a todos los perfiles y líneas (déjalos vacíos).', '']];
+    const filas = [['ID', 'Usuario', 'Linea de negocio', 'Dificultad', 'Tipo de pregunta', 'Pregunta', 'Respuesta modelo', 'Enlaces'],
+      ['P001', 'Pasante;Ingeniero', 'Baja Tensión', 'Medio', 'Técnica', '¿Cuál es la diferencia entre un seccionador y un disyuntor?', 'El seccionador aísla sin carga; el disyuntor interrumpe bajo carga.', 'https://www.youtube.com/watch?v=ejemplo'],
+      ['P002', '', '', 'Bajo', 'Proceso', 'Pregunta que aplica a todos los perfiles y líneas (déjalos vacíos).', '', '']];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filas), 'Banco de preguntas');
     const max = Math.max(...['PERFIL', 'LINEA', 'DIFICULTAD', 'TIPO'].map(k => (c[k] || []).length));
     const op = [['Usuario', 'Linea de negocio', 'Dificultad', 'Tipo de pregunta']];
@@ -215,6 +365,7 @@
     const preg = x.preguntas.map(q => `<div style="margin:10px 0;padding-top:10px;border-top:1px solid var(--linea)"><div class="sub">${q.n}. ${esc(q.codigo)} · ${esc(q.tipo)}</div>
       <div style="white-space:pre-wrap"><b>${esc(q.pregunta)}</b></div>
       <div style="white-space:pre-wrap;margin-top:6px">${q.respuesta ? esc(q.respuesta) : '<span class="sub">(sin respuesta)</span>'}</div>
+      ${(q.archivos || []).length ? `<div style="margin-top:6px">${q.archivos.map(a => `<button class="btn chico" data-ver="${a.id}" data-nombre="${esc(a.nombre)}" data-mime="${esc(a.mime)}" style="margin:0 6px 6px 0"><i class="fas ${icoMime(a.mime)}"></i> ${esc(a.nombre)} · ${tam(a.tamano)}</button>`).join('')}</div>` : ''}
       ${q.respuestaModelo ? `<details><summary class="sub">Respuesta modelo</summary><div style="white-space:pre-wrap" class="sub">${esc(q.respuestaModelo)}</div></details>` : ''}</div>`).join('');
     return `<div class="ex-card"><div class="ex-top"><div><h2 style="margin:0">${esc(x.nombre)}</h2><small>${x.estado}${x.iniciadoEn ? ' · inició ' + hora(x.iniciadoEn) : ''}${x.entregadoEn ? ' · entregó ' + hora(x.entregadoEn) : ''}${x.motivoCierre === 'tiempo' ? ' (por tiempo)' : ''}${x.pantallaOk ? ' · compartió pantalla' : ''}</small></div>
       <div><button class="btn chico" data-revisar="${x.id}">Actualizar</button> <button class="btn chico" id="exCerrarDet">Cerrar</button></div></div>
@@ -230,7 +381,7 @@
     const evaluados = d.perfiles.filter(f => f.rol === 'EVALUADO');
     const filas = d.examenes.map(e => {
       const pend = e.intentos.filter(i => i.estado === 'GENERADO').length;
-      return `<div class="ex-card"><div class="ex-top"><div><b>${esc(e.nombre)}</b><br><small>${e.cantidad} preguntas · ${e.minutos} min${e.exigirPantalla ? ' · con pantalla compartida' : ''} · ${new Date(e.creadoEn).toLocaleString('es-EC')}</small></div>
+      return `<div class="ex-card"><div class="ex-top"><div><b>${esc(e.nombre)}</b><br><small>${e.cantidad} preguntas · ${e.minutos} min${e.exigirPantalla ? ' · con pantalla compartida' : ''}${e.permitirAdjuntos ? ' · con archivos adjuntos' : ''} · ${new Date(e.creadoEn).toLocaleString('es-EC')}</small></div>
         <div><button class="btn chico primario" data-enviar="${e.id}" ${e.intentos.some(i => i.estado === 'GENERADO' || i.estado === 'ENVIADO') ? '' : 'disabled'}><i class="fas fa-paper-plane"></i> ${pend ? `Enviar pendientes (${pend})` : 'Reenviar a todos'}</button></div></div>
         <div class="scroll"><table class="tabla"><tr><th>Evaluado</th><th>Correo</th><th>Preguntas</th><th>Estado</th><th>Avance</th><th></th></tr>
         ${e.intentos.map(i => `<tr><td>${esc(i.nombre)}</td><td>${esc(i.correo)}</td><td>${i.preguntas}</td>
@@ -247,6 +398,7 @@
         <label>Tiempo (minutos)<input id="exMin" type="number" min="1" max="600" value="45"></label>
         <label>Vigencia del enlace (días)<input id="exVig" type="number" min="1" max="60" value="7"></label></div>
       <label class="chk-inline" style="margin:4px 0 8px"><input type="checkbox" id="exPant" ${st.exigirPantalla === false ? '' : 'checked'}> Exigir que el evaluado comparta toda su pantalla (se toman capturas periódicas)</label>
+      <label class="chk-inline" style="margin:0 0 8px"><input type="checkbox" id="exPerm"> Permitir que el evaluado adjunte archivos a sus respuestas (hasta 3 por pregunta, 10 MB cada uno)</label>
       <h3>¿A quién evalúas?</h3>
       <div class="lista-eval">${evaluados.length ? evaluados.map(f => `<label><input type="checkbox" data-eval="${f.id}" ${st.evaluados.has(f.id) ? 'checked' : ''}> <b>${esc(f.nombre)}</b> <span class="sub">· ${esc(f.perfil)}${f.lineas.length ? ' · ' + esc(f.lineas.join(', ')) : ' · todas las líneas'}</span></label>`).join('') : '<p class="vacio">Sin evaluados.</p>'}</div>
       <button class="btn chico" data-todos="1">Marcar / desmarcar todos</button>
@@ -260,16 +412,74 @@
       <div class="ex-top"><h2 style="margin:0">Exámenes generados</h2><button class="btn chico" id="exActualizar"><i class="fas fa-rotate"></i> Actualizar</button></div>${filas || '<p class="vacio">Aún no generas ningún examen.</p>'}`;
   }
 
+  // ---------- formulario de una pregunta ----------
+  function nuevaPregunta(q) {
+    st.sel.pq_perfiles = q ? [...q.perfiles] : []; st.sel.pq_lineas = q ? [...q.lineas] : [];
+    st.pq = q ? { id: q.id, codigo: q.codigo, tipo: q.tipo, dificultad: q.dificultad || '', pregunta: q.pregunta, modelo: q.respuestaModelo || '' }
+      : { id: null, codigo: '', tipo: '', dificultad: '', pregunta: '', modelo: '' };
+  }
+  function leerFormPregunta() {
+    if (!st.pq || !document.getElementById('pqTexto')) return;
+    Object.assign(st.pq, { codigo: val('pqCod').trim(), tipo: val('pqTipo'), dificultad: val('pqDif'), pregunta: val('pqTexto'), modelo: val('pqModelo') });
+  }
+  async function guardarPregunta(adjuntar) {
+    leerFormPregunta();
+    const f = st.pq;
+    const r = await rpc({ accion: 'pregunta_guardar', id: f.id || undefined, codigo: f.codigo, tipo: f.tipo, dificultad: f.dificultad, pregunta: f.pregunta,
+      respuestaModelo: f.modelo, perfiles: st.sel.pq_perfiles, lineas: st.sel.pq_lineas });
+    st.banco = Object.assign(st.banco || {}, { lista: (await rpc({ accion: 'banco_listar' })).preguntas });
+    st.pq = null; st.adj = adjuntar ? r.id : st.adj;
+    aviso(`Pregunta ${esc(r.codigo)} guardada.${adjuntar ? ' Ahora puedes adjuntarle archivos.' : ''}`);
+    await recargar();
+  }
+
   function vistaBanco() {
     const b = st.banco;
     const rep = b && b.reporte ? `<div class="msg ${b.reporte.errores.length ? 'aviso' : 'ok'}"><b>${b.reporte.guardadas}</b> preguntas guardadas${b.reporte.errores.length ? `, <b>${b.reporte.errores.length}</b> con error:` : '.'}
       ${b.reporte.errores.length ? `<ul>${b.reporte.errores.slice(0, 40).map(e => `<li>Fila ${e.fila}${e.codigo ? ' (' + esc(e.codigo) + ')' : ''}: ${esc(e.error)}</li>`).join('')}</ul>` : ''}</div>` : '';
-    const lista = b && b.lista ? `<div class="scroll"><table class="tabla"><tr><th>ID</th><th>Usuario</th><th>Línea</th><th>Tipo</th><th>Dif.</th><th>Pregunta</th><th></th></tr>
+    const lista = b && b.lista ? `<div class="scroll"><table class="tabla"><tr><th>ID</th><th>Usuario</th><th>Línea</th><th>Tipo</th><th>Dif.</th><th>Pregunta</th><th>Adjuntos</th><th></th></tr>
       ${b.lista.map(q => `<tr><td>${esc(q.codigo)}</td><td>${esc(q.perfiles.join(', ') || 'Todos')}</td><td>${esc(q.lineas.join(', ') || 'Todas')}</td><td>${esc(q.tipo)}</td><td>${esc(q.dificultad || '')}</td>
         <td>${esc(q.pregunta)}${q.respuestaModelo ? `<br><small class="sub">Modelo: ${esc(q.respuestaModelo.slice(0, 160))}${q.respuestaModelo.length > 160 ? '…' : ''}</small>` : ''}</td>
-        <td><button class="btn chico peligro" data-borrar="${q.id}">Quitar</button></td></tr>`).join('')}</table></div>` : '<p class="vacio">Cargando…</p>';
-    return `<div class="ex-card"><h2>Cargar preguntas desde Excel</h2>
-      <p class="sub">Columnas: ID, Usuario, Línea de negocio, Dificultad (opcional), Tipo de pregunta, Pregunta y Respuesta modelo. Para varias opciones sepáralas con «;» (Pasante;Ingeniero). Vacío = aplica a todos. Si el ID ya existe se actualiza.</p>
+        <td><button class="btn chico" data-adj="${q.id}"><i class="fas fa-paperclip"></i> ${(q.adjuntos || []).length}</button></td>
+        <td style="white-space:nowrap"><button class="btn chico" data-editar="${q.id}">Editar</button> <button class="btn chico peligro" data-borrar="${q.id}">Quitar</button></td></tr>`).join('')}</table></div>` : '<p class="vacio">Cargando…</p>';
+    const qa = st.adj && b && b.lista ? b.lista.find(x => x.id === st.adj) : null;
+    const panel = qa ? `<div class="ex-card"><div class="ex-top"><div><h2 style="margin:0">Adjuntos de ${esc(qa.codigo)}</h2><small class="sub">${esc(qa.pregunta.slice(0, 140))}</small></div><button class="btn chico" id="adjCerrar">Cerrar</button></div>
+      <p class="sub">Material que verá el evaluado dentro de la pregunta: imágenes, audio, video, PDF o documentos (hasta 25 MB cada uno), o enlaces https (YouTube, Drive, SharePoint…). Máximo 5 por pregunta.</p>
+      ${(qa.adjuntos || []).map((a, i) => `<div class="adj-fila"><i class="fas ${a.tipo === 'enlace' ? 'fa-link' : icoMime(a.mime)}"></i>
+        <span>${a.tipo === 'enlace' ? `<a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.titulo || a.url)}</a>` : `${esc(a.nombre)} <span class="sub">· ${tam(a.tamano)}</span>`}</span>
+        ${a.tipo === 'archivo' ? `<button class="btn chico" data-ver="${a.id}" data-nombre="${esc(a.nombre)}" data-mime="${esc(a.mime)}">Ver</button>` : ''}
+        <button class="btn chico peligro" data-adjq="${i}">Quitar</button></div>`).join('') || '<p class="sub">Sin adjuntos.</p>'}
+      <div class="fila" style="margin-top:12px"><label>Subir archivos<input type="file" id="adjFile" multiple></label>
+        <label>Agregar enlace<input id="adjUrl" placeholder="https://…"></label><label>Título del enlace (opcional)<input id="adjTit"></label></div>
+      <button class="btn" id="adjEnlace">Agregar enlace</button> <span class="sub" id="adjProg"></span></div>` : '';
+    const mv = st.mv, listaQ = (b && b.lista) || [];
+    const optsQ = sel => `<option value="">— Omitir —</option>${listaQ.map(q => `<option value="${q.id}" ${q.id === sel ? 'selected' : ''}>${esc(q.codigo)} · ${esc(q.pregunta.slice(0, 50))}</option>`).join('')}`;
+    const nListos = mv.items.filter(it => it.estado === 'listo').length;
+    const masivo = `<div class="ex-card"><h2>Cargar material en bloque</h2>
+      <p class="sub">Elige una <b>carpeta</b>, varios archivos o un <b>ZIP</b>. Cada archivo se asigna solo a la pregunta cuyo código aparezca al inicio de su nombre (<code>P001.png</code>, <code>P001_diagrama.png</code>, <code>P001 - audio.mp3</code>) o en el nombre de su carpeta (<code>P001/esquema.pdf</code>). Antes de subir puedes revisar y corregir cada asignación.</p>
+      <label class="btn chico" style="display:inline-block"><i class="fas fa-folder-open"></i> Elegir carpeta<input type="file" id="mvCarpeta" webkitdirectory multiple hidden></label>
+      <label class="btn chico" style="display:inline-block"><i class="fas fa-file-zipper"></i> Elegir archivos o ZIP<input type="file" id="mvArchivos" multiple hidden></label>
+      ${mv.items.length ? `<button class="btn chico" id="mvLimpiar">Vaciar lista</button>` : ''}
+      ${mv.resumen ? `<p class="msg ok">${esc(mv.resumen)}</p>` : ''}
+      ${mv.items.length ? `<div class="scroll"><table class="tabla"><tr><th>Archivo</th><th>Tamaño</th><th>Pregunta</th><th>Estado</th></tr>
+        ${mv.items.map((it, i) => `<tr><td>${esc(it.ruta)}</td><td>${tam(it.file.size)}</td>
+          <td>${it.estado === 'subido' ? '' : `<select class="sel-chico" data-mvsel="${i}" style="max-width:260px">${optsQ(it.preguntaId)}</select>`}</td>
+          <td>${it.estado === 'listo' ? '<span class="etq ENVIADO">LISTO</span>' : `<span class="etq ${it.estado === 'error' ? 'ANULADO' : 'GENERADO'}">${it.estado === 'error' ? 'ERROR' : 'OMITIDO'}</span> <small class="sub">${esc(it.motivo)}</small>`}</td></tr>`).join('')}</table></div>
+        <button class="btn primario" id="mvSubir" ${nListos && !mv.subiendo ? '' : 'disabled'}><i class="fas fa-cloud-arrow-up"></i> ${mv.subiendo ? 'Subiendo…' : `Subir ${nListos} archivo(s)`}</button> <span class="sub" id="mvProg"></span>` : ''}</div>`;
+    const f = st.pq, cat = st.d.catalogo;
+    const formulario = !f ? `<div class="ex-card ex-top"><div><h2 style="margin:0">Agregar una pregunta</h2><small class="sub">Escríbela aquí, sin Excel. Después puedes adjuntarle archivos.</small></div><button class="btn primario" id="pqAbrir"><i class="fas fa-plus"></i> Nueva pregunta</button></div>`
+      : `<div class="ex-card"><div class="ex-top"><h2 style="margin:0">${f.id ? 'Editar pregunta ' + esc(f.codigo) : 'Nueva pregunta'}</h2><button class="btn chico" id="pqCerrar">Cancelar</button></div>
+      <div class="fila"><label>ID <span class="sub">(opcional: si lo dejas vacío se asigna solo)</span><input id="pqCod" value="${esc(f.codigo)}" placeholder="Ej. P101"></label>
+        <label>Tipo de pregunta<select id="pqTipo">${(cat.TIPO || []).map(v => `<option ${v === (f.tipo || cat.TIPO[0]) ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+        <label>Dificultad<select id="pqDif"><option value="">—</option>${(cat.DIFICULTAD || []).map(v => `<option ${v === f.dificultad ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label></div>
+      <div class="sub">¿A quién aplica? Perfil (sin marcar = todos)</div>${chips('pq_perfiles', cat.PERFIL || [])}
+      <div class="sub">Líneas de negocio (sin marcar = todas)</div>${chips('pq_lineas', cat.LINEA || [])}
+      <label>Pregunta<textarea id="pqTexto" rows="4" placeholder="Escribe la pregunta tal como la verá el evaluado">${esc(f.pregunta)}</textarea></label>
+      <label>Respuesta modelo <span class="sub">(opcional; la verá solo el evaluador, para calificar después)</span><textarea id="pqModelo" rows="4">${esc(f.modelo)}</textarea></label>
+      <button class="btn primario" id="pqGuardar"><i class="fas fa-floppy-disk"></i> Guardar pregunta</button>
+      <button class="btn" id="pqGuardarAdj"><i class="fas fa-paperclip"></i> Guardar y adjuntar archivos</button></div>`;
+    return `${panel}${formulario}${masivo}<div class="ex-card"><h2>Cargar preguntas desde Excel</h2>
+      <p class="sub">Columnas: ID, Usuario, Línea de negocio, Dificultad (opcional), Tipo de pregunta, Pregunta y Respuesta modelo. Para varias opciones sepáralas con «;» (Pasante;Ingeniero). Vacío = aplica a todos. Si el ID ya existe se actualiza. Opcional: columna «Enlaces» con enlaces https (separados por «;»); los archivos se adjuntan después, pregunta por pregunta, con el clip.</p>
       <input type="file" id="exArchivo" accept=".xlsx,.xls" style="max-width:360px"> <button class="btn chico" id="exPlantilla"><i class="fas fa-download"></i> Descargar plantilla</button>
       ${rep}</div>
       <div class="ex-card"><h2>Banco de preguntas (${b && b.lista ? b.lista.length : '…'})</h2>${lista}</div>`;
@@ -339,7 +549,7 @@
     q('[data-chip]', c => c.onclick = () => {
       const a = st.sel[c.dataset.chip], v = c.dataset.v, i = a.indexOf(v);
       if (i >= 0) a.splice(i, 1); else a.push(v);
-      guardarCampos(); pintar();
+      guardarCampos(); leerFormPregunta(); pintar();
     });
     q('[data-eval]', c => c.onchange = () => { const id = Number(c.dataset.eval); c.checked ? st.evaluados.add(id) : st.evaluados.delete(id); });
     q('[data-todos]', b => b.onclick = () => {
@@ -367,7 +577,7 @@
     const gen = document.getElementById('exGenerar');
     if (gen) gen.onclick = () => ejecutar(async () => {
       const r = await rpc({ accion: 'examen_generar', nombre: val('exNombre'), cantidad: Number(val('exCant')), minutos: Number(val('exMin')),
-        vigenciaDias: Number(val('exVig')), exigirPantalla: document.getElementById('exPant').checked, perfilIds: [...st.evaluados], filtros: { perfiles: st.sel.perfiles, lineas: st.sel.lineas, tipos: st.sel.tipos, dificultades: st.sel.dificultades } });
+        vigenciaDias: Number(val('exVig')), exigirPantalla: document.getElementById('exPant').checked, permitirAdjuntos: document.getElementById('exPerm').checked, perfilIds: [...st.evaluados], filtros: { perfiles: st.sel.perfiles, lineas: st.sel.lineas, tipos: st.sel.tipos, dificultades: st.sel.dificultades } });
       const notas = r.detalle.filter(x => !x.ok || x.faltan).map(x => x.ok ? `${esc(x.nombre)}: solo ${x.preguntas} preguntas disponibles (faltan ${x.faltan})` : `${esc(x.nombre)}: ${esc(x.error)}`);
       aviso('Examen generado. ' + (notas.length ? 'Ojo: <br>' + notas.join('<br>') : 'Ya puedes enviar los correos.'), notas.length ? 'aviso' : 'ok');
       st.evaluados.clear(); await recargar();
@@ -394,6 +604,44 @@
       await recargar();
     });
     const pl = document.getElementById('exPlantilla'); if (pl) pl.onclick = descargarPlantilla;
+    for (const id of ['mvCarpeta', 'mvArchivos']) {
+      const el = document.getElementById(id);
+      if (el) el.onchange = () => ejecutar(async () => { await agregarMasivo([...el.files]); }, null);
+    }
+    q('[data-mvsel]', el => el.onchange = () => { st.mv.items[Number(el.dataset.mvsel)].preguntaId = el.value ? Number(el.value) : null; evaluarMasivo(); pintar(); });
+    const ml = document.getElementById('mvLimpiar'); if (ml) ml.onclick = () => { st.mv.items = []; st.mv.resumen = ''; pintar(); };
+    const ms = document.getElementById('mvSubir'); if (ms) ms.onclick = () => ejecutar(subirMasivo, ms);
+    const pa2 = document.getElementById('pqAbrir'); if (pa2) pa2.onclick = () => { nuevaPregunta(null); pintar(); document.getElementById('pqTexto')?.focus(); };
+    const pc2 = document.getElementById('pqCerrar'); if (pc2) pc2.onclick = () => { st.pq = null; pintar(); };
+    q('[data-editar]', b => b.onclick = () => {
+      const x = st.banco.lista.find(y => y.id === Number(b.dataset.editar)); if (!x) return;
+      nuevaPregunta(x); pintar(); document.getElementById('pqTexto')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    const pg1 = document.getElementById('pqGuardar'); if (pg1) pg1.onclick = () => ejecutar(() => guardarPregunta(false), pg1);
+    const pg2 = document.getElementById('pqGuardarAdj'); if (pg2) pg2.onclick = () => ejecutar(() => guardarPregunta(true), pg2);
+    q('[data-ver]', b => b.onclick = () => verArchivo(Number(b.dataset.ver), b.dataset.nombre, b.dataset.mime));
+    q('[data-adj]', b => b.onclick = () => { st.adj = Number(b.dataset.adj); pintar(); document.getElementById('adjCerrar')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    const ac = document.getElementById('adjCerrar'); if (ac) ac.onclick = () => { st.adj = null; pintar(); };
+    const refrescarBanco = async () => { st.banco.lista = (await rpc({ accion: 'banco_listar' })).preguntas; };
+    q('[data-adjq]', b => b.onclick = () => ejecutar(async () => {
+      await rpcArch({ accion: 'adjunto_quitar', preguntaId: st.adj, indice: Number(b.dataset.adjq) }); await refrescarBanco();
+    }, b));
+    const af = document.getElementById('adjFile');
+    if (af) af.onchange = () => ejecutar(async () => {
+      const prog = document.getElementById('adjProg'), errores = [];
+      let k = 0;
+      for (const f of [...af.files]) {
+        k++;
+        try { await subirMaterial(f, st.adj, x => { prog.textContent = `Subiendo ${k}/${af.files.length}: ${f.name} ${Math.round(x * 100)} %`; }); }
+        catch (e) { errores.push(`${f.name}: ${e.message}`); }
+      }
+      await refrescarBanco();
+      if (errores.length) aviso(errores.map(esc).join('<br>'), 'mal');
+    });
+    const ae = document.getElementById('adjEnlace');
+    if (ae) ae.onclick = () => ejecutar(async () => {
+      await rpcArch({ accion: 'enlace_agregar', preguntaId: st.adj, url: val('adjUrl'), titulo: val('adjTit') }); await refrescarBanco();
+    }, ae);
     q('[data-borrar]', b => b.onclick = () => ejecutar(async () => {
       await rpc({ accion: 'pregunta_baja', id: Number(b.dataset.borrar) });
       st.banco.lista = (await rpc({ accion: 'banco_listar' })).preguntas; await recargar();

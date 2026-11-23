@@ -1,9 +1,9 @@
 """
-Prueba la página pública del examen (020_examen_publico.sql) y la revisión del evaluador (019_examenes.sql)
+Prueba la página pública del examen (020_examen_publico.sql, 021_examen_adjuntos.sql) y la revisión del evaluador (019_examenes.sql)
 DENTRO DE UNA TRANSACCIÓN QUE SE REVIERTE.
 
     python db/etl/probar_examen_publico.py            # prueba (revierte todo)
-    python db/etl/probar_examen_publico.py --aplicar  # aplica 019 y 020 de verdad
+    python db/etl/probar_examen_publico.py --aplicar  # aplica 019, 021 y 020 de verdad
 """
 import base64
 import json
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from migrar_sheets_a_postgres import conectar, leer_env_local  # noqa: E402
 
 PG = Path(__file__).resolve().parent.parent / "postgres"
-SQLS = [PG / "019_examenes.sql", PG / "020_examen_publico.sql"]
+SQLS = [PG / "019_examenes.sql", PG / "021_examen_adjuntos.sql", PG / "020_examen_publico.sql"]
 fallos = 0
 
 
@@ -32,7 +32,7 @@ def main():
             for f in SQLS:
                 con.execute(f.read_text(encoding="utf-8"))
             con.commit()
-        print("019 y 020 aplicados")
+        print("019, 021 y 020 aplicados")
         return
 
     with conectar() as con, con.cursor() as cur:
@@ -124,6 +124,89 @@ def main():
         como(master)
         i2 = [e for e in adm({"accion": "inicio"})["examenes"] if e["id"] == ex2][0]
         check("exigirPantalla = false se conserva", i2["exigirPantalla"] is False)
+
+
+        print("Adjuntos")
+        como(master)
+
+        def arch(p):
+            return cur.execute("SELECT api.examenes_archivos(%s::jsonb)", (json.dumps(p),)).fetchone()[0]
+        banco = adm({"accion": "banco_listar"})["preguntas"]
+        q1 = [q for q in banco if q["codigo"] == "Q1"][0]["id"]
+        contenido = bytes(range(256)) * 1500                      # 384.000 bytes = 2 partes
+        r = arch({"accion": "subir_inicio", "preguntaId": q1, "nombre": "../../diagrama final.png", "mime": "image/png", "tamano": len(contenido)})
+        check("inicia subida de material (2 partes)", r["ok"] and r["partes"] == 2, r)
+        aid = r["archivoId"]
+        arch({"accion": "subir_parte", "archivoId": aid, "n": 1, "datos": base64.b64encode(contenido[:300000]).decode()})
+        r = arch({"accion": "subir_fin", "archivoId": aid})
+        check("no cierra con partes faltantes", r["ok"] is False, r)
+        r = arch({"accion": "subir_inicio", "preguntaId": q1, "nombre": "../../diagrama final.png", "mime": "image/png", "tamano": len(contenido)})
+        aid = r["archivoId"]
+        for n, ini in ((1, 0), (2, 300000)):
+            arch({"accion": "subir_parte", "archivoId": aid, "n": n, "datos": base64.b64encode(contenido[ini:ini + 300000]).decode()})
+        check("cierra con todas las partes", arch({"accion": "subir_fin", "archivoId": aid})["ok"])
+        check("rechaza SVG", arch({"accion": "subir_inicio", "preguntaId": q1, "nombre": "x.svg", "mime": "image/svg+xml", "tamano": 10})["ok"] is False)
+        check("rechaza ejecutable", arch({"accion": "subir_inicio", "preguntaId": q1, "nombre": "x.exe", "mime": "application/x-msdownload", "tamano": 10})["ok"] is False)
+        check("rechaza más de 25 MB", arch({"accion": "subir_inicio", "preguntaId": q1, "nombre": "x.mp4", "mime": "video/mp4", "tamano": 30000000})["ok"] is False)
+        check("enlace https", arch({"accion": "enlace_agregar", "preguntaId": q1, "url": "https://youtu.be/abc123", "titulo": "Video"})["ok"])
+        check("enlace http se rechaza", arch({"accion": "enlace_agregar", "preguntaId": q1, "url": "http://x.com/a"})["ok"] is False)
+        check("enlace javascript se rechaza", arch({"accion": "enlace_agregar", "preguntaId": q1, "url": "javascript:alert(1)"})["ok"] is False)
+        adj = [q for q in adm({"accion": "banco_listar"})["preguntas"] if q["codigo"] == "Q1"][0]["adjuntos"]
+        check("la pregunta lista archivo y enlace, con el nombre limpio", len(adj) == 2 and adj[0]["nombre"] == "diagrama final.png" and adj[1]["tipo"] == "enlace", adj)
+        r = arch({"accion": "archivo_parte", "archivoId": aid, "n": 2})
+        check("el evaluador baja la parte 2 íntegra", r["ok"] and base64.b64decode(r["datos"]) == contenido[300000:], r.get("error"))
+        r = adm({"accion": "banco_importar", "preguntas": [{"fila": 2, "codigo": "Q1", "tipo": "Técnica", "pregunta": "Pregunta uno", "enlaces": ["https://a.com/doc", "ftp://malo", "https://a.com/doc"]}]})
+        adj2 = [q for q in adm({"accion": "banco_listar"})["preguntas"] if q["codigo"] == "Q1"][0]["adjuntos"]
+        check("reimportar conserva el archivo y reemplaza enlaces (solo https, sin repetir)",
+              r["guardadas"] == 1 and [a["tipo"] for a in adj2] == ["archivo", "enlace"] and adj2[1]["url"] == "https://a.com/doc", adj2)
+        adm({"accion": "perfil_guardar", "rol": "EVALUADOR", "empleadoId": "T778", "nombre": "Ajeno", "correo": ""})
+        como({"role": "tcontrol_lector", "eval": True, "empleado_id": "T778"})
+        check("otro evaluador no baja el archivo", arch({"accion": "archivo_parte", "archivoId": aid, "n": 1})["ok"] is False)
+        como(master)
+
+        # El evaluado ve el material en su examen y sube un archivo a su respuesta
+        exa = adm({"accion": "examen_generar", "nombre": "Con adjuntos", "perfilIds": [pa], "cantidad": 2, "minutos": 30, "permitirAdjuntos": True})["examenId"]
+        toka = adm({"accion": "envio_preparar", "examenId": exa})["envios"][0]["token"]
+        como(None)
+        ra = pub({"accion": "iniciar", "token": toka, "acepto": True})
+        pq = [q for q in ra["preguntas"] if len(q["adjuntos"]) == 2]
+        check("el evaluado recibe los adjuntos de la pregunta", ra["permitirAdjuntos"] is True and len(pq) == 1, ra)
+        n1 = pq[0]["n"]
+        r = pub({"accion": "archivo_parte", "token": toka, "archivoId": aid, "n": 1})
+        check("el evaluado baja el material de su pregunta", r["ok"] and base64.b64decode(r["datos"]) == contenido[:300000], r.get("error"))
+        nota = bytes(range(200)) * 100                                  # 20.000 bytes
+        r = pub({"accion": "subir_inicio", "token": toka, "n": n1, "nombre": "mi respuesta.pdf", "mime": "application/pdf", "tamano": len(nota)})
+        check("inicia subida de su archivo", r["ok"] and r["partes"] == 1, r)
+        fid = r["archivoId"]
+        pub({"accion": "subir_parte", "token": toka, "archivoId": fid, "n": 1, "datos": base64.b64encode(nota).decode()})
+        check("cierra su subida", pub({"accion": "subir_fin", "token": toka, "archivoId": fid})["ok"])
+        ri = pub({"accion": "iniciar", "token": toka, "acepto": True})
+        check("al recargar ve su archivo", any(a["id"] == fid for q in ri["preguntas"] for a in q["archivos"]), ri)
+        check("el evaluado baja su propio archivo", base64.b64decode(pub({"accion": "archivo_parte", "token": toka, "archivoId": fid, "n": 1})["datos"]) == nota)
+        check("rechaza SVG", pub({"accion": "subir_inicio", "token": toka, "n": n1, "nombre": "a.svg", "mime": "image/svg+xml", "tamano": 10})["ok"] is False)
+        check("rechaza más de 10 MB", pub({"accion": "subir_inicio", "token": toka, "n": n1, "nombre": "a.mp4", "mime": "video/mp4", "tamano": 11000000})["ok"] is False)
+        for k in range(2):
+            pub({"accion": "subir_inicio", "token": toka, "n": n1, "nombre": f"x{k}.png", "mime": "image/png", "tamano": 10})
+        check("máximo 3 archivos por pregunta", pub({"accion": "subir_inicio", "token": toka, "n": n1, "nombre": "y.png", "mime": "image/png", "tamano": 10})["ok"] is False)
+        check("no puede bajar el archivo de otro intento", "datos" not in pub({"accion": "archivo_parte", "token": tok, "archivoId": fid, "n": 1}))
+        como(master)
+        pc = adm({"accion": "perfil_guardar", "rol": "EVALUADO", "nombre": "Carla", "correo": "carla@x.com", "perfil": "Ingeniero"})["id"]
+        exc = adm({"accion": "examen_generar", "nombre": "Otra persona", "perfilIds": [pc], "cantidad": 2, "minutos": 30, "permitirAdjuntos": True})["examenId"]
+        tokc = adm({"accion": "envio_preparar", "examenId": exc})["envios"][0]["token"]
+        como(None)
+        pub({"accion": "iniciar", "token": tokc, "acepto": True})
+        check("otra persona activa no puede bajar mi archivo ni el material de una pregunta que no tiene",
+              pub({"accion": "archivo_parte", "token": tokc, "archivoId": fid, "n": 1}).get("ok") is False)
+        como(master)
+        intentos = [i for e in adm({"accion": "inicio"})["examenes"] if e["id"] == exa for i in e["intentos"]]
+        det = adm({"accion": "intento_detalle", "intentoId": intentos[0]["id"]})
+        check("el evaluador ve el archivo del evaluado y baja su contenido",
+              any(a["id"] == fid for q in det["preguntas"] for a in q["archivos"])
+              and base64.b64decode(arch({"accion": "archivo_parte", "archivoId": fid, "n": 1})["datos"]) == nota, det)
+        r = arch({"accion": "adjunto_quitar", "preguntaId": q1, "indice": 0})
+        cur.execute("RESET ROLE")
+        quedan = cur.execute("SELECT count(*) FROM historico.exam_archivos WHERE id = %s", (aid,)).fetchone()[0]
+        check("quitar un adjunto borra el archivo", r["ok"] and quedan == 0, r)
 
         con.rollback()
     print("\nFALLÓ" if fallos else "\nTodo bien", f"({fallos} fallos)" if fallos else "")

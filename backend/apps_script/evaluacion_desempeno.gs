@@ -148,7 +148,7 @@ var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar', 'ev
   'epp',                                   // módulo de EPP (db/postgres/016_epp.sql)
   'registro_admin',                        // registro propio: revisión en el panel (017_registro.sql)
   'visita_frecuente',
-  'examenes'];                          // plataforma de evaluación técnica (019_examenes.sql)                     // visitantes frecuentes: credenciales (018_visitantes_frecuentes.sql)
+  'examenes', 'examenes_archivos'];   // plataforma de evaluación técnica (019 a 021)
 
 function proxyEvaluacion(d) {
   var fn = String(d.fn || '');
@@ -156,7 +156,7 @@ function proxyEvaluacion(d) {
   var token = String(d.token || '');
   if (!token) return { status: 401, body: { ok: false, error: 'Sin token' } };
   var cuerpo = typeof d.p === 'string' ? d.p : JSON.stringify(d.p || {});
-  if (cuerpo.length > 20000) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
+  if (cuerpo.length > (fn === 'examenes_archivos' ? 450000 : 20000)) return { status: 413, body: { ok: false, error: 'Solicitud demasiado grande' } };
 
   return rpcTunel_(fn, cuerpo, token);
 }

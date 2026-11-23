@@ -15,7 +15,10 @@
 -- se aceptan respuestas y el intento se cierra por tiempo.
 -- Nunca se devuelven respuestas modelo, códigos ni datos de otras personas.
 --
--- Requiere 019_examenes.sql y 008_visitas.sql (visita_hash). Re-ejecutable.
+-- Adjuntos (fase 3): archivo_parte (leer lo adjunto a la pregunta o lo que subió él), subir_inicio / subir_parte /
+-- subir_fin / archivo_quitar (solo si el examen permite adjuntos en las respuestas).
+--
+-- Requiere 019_examenes.sql, 021_examen_adjuntos.sql y 008_visitas.sql (visita_hash). Re-ejecutable.
 -- =====================================================================
 SET search_path = historico, public;
 
@@ -34,6 +37,9 @@ DECLARE
     v_img  bytea;
     v_ok   int := 0;
     v_resp jsonb;
+    v_a    historico.exam_archivos;
+    v_tam  bigint;
+    v_np   int;
     v_tipos text[] := ARRAY['oculta', 'blur', 'foco', 'visible', 'sale_pantalla_completa', 'copiar', 'cortar', 'pegar', 'menu_contextual',
                             'tecla', 'recarga', 'reanudo', 'compartir_iniciado', 'compartir_detenido', 'sin_compartir_pantalla_completa',
                             'sin_pantalla', 'cierre_pagina'];
@@ -66,7 +72,7 @@ BEGIN
     -- ===== abrir =====
     IF v_acc = 'abrir' THEN
         RETURN jsonb_build_object('ok', true, 'estado', v_i.estado, 'nombre', v_nom, 'examen', v_e.nombre, 'minutos', v_e.minutos,
-            'preguntas', cardinality(v_i.preguntas), 'exigirPantalla', v_e.exigir_pantalla, 'restante', v_rest);
+            'preguntas', cardinality(v_i.preguntas), 'exigirPantalla', v_e.exigir_pantalla, 'permitirAdjuntos', v_e.permitir_adjuntos, 'restante', v_rest);
     END IF;
 
     -- ===== iniciar (o continuar) =====
@@ -84,8 +90,11 @@ BEGIN
             UPDATE exam_intentos SET pantalla_ok = coalesce((p->>'pantalla')::boolean, pantalla_ok) WHERE id = v_i.id;
         END IF;
         RETURN jsonb_build_object('ok', true, 'estado', 'INICIADO', 'nombre', v_nom, 'examen', v_e.nombre, 'minutos', v_e.minutos, 'restante', v_rest,
+            'permitirAdjuntos', v_e.permitir_adjuntos,
             'preguntas', (SELECT coalesce(jsonb_agg(jsonb_build_object('n', u.ord, 'tipo', q.tipo, 'texto', q.pregunta,
-                    'respuesta', coalesce(r.respuesta, '')) ORDER BY u.ord), '[]')
+                    'respuesta', coalesce(r.respuesta, ''), 'adjuntos', q.adjuntos,
+                    'archivos', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'nombre', a.nombre, 'mime', a.mime, 'tamano', a.tamano) ORDER BY a.id), '[]')
+                                   FROM exam_archivos a WHERE a.intento_id = v_i.id AND a.pregunta_id = u.pid AND a.origen = 'RESPUESTA' AND a.estado = 'LISTO')) ORDER BY u.ord), '[]')
                 FROM unnest(v_i.preguntas) WITH ORDINALITY u(pid, ord)
                 JOIN exam_preguntas q ON q.id = u.pid
                 LEFT JOIN exam_respuestas r ON r.intento_id = v_i.id AND r.pregunta_id = u.pid));
@@ -132,6 +141,70 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'error', 'Imagen no válida.');
         END IF;
         INSERT INTO exam_capturas (intento_id, motivo, imagen) VALUES (v_i.id, left(coalesce(p->>'motivo', ''), 60), v_img);
+        RETURN jsonb_build_object('ok', true, 'restante', v_rest);
+    END IF;
+
+    -- ===== adjuntos: leer por partes lo adjunto a la pregunta o lo que subió la persona =====
+    IF v_acc = 'archivo_parte' THEN
+        SELECT * INTO v_a FROM exam_archivos WHERE id = (p->>'archivoId')::bigint AND estado = 'LISTO';
+        IF NOT FOUND OR NOT (
+               (v_a.origen = 'RESPUESTA' AND v_a.intento_id = v_i.id)
+            OR (v_a.origen = 'PREGUNTA' AND EXISTS (SELECT 1 FROM exam_preguntas q WHERE q.id = ANY (v_i.preguntas) AND q.adjuntos @> jsonb_build_array(jsonb_build_object('id', v_a.id))))) THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Archivo no disponible.');
+        END IF;
+        RETURN coalesce((SELECT jsonb_build_object('ok', true, 'nombre', v_a.nombre, 'mime', v_a.mime, 'tamano', v_a.tamano, 'partes', v_a.partes,
+                    'datos', encode(x.datos, 'base64'), 'restante', v_rest)
+                  FROM exam_archivo_partes x WHERE x.archivo_id = v_a.id AND x.n = (p->>'n')::int),
+                jsonb_build_object('ok', false, 'error', 'Parte no encontrada.'));
+    END IF;
+
+    -- ===== adjuntos: subir un archivo a una respuesta (solo si el examen lo permite) =====
+    IF v_acc = 'subir_inicio' THEN
+        IF NOT v_e.permitir_adjuntos THEN RETURN jsonb_build_object('ok', false, 'error', 'Este examen no permite adjuntar archivos.'); END IF;
+        v_n := (p->>'n')::int;
+        IF v_n IS NULL OR v_n < 1 OR v_n > cardinality(v_i.preguntas) THEN RETURN jsonb_build_object('ok', false, 'error', 'Pregunta no válida.'); END IF;
+        v_tam := (p->>'tamano')::bigint;
+        IF coalesce(v_tam, 0) < 1 OR v_tam > 10485760 THEN RETURN jsonb_build_object('ok', false, 'error', 'El archivo debe pesar entre 1 byte y 10 MB.'); END IF;
+        IF NOT historico.exam_mime_ok(p->>'mime') THEN RETURN jsonb_build_object('ok', false, 'error', 'Tipo de archivo no permitido (usa imágenes, PDF, audio, video, texto o documentos de Office).'); END IF;
+        IF (SELECT count(*) FROM exam_archivos WHERE intento_id = v_i.id AND pregunta_id = v_i.preguntas[v_n] AND origen = 'RESPUESTA') >= 3 THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Máximo 3 archivos por pregunta.');
+        END IF;
+        IF (SELECT coalesce(sum(tamano), 0) FROM exam_archivos WHERE intento_id = v_i.id AND origen = 'RESPUESTA') + v_tam > 41943040 THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Superaste el máximo de 40 MB de archivos en este examen.');
+        END IF;
+        INSERT INTO exam_archivos (origen, intento_id, pregunta_id, nombre, mime, tamano, partes)
+        VALUES ('RESPUESTA', v_i.id, v_i.preguntas[v_n], historico.exam_nombre_archivo(p->>'nombre'), lower(p->>'mime'), v_tam, ceil(v_tam / 300000.0)::int)
+        RETURNING * INTO v_a;
+        RETURN jsonb_build_object('ok', true, 'archivoId', v_a.id, 'partes', v_a.partes, 'restante', v_rest);
+    END IF;
+
+    IF v_acc = 'subir_parte' THEN
+        SELECT * INTO v_a FROM exam_archivos WHERE id = (p->>'archivoId')::bigint AND origen = 'RESPUESTA' AND intento_id = v_i.id AND estado = 'SUBIENDO';
+        IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Subida no válida.'); END IF;
+        v_n := (p->>'n')::int;
+        v_img := decode(coalesce(p->>'datos', ''), 'base64');
+        IF v_n IS NULL OR v_n < 1 OR v_n > v_a.partes OR length(v_img) < 1 OR length(v_img) > 310000 THEN
+            RETURN jsonb_build_object('ok', false, 'error', 'Parte no válida.');
+        END IF;
+        INSERT INTO exam_archivo_partes (archivo_id, n, datos) VALUES (v_a.id, v_n, v_img)
+        ON CONFLICT (archivo_id, n) DO UPDATE SET datos = EXCLUDED.datos;
+        RETURN jsonb_build_object('ok', true, 'restante', v_rest);
+    END IF;
+
+    IF v_acc = 'subir_fin' THEN
+        SELECT * INTO v_a FROM exam_archivos WHERE id = (p->>'archivoId')::bigint AND origen = 'RESPUESTA' AND intento_id = v_i.id AND estado = 'SUBIENDO';
+        IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Subida no válida.'); END IF;
+        SELECT count(*), coalesce(sum(length(datos)), 0) INTO v_np, v_tam FROM exam_archivo_partes WHERE archivo_id = v_a.id;
+        IF v_np <> v_a.partes OR v_tam <> v_a.tamano THEN
+            DELETE FROM exam_archivos WHERE id = v_a.id;
+            RETURN jsonb_build_object('ok', false, 'error', 'El archivo no llegó completo. Inténtalo de nuevo.');
+        END IF;
+        UPDATE exam_archivos SET estado = 'LISTO' WHERE id = v_a.id;
+        RETURN jsonb_build_object('ok', true, 'restante', v_rest);
+    END IF;
+
+    IF v_acc = 'archivo_quitar' THEN
+        DELETE FROM exam_archivos WHERE id = (p->>'archivoId')::bigint AND origen = 'RESPUESTA' AND intento_id = v_i.id;
         RETURN jsonb_build_object('ok', true, 'restante', v_rest);
     END IF;
 

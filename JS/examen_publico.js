@@ -49,10 +49,59 @@
 
   // ---------------------------------------------------------------- estado
   const S = { info: null, preguntas: [], idx: 0, sucias: new Set(), restante: 0, t0: 0, stream: null, video: null, eventos: [], ultCaptura: 0,
-    enExamen: false, entregando: false, guardando: false, sinConexion: false, tTimer: 0, tCap: 0, hiddenDesde: 0, blurDesde: 0, bloqueo: '' };
+    enExamen: false, permitir: false, cache: new Map(), subiendo: false, entregando: false, guardando: false, sinConexion: false, tTimer: 0, tCap: 0, hiddenDesde: 0, blurDesde: 0, bloqueo: '' };
   const segundos = () => Math.max(0, Math.round(S.restante - (performance.now() - S.t0) / 1000));
   const sincroniza = r => { if (r && typeof r.restante === 'number') { S.restante = r.restante; S.t0 = performance.now(); } };
   const fmt = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  // ---------------------------------------------------------------- archivos (partes de 300 KB)
+  const PARTE = 300000;
+  const MIME_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', pdf: 'application/pdf',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', aac: 'audio/aac', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', txt: 'text/plain',
+    doc: 'application/msword', xls: 'application/vnd.ms-excel', ppt: 'application/vnd.ms-powerpoint',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+  const mimeDe = f => (f.type && f.type !== 'application/octet-stream') ? f.type : (MIME_EXT[(f.name.split('.').pop() || '').toLowerCase()] || '');
+  const tam = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const ico = m => /^image/.test(m) ? 'fa-image' : /^audio/.test(m) ? 'fa-headphones' : /^video/.test(m) ? 'fa-film' : /pdf/.test(m) ? 'fa-file-pdf' : 'fa-file-lines';
+  function aB64(buf) {
+    const u = new Uint8Array(buf); let t = '';
+    for (let i = 0; i < u.length; i += 0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    return btoa(t);
+  }
+  // Baja un archivo (material de la pregunta o uno propio) y devuelve una dirección local para mostrarlo
+  async function bajar(id, mime, progreso) {
+    if (S.cache.has(id)) return S.cache.get(id);
+    const partes = []; let total = 1;
+    for (let n = 1; n <= total; n++) {
+      const r = await rpc({ accion: 'archivo_parte', archivoId: id, n });
+      if (!r.ok) throw new Error(r.error || 'No se pudo descargar');
+      total = r.partes; partes.push(Uint8Array.from(atob(r.datos), c => c.charCodeAt(0))); sincroniza(r);
+      if (progreso) progreso(n / total);
+    }
+    const url = URL.createObjectURL(new Blob(partes, { type: mime }));
+    S.cache.set(id, url);
+    return url;
+  }
+  function mostrar(url, nombre, mime, destino) {
+    destino.innerHTML = /^image/.test(mime) ? `<img src="${url}" alt="${esc(nombre)}">` : /^audio/.test(mime) ? `<audio src="${url}" controls></audio>`
+      : /^video/.test(mime) ? `<video src="${url}" controls></video>` : mime === 'application/pdf' ? `<iframe src="${url}"></iframe>`
+      : `<a class="btn sec" href="${url}" download="${esc(nombre)}"><i class="fas fa-download"></i> Descargar ${esc(nombre)}</a>`;
+  }
+  async function subirRespuesta(file, n, progreso) {
+    const mime = mimeDe(file);
+    if (!mime) throw new Error(`«${file.name}»: tipo de archivo no permitido.`);
+    const ini = await rpc({ accion: 'subir_inicio', n, nombre: file.name, mime, tamano: file.size });
+    if (!ini.ok) throw new Error(ini.error || 'No se pudo subir');
+    for (let k = 1; k <= ini.partes; k++) {
+      const r = await rpc({ accion: 'subir_parte', archivoId: ini.archivoId, n: k, datos: aB64(await file.slice((k - 1) * PARTE, k * PARTE).arrayBuffer()) });
+      if (!r.ok) throw new Error(r.error || 'Falló la subida');
+      progreso(k / ini.partes);
+    }
+    const f = await rpc({ accion: 'subir_fin', archivoId: ini.archivoId });
+    if (!f.ok) throw new Error(f.error || 'El archivo no llegó completo');
+    return { id: ini.archivoId, nombre: file.name, mime, tamano: file.size };
+  }
 
   // ---------------------------------------------------------------- pantallas simples
   const tarjeta = (ico, titulo, html, tipo = '') => { app.innerHTML = `<div class="caja"><div class="tarjeta"><span class="ico"><i class="fas ${ico}"></i></span><h1>${titulo}</h1>${html}</div></div>`; };
@@ -77,6 +126,7 @@
         <li>Responde con tus propias palabras. Las respuestas se guardan solas.</li>
         <li>Se <b>registra</b> si sales de esta ventana o cambias de pestaña, y los intentos de copiar o pegar. Pegar está bloqueado.</li>
         ${compartir ? '<li>Debes <b>compartir toda tu pantalla</b> (no una pestaña) durante el examen. Se tomarán capturas periódicas. Necesitas un computador con Chrome, Edge o Firefox.</li>' : ''}
+        ${i.permitirAdjuntos ? '<li>Puedes <b>adjuntar archivos</b> a tus respuestas (hasta 3 por pregunta, 10 MB cada uno).</li>' : ''}
         <li>Busca un lugar tranquilo y con buena conexión. Usa pantalla completa.</li></ul>
       <label class="chk"><input type="checkbox" id="acepto"><span>Entiendo y acepto que durante la evaluación se registren estos datos${compartir ? ' y capturas de mi pantalla' : ''}. Se usarán solo para evaluar la prueba y los verá únicamente el equipo evaluador, según la política de datos personales de TCONTROL.</span></label>
       <p class="msg mal" id="err" hidden></p>
@@ -133,7 +183,8 @@
     const r = await rpc({ accion: 'iniciar', acepto: true, pantalla: !!S.stream });
     if (!r.ok) { detener(); throw new Error(r.error || 'No se pudo iniciar'); }
     if (r.estado === 'ENTREGADO') return pantallaEntregado(r);
-    S.preguntas = r.preguntas; S.idx = 0; S.sucias.clear(); sincroniza(r);
+    S.permitir = !!r.permitirAdjuntos;
+    S.preguntas = r.preguntas; S.idx = 0; S.preguntas.forEach(q => { q.archivos = q.archivos || []; q.adjuntos = q.adjuntos || []; }); S.sucias.clear(); sincroniza(r);
     S.enExamen = true;
     if (S.stream) evento('compartir_iniciado', 'Pantalla compartida');
     pintarExamen();
@@ -153,6 +204,7 @@
     clearInterval(S.tTimer); clearInterval(S.tCap); clearInterval(S.tGuardar); clearInterval(S.tEventos);
     if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; }
     if (S.video) { S.video.remove(); S.video = null; }
+    S.cache.forEach(u => URL.revokeObjectURL(u)); S.cache.clear();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { }
   }
 
@@ -164,7 +216,13 @@
       <div class="cuerpo"><div class="mapa">${S.preguntas.map((q, i) => `<button data-i="${i}" class="${q.respuesta.trim() ? 'hecha' : ''} ${i === S.idx ? 'actual' : ''}">${i + 1}</button>`).join('')}</div>
       <div class="tarjeta"><span class="etiqueta">Pregunta ${S.idx + 1} de ${total}${p.tipo ? ' · ' + esc(p.tipo) : ''}</span>
         <div class="pregunta">${esc(p.texto)}</div>
+        ${(p.adjuntos || []).length ? `<div class="material">${p.adjuntos.map((a, i) => a.tipo === 'enlace'
+          ? `<div class="adj"><i class="fas fa-link"></i> <a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.titulo || a.url)}</a></div>`
+          : `<div class="adj" data-m="${a.id}"><div class="adj-cab"><i class="fas ${ico(a.mime)}"></i> ${esc(a.nombre)} <span class="sub">· ${tam(a.tamano)}</span> ${/^image/.test(a.mime) ? '' : `<button class="btn sec chico" data-abrir="${a.id}" data-i="${i}">${/^video|^audio/.test(a.mime) ? 'Reproducir' : 'Abrir'}</button>`}</div><div class="adj-vista" id="vm${a.id}"></div></div>`).join('')}</div>` : ''}
         <textarea id="resp" placeholder="Escribe tu respuesta aquí…" spellcheck="true">${esc(p.respuesta)}</textarea>
+        ${S.permitir ? `<div class="mis-archivos"><div class="sub">Archivos de tu respuesta</div>
+          ${(p.archivos || []).map(a => `<div class="adj-cab"><i class="fas ${ico(a.mime)}"></i> ${esc(a.nombre)} <span class="sub">· ${tam(a.tamano)}</span> <button class="btn sec chico" data-quitar="${a.id}">Quitar</button></div>`).join('')}
+          <label class="btn sec chico" style="display:inline-block;margin-top:6px"><i class="fas fa-paperclip"></i> Adjuntar archivo<input type="file" id="adjuntar" multiple hidden></label> <span class="sub" id="adjEstado"></span></div>` : ''}
         <div class="estado" id="estado"></div>
         <div class="nav"><button class="btn sec" id="ant" ${S.idx === 0 ? 'disabled' : ''}>Anterior</button>
           ${S.idx < total - 1 ? '<button class="btn" id="sig">Siguiente</button>' : '<button class="btn mal" id="fin">Entregar examen</button>'}</div></div></div>
@@ -174,6 +232,34 @@
     ta.addEventListener('paste', e => { e.preventDefault(); evento('pegar', `Intento de pegar (${(e.clipboardData && e.clipboardData.getData('text') || '').length} caracteres)`); aviso('Pegar está bloqueado durante el examen.'); });
     ta.addEventListener('drop', e => e.preventDefault());
     app.querySelectorAll('.mapa button').forEach(b => b.onclick = () => ir(Number(b.dataset.i)));
+    // Material de la pregunta: las imágenes se muestran solas; lo demás, al pedirlo
+    (p.adjuntos || []).filter(a => a.tipo === 'archivo').forEach(a => {
+      const dest = document.getElementById('vm' + a.id); if (!dest) return;
+      const cargar = async () => {
+        dest.innerHTML = '<span class="sub">Descargando…</span>';
+        try { mostrar(await bajar(a.id, a.mime, x => { dest.innerHTML = `<span class="sub">Descargando… ${Math.round(x * 100)} %</span>`; }), a.nombre, a.mime, dest); }
+        catch (e) { dest.innerHTML = `<span class="estado mal">${esc(e.message)}</span>`; }
+      };
+      if (/^image/.test(a.mime)) cargar();
+      else if (S.cache.has(a.id)) mostrar(S.cache.get(a.id), a.nombre, a.mime, dest);
+      else { const b = app.querySelector(`[data-abrir="${a.id}"]`); if (b) b.onclick = () => { b.remove(); cargar(); }; }
+    });
+    app.querySelectorAll('[data-quitar]').forEach(b => b.onclick = async () => {
+      try { const r = await rpc({ accion: 'archivo_quitar', archivoId: Number(b.dataset.quitar) }); sincroniza(r); p.archivos = p.archivos.filter(a => a.id !== Number(b.dataset.quitar)); pintarExamen(); }
+      catch (e) { aviso('No se pudo quitar el archivo.'); }
+    });
+    const inpA = document.getElementById('adjuntar');
+    if (inpA) inpA.onchange = async () => {
+      const lista = [...inpA.files], est = document.getElementById('adjEstado'), errores = [];
+      S.subiendo = true;
+      for (const [k, f] of lista.entries()) {
+        try { p.archivos.push(await subirRespuesta(f, p.n, x => { est.textContent = `Subiendo ${k + 1}/${lista.length}: ${f.name} ${Math.round(x * 100)} %`; })); }
+        catch (e) { errores.push(e.message); }
+      }
+      S.subiendo = false;
+      pintarExamen();
+      if (errores.length) aviso(errores.join(' · '));
+    };
     const a = document.getElementById('ant'), s = document.getElementById('sig'), f = document.getElementById('fin');
     if (a) a.onclick = () => ir(S.idx - 1);
     if (s) s.onclick = () => ir(S.idx + 1);

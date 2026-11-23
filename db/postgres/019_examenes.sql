@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS historico.exam_examenes (
     creado_en     timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS exigir_pantalla boolean NOT NULL DEFAULT true;
+ALTER TABLE historico.exam_examenes ADD COLUMN IF NOT EXISTS permitir_adjuntos boolean NOT NULL DEFAULT false;
 
 -- Un intento por evaluado: sus preguntas sorteadas, su enlace y su estado
 CREATE TABLE IF NOT EXISTS historico.exam_intentos (
@@ -157,6 +158,14 @@ LANGUAGE sql STABLE AS $$
      WHERE NOT EXISTS (SELECT 1 FROM historico.exam_catalogo c WHERE c.tipo = p_tipo AND c.valor = v)
 $$;
 
+-- Enlaces de un Excel (arreglo de textos) -> adjuntos de tipo enlace; solo https y hasta 5
+CREATE OR REPLACE FUNCTION historico.exam_enlaces(j jsonb) RETURNS jsonb
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT coalesce(jsonb_agg(jsonb_build_object('tipo', 'enlace', 'url', u, 'titulo', '')), '[]')
+      FROM (SELECT DISTINCT btrim(x) AS u FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(j) = 'array' THEN j ELSE '[]'::jsonb END) x
+             WHERE btrim(x) ~* '^https://[^\s]{4,250}$' LIMIT 5) s
+$$;
+
 CREATE OR REPLACE FUNCTION historico.exam_pregunta_json(q historico.exam_preguntas) RETURNS jsonb
 LANGUAGE sql STABLE AS $$
     SELECT jsonb_build_object('id', q.id, 'codigo', q.codigo, 'perfiles', to_jsonb(q.perfiles),
@@ -216,7 +225,7 @@ BEGIN
                            FROM exam_perfiles f WHERE f.activo),
             'preguntas', (SELECT count(*) FROM exam_preguntas q WHERE q.activa AND (v_master OR q.propietario = v_yo)),
             'examenes', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'nombre', e.nombre, 'cantidad', e.cantidad,
-                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros, 'exigirPantalla', e.exigir_pantalla,
+                    'minutos', e.minutos, 'creadoEn', e.creado_en, 'filtros', e.filtros, 'exigirPantalla', e.exigir_pantalla, 'permitirAdjuntos', e.permitir_adjuntos,
                     'intentos', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'perfilId', i.perfil_id, 'nombre', f.nombre,
                             'correo', f.correo, 'estado', i.estado, 'enviadoEn', i.enviado_en, 'errorEnvio', i.error_envio,
                             'preguntas', cardinality(i.preguntas), 'expiraEn', i.expira_en,
@@ -350,14 +359,56 @@ BEGIN
                 v_errs := v_errs || jsonb_build_object('fila', v_fila, 'codigo', v_cod, 'error', 'Dificultad desconocida: ' || v_dif);
                 CONTINUE;
             END IF;
-            INSERT INTO exam_preguntas (propietario, codigo, perfiles, lineas, tipo, dificultad, pregunta, respuesta_modelo)
-            VALUES (v_yo, v_cod, v_perf, v_lin, v_tipo, v_dif, btrim(v_i->>'pregunta'), nullif(btrim(coalesce(v_i->>'respuestaModelo', '')), ''))
+            INSERT INTO exam_preguntas (propietario, codigo, perfiles, lineas, tipo, dificultad, pregunta, respuesta_modelo, adjuntos)
+            VALUES (v_yo, v_cod, v_perf, v_lin, v_tipo, v_dif, btrim(v_i->>'pregunta'), nullif(btrim(coalesce(v_i->>'respuestaModelo', '')), ''), historico.exam_enlaces(v_i->'enlaces'))
             ON CONFLICT (propietario, codigo) DO UPDATE SET perfiles = EXCLUDED.perfiles, lineas = EXCLUDED.lineas,
                 tipo = EXCLUDED.tipo, dificultad = EXCLUDED.dificultad, pregunta = EXCLUDED.pregunta,
-                respuesta_modelo = EXCLUDED.respuesta_modelo, activa = true, actualizado_en = now();
+                respuesta_modelo = EXCLUDED.respuesta_modelo, activa = true, actualizado_en = now(),
+                adjuntos = (SELECT coalesce(jsonb_agg(a), '[]') FROM jsonb_array_elements(exam_preguntas.adjuntos) a WHERE a->>'tipo' = 'archivo') || EXCLUDED.adjuntos;
             v_ok := v_ok + 1;
         END LOOP;
         RETURN jsonb_build_object('ok', true, 'guardadas', v_ok, 'errores', v_errs);
+    END IF;
+
+    -- Crear o editar una pregunta a mano (no toca sus adjuntos). Sin ID de banco, se asigna el siguiente (P001, P002…).
+    IF v_acc = 'pregunta_guardar' THEN
+        v_cod := btrim(coalesce(p->>'codigo', ''));
+        v_tipo := btrim(coalesce(p->>'tipo', ''));
+        v_dif := nullif(btrim(coalesce(p->>'dificultad', '')), '');
+        v_perf := historico.exam_lista(p->'perfiles');
+        v_lin := historico.exam_lista(p->'lineas');
+        IF btrim(coalesce(p->>'pregunta', '')) = '' THEN RETURN jsonb_build_object('ok', false, 'error', 'Escribe la pregunta.'); END IF;
+        v_bad := historico.exam_fuera_catalogo('PERFIL', v_perf);
+        IF cardinality(v_bad) > 0 THEN RETURN jsonb_build_object('ok', false, 'error', 'Perfil desconocido: ' || array_to_string(v_bad, ', ')); END IF;
+        v_bad := historico.exam_fuera_catalogo('LINEA', v_lin);
+        IF cardinality(v_bad) > 0 THEN RETURN jsonb_build_object('ok', false, 'error', 'Línea de negocio desconocida: ' || array_to_string(v_bad, ', ')); END IF;
+        IF cardinality(historico.exam_fuera_catalogo('TIPO', ARRAY[v_tipo])) > 0 THEN RETURN jsonb_build_object('ok', false, 'error', 'Elige el tipo de pregunta.'); END IF;
+        IF v_dif IS NOT NULL AND cardinality(historico.exam_fuera_catalogo('DIFICULTAD', ARRAY[v_dif])) > 0 THEN RETURN jsonb_build_object('ok', false, 'error', 'Dificultad desconocida.'); END IF;
+        IF nullif(p->>'id', '') IS NOT NULL THEN
+            IF v_cod = '' THEN RETURN jsonb_build_object('ok', false, 'error', 'El ID de la pregunta no puede quedar vacío.'); END IF;
+            BEGIN
+                UPDATE exam_preguntas SET codigo = v_cod, perfiles = v_perf, lineas = v_lin, tipo = v_tipo, dificultad = v_dif,
+                       pregunta = btrim(p->>'pregunta'), respuesta_modelo = nullif(btrim(coalesce(p->>'respuestaModelo', '')), ''), actualizado_en = now()
+                 WHERE id = (p->>'id')::bigint AND activa AND (v_master OR propietario = v_yo) RETURNING id INTO v_id;
+            EXCEPTION WHEN unique_violation THEN
+                RETURN jsonb_build_object('ok', false, 'error', 'Ya existe otra pregunta con el ID ' || v_cod || '.');
+            END;
+            IF v_id IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Pregunta no encontrada.'); END IF;
+        ELSE
+            IF v_cod = '' THEN
+                SELECT 'P' || lpad((coalesce(max(nullif(left(regexp_replace(codigo, '\D', '', 'g'), 15), '')::bigint), 0) + 1)::text, 3, '0')
+                  INTO v_cod FROM exam_preguntas WHERE propietario = v_yo;
+            END IF;
+            -- Si el ID existe y la pregunta estaba quitada, se reactiva; si está activa, no se pisa
+            INSERT INTO exam_preguntas (propietario, codigo, perfiles, lineas, tipo, dificultad, pregunta, respuesta_modelo)
+            VALUES (v_yo, v_cod, v_perf, v_lin, v_tipo, v_dif, btrim(p->>'pregunta'), nullif(btrim(coalesce(p->>'respuestaModelo', '')), ''))
+            ON CONFLICT (propietario, codigo) DO UPDATE SET perfiles = EXCLUDED.perfiles, lineas = EXCLUDED.lineas, tipo = EXCLUDED.tipo,
+                dificultad = EXCLUDED.dificultad, pregunta = EXCLUDED.pregunta, respuesta_modelo = EXCLUDED.respuesta_modelo,
+                activa = true, actualizado_en = now() WHERE NOT exam_preguntas.activa
+            RETURNING id INTO v_id;
+            IF v_id IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Ya existe una pregunta con el ID ' || v_cod || '. Búscala en la lista y usa «Editar».'); END IF;
+        END IF;
+        RETURN jsonb_build_object('ok', true, 'id', v_id, 'codigo', v_cod);
     END IF;
 
     IF v_acc = 'pregunta_baja' THEN
@@ -383,11 +434,11 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'error', 'Elige al menos un evaluado.');
         END IF;
 
-        INSERT INTO exam_examenes (propietario, nombre, filtros, cantidad, minutos, vigencia_dias, exigir_pantalla)
+        INSERT INTO exam_examenes (propietario, nombre, filtros, cantidad, minutos, vigencia_dias, exigir_pantalla, permitir_adjuntos)
         VALUES (v_yo, btrim(p->>'nombre'), jsonb_build_object('perfiles', to_jsonb(v_filt_perf), 'lineas', to_jsonb(v_filt_lin),
                 'tipos', to_jsonb(v_filt_tipo), 'dificultades', to_jsonb(v_filt_dif)),
                 (p->>'cantidad')::int, (p->>'minutos')::int, coalesce((p->>'vigenciaDias')::int, 7),
-                coalesce((p->>'exigirPantalla')::boolean, true))
+                coalesce((p->>'exigirPantalla')::boolean, true), coalesce((p->>'permitirAdjuntos')::boolean, false))
         RETURNING * INTO v_ex;
 
         FOR v_pid IN SELECT x::bigint FROM jsonb_array_elements_text(p->'perfilIds') x LOOP
@@ -467,7 +518,9 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'nombre', v_det.nombre, 'estado', v_det.estado, 'iniciadoEn', v_det.iniciado_en,
             'entregadoEn', v_det.entregado_en, 'motivoCierre', v_det.motivo_cierre, 'pantallaOk', v_det.pantalla_ok,
             'preguntas', (SELECT coalesce(jsonb_agg(jsonb_build_object('n', u.ord, 'codigo', q.codigo, 'tipo', q.tipo, 'pregunta', q.pregunta,
-                    'respuestaModelo', q.respuesta_modelo, 'respuesta', coalesce(r.respuesta, '')) ORDER BY u.ord), '[]')
+                    'respuestaModelo', q.respuesta_modelo, 'respuesta', coalesce(r.respuesta, ''), 'adjuntos', q.adjuntos,
+                    'archivos', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'nombre', a.nombre, 'mime', a.mime, 'tamano', a.tamano) ORDER BY a.id), '[]')
+                                   FROM exam_archivos a WHERE a.intento_id = v_det.id AND a.pregunta_id = u.pid AND a.origen = 'RESPUESTA' AND a.estado = 'LISTO')) ORDER BY u.ord), '[]')
                 FROM unnest(v_det.preguntas) WITH ORDINALITY u(pid, ord)
                 JOIN exam_preguntas q ON q.id = u.pid
                 LEFT JOIN exam_respuestas r ON r.intento_id = v_det.id AND r.pregunta_id = u.pid),
