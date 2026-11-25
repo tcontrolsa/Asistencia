@@ -195,7 +195,7 @@ function notificarEvaluacion_(p) {
     });
     borrarNotificaciones_(['env_' + id]);
   } else if (p.evento === 'feedback_realizado') {
-    borrarNotificaciones_(['fb_' + id, 'fb_venc_' + id, 'reu_sol_' + id]);
+    borrarNotificaciones_(['fb_' + id, 'reu_sol_' + id]);
     crearNotificacion_({
       para: p.empleadoId, tipo: 'feedback_realizado', clave: 'fb_ok_' + id, reemplazar: true, enlace: enlace,
       titulo: 'Feedback registrado', texto: 'Se registró la reunión de feedback de tu evaluación de ' + mes + '. Revisa los compromisos acordados.'
@@ -354,21 +354,20 @@ function recordatoriosDiarios() {
     });
 
     // 2. Feedback obligatorio sin realizar (intervención inmediata o cierre de trimestre): un aviso por evaluación al
-    //    evaluador, que se renueva cada día; al vencer, aviso único a RR.HH.
+    //    evaluador, que se renueva cada día; al vencer, aviso único a RR.HH. por evaluador y fecha de vencimiento
+    var vencidosFb = {}, realizadosFb = {}, margen = diasAdelantadosHoy_();
     evals.forEach(function (e) {
       var f = e.feedback || {};
-      if (!f.exigido || f.estado === 'realizada' || !f.vence || !porId[e.empleadoId] || (e.estado !== 'enviada' && e.estado !== 'confirmada')) return;
+      if (!f.exigido || !f.vence || !porId[e.empleadoId] || (e.estado !== 'enviada' && e.estado !== 'confirmada')) return;
       var jefe = porId[e.empleadoId].evaluador_id && porId[porId[e.empleadoId].evaluador_id] ? String(porId[e.empleadoId].evaluador_id) : String(e.evaluadorId);
       var faltan = diasEntre_(hoy, f.vence);
       if (faltan === null || !porId[jefe]) return;
       var quien = (e.empleadoNombre || e.empleadoId) + ' (' + mesTexto_(e.periodo) + ')';
+      var claveVenc = 'fb_venc_' + jefe + '_' + f.vence;
+      if (f.estado === 'realizada') { realizadosFb[claveVenc] = true; return; }
       if (faltan < 0) {
-        if (crearNotificacion_({
-          para: 'rol:rrhh', sinPush: true, tipo: 'alerta_desempeno', clave: 'fb_venc_' + e.id,
-          enlace: { modulo: 'desempeno', vista: 'resultados', periodo: e.periodo },
-          titulo: 'Feedback vencido', texto: 'Un feedback obligatorio de ' + mesTexto_(e.periodo) + ' a cargo de ' + (porId[jefe].nombre || jefe) +
-            ' venció el ' + fechaTexto_(f.vence) + ' sin realizarse.'
-        })) resumen.feedbackVencido = (resumen.feedbackVencido || 0) + 1;
+        var v = vencidosFb[claveVenc] = vencidosFb[claveVenc] || { jefe: jefe, vence: f.vence, periodo: e.periodo, n: 0 };
+        v.n++;
       }
       var creada = crearNotificacion_({
         para: jefe, sinPush: true, tipo: 'feedback_pendiente', clave: 'fb_' + e.id, reemplazar: true,
@@ -379,9 +378,22 @@ function recordatoriosDiarios() {
       });
       if (creada) {
         resumen.feedback++;
-        if (faltan === aviso || faltan === 0) feedbackWhatsApp[jefe] = (feedbackWhatsApp[jefe] || 0) + 1;
+        // El viernes también cubre lo que cae en sábado o domingo (esos días no hay recordatorios)
+        if (margen.some(function (d) { return faltan - d === aviso || faltan - d === 0; })) feedbackWhatsApp[jefe] = (feedbackWhatsApp[jefe] || 0) + 1;
       }
     });
+    Object.keys(vencidosFb).forEach(function (clave) {
+      var v = vencidosFb[clave];
+      if (crearNotificacion_({
+        para: 'rol:rrhh', sinPush: true, tipo: 'alerta_desempeno', clave: clave,
+        enlace: { modulo: 'desempeno', vista: 'resultados', periodo: v.periodo },
+        titulo: 'Feedback vencido', texto: (porId[v.jefe].nombre || v.jefe) + ' tiene ' + v.n + ' feedback obligatorio(s) sin realizar que ' +
+          (v.n === 1 ? 'venció' : 'vencieron') + ' el ' + fechaTexto_(v.vence) + '.'
+      })) resumen.feedbackVencido = (resumen.feedbackVencido || 0) + 1;
+    });
+    // Ya se realizaron todos los de ese evaluador y fecha: se retira la alerta
+    var alDiaFb = Object.keys(realizadosFb).filter(function (c) { return !vencidosFb[c]; });
+    if (alDiaFb.length) borrarNotificaciones_(alDiaFb);
     // WhatsApp: un solo mensaje por evaluador, al entrar en los días de aviso y el último día
     Object.keys(feedbackWhatsApp).forEach(function (jefe) {
       whatsappA_(jefe, 'Hola ' + primerNombre_(porId[jefe].nombre) + ', tienes ' + feedbackWhatsApp[jefe] +
@@ -438,6 +450,11 @@ function diasCubiertosHoy_() {
     dias.push({ anio: p[0], mes: p[1], dia: p[2] });
   }
   return dias;
+}
+
+// Días que adelanta la ejecución de hoy: 0 y, si es viernes, también 1 (sábado) y 2 (domingo)
+function diasAdelantadosHoy_() {
+  return Number(Utilities.formatDate(new Date(), NOTIF_TZ, 'u')) === 5 ? [0, 1, 2] : [0];
 }
 
 function mesDesplazado_(anio, mes, delta) {
