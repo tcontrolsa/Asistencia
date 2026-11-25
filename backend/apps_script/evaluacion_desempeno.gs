@@ -32,7 +32,9 @@ var COLS_EVALUACIONES = [
   'OBSERVACIONES', 'FORTALEZAS', 'OPORTUNIDADES_MEJORA', 'COMPROMISOS', 'PROXIMA_EVALUACION',
   'ESTADO', 'CONFIRMADA_EN', 'COMENTARIO_COLABORADOR', 'ACTUALIZADO_EN',
   // Desde el cuestionario editable (006_evaluacion_config.sql)
-  'CUESTIONARIO_VERSION', 'META_%', 'CUMPLE_META', 'VENCE_CONFIRMAR', 'VIGENTE_HASTA', 'REUNION', 'CALIFICACIONES', 'DIMENSIONES'
+  'CUESTIONARIO_VERSION', 'META_%', 'CUMPLE_META', 'VENCE_CONFIRMAR', 'VIGENTE_HASTA', 'REUNION', 'CALIFICACIONES', 'DIMENSIONES',
+  // Desde 024_evaluacion_feedback.sql
+  'INTERVENCION_INMEDIATA', 'FEEDBACK', 'FEEDBACK_HASTA'
 ];
 var EVAL_ADMIN_MASTER = '1058';
 
@@ -143,7 +145,7 @@ function sha256Hex_(texto) {
 // 3. Respaldo: la PWA llama a Apps Script y este reenvía a PostgREST
 // ---------------------------------------------------------------------
 var EVAL_FUNCIONES_PROXY = ['eval_listar', 'eval_guardar', 'eval_confirmar', 'eval_eliminar',
-  'eval_config', 'eval_reabrir', 'eval_reunion',
+  'eval_config', 'eval_reabrir', 'eval_reunion', 'eval_sesgo',
   'visita_anfitrion', 'visita_guardia',    // registro de visitas (visitas.gs)
   'epp',                                   // módulo de EPP (db/postgres/016_epp.sql)
   'registro_admin',                        // registro propio: revisión en el panel (017_registro.sql)
@@ -232,11 +234,12 @@ function guardarEvaluacionEnHoja(p) {
     fila.push(Number(p.puntaje) || 0, Number(p.porcentaje) || 0, p.nivel || '',
       pctDim('tecnico'), pctDim('gestion'), pctDim('aprendizaje'), pctDim('relacional'),
       notas.join('\n'), p.fortalezas || '', p.mejoras || '', p.compromisos || '', p.proximaEvaluacion || '',
-      p.estado === 'confirmada' ? 'Confirmada' : 'Enviada', p.confirmadaEn || '', p.comentarioColaborador || '',
+      ({ confirmada: 'Recibida', revision: 'En revisión TTHH', devuelta: 'Devuelta por TTHH' })[p.estado] || 'Enviada', p.confirmadaEn || '', p.comentarioColaborador || '',
       p.actualizadoEn || '',
       p.configVersion || '', p.meta === undefined || p.meta === '' ? '' : Number(p.meta), p.cumpleMeta || '',
       p.venceConfirmar || '', p.vigenteHasta || '', p.reunion || '', String(p.calificaciones || ''),
-      typeof p.dimensiones === 'string' ? p.dimensiones : JSON.stringify(p.dimensiones || {}));
+      typeof p.dimensiones === 'string' ? p.dimensiones : JSON.stringify(p.dimensiones || {}),
+      p.intervencion || '', p.feedback || '', p.feedbackVence || '');
 
     var n = hoja.getLastRow();
     var filaDestino = 0;

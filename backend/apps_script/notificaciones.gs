@@ -7,12 +7,13 @@
  *
  * Origen de los avisos de desempeño:
  *   - Eventos (guardarEvaluacionEnHoja → notificarEvaluacion_): evaluación enviada, corregida,
- *     confirmada, alerta para RR.HH. (bajo la meta o caída de 10 pts), reunión solicitada o
- *     agendada y plazo reabierto. Vienen de la cola de Postgres con params.evento.
+ *     recibida (la abrió), comentario, alerta para RR.HH. (menos de 70 % o caída de 10 pts), reunión solicitada
+ *     o agendada, feedback realizado, revisión por sesgo y corrección reabierta. Vienen de la cola de Postgres
+ *     con params.evento.
  *   - Recordatorios diarios (recordatoriosDiarios, activador de las 08:30), con la frecuencia y los
  *     plazos del cuestionario (api.eval_config): evaluaciones del período (mes o trimestre calendario)
- *     por registrar (desde el día 25 de su último mes hasta el día límite del mes siguiente), evaluaciones por confirmar que están por vencer, las que
- *     vencieron sin confirmar (aviso a RR.HH.), resultados que pierden vigencia y Día 75 de nuevos
+ *     por registrar (desde el día 25 de su último mes hasta el día límite del mes siguiente), feedback obligatorio por realizar (al evaluador; al
+ *     vencer, aviso a RR.HH.), resultados que pierden vigencia y Día 75 de nuevos
  *     ingresos (desde el día 60). También borra avisos de más de 60 días.
  *
  * Los recordatorios que se repiten (pendientes, por confirmar) usan la misma clave y se reemplazan:
@@ -159,24 +160,71 @@ function notificarEvaluacion_(p) {
     var nueva = crearNotificacion_({
       para: p.empleadoId, tipo: 'evaluacion_recibida', clave: 'env_' + id, enlace: enlace,
       titulo: 'Nueva evaluación de desempeño',
-      texto: (p.evaluadorNombre || 'Tu jefe inmediato') + ' registró tu evaluación de ' + mes + '. Revísala y confírmala.'
+      texto: (p.evaluadorNombre || 'Tu jefe inmediato') + ' registró tu evaluación de ' + mes + '. Ábrela para ver tu resultado.'
     });
     if (nueva) {
       whatsappA_(p.empleadoId, 'Hola ' + primerNombre_(p.empleadoNombre) + ', ' + (nombreCorto_(p.evaluadorNombre) || 'tu jefe inmediato') +
-        ' registró tu evaluación de desempeño de ' + mes + '. Revísala y confírmala en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
+        ' registró tu evaluación de desempeño de ' + mes + '. Ábrela en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
+    }
+    // Aprobada por TTHH tras la revisión por sesgo: se avisa también al evaluador
+    if (String(p.sesgoAprobada).toLowerCase() === 'true') {
+      borrarNotificaciones_(['sesgo_' + id, 'sesgo_dev_' + id]);
+      crearNotificacion_({
+        para: p.evaluadorId, tipo: 'evaluacion_aprobada', clave: 'sesgo_ok_' + id, reemplazar: true, enlace: enlace,
+        titulo: 'Evaluación aprobada por TTHH', texto: 'TTHH revisó la evaluación de ' + (p.empleadoNombre || p.empleadoId) + ' (' + mes + ') y ya fue enviada.'
+      });
+    } else {
+      borrarNotificaciones_(['sesgo_' + id, 'sesgo_dev_' + id]);   // se corrigió sin extremos
     }
   } else if (p.evento === 'corregida') {
     crearNotificacion_({
       para: p.empleadoId, tipo: 'evaluacion_corregida', enlace: enlace,
       titulo: 'Evaluación actualizada', texto: 'Tu evaluación de ' + mes + ' fue corregida por tu jefe inmediato.'
     });
-  } else if (p.evento === 'confirmada') {
+  } else if (p.evento === 'recibida' || p.evento === 'confirmada') {
     crearNotificacion_({
-      para: p.evaluadorId, tipo: 'evaluacion_confirmada', clave: 'conf_ok_' + id, enlace: enlace,
-      titulo: 'Evaluación confirmada', texto: (p.empleadoNombre || p.empleadoId) + ' confirmó su evaluación de ' + mes + '.'
+      para: p.evaluadorId, sinPush: true, tipo: 'evaluacion_confirmada', clave: 'conf_ok_' + id, enlace: enlace,
+      titulo: 'Evaluación recibida', texto: (p.empleadoNombre || p.empleadoId) + ' abrió su evaluación de ' + mes + '.'
     });
-    // Ya no aplican: el aviso de evaluación recibida y los de "por confirmar"
+    // Ya no aplican: el aviso de evaluación recibida y los antiguos de "por confirmar"
     borrarNotificaciones_(['env_' + id, 'porconf_' + id, 'porconf_' + id + '_1', 'porconf_' + id + '_2']);
+  } else if (p.evento === 'comentario') {
+    crearNotificacion_({
+      para: p.evaluadorId, tipo: 'evaluacion_comentario', clave: 'coment_' + id, reemplazar: true, enlace: enlace,
+      titulo: 'Comentario en una evaluación', texto: (p.empleadoNombre || p.empleadoId) + ' dejó un comentario en su evaluación de ' + mes + '.'
+    });
+    borrarNotificaciones_(['env_' + id]);
+  } else if (p.evento === 'feedback_realizado') {
+    borrarNotificaciones_(['fb_' + id, 'fb_venc_' + id, 'reu_sol_' + id]);
+    crearNotificacion_({
+      para: p.empleadoId, tipo: 'feedback_realizado', clave: 'fb_ok_' + id, reemplazar: true, enlace: enlace,
+      titulo: 'Feedback registrado', texto: 'Se registró la reunión de feedback de tu evaluación de ' + mes + '. Revisa los compromisos acordados.'
+    });
+  } else if (p.evento === 'sesgo_revision') {
+    // Sin el nombre del evaluado: un Sup. Admin podría ser esa persona
+    crearNotificacion_({
+      para: 'rol:rrhh', tipo: 'alerta_desempeno', clave: 'sesgo_' + id, reemplazar: true,
+      enlace: { modulo: 'desempeno', vista: 'resultados', periodo: p.periodo || '' },
+      titulo: 'Evaluación con posible sesgo', texto: 'Una evaluación de ' + mes + ' hecha por ' + (p.evaluadorNombre || p.evaluadorId) +
+        ' tiene todas las calificaciones en un extremo. Revísala en Resultados.'
+    });
+    // Ya no está disponible para el colaborador hasta que TTHH la apruebe
+    borrarNotificaciones_(['env_' + id, 'sesgo_dev_' + id]);
+  } else if (p.evento === 'sesgo_devuelta') {
+    borrarNotificaciones_(['sesgo_' + id]);
+    var dev = crearNotificacion_({
+      para: p.evaluadorId, tipo: 'evaluacion_devuelta', clave: 'sesgo_dev_' + id, reemplazar: true, enlace: enlace,
+      titulo: 'Evaluación devuelta por TTHH', texto: 'Revisa y corrige la evaluación de ' + (p.empleadoNombre || p.empleadoId) + ' (' + mes + ').'
+    });
+    if (dev) {
+      whatsappA_(p.evaluadorId, 'Hola ' + primerNombre_(p.evaluadorNombre) + ', TTHH devolvió una evaluación de desempeño de ' + mes +
+        ' para que la revises. App TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
+    }
+  } else if (p.evento === 'correccion_abierta') {
+    crearNotificacion_({
+      para: p.evaluadorId, tipo: 'evaluacion_correccion', clave: 'corr_' + id, reemplazar: true, enlace: enlace,
+      titulo: 'Puedes corregir una evaluación', texto: 'El administrador reabrió la evaluación de ' + (p.empleadoNombre || p.empleadoId) + ' (' + mes + ') hasta el ' + fechaTexto_(p.correccionHasta) + '.'
+    });
   } else if (p.evento === 'reunion_solicitada') {
     var sol = crearNotificacion_({
       para: p.evaluadorId, tipo: 'reunion_solicitada', clave: 'reu_sol_' + id, reemplazar: true, enlace: enlace,
@@ -199,17 +247,12 @@ function notificarEvaluacion_(p) {
       whatsappA_(p.empleadoId, 'Hola ' + primerNombre_(p.empleadoNombre) + ', ' + (nombreCorto_(p.evaluadorNombre) || 'tu jefe inmediato') +
         ' agendó la reunión para conversar tu evaluación de desempeño de ' + mes + ': ' + cuando + (p.reunionLugar ? ', ' + p.reunionLugar : '') + '.');
     }
-  } else if (p.evento === 'plazo_reabierto') {
-    crearNotificacion_({
-      para: p.empleadoId, tipo: 'evaluacion_por_confirmar', clave: 'porconf_' + id, reemplazar: true, enlace: enlace,
-      titulo: 'Plazo para confirmar reabierto', texto: 'Puedes confirmar tu evaluación de ' + mes + ' hasta el ' + fechaTexto_(p.venceConfirmar) + '.'
-    });
   }
   if (String(p.alerta).toLowerCase() === 'true' && (p.evento === 'enviada' || p.evento === 'corregida')) {
     crearNotificacion_({
       para: 'rol:rrhh', tipo: 'alerta_desempeno', clave: 'alerta_' + id,
       enlace: { modulo: 'desempeno', vista: 'resultados', periodo: p.periodo || '' },
-      titulo: 'Alerta de desempeño', texto: 'Una evaluación de ' + mes + ' quedó en la categoría más baja de desempeño o bajó 10 puntos. Revisa las alertas en Resultados.'
+      titulo: 'Alerta de desempeño', texto: 'Una evaluación de ' + mes + ' requiere intervención inmediata (menos de 70 %) o bajó 10 puntos. Revisa las alertas en Resultados.'
     });
   }
 }
@@ -225,7 +268,7 @@ function recordatoriosDiarios() {
   if (!lock.tryLock(1000)) return;
   try {
     _notifWhatsAppEnviados = 0;
-    var resumen = { pendientes: 0, porConfirmar: 0, dia75: 0, borradas: 0 };
+    var resumen = { pendientes: 0, feedback: 0, dia75: 0, borradas: 0 };
     // Fines de semana: solo la limpieza de avisos viejos
     if (esFinDeSemana_()) {
       resumen.borradas = borrarNotificacionesViejas_();
@@ -244,6 +287,7 @@ function recordatoriosDiarios() {
     var evals = listarEvaluacionesSistema_(desde);
     if (evals === null) { Logger.log('Sin acceso a la base de evaluaciones: se omiten los recordatorios'); return resumen; }
     var cfg = configEvaluacionSistema_() || {};
+    var feedbackWhatsApp = {};
     var plazos = cfg.plazos || {};
     var diaLimite = Number(plazos.evaluarDia) || 10;
     var aviso = plazos.avisoDias === undefined ? 3 : Number(plazos.avisoDias);
@@ -273,7 +317,7 @@ function recordatoriosDiarios() {
       if (faltan === -1) borrarNotificaciones_(Object.keys(evaluadores).map(function (j) { return 'pend_' + j + '_' + mesObjetivo; }));
       if (faltan === null || faltan < 0 || hoy < desdeAviso) return;
       var hechas = {};
-      evals.forEach(function (e) { if (e.tipo === tipoPeriodo && e.periodo === mesObjetivo) hechas[e.empleadoId] = true; });
+      evals.forEach(function (e) { if (e.tipo === tipoPeriodo && e.periodo === mesObjetivo && e.estado !== 'devuelta') hechas[e.empleadoId] = true; });
       var pendientesPorJefe = {};
       activos.forEach(function (e) {
         var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase();
@@ -309,35 +353,39 @@ function recordatoriosDiarios() {
       if (completos.length) borrarNotificaciones_(completos.map(function (j) { return 'pend_' + j + '_' + mesObjetivo; }));
     });
 
-    // 2. Evaluaciones enviadas sin confirmar: avisos desde que faltan `aviso` días; al vencer, a RR.HH.
+    // 2. Feedback obligatorio sin realizar (intervención inmediata o cierre de trimestre): un aviso por evaluación al
+    //    evaluador, que se renueva cada día; al vencer, aviso único a RR.HH.
     evals.forEach(function (e) {
-      if (e.estado !== 'enviada' || !porId[e.empleadoId] || !e.venceConfirmar) return;
-      var faltan = diasEntre_(hoy, e.venceConfirmar);
-      if (faltan === null) return;
+      var f = e.feedback || {};
+      if (!f.exigido || f.estado === 'realizada' || !f.vence || !porId[e.empleadoId] || (e.estado !== 'enviada' && e.estado !== 'confirmada')) return;
+      var jefe = porId[e.empleadoId].evaluador_id && porId[porId[e.empleadoId].evaluador_id] ? String(porId[e.empleadoId].evaluador_id) : String(e.evaluadorId);
+      var faltan = diasEntre_(hoy, f.vence);
+      if (faltan === null || !porId[jefe]) return;
+      var quien = (e.empleadoNombre || e.empleadoId) + ' (' + mesTexto_(e.periodo) + ')';
       if (faltan < 0) {
         if (crearNotificacion_({
-          para: 'rol:rrhh', sinPush: true, tipo: 'alerta_desempeno', clave: 'noconf_' + e.id,
+          para: 'rol:rrhh', sinPush: true, tipo: 'alerta_desempeno', clave: 'fb_venc_' + e.id,
           enlace: { modulo: 'desempeno', vista: 'resultados', periodo: e.periodo },
-          titulo: 'Evaluación no confirmada', texto: (e.empleadoNombre || e.empleadoId) + ' no confirmó su evaluación de ' +
-            mesTexto_(e.periodo) + ' (venció el ' + fechaTexto_(e.venceConfirmar) + ').'
-        })) resumen.noConfirmadas = (resumen.noConfirmadas || 0) + 1;
-        return;
+          titulo: 'Feedback vencido', texto: 'Un feedback obligatorio de ' + mesTexto_(e.periodo) + ' a cargo de ' + (porId[jefe].nombre || jefe) +
+            ' venció el ' + fechaTexto_(f.vence) + ' sin realizarse.'
+        })) resumen.feedbackVencido = (resumen.feedbackVencido || 0) + 1;
       }
-      if (faltan > aviso) return;
       var creada = crearNotificacion_({
-        para: e.empleadoId, sinPush: true, tipo: 'evaluacion_por_confirmar', clave: 'porconf_' + e.id, reemplazar: true,
+        para: jefe, sinPush: true, tipo: 'feedback_pendiente', clave: 'fb_' + e.id, reemplazar: true,
         enlace: { modulo: 'desempeno', vista: 'detalle', id: String(e.id), periodo: e.periodo },
-        titulo: 'Evaluación por confirmar',
-        texto: 'Confirma tu evaluación de ' + mesTexto_(e.periodo) + (faltan === 0 ? ': el plazo vence hoy.' : ' antes del ' + fechaTexto_(e.venceConfirmar) + '.')
+        titulo: faltan < 0 ? 'Feedback vencido' : 'Feedback obligatorio',
+        texto: quien + ': ' + (f.estado === 'agendada' ? 'reunión agendada, márcala como realizada ' : 'realiza la reunión de feedback ') +
+          (faltan < 0 ? '(venció el ' + fechaTexto_(f.vence) + ').' : faltan === 0 ? 'hoy (vence el plazo).' : 'hasta el ' + fechaTexto_(f.vence) + '.')
       });
       if (creada) {
-        resumen.porConfirmar++;
-        if (faltan === aviso || faltan === 0) {
-          whatsappA_(e.empleadoId, 'Hola ' + primerNombre_(porId[e.empleadoId].nombre) + ', tu evaluación de desempeño de ' +
-            mesTexto_(e.periodo) + ' está pendiente de confirmación; el plazo vence el ' + fechaTexto_(e.venceConfirmar) +
-            '. Revísala en la app TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
-        }
+        resumen.feedback++;
+        if (faltan === aviso || faltan === 0) feedbackWhatsApp[jefe] = (feedbackWhatsApp[jefe] || 0) + 1;
       }
+    });
+    // WhatsApp: un solo mensaje por evaluador, al entrar en los días de aviso y el último día
+    Object.keys(feedbackWhatsApp).forEach(function (jefe) {
+      whatsappA_(jefe, 'Hola ' + primerNombre_(porId[jefe].nombre) + ', tienes ' + feedbackWhatsApp[jefe] +
+        ' reunión(es) de feedback obligatorio por realizar y su plazo está por vencer. App TCONTROL → Desarrollo: ' + NOTIF_URL_APP);
     });
 
     // 2b. Resultados que pierden vigencia: aviso único al evaluador

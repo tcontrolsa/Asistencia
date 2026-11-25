@@ -1,6 +1,7 @@
 /**
  * Asistencia Tcontrol - Evaluación de desempeño (mensual o trimestral, y seguimiento Día 75)
- * Formato de Psicología Organizacional: nuevo/EVALUACION DE DESEMPEÑO.xlsx
+ * Formato de Psicología Organizacional: nuevo/EVALUACION DE DESEMPEÑO.xlsx y, desde 2026-11-24, nuevo/SISTEMA DE EVALUACION.xlsx
+ * (categorías y colores, recibida al abrir, feedback obligatorio, intervención inmediata y revisión por sesgo)
  *
  * Datos: PostgreSQL (api.eval_guardar / eval_confirmar / eval_listar / eval_config / eval_reunion /
  * eval_reabrir) vía PostgREST, con un token que Apps Script emite tras verificar el PIN (acción
@@ -47,38 +48,45 @@
   ];
   let ITEMS = [
     { dim: 'tecnico', peso: 10, c: 'Conocimiento técnico del puesto', m: 'Domina su profesiograma y funciones, aplicándolos con criterio propio en el desarrollo del cargo.' },
-    { dim: 'tecnico', peso: 10, c: 'Aplicación de procedimientos', m: 'Ejecuta sus actividades conforme a los procedimientos y lineamientos establecidos del SGC, con autonomía.',
+    { dim: 'tecnico', peso: 10, c: 'Aplicación de procedimientos', a: 'Métodos, pasos, flujos e instrucciones de trabajo para ejecutar una actividad.', m: 'Ejecuta sus actividades conforme a los procedimientos y lineamientos establecidos del SGC, con autonomía.',
       d75: 'Ejecuta sus actividades conforme a los procedimientos, normas técnicas y lineamientos establecidos, con autonomía.' },
     { dim: 'tecnico', peso: 8, c: 'Manejo de herramientas y sistemas', m: 'Utiliza con dominio las herramientas, equipos y sistemas requeridos, optimizando su uso.' },
-    { dim: 'tecnico', peso: 8, c: 'Calidad técnica del trabajo', m: 'Ejecuta sus actividades con precisión, minimizando errores y desviaciones respecto a los criterios de calidad definidos para el cargo.' },
+    { dim: 'tecnico', peso: 8, c: 'Calidad técnica del trabajo', a: 'Exactitud, integridad y conformidad del entregable frente a requisitos definidos.', m: 'Ejecuta sus actividades con precisión, minimizando errores y desviaciones respecto a los criterios de calidad definidos para el cargo.' },
     { dim: 'tecnico', peso: 7, c: 'Resolución de problemas técnicos', m: 'Identifica oportunamente situaciones críticas y aplica soluciones acordes con el nivel de autonomía esperado para su cargo.' },
     { dim: 'tecnico', peso: 7, c: 'Autonomía funcional', m: 'Ejecuta las funciones de su cargo con autonomía, seguridad y criterio propio en la toma de decisiones.' },
-    { dim: 'gestion', peso: 11, c: 'Cumplimiento de resultados y plazos', m: 'Enfoca sus actividades al logro de los objetivos del cargo y responde consistentemente por los resultados obtenidos.' },
+    { dim: 'gestion', peso: 11, c: 'Cumplimiento de resultados y plazos', a: 'Logro de objetivos y entregables comprometidos dentro de fechas y condiciones acordadas.', m: 'Enfoca sus actividades al logro de los objetivos del cargo y responde consistentemente por los resultados obtenidos.' },
     { dim: 'gestion', peso: 10, c: 'Organización y priorización', m: 'Organiza y prioriza eficientemente sus actividades sin requerir supervisión constante.' },
-    { dim: 'gestion', peso: 4, c: 'Cumplimiento normativo', m: 'Cumple de manera consolidada las políticas internas, normas de seguridad y disposiciones legales aplicables a su cargo.' },
+    { dim: 'gestion', peso: 4, c: 'Cumplimiento normativo', a: 'Obligaciones legales, regulatorias, contractuales y políticas internas aplicables.', m: 'Cumple de manera consolidada las políticas internas, normas de seguridad y disposiciones legales aplicables a su cargo.' },
     { dim: 'aprendizaje', peso: 5, c: 'Aprendizaje continuo', m: 'Adquiere y aplica de forma autónoma nuevos conocimientos relevantes para su cargo.' },
     { dim: 'aprendizaje', peso: 4, c: 'Apertura y aplicación de retroalimentación', m: 'Incorpora de manera consistente la retroalimentación recibida como parte de su desarrollo profesional.' },
     { dim: 'relacional', peso: 4, c: 'Comunicación efectiva', m: 'Favorece la coordinación y el cumplimiento de las actividades del área mediante una comunicación clara y oportuna.' },
     { dim: 'relacional', peso: 4, c: 'Trabajo colaborativo', m: 'Contribuye de manera sostenida al logro de los objetivos comunes del equipo.' },
     { dim: 'relacional', peso: 8, c: 'Adaptabilidad e integración organizacional', m: 'Demuestra alineación consolidada con los valores, normas, cultura y comportamientos esperados por la organización.' }
   ];
+  // Escala y categorías del documento SISTEMA DE EVALUACION (la nota n toma el color de la categoría n)
   let ESCALA = [
-    { v: 1, t: 'Deficiente', d: 'No cumple lo esperado para su cargo; requiere intervención y plan de acción inmediato.' },
-    { v: 2, t: 'Regular', d: 'Cumple de forma parcial; requiere supervisión frecuente y acciones de mejora.' },
-    { v: 3, t: 'Bueno', d: 'Cumple lo esperado en términos generales; requiere apoyo o supervisión ocasional.' },
-    { v: 4, t: 'Muy bueno', d: 'Cumple plenamente lo esperado para su cargo, con apoyo mínimo o esporádico.' },
-    { v: 5, t: 'Excelente', d: 'Supera lo esperado para su cargo. Lo hace de forma autónoma y consistente; puede servir de referente para otros.' }
+    { v: 1, t: 'Requiere intervención', d: 'Plan de mejora y acompañamiento.' },
+    { v: 2, t: 'En desarrollo', d: 'Existen oportunidades de mejora.' },
+    { v: 3, t: 'Cumple lo esperado en términos generales', d: 'Requiere apoyo y/o supervisión ocasional, y existen oportunidades de desarrollo.' },
+    { v: 4, t: 'Cumple plenamente lo esperado', d: 'Mantener desempeño, requiere apoyo esporádico y existen oportunidades de desarrollo.' },
+    { v: 5, t: 'Supera las expectativas de desempeño', d: 'Desempeño sobresaliente, aplica innovación, genera valor adicional en sus actividades y puede servir de referente para otros.' }
   ];
+  // Qué hacer (lo lee el evaluado)
   let RECOMENDACION = {
-    'Supera expectativas': 'Reconocer el logro, mantener el rumbo y, si aplica, ampliar responsabilidades o retos de desarrollo.',
-    'Cumple expectativas': 'Reforzar fortalezas y acordar 1 o 2 acciones de mejora para el próximo mes.',
-    'Aceptable': 'Plan de mejora con compromisos concretos y seguimiento en la siguiente evaluación.',
-    'Requiere mejora': 'Acordar acciones de mejora con apoyo o capacitación y revisarlas en la siguiente evaluación.',
-    'Requiere plan de acción': 'Reunión con Psicología Organizacional, plan de acción formal con apoyo o capacitación, y revisión en el mes siguiente.'
+    'Requiere intervención': 'Solicita a tu evaluador una reunión de feedback para establecer planes de mejora.',
+    'En desarrollo': 'Solicita a tu evaluador una reunión de feedback para establecer tus oportunidades y compromisos.',
+    'Cumple lo esperado en términos generales': 'Si deseas, puedes solicitar una reunión con tu evaluador para conversar sobre tus oportunidades de desarrollo.',
+    'Cumple plenamente lo esperado': 'Si deseas, puedes solicitar una reunión con tu evaluador para conversar sobre tus oportunidades de desarrollo.',
+    'Supera las expectativas de desempeño': 'Si deseas, puedes solicitar una reunión con tu evaluador para conversar sobre los proyectos innovadores que estás llevando a cabo y en los que necesitas apoyo.'
   };
-  // Categorías de desempeño por defecto (editables en Configuración); 'min' es el límite inferior inclusivo
-  const NIVELES_BASE = [{ min: 0.90, n: 'Supera expectativas' }, { min: 0.80, n: 'Cumple expectativas' }, { min: 0.70, n: 'Aceptable' }, { min: 0.60, n: 'Requiere mejora' }, { min: 0, n: 'Requiere plan de acción' }];
-  const NIVELES_ANTIGUOS = ['Excelente', 'Muy bueno', 'Bueno', 'Aceptable', 'Requiere mejora'];
+  // Categorías por defecto (editables en Configuración): 'min' es el límite inferior inclusivo; 'i' = requiere intervención inmediata
+  const NIVELES_BASE = [
+    { min: 0.90, n: 'Supera las expectativas de desempeño', color: 'azul', msg: ESCALA[4].d },
+    { min: 0.80, n: 'Cumple plenamente lo esperado', color: 'verde', msg: ESCALA[3].d },
+    { min: 0.70, n: 'Cumple lo esperado en términos generales', color: 'verde', msg: ESCALA[2].d },
+    { min: 0.60, n: 'En desarrollo', color: 'ambar', i: true, msg: ESCALA[1].d },
+    { min: 0, n: 'Requiere intervención', color: 'rojo', i: true, msg: ESCALA[0].d }];
+  const COLORES = ['rojo', 'ambar', 'verde', 'azul'];
   const ROLES = ['EVALUADO', 'EVALUADOR', 'EVALUADOR Y EVALUADO', 'NO APLICA'];
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const MAX_OBS = 200, MAX_TXT = 500;
@@ -90,19 +98,25 @@
   const BASE = {
     dimensiones: DIMENSIONES, items: ITEMS, escala: ESCALA, obligatoriaObs: [1, 2, 5],
     niveles: NIVELES_BASE,
-    meta: 0.60, plazos: { evaluarDia: 10, confirmarDias: 7, vigenciaDias: 45, avisoDias: 3 }, recomendaciones: RECOMENDACION
+    meta: 0.70, plazos: { evaluarDia: 10, confirmarDias: 7, vigenciaDias: 45, avisoDias: 3, feedbackDias: 7 }, recomendaciones: RECOMENDACION
   };
   let CFG = BASE, CFG_VERSION = null, REAPERTURAS = [], NIVELES = BASE.niveles, META = BASE.meta, OBLIG = BASE.obligatoriaObs;
-  // Umbral de alerta a RR.HH.: donde empieza la penúltima categoría (bajo ese valor está la categoría más baja)
+  // Umbral de intervención inmediata: donde empieza la primera categoría que ya no la requiere
   function umbralAlerta(niveles) {
-    const o = niveles.map(x => Number(x.min)).sort((a, b) => b - a);
-    return o.length > 1 ? o[o.length - 2] : 0;
+    const sin = niveles.filter(x => !x.i).map(x => Number(x.min));
+    return sin.length && sin.length < niveles.length ? Math.min(...sin) : 0.70;
+  }
+  // Una configuración guardada sin colores es anterior al documento SISTEMA DE EVALUACION: toma categorías, escala y conceptos nuevos
+  function actualizarConfig(cfg) {
+    const g = Object.assign({}, BASE, cfg || {});
+    if (!Array.isArray(g.niveles) || !g.niveles.some(n => n.color)) {
+      g.niveles = NIVELES_BASE; g.recomendaciones = BASE.recomendaciones; g.escala = BASE.escala;
+      g.items = g.items.map(x => { const b = BASE.items.find(y => y.c === x.c); return b && b.a && !x.a ? Object.assign({}, x, { a: b.a }) : x; });
+    }
+    return g;
   }
   function aplicarConfig(cfg, version, reaperturas) {
-    CFG = Object.assign({}, BASE, cfg || {});
-    // Una configuración guardada con las categorías antiguas se reemplaza por las nuevas (el admin puede volver a editarlas)
-    const nomCfg = (CFG.niveles || []).map(x => x.n).sort().join('|');
-    if (!CFG.niveles || nomCfg === NIVELES_ANTIGUOS.slice().sort().join('|')) { CFG.niveles = NIVELES_BASE; CFG.recomendaciones = BASE.recomendaciones; }
+    CFG = actualizarConfig(cfg);
     DIMENSIONES = CFG.dimensiones; ITEMS = CFG.items; ESCALA = CFG.escala; RECOMENDACION = CFG.recomendaciones || {};
     NIVELES = CFG.niveles.slice().sort((a, b) => Number(b.min) - Number(a.min));
     META = umbralAlerta(NIVELES);
@@ -139,12 +153,57 @@
     const n = NIVELES.find(x => p >= Number(x.min));
     return n ? n.n : ((NIVELES[NIVELES.length - 1] || {}).n || 'Requiere mejora');
   }
-  // Color del nivel según su posición (el más alto verde, el más bajo rojo)
-  const claseNivel = n => {
-    const i = NIVELES.findIndex(x => x.n === n);
+  const datosNivel = n => NIVELES.find(x => x.n === n) || {};
+  // Color de una categoría (rojo, ámbar, verde, azul) y de una nota: la nota n toma el de la categoría n (de menor a mayor)
+  const colorNivel = (n, lista = NIVELES) => {
+    const orden = lista.slice().sort((a, b) => Number(a.min) - Number(b.min));
+    const i = orden.findIndex(x => x.n === n);
     if (i < 0) return '';
-    const k = NIVELES.length;
-    return 'ev-n' + (k <= 1 ? 5 : Math.round(5 - i * 4 / (k - 1)));
+    return COLORES.includes(orden[i].color) ? orden[i].color : (i === 0 ? 'rojo' : i === orden.length - 1 ? 'azul' : i === 1 ? 'ambar' : 'verde');
+  };
+  const claseNivel = n => { const c = colorNivel(n); return c ? 'ev-k-' + c : ''; };
+  const claseNota = (v, max = escalaMax(), lista = NIVELES) => {
+    const x = Math.round(Number(v) || 0);
+    if (x < 1) return '';
+    const orden = lista.slice().sort((a, b) => Number(a.min) - Number(b.min));
+    const i = max > 1 ? Math.round((Math.min(x, max) - 1) * (orden.length - 1) / (max - 1)) : 0;
+    const c = orden[i] ? colorNivel(orden[i].n, lista) : '';
+    return c ? 'ev-k-' + c : '';
+  };
+  const clasePct = p => claseNivel(nivelDe(Number(p) || 0));
+
+  // Textos: 3 palabras o más (al menos 2 distintas) y que no sea «no aplica», «ninguno»… (misma regla que historico.eval_texto_ok)
+  const RELLENO = new Set(('no aplica aplicable n a na corresponde ninguno ninguna ningun nada sin observacion observaciones comentario comentarios ' +
+    'novedad novedades hay tengo existe existen en este esta esto caso por el la los las lo de del al para momento ahora mes periodo trimestre ' +
+    'item pregunta punto criterio su cargo se es que y o un una').split(' '));
+  function textoValido(s) {
+    const w = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(x => /[a-z]/.test(x));
+    return w.length >= 3 && new Set(w).size >= 2 && w.some(x => !RELLENO.has(x));
+  }
+  const AVISO_TEXTO = 'al menos 3 palabras; no se admite «no aplica»';
+  // Sesgo: todas las calificaciones en el valor más bajo o todas en el más alto
+  const haySesgo = cal => cal.length > 1 && cal.every(Boolean) && (cal.every(v => v === escalaMax()) || cal.every(v => v === Math.min(...ESCALA.map(e => Number(e.v)))));
+  const MSG_SESGO = 'Tu evaluación debe ser revisada con TTHH porque se ha detectado sesgo.';
+  // Retenida por sesgo (o devuelta): el colaborador no la ve y no cuenta en los resultados
+  const retenida = e => !!e && (e.estado === 'revision' || e.estado === 'devuelta');
+
+  // Feedback e intervención inmediata
+  const fb = e => (e && e.feedback) || { exigido: false, estado: 'opcional' };
+  const requiereIntervencion = e => !!e && Number(e.porcentaje) < META;
+  const estadoIntervencion = e => { const s = fb(e).estado; return s === 'realizada' ? 'Atendida' : s === 'agendada' ? 'Agendada' : 'Pendiente'; };
+  const esCierreTrimestre = per => /-T[1-4]$/.test(String(per)) || /-(03|06|09|12)$/.test(String(per));
+  const chipFeedback = e => {
+    const f = fb(e);
+    if (f.estado === 'realizada') return '<span class="ev-chip ev-chip-ok"><i class="fas fa-comments"></i> Feedback realizado</span>';
+    if (f.vencido) return `<span class="ev-chip ev-chip-warn" title="El plazo venció el ${fechaCorta(f.vence)}"><i class="fas fa-comments"></i> Feedback vencido</span>`;
+    if (f.estado === 'agendada') return '<span class="ev-chip ev-chip-env"><i class="fas fa-comments"></i> Feedback agendado</span>';
+    if (f.estado === 'pendiente') return `<span class="ev-chip ev-chip-env" title="Obligatorio hasta el ${fechaCorta(f.vence)}"><i class="fas fa-comments"></i> Feedback pendiente</span>`;
+    return '';
+  };
+  const chipIntervencion = e => {
+    if (!requiereIntervencion(e)) return '<span class="ev-muted">—</span>';
+    const s = estadoIntervencion(e);
+    return `<span class="ev-interv"><i class="fas fa-check-square" aria-hidden="true"></i> <span><strong>Sí</strong><small class="${s === 'Atendida' ? 'ev-ok' : s === 'Agendada' ? 'ev-warn' : 'ev-danger'}">${fb(e).vencido ? 'Vencida' : s}</small></span></span>`;
   };
 
   // Igual que el Excel: puntaje = peso × calificación; máximo = suma de pesos × valor más alto de la escala
@@ -193,6 +252,8 @@
     return Math.floor((new Date(hoyLocal() + 'T00:00:00') - new Date(f + 'T00:00:00')) / 86400000);
   }
   const fechaCorta = f => { const n = normFecha(f); return n ? n.split('-').reverse().join('/') : ''; };
+  // Fecha (hora de Ecuador) de una marca de tiempo: de noche, la fecha UTC ya es la del día siguiente
+  const fechaDeHora = s => { const d = new Date(s); return s && !isNaN(d) ? d.toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''; };
   const fechaLarga = f => {
     const n = normFecha(f);
     if (!n) return '';
@@ -455,9 +516,11 @@
 
   const chipEstado = e => {
     if (!e) return '<span class="ev-chip ev-chip-pend">Pendiente</span>';
-    if (e.estado === 'confirmada') return '<span class="ev-chip ev-chip-ok"><i class="fas fa-check"></i> Confirmada</span>';
-    if (e.confirmacionVencida) return `<span class="ev-chip ev-chip-warn" title="El plazo para confirmar venció el ${fechaCorta(e.venceConfirmar)}">No confirmada</span>`;
-    return '<span class="ev-chip ev-chip-env">Enviada</span>';
+    if (e.estado === 'confirmada') return '<span class="ev-chip ev-chip-ok" title="El colaborador la abrió"><i class="fas fa-check"></i> Recibida</span>';
+    if (e.estado === 'revision') return '<span class="ev-chip ev-chip-warn"><i class="fas fa-user-shield"></i> En revisión TTHH</span>';
+    if (e.estado === 'devuelta') return '<span class="ev-chip ev-chip-warn"><i class="fas fa-undo"></i> Devuelta por TTHH</span>';
+    if (e.correccionHasta) return '<span class="ev-chip ev-chip-env"><i class="fas fa-pen"></i> En corrección</span>';
+    return '<span class="ev-chip ev-chip-env" title="El colaborador aún no la abre">Enviada</span>';
   };
   // Categoría de desempeño según el porcentaje y las categorías vigentes (también para evaluaciones antiguas)
   const nivelEval = e => nivelDe(Number(e && e.porcentaje) || 0);
@@ -470,24 +533,34 @@
       const p = Math.max(0, Math.min(1, Number(x.porcentaje) || 0));
       const nv = x.nivel === 'Incompleto' ? 'Incompleto' : (x.nivel ? nivelDe(p) : '');
       return `<div class="ev-dim">
-        <div class="ev-dim-top"><span>${esc(d.t)}</span><strong>${pct(p)}</strong></div>
+        <div class="ev-dim-top"><span>${esc(d.t)}</span><strong class="ev-tx-k ${claseNivel(nv)}">${pct(p)}</strong></div>
         <div class="ev-bar"><div class="ev-bar-fill ${claseNivel(nv)}" style="width:${Math.round(p * 100)}%"></div></div>
         <div class="ev-dim-nivel">${esc(nv)}</div>
       </div>`;
     }).join('')}</div>`;
   }
 
-  function resumenHtml(r, compacto = false, dimsLista) {
+  // vista: 'evaluado' (qué puede hacer la persona) o 'evaluador' (qué debe hacer el jefe)
+  function resumenHtml(r, compacto = false, dimsLista, vista = 'evaluador', ev = null) {
     const nivelR = r.completa === false ? r.nivel : nivelDe(Number(r.porcentaje) || 0);
+    const d = datosNivel(nivelR);
+    let hacer = '', titulo = 'Qué hacer';
+    if (vista === 'evaluado') hacer = RECOMENDACION[nivelR] || '';
+    else if (r.completa !== false) {
+      const f = ev ? fb(ev) : { exigido: !!d.i || esCierreTrimestre(r.periodo), motivo: d.i ? 'intervencion' : 'trimestre' };
+      if (d.i) { titulo = 'Intervención inmediata'; hacer = 'El feedback y los compromisos son obligatorios.'; }
+      else hacer = f.exigido ? 'Feedback obligatorio por cierre de trimestre.' : 'Feedback opcional este mes (obligatorio en el cierre de cada trimestre).';
+    }
     return `<div class="ev-resumen ${compacto ? 'ev-resumen-compacto' : ''}">
       <div class="ev-resumen-total ${claseNivel(nivelR)}">
         <div class="ev-resumen-pct">${pct(r.porcentaje)}</div>
         <div class="ev-resumen-nivel">${esc(nivelR)}</div>
+        ${d.msg ? `<div class="ev-resumen-msg">${esc(d.msg)}</div>` : ''}
         <div class="ev-muted">${r.puntaje} de ${r.maximo || 500} puntos</div>
       </div>
       ${barrasDimensiones(r.dimensiones, dimsLista)}
     </div>
-    ${RECOMENDACION[nivelR] ? `<div class="ev-reco"><i class="fas fa-lightbulb"></i> <span><strong>Qué hacer:</strong> ${esc(RECOMENDACION[nivelR])}</span></div>` : ''}`;
+    ${hacer ? `<div class="ev-reco ${claseNivel(nivelR)}"><i class="fas ${titulo === 'Qué hacer' ? 'fa-lightbulb' : 'fa-exclamation-triangle'}"></i> <span><strong>${titulo}:</strong> ${esc(hacer)}</span></div>` : ''}`;
   }
 
   function detalleHtml(e, opciones = {}) {
@@ -495,14 +568,13 @@
     const items = itemsDe(e).map((it, i) => {
       const v = Number(e.calificaciones && e.calificaciones[i]) || 0;
       const o = (e.observaciones && e.observaciones[i]) || '';
-      const esc5 = escalaE.find(x => Number(x.v) === v);
       return `<div class="ev-det-item">
         <div class="ev-det-num">${i + 1}</div>
         <div class="ev-det-body">
           <div class="ev-det-c">${esc(it.c)} <span class="ev-peso">${it.peso}%</span></div>
           ${o ? `<div class="ev-det-obs">${esc(o)}</div>` : ''}
         </div>
-        <div class="ev-det-cal ev-c${v}">${v || '–'}<small>${esc5 ? esc(esc5.t) : ''}</small></div>
+        <div class="ev-det-cal ${claseNota(v, escalaMax(escalaE))}">${v || '–'}</div>
       </div>`;
     }).join('');
     const bloque = (t, x) => x ? `<div class="ev-texto"><h4>${t}</h4><p>${esc(x)}</p></div>` : '';
@@ -513,14 +585,15 @@
             <div class="ev-eyebrow">${esc(e.tipo === 'DIA75' ? 'Seguimiento nuevo ingreso' : `Evaluación ${nombreFrecuencia(e.tipo).toLowerCase()}`)}</div>
             <h3>${esc(etiquetaPeriodo(e.periodo))}</h3>
             <div class="ev-muted">${esc(e.empleadoNombre || e.empleadoId)} · Evaluó ${esc(e.evaluadorNombre || e.evaluadorId)} · ${fechaCorta(e.fechaAplicacion)}</div>
-            <div class="ev-small ev-plazos">${e.estado === 'enviada' && e.venceConfirmar
-              ? `<span class="${e.confirmacionVencida ? 'ev-danger' : ''}"><i class="far fa-hourglass"></i> ${e.confirmacionVencida ? 'Plazo para confirmar vencido el ' : 'Confirmar hasta el '}${fechaCorta(e.venceConfirmar)}</span>` : ''}
+            <div class="ev-small ev-plazos">${fb(e).exigido && fb(e).estado !== 'realizada' && fb(e).vence
+              ? `<span class="${fb(e).vencido ? 'ev-danger' : ''}"><i class="far fa-hourglass"></i> ${fb(e).vencido ? 'Feedback vencido el ' : 'Feedback hasta el '}${fechaCorta(fb(e).vence)}</span>` : ''}
               ${e.vigenteHasta ? `<span class="${e.vigente === false ? 'ev-danger' : ''}"><i class="far fa-calendar-check"></i> ${e.vigente === false ? 'Desactualizada desde el ' : 'Vigente hasta el '}${fechaCorta(e.vigenteHasta)}</span>` : ''}</div>
           </div>
-          ${chipEstado(e)}
+          <div class="ev-det-chips">${chipEstado(e)}${chipFeedback(e)}</div>
         </div>
-        ${resumenHtml({ puntaje: e.puntaje, maximo: e.puntajeMaximo, porcentaje: Number(e.porcentaje), nivel: e.nivel, dimensiones: e.dimensiones, meta: e.meta }, false, dimensionesDe(e))}
+        ${resumenHtml({ puntaje: e.puntaje, maximo: e.puntajeMaximo, porcentaje: Number(e.porcentaje), nivel: e.nivel, dimensiones: e.dimensiones, periodo: e.periodo }, false, dimensionesDe(e), opciones.vista, e)}
       </div>
+      ${opciones.aviso || ''}
       <div class="ev-card"><h4 class="ev-h4">Calificación por comportamiento</h4>${items}</div>
       ${(e.fortalezas || e.mejoras || e.compromisos || e.proximaEvaluacion || e.comentarioColaborador) ? `<div class="ev-card">
         ${bloque('Fortalezas observadas', e.fortalezas)}
@@ -647,29 +720,31 @@
       const d75 = st.hechas.find(e => e.empleadoId === m.id && e.tipo === 'DIA75');
       let acciones = '';
       if (et.dia75 || d75) {
-        acciones += `<div class="ev-eq-tipo"><span class="ev-eq-lbl">Día 75${et.dias !== null ? ` · día ${et.dias}` : ''}</span>${chipEstado(d75)}${chipNivel(d75)}
+        acciones += `<div class="ev-eq-tipo"><span class="ev-eq-lbl">Día 75${et.dias !== null ? ` · día ${et.dias}` : ''}</span>${chipEstado(d75)}${chipNivel(d75)}${retenida(d75) ? '' : chipFeedback(d75)}
           ${d75 ? `<button class="ev-btn ev-btn-sm" data-ev="ver" data-id="${d75.id}">Ver</button>` : ''}
-          ${!d75 || d75.estado !== 'confirmada' ? `<button class="ev-btn ev-btn-sm ${d75 ? '' : 'ev-btn-primary'}" data-ev="evaluar" data-tipo="DIA75" data-emp="${esc(m.id)}">${d75 ? 'Corregir' : 'Evaluar'}</button>` : ''}</div>`;
+          ${!d75 || d75.estado !== 'confirmada' ? `<button class="ev-btn ev-btn-sm ${d75 && d75.estado !== 'devuelta' ? '' : 'ev-btn-primary'}" data-ev="evaluar" data-tipo="DIA75" data-emp="${esc(m.id)}">${d75 ? 'Corregir' : 'Evaluar'}</button>` : ''}</div>`;
       }
       if (et.mensual) {
         const pl = plazoEvaluar(st.ses, m.id, st.mes);
         const abierta = !men || men.estado !== 'confirmada';
-        acciones += `<div class="ev-eq-tipo"><span class="ev-eq-lbl">${nombreFrecuencia()}</span>${chipEstado(men)}${chipNivel(men)}
+        acciones += `<div class="ev-eq-tipo"><span class="ev-eq-lbl">${nombreFrecuencia()}</span>${chipEstado(men)}${chipNivel(men)}${retenida(men) ? '' : chipFeedback(men)}
           ${men ? `<button class="ev-btn ev-btn-sm" data-ev="ver" data-id="${men.id}">Ver</button>` : ''}
           ${abierta && pl.bloqueado ? `<span class="ev-chip ev-chip-warn" title="Solo el administrador puede reabrirlo"><i class="fas fa-lock"></i> Plazo vencido el ${fechaCorta(pl.lim)}</span>` : ''}
-          ${abierta && !pl.bloqueado ? `<button class="ev-btn ev-btn-sm ${men ? '' : 'ev-btn-primary'}" data-ev="evaluar" data-tipo="${TIPO_P()}" data-emp="${esc(m.id)}">${men ? 'Corregir' : 'Evaluar'}</button>` : ''}
+          ${abierta && !pl.bloqueado ? `<button class="ev-btn ev-btn-sm ${men && men.estado !== 'devuelta' ? '' : 'ev-btn-primary'}" data-ev="evaluar" data-tipo="${TIPO_P()}" data-emp="${esc(m.id)}">${men ? 'Corregir' : 'Evaluar'}</button>` : ''}
           ${!men && !pl.vencido && pl.lim ? `<span class="ev-muted ev-small">hasta el ${fechaCorta(pl.lim)}</span>` : ''}
           ${pl.reabierto && !men ? '<span class="ev-chip ev-chip-env">Plazo reabierto</span>' : ''}</div>`;
       } else if (!et.dia75 && !d75) {
         acciones += `<div class="ev-eq-tipo"><span class="ev-muted">En período de prueba (día ${et.dias}). El seguimiento Día 75 se habilita desde el día 60.</span></div>`;
       }
       const pideReunion = st.hechas.some(e => e.empleadoId === m.id && e.reunion && e.reunion.estado === 'solicitada');
+      const intervencion = men && !retenida(men) && requiereIntervencion(men) && fb(men).estado !== 'realizada';
       return `<div class="ev-eq">
         <div class="ev-avatar">${m.foto_url ? `<img src="${esc(m.foto_url)}" alt="" onerror="this.remove()">` : ''}<span>${esc(iniciales(m.nombre))}</span></div>
-        <div class="ev-eq-info"><strong>${esc(m.nombre || m.id)}</strong>${pideReunion ? ' <span class="ev-chip ev-chip-reu"><i class="fas fa-comments"></i> Pidió reunión</span>' : ''}<span class="ev-muted">${esc(m.cargo || '')}${m.area ? ' · ' + esc(m.area) : ''}${st.hechas.some(e => e.empleadoId === m.id) ? ` · <button class="ev-link" data-ev="persona" data-emp="${esc(m.id)}">Ver evolución</button>` : ''}</span>${acciones}</div>
+        <div class="ev-eq-info"><strong>${esc(m.nombre || m.id)}</strong>${pideReunion ? ' <span class="ev-chip ev-chip-reu"><i class="fas fa-comments"></i> Pidió reunión</span>' : ''}${intervencion ? ' <span class="ev-chip ev-chip-warn"><i class="fas fa-exclamation-triangle"></i> Intervención inmediata</span>' : ''}<span class="ev-muted">${esc(m.cargo || '')}${m.area ? ' · ' + esc(m.area) : ''}${st.hechas.some(e => e.empleadoId === m.id) ? ` · <button class="ev-link" data-ev="persona" data-emp="${esc(m.id)}">Ver evolución</button>` : ''}</span>${acciones}</div>
       </div>`;
     }).join('');
-    const pendientes = st.ses.equipo.filter(m => etapa(m).mensual && !st.hechas.some(e => e.empleadoId === m.id && e.tipo === TIPO_P() && e.periodo === st.mes)).length;
+    const pendientes = st.ses.equipo.filter(m => etapa(m).mensual && !st.hechas.some(e => e.empleadoId === m.id && e.tipo === TIPO_P() && e.periodo === st.mes && e.estado !== 'devuelta')).length;
+    const fbPend = st.hechas.filter(e => st.ses.equipo.some(m => m.id === e.empleadoId) && !retenida(e) && fb(e).exigido && fb(e).estado !== 'realizada');
     return `<div class="ev-card">
       <div class="ev-card-head">
         <h3 class="ev-h3"><i class="fas fa-users"></i> Mi equipo</h3>
@@ -678,6 +753,7 @@
       <p class="ev-muted ev-mb">${pendientes ? `${pendientes} evaluación(es) ${trimestral() ? 'trimestral(es)' : 'mensual(es)'} pendiente(s) para ${etiquetaPeriodo(st.mes)}.` : `Equipo al día para ${etiquetaPeriodo(st.mes)}.`}
         ${limiteEvaluar(st.mes) ? `<strong>Plazo: ${hoyLocal() > limiteEvaluar(st.mes) ? 'venció el' : 'hasta el'} ${fechaCorta(limiteEvaluar(st.mes))}.</strong>` : ''}
         Califica en los últimos días del ${textoPeriodo()} y conversa el resultado la semana siguiente.</p>
+      ${fbPend.length ? `<div class="ev-aviso ev-aviso-fb"><i class="fas fa-comments"></i> <span><strong>${fbPend.length} feedback obligatorio(s) por realizar:</strong> ${fbPend.map(e => `<button class="ev-link" data-ev="ver" data-id="${e.id}">${esc(e.empleadoNombre || e.empleadoId)} (${esc(etiquetaCorta(e.periodo))}, ${fb(e).vencido ? 'vencido el' : 'hasta el'} ${fechaCorta(fb(e).vence)})</button>`).join(' · ')}</span></div>` : ''}
       ${filas}
       <p class="ev-muted ev-small">¿Falta alguien? Pide a Psicología Organizacional que lo asigne y <button class="ev-link" data-ev="salir">vuelve a ingresar tu contraseña</button>.</p>
     </div>`;
@@ -685,9 +761,9 @@
 
   function miasHtml(st) {
     const lista = st.mias.map(e => `
-      <button class="ev-mia ${e.estado === 'enviada' && !e.confirmacionVencida ? 'ev-mia-nueva' : ''}" data-ev="ver" data-id="${e.id}">
-        <div><strong>${esc(etiquetaPeriodo(e.periodo))}</strong><span class="ev-muted">Evaluó ${esc(e.evaluadorNombre || e.evaluadorId)}${e.estado === 'enviada' && e.venceConfirmar && !e.confirmacionVencida ? ` · confirmar hasta el ${fechaCorta(e.venceConfirmar)}` : ''}</span></div>
-        <div class="ev-mia-der">${chipNivel(e)}${e.estado === 'enviada' ? (e.confirmacionVencida ? chipEstado(e) : '<span class="ev-chip ev-chip-env">Por confirmar</span>') : ''}<i class="fas fa-chevron-right"></i></div>
+      <button class="ev-mia ${e.estado === 'enviada' ? 'ev-mia-nueva' : ''}" data-ev="ver" data-id="${e.id}">
+        <div><strong>${esc(etiquetaPeriodo(e.periodo))}</strong><span class="ev-muted">Evaluó ${esc(e.evaluadorNombre || e.evaluadorId)}</span></div>
+        <div class="ev-mia-der">${chipNivel(e)}${e.estado === 'enviada' ? (e.correccionHasta ? chipEstado(e) : '<span class="ev-chip ev-chip-env">Nueva</span>') : ''}${chipFeedback(e)}<i class="fas fa-chevron-right"></i></div>
       </button>`).join('');
     if (!esEvaluado(st.emp) && !st.mias.length) return '';
     // Reuniones agendadas para conversar resultados (próximas)
@@ -713,56 +789,99 @@
     const e = st.sel;
     const soyEvaluado = String(e.empleadoId) === String(st.emp.id);
     const soyEvaluador = st.ses.equipo.some(m => m.id === e.empleadoId);
-    let acciones = '';
-    if (soyEvaluado && e.estado === 'enviada') {
-      acciones = e.confirmacionVencida
-        ? `<div class="ev-card ev-aviso-card"><i class="fas fa-hourglass-end"></i> <span>El plazo para confirmar esta evaluación venció el ${fechaCorta(e.venceConfirmar)}. Si aún necesitas confirmarla, pide al administrador que lo reabra.</span></div>`
-        : `<div class="ev-card ev-confirmar">
-        <h4 class="ev-h4">Confirma la conversación de retroalimentación</h4>
-        <p class="ev-muted">Al confirmar indicas que conversaste el resultado con tu jefe inmediato y asumes los compromisos acordados. Reemplaza la firma del formato.${e.venceConfirmar ? ` <strong>Plazo: hasta el ${fechaCorta(e.venceConfirmar)}.</strong>` : ''}</p>
-        <textarea data-ev="comentario" maxlength="${MAX_TXT}" rows="3" placeholder="Comentario opcional"></textarea>
-        <button class="ev-btn ev-btn-primary ev-btn-block" data-ev="confirmar" data-id="${e.id}"><i class="fas fa-check"></i> Confirmo que recibí la retroalimentación</button>
-      </div>`;
-    } else if (soyEvaluador && e.estado === 'enviada') {
+    let acciones = '', aviso = '';
+    if (soyEvaluado) {
+      aviso = e.estado === 'confirmada'
+        ? `<div class="ev-aviso ev-aviso-recibida"><i class="fas fa-check-circle"></i> <span><strong>Evaluación recibida el ${fechaDeHora(e.confirmadaEn)}.</strong> Quedó registrada al abrirla: no necesitas confirmarla.</span></div>`
+        : (e.correccionHasta ? `<div class="ev-aviso"><i class="fas fa-pen"></i> Tu evaluador puede corregir esta evaluación hasta el ${fechaCorta(e.correccionHasta)}.</div>` : '');
+      if (!e.comentarioColaborador && e.estado === 'confirmada') {
+        acciones = `<div class="ev-card"><h4 class="ev-h4">Tu comentario (opcional)</h4>
+        <textarea data-ev="comentario" maxlength="${MAX_TXT}" rows="3" placeholder="Qué opinas de tu resultado"></textarea>
+        <div class="ev-actions ev-mt"><button class="ev-btn" data-ev="comentar" data-id="${e.id}"><i class="fas fa-paper-plane"></i> Enviar comentario</button></div></div>`;
+      }
+    } else if (soyEvaluador && (e.estado === 'enviada' || retenida(e))) {
       const pl = e.tipo !== 'DIA75' ? plazoEvaluar(st.ses, e.empleadoId, e.periodo) : { bloqueado: false };
       acciones = pl.bloqueado
         ? `<p class="ev-muted ev-small"><i class="fas fa-lock"></i> El plazo para corregir esta evaluación venció el ${fechaCorta(pl.lim)}.</p>`
-        : `<div class="ev-actions"><button class="ev-btn" data-ev="evaluar" data-tipo="${e.tipo}" data-emp="${esc(e.empleadoId)}" data-periodo="${esc(e.periodo)}"><i class="fas fa-pen"></i> Corregir evaluación</button></div>`;
+        : `<div class="ev-actions"><button class="ev-btn ${e.estado === 'devuelta' ? 'ev-btn-primary' : ''}" data-ev="evaluar" data-tipo="${e.tipo}" data-emp="${esc(e.empleadoId)}" data-periodo="${esc(e.periodo)}"><i class="fas fa-pen"></i> Corregir evaluación</button></div>`;
     }
-    acciones = reunionHtml(st, e, soyEvaluado, soyEvaluador || String(e.evaluadorId) === String(st.ses.empleadoId)) + acciones;
-    if (st.ses.master && e.estado === 'enviada') {
-      acciones += `<div class="ev-actions ev-reabrir"><span class="ev-muted ev-small"><i class="fas fa-user-shield"></i> Administrador · plazo para confirmar ${e.confirmacionVencida ? 'vencido el' : 'hasta el'} ${fechaCorta(e.venceConfirmar)}</span>
-        <label class="ev-small">Dar <input type="number" min="1" max="60" value="3" data-ev="reabrir-dias" class="ev-select ev-select-sm ev-num-corto"> días</label>
-        <button class="ev-btn ev-btn-sm" data-ev="reabrir-confirmar" data-id="${e.id}"><i class="fas fa-unlock"></i> ${e.confirmacionVencida ? 'Reabrir' : 'Extender'}</button></div>`;
+    if (!soyEvaluado && retenida(e)) aviso = sesgoHtml(st, e, soyEvaluador);
+    if (!retenida(e)) acciones = reunionHtml(st, e, soyEvaluado, soyEvaluador || String(e.evaluadorId) === String(st.ses.empleadoId)) + acciones;
+    if (st.ses.master && e.estado === 'confirmada') {
+      acciones += `<div class="ev-actions ev-reabrir"><span class="ev-muted ev-small"><i class="fas fa-user-shield"></i> Administrador · permitir que el evaluador la corrija</span>
+        <label class="ev-small">por <input type="number" min="1" max="60" value="3" data-ev="reabrir-dias" class="ev-select ev-select-sm ev-num-corto"> días</label>
+        <button class="ev-btn ev-btn-sm" data-ev="reabrir-corregir" data-id="${e.id}"><i class="fas fa-unlock"></i> Reabrir</button></div>`;
     }
     acciones += eliminarHtml(st, e);
     const historial = (st.historialDe ? st.historialDe(e) : '');
     return `<div class="ev-topbar"><button class="ev-back" data-ev="volver"><i class="fas fa-arrow-left"></i> Volver</button></div>
-      ${detalleHtml(e, { acciones, historial })}`;
+      ${detalleHtml(e, { acciones, historial, aviso, vista: soyEvaluado ? 'evaluado' : 'evaluador' })}`;
   }
 
-  // ---------------------------------------------------------------- reunión para conversar el resultado
-  // El colaborador la pide; el evaluador la agenda (fecha, hora, lugar) y aparece en el panel del colaborador
+  // ---------------------------------------------------------------- revisión por sesgo (TTHH / Sup. Admin)
+  function sesgoHtml(st, e, soyEvaluador) {
+    const s = e.sesgo || {};
+    const tipo = s.tipo === 'minimo' ? 'todas en la calificación más baja' : 'todas en la calificación más alta';
+    const hecha = soyEvaluador || String(e.evaluadorId) === String(st.ses.empleadoId);
+    if (e.estado === 'devuelta') {
+      return `<div class="ev-card ev-sesgo"><h4 class="ev-h4"><i class="fas fa-undo"></i> Devuelta por TTHH</h4>
+        <p><strong>Qué revisar:</strong> ${esc(s.motivo || '')}</p>
+        <p class="ev-muted ev-small">${hecha ? 'Corrígela y vuelve a enviarla.' : 'El evaluador debe corregirla y volver a enviarla.'} El colaborador todavía no la ve.</p></div>`;
+    }
+    const revisa = st.ses.rrhh && !hecha;
+    return `<div class="ev-card ev-sesgo"><h4 class="ev-h4"><i class="fas fa-balance-scale"></i> ${hecha ? MSG_SESGO : 'Posible sesgo: revisión de TTHH'}</h4>
+      <p>Las ${(e.calificaciones || []).length} calificaciones están ${tipo}. El colaborador no la verá hasta que TTHH la apruebe.</p>
+      ${revisa ? `<textarea data-ev="sesgo-motivo" maxlength="300" rows="2" placeholder="Qué debe revisar el evaluador (obligatorio para devolverla)"></textarea>
+        <div class="ev-actions ev-mt"><button class="ev-btn" data-ev="sesgo-devolver" data-id="${e.id}"><i class="fas fa-undo"></i> Devolver al evaluador</button>
+        <button class="ev-btn ev-btn-primary" data-ev="sesgo-aprobar" data-id="${e.id}"><i class="fas fa-check"></i> Aprobar y enviar</button></div>` : ''}</div>`;
+  }
+
+  async function revisarSesgo(st, id, accion, boton) {
+    const ta = st.cont.querySelector('[data-ev="sesgo-motivo"]');
+    const motivo = ta ? ta.value.trim() : '';
+    if (accion === 'devolver' && !textoValido(motivo)) { toast('Explica al evaluador qué debe revisar (al menos 3 palabras).', 'warning'); if (ta) ta.focus(); return; }
+    const txt = boton.innerHTML;
+    boton.disabled = true;
+    boton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
+    try {
+      const res = await rpc(st.ses, 'eval_sesgo', { id, accion, motivo });
+      if (!res.ok) throw new Error(res.error);
+      reemplazarEval(st, res.evaluacion);
+      toast(accion === 'aprobar' ? 'Evaluación aprobada y enviada al colaborador' : 'Evaluación devuelta al evaluador', 'success');
+      pintar(st);
+    } catch (e) {
+      toast(e.message || String(e), 'error');
+      boton.disabled = false; boton.innerHTML = txt;
+    }
+  }
+
+  // ---------------------------------------------------------------- reunión de feedback
+  // El colaborador la pide o el evaluador la agenda; el evaluador la marca realizada con los compromisos
+  // (obligatorios si el resultado requiere intervención). Obligatoria con menos de 70 % o en el cierre de trimestre.
   function reunionHtml(st, e, soyEvaluado, soyEvaluador) {
-    const r = e.reunion || {};
-    const agendada = r.estado === 'agendada';
-    const pasada = agendada && normFecha(r.fecha) < hoyLocal();
+    const r = e.reunion || {}, f = fb(e);
+    const agendada = r.estado === 'agendada', realizada = f.estado === 'realizada';
     const datos = agendada ? `<div class="ev-reu-datos">
         <div><i class="far fa-calendar"></i> ${esc(fechaLarga(r.fecha))}</div>
         <div><i class="far fa-clock"></i> ${esc(r.hora || '')}</div>
         <div><i class="fas fa-map-marker-alt"></i> ${esc(r.lugar || '')}</div>
         ${r.nota ? `<div class="ev-muted ev-small ev-reu-nota">${esc(r.nota)}</div>` : ''}</div>` : '';
-    const titulo = agendada ? (pasada ? 'Reunión realizada' : 'Reunión agendada') : '';
+    const titulo = agendada ? (normFecha(r.fecha) < hoyLocal() && !realizada ? 'Reunión agendada (por registrar)' : 'Reunión agendada') : '';
+    const hecha = realizada ? `<div class="ev-aviso ev-aviso-recibida"><i class="fas fa-comments"></i> <span><strong>Feedback realizado${r.realizadaEn ? ' el ' + fechaCorta(r.realizadaEn) : ''}.</strong>${e.compromisos ? ' Los compromisos están arriba.' : ''}</span></div>` : '';
+    const obligatorio = f.exigido && !realizada
+      ? `<p class="ev-fb-oblig ${f.vencido ? 'ev-danger' : ''}"><i class="fas fa-exclamation-circle"></i> <span><strong>Feedback obligatorio</strong>${f.motivo === 'trimestre' ? ' por cierre de trimestre' : ': el resultado requiere intervención'}${f.vence ? ` · ${f.vencido ? 'venció el' : 'hasta el'} ${fechaCorta(f.vence)}` : ''}</span></p>` : '';
     if (soyEvaluado) {
-      if (agendada) return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-calendar-check"></i> ${titulo} con ${esc(e.evaluadorNombre || 'tu jefe inmediato')}</h4>${datos}</div>`;
+      if (agendada) return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-calendar-check"></i> ${titulo} con ${esc(e.evaluadorNombre || 'tu jefe inmediato')}</h4>${datos}</div>${hecha}`;
       if (r.estado === 'solicitada') return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-comments"></i> Reunión solicitada</h4>
-        <p class="ev-muted">Pediste conversar este resultado el ${fechaCorta(r.solicitadaEn)}. Tu jefe inmediato la agendará y te llegará un aviso.</p></div>`;
-      if (st.reuPedir) return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-comments"></i> Pedir una reunión</h4>
+        <p class="ev-muted">Pediste conversar este resultado el ${fechaCorta(r.solicitadaEn)}. Tu jefe inmediato la agendará y te llegará un aviso.</p></div>${hecha}`;
+      if (realizada) return hecha;
+      if (st.reuPedir) return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-comments"></i> Pedir una reunión de feedback</h4>
         <p class="ev-muted">Cuéntale a tu jefe inmediato qué te gustaría conversar sobre el resultado.</p>
         <textarea data-ev="reu-motivo" maxlength="300" rows="3" placeholder="Motivo (opcional)"></textarea>
         <div class="ev-actions ev-mt"><button class="ev-btn" data-ev="reu-cerrar">Cancelar</button>
         <button class="ev-btn ev-btn-primary" data-ev="reu-solicitar" data-id="${e.id}"><i class="fas fa-paper-plane"></i> Enviar solicitud</button></div></div>`;
-      return `<div class="ev-actions"><button class="ev-btn" data-ev="reu-pedir"><i class="fas fa-comments"></i> Pedir una reunión para conversar el resultado</button></div>`;
+      const boton = `<div class="ev-actions"><button class="ev-btn ${f.exigido ? 'ev-btn-primary' : ''}" data-ev="reu-pedir"><i class="fas fa-comments"></i> ${f.exigido ? 'Pedir la reunión de feedback' : 'Pedir una reunión de feedback (opcional)'}</button></div>`;
+      return obligatorio ? `<div class="ev-card ev-reu-card">${obligatorio}${boton}</div>` : boton;
     }
     if (soyEvaluador) {
       const pide = r.estado === 'solicitada' || (agendada && r.motivo)
@@ -779,13 +898,29 @@
           <button class="ev-btn ev-btn-primary" data-ev="reu-agendar" data-id="${e.id}"><i class="fas fa-calendar-check"></i> ${agendada ? 'Guardar cambios' : 'Agendar reunión'}</button></div>
           <p class="ev-muted ev-small">El colaborador recibirá un aviso y verá la reunión en su panel.</p></div>`;
       }
-      if (agendada) return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-calendar-check"></i> ${titulo}</h4>${pide}${datos}
-        <div class="ev-actions ev-mt"><button class="ev-btn ev-btn-sm" data-ev="reu-abrir"><i class="fas fa-pen"></i> Reprogramar</button></div></div>`;
-      if (r.estado === 'solicitada') return `<div class="ev-card ev-reu-card ev-reu-alerta">${pide}
-        <div class="ev-actions"><button class="ev-btn ev-btn-primary" data-ev="reu-abrir"><i class="fas fa-calendar-plus"></i> Agendar reunión</button></div></div>`;
-      return `<div class="ev-actions"><button class="ev-btn" data-ev="reu-abrir"><i class="fas fa-calendar-plus"></i> Agendar reunión para conversar el resultado</button></div>`;
+      if (st.reuRealizar) {
+        const oblig = requiereIntervencion(e);
+        const desde = normFecha(e.fechaAplicacion);
+        const fecha = agendada && normFecha(r.fecha) <= hoyLocal() && normFecha(r.fecha) >= desde ? normFecha(r.fecha) : hoyLocal();
+        return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-clipboard-check"></i> Registrar feedback realizado</h4>${obligatorio}
+          <div class="ev-reu-form">
+            <label class="ev-campo"><span>Fecha de la reunión</span><input type="date" data-ev="reu-fecha" min="${desde}" max="${hoyLocal()}" value="${fecha}"></label>
+            <label class="ev-campo ev-campo-ancho"><span>Compromisos acordados${oblig ? ' (obligatorio)' : ' (opcional)'}</span><textarea data-ev="reu-compromisos" maxlength="${MAX_TXT}" rows="3" placeholder="Acciones concretas, con responsable y fecha">${esc(e.compromisos || '')}</textarea></label>
+          </div>
+          <div class="ev-actions"><button class="ev-btn" data-ev="reu-cerrar">Cancelar</button>
+          <button class="ev-btn ev-btn-primary" data-ev="reu-realizar" data-id="${e.id}"><i class="fas fa-check"></i> Guardar feedback realizado</button></div>
+          <p class="ev-muted ev-small">El colaborador recibirá un aviso con los compromisos en su evaluación.</p></div>`;
+      }
+      const btnRealizar = (prim) => realizada ? '' : `<button class="ev-btn ${prim ? 'ev-btn-primary' : ''} ev-btn-sm" data-ev="reu-hecha"><i class="fas fa-clipboard-check"></i> Marcar como realizada</button>`;
+      if (agendada) return `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-calendar-check"></i> ${titulo}</h4>${obligatorio}${pide}${datos}
+        <div class="ev-actions ev-mt"><button class="ev-btn ev-btn-sm" data-ev="reu-abrir"><i class="fas fa-pen"></i> Reprogramar</button>${btnRealizar(true)}</div></div>${hecha}`;
+      if (r.estado === 'solicitada' || obligatorio) return `<div class="ev-card ev-reu-card ev-reu-alerta">${obligatorio}${pide}
+        <div class="ev-actions"><button class="ev-btn ev-btn-sm ev-btn-primary" data-ev="reu-abrir"><i class="fas fa-calendar-plus"></i> Agendar reunión</button>${btnRealizar(false)}</div></div>${hecha}`;
+      if (realizada) return hecha;
+      return `<div class="ev-actions"><button class="ev-btn ev-btn-sm" data-ev="reu-abrir"><i class="fas fa-calendar-plus"></i> Agendar reunión de feedback (opcional)</button>${btnRealizar(false)}</div>`;
     }
-    return agendada ? `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-calendar-check"></i> ${titulo}</h4>${datos}</div>` : '';
+    return (agendada ? `<div class="ev-card ev-reu-card"><h4 class="ev-h4"><i class="fas fa-calendar-check"></i> ${titulo}</h4>${datos}</div>` : '')
+      + (obligatorio ? `<div class="ev-card">${obligatorio}</div>` : '') + hecha;
   }
 
   function reemplazarEval(st, ev) {
@@ -799,8 +934,15 @@
     const val = k => { const el = st.cont.querySelector(`[data-ev="${k}"]`); return el ? el.value.trim() : ''; };
     const p = accion === 'solicitar'
       ? { id, accion, motivo: val('reu-motivo') }
-      : { id, accion, fecha: val('reu-fecha'), hora: val('reu-hora'), lugar: val('reu-lugar'), nota: val('reu-nota') };
+      : accion === 'realizar'
+        ? { id, accion, fecha: val('reu-fecha'), compromisos: val('reu-compromisos') }
+        : { id, accion, fecha: val('reu-fecha'), hora: val('reu-hora'), lugar: val('reu-lugar'), nota: val('reu-nota') };
     if (accion === 'agendar' && (!p.fecha || !p.hora || !p.lugar)) { toast('Completa la fecha, la hora y el lugar.', 'warning'); return; }
+    if (accion === 'realizar') {
+      if (!p.fecha) { toast('Indica la fecha de la reunión.', 'warning'); return; }
+      if (!p.compromisos && requiereIntervencion(buscarEval(st, id))) { toast('Registra los compromisos acordados: son obligatorios con este resultado.', 'warning'); return; }
+      if (p.compromisos && !textoValido(p.compromisos)) { toast(`En Compromisos escribe ${AVISO_TEXTO}.`, 'warning'); return; }
+    }
     const txt = boton.innerHTML;
     boton.disabled = true;
     boton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…';
@@ -808,8 +950,8 @@
       const res = await rpc(st.ses, 'eval_reunion', p);
       if (!res.ok) throw new Error(res.error);
       reemplazarEval(st, res.evaluacion);
-      st.reuPedir = false; st.reuAgendar = false;
-      toast(accion === 'solicitar' ? 'Solicitud enviada a tu jefe inmediato' : 'Reunión agendada: el colaborador recibirá un aviso', 'success');
+      st.reuPedir = false; st.reuAgendar = false; st.reuRealizar = false;
+      toast({ solicitar: 'Solicitud enviada a tu jefe inmediato', realizar: 'Feedback registrado' }[accion] || 'Reunión agendada: el colaborador recibirá un aviso', 'success');
       pintar(st);
     } catch (e) {
       toast(e.message || String(e), 'error');
@@ -817,16 +959,18 @@
     }
   }
 
-  // Admin master: reabre o extiende el plazo para confirmar una evaluación
-  async function reabrirConfirmar(st, id, boton) {
+  // Admin master: permite al evaluador corregir una evaluación ya recibida
+  async function reabrirCorregir(st, id, boton) {
     const el = st.cont.querySelector('[data-ev="reabrir-dias"]');
     const dias = Number(el ? el.value : 3) || 3;
     boton.disabled = true;
     try {
-      const res = await rpc(st.ses, 'eval_reabrir', { tipo: 'confirmar', id, dias });
+      const res = await rpc(st.ses, 'eval_reabrir', { tipo: 'corregir', id, dias });
       if (!res.ok) throw new Error(res.error);
       reemplazarEval(st, res.evaluacion);
-      toast(`Plazo para confirmar hasta el ${fechaCorta(res.evaluacion.venceConfirmar)}`, 'success');
+      configCargada = 0;
+      await cargarConfig(st.ses, true);
+      toast(`El evaluador puede corregirla hasta el ${fechaCorta(res.evaluacion.correccionHasta)}`, 'success');
       pintar(st);
     } catch (e) {
       toast(e.message || String(e), 'error');
@@ -862,11 +1006,14 @@
     arriba(st);
   }
 
+  // Observaciones que faltan (notas que la exigen) o que no sirven (menos de 3 palabras, «no aplica»)
   function faltantesObs(f) {
     const out = [];
     f.cal.forEach((v, i) => { if (OBLIG.includes(v) && !String(f.obs[i] || '').trim()) out.push(i + 1); });
     return out;
   }
+  const invalidasObs = f => f.obs.map((o, i) => (String(o || '').trim() && !textoValido(o) ? i + 1 : 0)).filter(Boolean);
+  const CAMPOS_TXT = { fortalezas: 'Fortalezas observadas', mejoras: 'Oportunidades de mejora', compromisos: 'Compromisos acordados' };
 
   function formHtml(st) {
     const f = st.form, m = f.emp, r = calcular(f.cal);
@@ -879,8 +1026,9 @@
     let cuerpo = '';
     if (f.paso === 1) {
       let dimActual = '';
-      cuerpo = `<div class="ev-card ev-escala"><h4 class="ev-h4">Escala de valoración</h4>${ESCALA.slice().reverse().map(e => `<div class="ev-escala-fila"><span class="ev-c${e.v}">${e.v}</span><div><strong>${e.t}</strong> <span class="ev-muted">${e.d}</span></div></div>`).join('')}
-        <p class="ev-muted ev-small">Evalúa solo lo observado durante el período y frente a lo esperado para el cargo; no compares con otras personas.${OBLIG.length ? ` Las calificaciones ${OBLIG.join(', ').replace(/, (\d+)$/, ' y $1')} requieren una observación con un hecho concreto.` : ''}</p></div>`;
+      cuerpo = `<div class="ev-card ev-escala"><h4 class="ev-h4">Escala de valoración</h4>${ESCALA.slice().reverse().map(e => `<div class="ev-escala-fila"><span class="${claseNota(e.v)}">${e.v}</span><div><strong>${esc(e.t)}.</strong> <span class="ev-muted">${esc(e.d)}</span></div></div>`).join('')}
+        <p class="ev-muted ev-small">Evalúa solo lo observado durante el período y frente a lo esperado para el cargo; no compares con otras personas.${OBLIG.length ? ` Las calificaciones ${OBLIG.join(', ').replace(/, (\d+)$/, ' y $1')} requieren una observación con un hecho concreto.` : ''}</p>
+        <p class="ev-recuerda"><i class="fas fa-info-circle"></i> Recuerda que la justificación de la calificación no admite «no aplica»: escribe al menos 3 palabras.</p></div>`;
       cuerpo += ITEMS.map((it, i) => {
         let cab = '';
         if (it.dim !== dimActual) {
@@ -892,35 +1040,42 @@
         const v = f.cal[i];
         const requiere = OBLIG.includes(v);
         const abierta = requiere || f.abiertas.has(i) || String(f.obs[i] || '').trim();
-        const falta = requiere && !String(f.obs[i] || '').trim() && f.error;
+        const txtObs = String(f.obs[i] || '').trim();
+        const falta = f.error && ((requiere && !txtObs) || (txtObs && !textoValido(txtObs)));
         return `${cab}<div class="ev-item ${v ? 'ev-item-ok' : ''}" id="ev-item-${i}">
-          <div class="ev-item-head"><span class="ev-item-n">${i + 1}</span><div><strong>${esc(it.c)}</strong><p>${esc(f.tipo === 'DIA75' && it.d75 ? it.d75 : it.m)}</p></div><span class="ev-peso">${it.peso}%</span></div>
+          <div class="ev-item-head"><span class="ev-item-n">${i + 1}</span><div><strong>${esc(it.c)}</strong><p>${esc(f.tipo === 'DIA75' && it.d75 ? it.d75 : it.m)}</p>${it.a ? `<p class="ev-alcance"><strong>Qué evaluar:</strong> ${esc(it.a)}</p>` : ''}</div><span class="ev-peso">${it.peso}%</span></div>
           <div class="ev-opciones" role="radiogroup" aria-label="${esc(it.c)}">${ESCALA.map(e => `
-            <button type="button" role="radio" aria-checked="${v === e.v}" class="ev-op ev-c${e.v} ${v === e.v ? 'ev-op-on' : ''}" data-ev="cal" data-i="${i}" data-v="${e.v}" title="${esc(e.d)}"><b>${e.v}</b><small>${e.t}</small></button>`).join('')}
+            <button type="button" role="radio" aria-checked="${v === e.v}" class="ev-op ${claseNota(e.v)} ${v === e.v ? 'ev-op-on' : ''}" data-ev="cal" data-i="${i}" data-v="${e.v}" aria-label="${e.v}: ${esc(e.t)}" title="${esc(e.t)}. ${esc(e.d)}"><b>${e.v}</b></button>`).join('')}
           </div>
           ${abierta
-            ? `<textarea class="ev-obs ${falta ? 'ev-obs-falta' : ''}" data-ev="obs" data-i="${i}" maxlength="${MAX_OBS}" rows="2" placeholder="${requiere ? 'Obligatorio: ¿qué pasó y cuándo?' : 'Observación (opcional)'}">${esc(f.obs[i] || '')}</textarea>`
+            ? `<textarea class="ev-obs ${falta ? 'ev-obs-falta' : ''}" data-ev="obs" data-i="${i}" maxlength="${MAX_OBS}" rows="2" placeholder="${requiere ? 'Obligatorio: ¿qué pasó y cuándo? (mínimo 3 palabras)' : 'Observación (opcional, mínimo 3 palabras)'}">${esc(f.obs[i] || '')}</textarea>`
             : `<button type="button" class="ev-link ev-small" data-ev="abrir-obs" data-i="${i}"><i class="fas fa-plus"></i> Agregar observación</button>`}
         </div>`;
       }).join('');
+      if (haySesgo(f.cal)) cuerpo += `<div class="ev-card ev-sesgo"><i class="fas fa-balance-scale"></i> <strong>${MSG_SESGO}</strong> Revisa tus calificaciones: si las mantienes, TTHH la revisará antes de que la vea el colaborador.</div>`;
     } else if (f.paso === 2) {
-      const campo = (k, t, ph) => `<label class="ev-campo"><span>${t}</span><textarea data-ev="txt" data-k="${k}" maxlength="${MAX_TXT}" rows="3" placeholder="${ph}">${esc(f[k])}</textarea></label>`;
+      const campo = (k, t, ph) => `<label class="ev-campo"><span>${t}</span><textarea class="${f.error && String(f[k] || '').trim() && !textoValido(f[k]) ? 'ev-obs-falta' : ''}" data-ev="txt" data-k="${k}" maxlength="${MAX_TXT}" rows="3" placeholder="${ph}">${esc(f[k])}</textarea></label>`;
       cuerpo = `<div class="ev-card">
         <h4 class="ev-h4">Retroalimentación y compromisos</h4>
+        <p class="ev-muted ev-small">Lo que escribas necesita al menos 3 palabras y no admite «no aplica».${requiereIntervencion(r) ? ' Con este resultado los compromisos son obligatorios: podrás registrarlos al marcar la reunión de feedback como realizada.' : ''}</p>
         ${campo('fortalezas', 'Fortalezas observadas', 'Lo que hizo especialmente bien en el período')}
         ${campo('mejoras', 'Oportunidades de mejora', 'Comportamientos a reforzar')}
         ${campo('compromisos', `Compromisos acordados para el próximo ${textoPeriodo()}`, 'Acciones concretas, vinculadas a sus KPIs cuando aplique')}
         <label class="ev-campo"><span>Fecha de la próxima evaluación</span><input type="date" data-ev="proxima" value="${esc(f.proxima)}" min="${hoyLocal()}"></label>
       </div>`;
     } else {
-      cuerpo = `<div class="ev-card"><h4 class="ev-h4">Resultado</h4>${resumenHtml(r)}</div>
-        <div class="ev-card ev-muted ev-small">Al enviar, ${esc(m.nombre || 'el colaborador')} verá el resultado en su app y deberá confirmarlo después de la conversación de retroalimentación (15–20 minutos). Puedes corregirla mientras no la confirme.</div>`;
+      const sesgo = haySesgo(f.cal);
+      const exige = requiereIntervencion(r) || (f.tipo !== 'DIA75' && esCierreTrimestre(f.periodo));
+      const dias = Number((CFG.plazos || {}).feedbackDias) || 7;
+      cuerpo = `<div class="ev-card"><h4 class="ev-h4">Resultado</h4>${resumenHtml(Object.assign({ periodo: f.tipo === 'DIA75' ? '' : f.periodo }, r))}</div>
+        ${sesgo ? `<div class="ev-card ev-sesgo"><h4 class="ev-h4"><i class="fas fa-balance-scale"></i> ${MSG_SESGO}</h4><p>Todas las calificaciones están en el mismo extremo. Al enviarla quedará en revisión: ${esc(m.nombre || 'el colaborador')} no la verá hasta que TTHH la apruebe o te la devuelva.</p></div>` : ''}
+        <div class="ev-card ev-muted ev-small">${sesgo ? '' : `Al enviar, ${esc(m.nombre || 'el colaborador')} verá el resultado en su app; queda recibida cuando la abra y hasta entonces puedes corregirla. `}${exige ? `<strong>El feedback es obligatorio:</strong> tienes ${dias} días para realizarlo (15–20 minutos) y marcarlo como realizado.` : 'El feedback de este período es opcional.'}</div>`;
     }
     const pie = f.paso === 1
       ? `<span class="ev-progreso"><b>${r.respondidos}</b> de ${ITEMS.length}</span><button class="ev-btn ev-btn-primary" data-ev="paso" data-p="2">Siguiente <i class="fas fa-chevron-right"></i></button>`
       : f.paso === 2
         ? `<button class="ev-btn" data-ev="paso" data-p="1"><i class="fas fa-chevron-left"></i> Anterior</button><button class="ev-btn ev-btn-primary" data-ev="paso" data-p="3">Siguiente <i class="fas fa-chevron-right"></i></button>`
-        : `<button class="ev-btn" data-ev="paso" data-p="2"><i class="fas fa-chevron-left"></i> Anterior</button><button class="ev-btn ev-btn-primary" data-ev="enviar" ${f.enviando ? 'disabled' : ''}>${f.enviando ? '<i class="fas fa-spinner fa-spin"></i> Enviando…' : '<i class="fas fa-paper-plane"></i> Enviar evaluación'}</button>`;
+        : `<button class="ev-btn" data-ev="paso" data-p="2"><i class="fas fa-chevron-left"></i> Anterior</button><button class="ev-btn ev-btn-primary" data-ev="enviar" ${f.enviando ? 'disabled' : ''}>${f.enviando ? '<i class="fas fa-spinner fa-spin"></i> Enviando…' : haySesgo(f.cal) ? '<i class="fas fa-user-shield"></i> Enviar a revisión de TTHH' : '<i class="fas fa-paper-plane"></i> Enviar evaluación'}</button>`;
     return `<div class="ev-topbar"><button class="ev-back" data-ev="cancelar"><i class="fas fa-arrow-left"></i> ${f.tipo === 'DIA75' ? 'Seguimiento Día 75' : 'Evaluación de desempeño'}</button></div>
       <div class="ev-info">
         <div><i class="far fa-calendar"></i><span>Período</span>${periodoCtl}</div>
@@ -950,7 +1105,7 @@
       if (!res.ok) throw new Error(res.error || 'No se pudo guardar');
       st.hechas = st.hechas.filter(e => e.id !== res.evaluacion.id).concat([res.evaluacion]);
       st.form = null; st.vista = 'inicio';
-      toast(`Evaluación de ${m.nombre || m.id} enviada`, 'success');
+      toast(res.enRevision ? 'Evaluación enviada a revisión de TTHH' : `Evaluación de ${m.nombre || m.id} enviada`, 'success');
       pintar(st);
     } catch (e) {
       f.enviando = false; f.error = e.message || String(e);
@@ -982,6 +1137,12 @@
         if (sin > -1) { f.error = `Falta calificar el comportamiento ${sin + 1}.`; pintar(st); irA(st, sin); return; }
         const obs = faltantesObs(f);
         if (obs.length) { f.error = `Escribe una observación que sustente la calificación ${obs.length > 1 ? 'de los ítems' : 'del ítem'} ${obs.join(', ')}.`; pintar(st); irA(st, obs[0] - 1); return; }
+        const inv = invalidasObs(f);
+        if (inv.length) { f.error = `La justificación de${inv.length > 1 ? ' los ítems' : 'l ítem'} ${inv.join(', ')} necesita ${AVISO_TEXTO}.`; pintar(st); irA(st, inv[0] - 1); return; }
+      }
+      if (p > f.paso && f.paso === 2) {
+        const mal = Object.keys(CAMPOS_TXT).find(k => String(f[k] || '').trim() && !textoValido(f[k]));
+        if (mal) { f.error = `En «${CAMPOS_TXT[mal]}» escribe ${AVISO_TEXTO}.`; pintar(st); arriba(st); return; }
       }
       f.error = ''; f.paso = p; pintar(st); arriba(st);
     } else if (a === 'enviar') {
@@ -1004,15 +1165,17 @@
       if (st.confirmandoEliminar) { const t = st.cont.querySelector('textarea[data-ev="motivo-eliminar"]'); if (t) t.focus({ preventScroll: true }); }
     } else if (a === 'eliminar-ok') {
       eliminarEval(st, Number(b.dataset.id), b);
-    } else if (a === 'confirmar') {
-      confirmar(st, Number(b.dataset.id), b);
-    } else if (a === 'reu-pedir' || a === 'reu-abrir' || a === 'reu-cerrar') {
-      st.reuPedir = a === 'reu-pedir'; st.reuAgendar = a === 'reu-abrir';
+    } else if (a === 'comentar') {
+      comentar(st, Number(b.dataset.id), b);
+    } else if (a === 'reu-pedir' || a === 'reu-abrir' || a === 'reu-hecha' || a === 'reu-cerrar') {
+      st.reuPedir = a === 'reu-pedir'; st.reuAgendar = a === 'reu-abrir'; st.reuRealizar = a === 'reu-hecha';
       repintarSinSalto(st);
-    } else if (a === 'reu-solicitar' || a === 'reu-agendar') {
-      reunion(st, Number(b.dataset.id), a === 'reu-solicitar' ? 'solicitar' : 'agendar', b);
-    } else if (a === 'reabrir-confirmar') {
-      reabrirConfirmar(st, Number(b.dataset.id), b);
+    } else if (a === 'reu-solicitar' || a === 'reu-agendar' || a === 'reu-realizar') {
+      reunion(st, Number(b.dataset.id), a.slice(4), b);
+    } else if (a === 'sesgo-aprobar' || a === 'sesgo-devolver') {
+      revisarSesgo(st, Number(b.dataset.id), a.slice(6), b);
+    } else if (a === 'reabrir-corregir') {
+      reabrirCorregir(st, Number(b.dataset.id), b);
     } else if (a === 'recargar') {
       cargar(st);
     } else if (a === 'salir') {
@@ -1047,21 +1210,40 @@
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  async function confirmar(st, id, boton) {
-    const ta = st.cont.querySelector('textarea[data-ev="comentario"]');
-    boton.disabled = true;
-    boton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Confirmando…';
+  // Al abrir su evaluación, el colaborador la deja recibida (sin botón de confirmación)
+  async function marcarRecibida(st, e) {
+    if (!e || e.estado !== 'enviada' || e.correccionHasta || !st.ses) return;
+    if (String(e.empleadoId) !== String(st.ses.empleadoId)) return;
+    st.abriendo = st.abriendo || new Set();
+    if (st.abriendo.has(e.id)) return;
+    st.abriendo.add(e.id);
     try {
-      const res = await rpc(st.ses, 'eval_confirmar', { id, comentario: ta ? ta.value : '' });
+      const res = await rpc(st.ses, 'eval_confirmar', { id: e.id });
       if (!res.ok) throw new Error(res.error);
-      st.mias = st.mias.map(e => e.id === id ? res.evaluacion : e);
-      st.sel = res.evaluacion;
-      toast('Evaluación confirmada. ¡Gracias!', 'success');
-      pintar(st);
+      reemplazarEval(st, res.evaluacion);
+      // No repintar si el colaborador ya está escribiendo el motivo de la reunión
+      if (st.vista === 'detalle' && st.sel && st.sel.id === e.id && !st.reuPedir) repintarSinSalto(st);
+    } catch (err) {
+      console.warn('Evaluaciones: no se pudo marcar como recibida', err.message || err);   // se reintenta al volver a abrirla
+    } finally { st.abriendo.delete(e.id); }
+  }
+
+  async function comentar(st, id, boton) {
+    const ta = st.cont.querySelector('textarea[data-ev="comentario"]');
+    const comentario = ta ? ta.value.trim() : '';
+    if (!textoValido(comentario)) { toast('En tu comentario escribe al menos 3 palabras.', 'warning'); if (ta) ta.focus(); return; }
+    const txt = boton.innerHTML;
+    boton.disabled = true;
+    boton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…';
+    try {
+      const res = await rpc(st.ses, 'eval_confirmar', { id, comentario });
+      if (!res.ok) throw new Error(res.error);
+      reemplazarEval(st, res.evaluacion);
+      toast('Comentario enviado', 'success');
+      repintarSinSalto(st);
     } catch (e) {
       toast(e.message || String(e), 'error');
-      boton.disabled = false;
-      boton.innerHTML = '<i class="fas fa-check"></i> Confirmo que recibí la retroalimentación';
+      boton.disabled = false; boton.innerHTML = txt;
     }
   }
 
@@ -1179,7 +1361,7 @@
     st.todas = [];
     st.empleados = opts.empleados;
     st.rVista = 'dashboard';
-    st.filtro = { periodo: periodoPorDefecto(), q: '', unidad: '', area: '', estado: '', nivel: '', orden: '' };
+    st.filtro = { periodo: periodoPorDefecto(), q: '', unidad: '', area: '', estado: '', nivel: '', interv: '', orden: '' };
     st.alIniciar = async () => {
       if (!st.ses.rrhh) { st.vista = 'sin-permiso'; return pintarResultados(st, opts); }
       await cargarTodas(st, opts);
@@ -1200,6 +1382,7 @@
       if (a === 'r-unidad') { st.filtro.unidad = el.value; st.filtro.area = ''; pintarResultados(st, opts); }
       if (a === 'r-area') { st.filtro.area = el.value; pintarResultados(st, opts); }
       if (a === 'r-estado') { st.filtro.estado = el.value; pintarResultados(st, opts); }
+      if (a === 'r-interv') { st.filtro.interv = el.value; pintarResultados(st, opts); }
       if (a === 'r-nivel') { st.filtro.nivel = el.value; pintarResultados(st, opts); }
     };
     st.onInput = (a, el) => {
@@ -1307,6 +1490,7 @@
     const filas = todas.filter(x =>
       (!f.estado || x.estado === f.estado) &&
       (!f.nivel || (x.ev && nivelEval(x.ev) === f.nivel)) &&
+      (!f.interv || (x.ev && !retenida(x.ev) && requiereIntervencion(x.ev) && (f.interv === 'todas' || (f.interv === 'Vencida' ? fb(x.ev).vencido : estadoIntervencion(x.ev) === f.interv)))) &&
       (!q || `${x.emp.nombre} ${x.emp.id} ${unidadDe(x.emp)} ${areaDe(x.emp)} ${x.evaluador}`.toLowerCase().includes(q)));
     // Ordenar por el resultado general; quien aún no tiene resultado va al final
     if (f.orden) filas.sort((a, b) => {
@@ -1314,7 +1498,8 @@
       if (pa === null || pb === null) return pa === pb ? 0 : (pa === null ? 1 : -1);
       return f.orden === 'asc' ? pa - pb : pb - pa;
     });
-    const conEval = todas.filter(x => x.ev);
+    const conEval = todas.filter(x => x.ev && !retenida(x.ev));   // las que revisa TTHH no cuentan
+    const interv = conEval.filter(x => requiereIntervencion(x.ev));
     const prom = conEval.length ? conEval.reduce((s, x) => s + Number(x.ev.porcentaje), 0) / conEval.length : null;
     const cuenta = k => todas.filter(x => x.estado === k).length;
     const unidades = [...new Set((opts.empleados() || []).map(unidadDe).filter(Boolean))].sort();
@@ -1347,12 +1532,13 @@
         <div class="ev-kpis">
           <div class="ev-kpi"><span>A evaluar</span><strong>${todas.length}</strong></div>
           <div class="ev-kpi"><span>Enviadas</span><strong>${cuenta('enviada')}</strong></div>
-          <div class="ev-kpi"><span>Confirmadas</span><strong class="ev-ok">${cuenta('confirmada')}</strong></div>
+          <div class="ev-kpi"><span>Recibidas</span><strong class="ev-ok">${cuenta('confirmada')}</strong>${cuenta('revision') + cuenta('devuelta') ? `<small class="ev-danger">${cuenta('revision') + cuenta('devuelta')} en revisión por sesgo</small>` : ''}</div>
           <div class="ev-kpi"><span>Pendientes</span><strong class="ev-warn">${cuenta('pendiente')}</strong>${cuenta('vencida') ? `<small>${cuenta('vencida')} con plazo vencido</small>` : ''}</div>
           <div class="ev-kpi"><span>Sin evaluador</span><strong class="ev-danger">${cuenta('sin-evaluador')}</strong></div>
-          <div class="ev-kpi"><span>Promedio</span><strong>${prom === null ? '—' : pct(prom)}</strong></div>
+          <div class="ev-kpi"><span>Intervención inmediata</span><strong class="ev-danger">${interv.length}</strong>${interv.length ? `<small>${interv.filter(x => estadoIntervencion(x.ev) !== 'Atendida').length} sin atender</small>` : ''}</div>
+          <div class="ev-kpi"><span>Promedio</span><strong class="${prom === null ? '' : clasePct(prom) + ' ev-kpi-nivel'}">${prom === null ? '—' : pct(prom)}</strong></div>
         </div>
-        ${conEval.length ? `<div class="ev-dims ev-dims-inline">${DIMENSIONES.map(d => `<div class="ev-dim"><div class="ev-dim-top"><span>${d.t}</span><strong>${pct(promDim(d.k))}</strong></div><div class="ev-bar"><div class="ev-bar-fill ${claseNivel(nivelDe(promDim(d.k)))}" style="width:${Math.round(promDim(d.k) * 100)}%"></div></div></div>`).join('')}</div>
+        ${conEval.length ? `<div class="ev-dims ev-dims-inline">${DIMENSIONES.map(d => `<div class="ev-dim"><div class="ev-dim-top"><span>${d.t}</span><strong class="ev-tx-k ${clasePct(promDim(d.k))}">${pct(promDim(d.k))}</strong></div><div class="ev-bar"><div class="ev-bar-fill ${claseNivel(nivelDe(promDim(d.k)))}" style="width:${Math.round(promDim(d.k) * 100)}%"></div></div></div>`).join('')}</div>
         <p class="ev-muted ev-small">Promedio por dimensión del período: indica dónde reforzar la capacitación.</p>` : ''}
       </div>
       <div class="ev-card">
@@ -1362,21 +1548,26 @@
             <option value="">Todo el desempeño</option>
             ${NIVELES.map(n => `<option value="${esc(n.n)}" ${n.n === f.nivel ? 'selected' : ''}>${esc(n.n)}</option>`).join('')}
           </select>
+          <select class="ev-select" data-ev="r-interv" title="Intervención inmediata">
+            <option value="">Toda intervención</option>
+            ${[['todas', 'Con intervención inmediata'], ['Pendiente', 'Intervención pendiente'], ['Agendada', 'Intervención agendada'], ['Atendida', 'Intervención atendida'], ['Vencida', 'Plazo de feedback vencido']].map(([v, tx]) => `<option value="${v}" ${v === f.interv ? 'selected' : ''}>${tx}</option>`).join('')}
+          </select>
           <select class="ev-select" data-ev="r-estado" title="Estado de la evaluación">
             <option value="">Toda evaluación</option>
-            ${[['pendiente', 'Pendientes'], ['en-prueba', 'En período de prueba'], ['vencida', 'Plazo vencido'], ['enviada', 'Enviadas'], ['confirmada', 'Confirmadas'], ['sin-evaluador', 'Sin evaluador']].map(([v, t]) => `<option value="${v}" ${v === f.estado ? 'selected' : ''}>${t}</option>`).join('')}
+            ${[['pendiente', 'Pendientes'], ['en-prueba', 'En período de prueba'], ['vencida', 'Plazo vencido'], ['enviada', 'Enviadas'], ['confirmada', 'Recibidas'], ['revision', 'En revisión TTHH'], ['devuelta', 'Devueltas por TTHH'], ['sin-evaluador', 'Sin evaluador']].map(([v, t]) => `<option value="${v}" ${v === f.estado ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
         </div>
         <div class="ev-tabla-wrap"><table class="ev-tabla">
-          <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th class="ev-th-orden" data-ev="r-orden" title="Ordenar por resultado" style="cursor:pointer;user-select:none">Resultado <i class="fas ${f.orden === 'desc' ? 'fa-sort-amount-down' : f.orden === 'asc' ? 'fa-sort-amount-up' : 'fa-sort'}"></i></th><th>Desempeño</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
-          <tbody>${filas.map(x => `<tr ${evalsDe(st, x.emp.id).length ? `data-ev="persona" data-emp="${esc(x.emp.id)}" class="ev-fila-click" title="Ver dashboard del colaborador"` : ''}>
+          <thead><tr><th>Colaborador</th><th>Evaluador</th><th>Estado</th><th class="ev-th-orden" data-ev="r-orden" title="Ordenar por resultado" style="cursor:pointer;user-select:none">Resultado <i class="fas ${f.orden === 'desc' ? 'fa-sort-amount-down' : f.orden === 'asc' ? 'fa-sort-amount-up' : 'fa-sort'}"></i></th><th>Desempeño</th><th>Intervención<br>inmediata</th>${DIMENSIONES.map(d => `<th class="ev-num">${d.corto}</th>`).join('')}</tr></thead>
+          <tbody>${filas.map(x => `<tr ${retenida(x.ev) ? `data-ev="ver" data-id="${x.ev.id}" class="ev-fila-click" title="Ver evaluación"` : evalsDe(st, x.emp.id).length ? `data-ev="persona" data-emp="${esc(x.emp.id)}" class="ev-fila-click" title="Ver dashboard del colaborador"` : ''}>
             <td><strong>${esc(x.emp.nombre || x.emp.id)}</strong>${x.prueba !== null ? ` <span class="ev-chip ev-chip-warn" title="Ingresó el ${esc(fechaCorta(x.emp.fecha_ingreso || x.emp.fechaIngreso))}">Prueba · día ${x.prueba}</span>` : ''}${x.ev && x.ev.tipo === 'DIA75' && f.periodo !== 'DIA75' ? ' <span class="ev-chip ev-chip-pend">Día 75</span>' : ''}${x.ev && f.periodo === 'TODAS' && x.ev.tipo !== 'DIA75' ? ` <span class="ev-chip ev-chip-pend">${esc(etiquetaPeriodo(x.ev.periodo))}</span>` : ''}<div class="ev-muted ev-small">${esc(subtituloEmp(x.emp))}</div></td>
             <td>${esc(x.evaluador || '—')}</td>
             <td>${x.ev ? chipEstado(x.ev) : etiquetaEstado[x.estado]}</td>
-            <td><strong>${x.ev ? pct(x.ev.porcentaje) : '<span class="ev-muted">—</span>'}</strong></td>
+            <td><strong class="ev-tx-k ${x.ev ? clasePct(x.ev.porcentaje) : ''}">${x.ev ? pct(x.ev.porcentaje) : '<span class="ev-muted">—</span>'}</strong></td>
             <td>${chipDesempeno(x.ev)}</td>
-            ${DIMENSIONES.map(d => `<td class="ev-num">${x.ev ? pct((x.ev.dimensiones[d.k] || {}).porcentaje) : '—'}</td>`).join('')}
-          </tr>`).join('') || `<tr><td colspan="${5 + DIMENSIONES.length}" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>`}</tbody>
+            <td>${x.ev && !retenida(x.ev) ? chipIntervencion(x.ev) : '<span class="ev-muted">—</span>'}</td>
+            ${DIMENSIONES.map(d => { const pd = x.ev ? (x.ev.dimensiones[d.k] || {}).porcentaje : null; return `<td class="ev-num">${x.ev ? `<strong class="ev-tx-k ${clasePct(pd)}">${pct(pd)}</strong>` : '—'}</td>`; }).join('')}
+          </tr>`).join('') || `<tr><td colspan="${6 + DIMENSIONES.length}" class="ev-vacio">Sin colaboradores para este filtro.</td></tr>`}</tbody>
         </table></div>
         <p class="ev-muted ev-small">${filas.length} de ${todas.length}. Haz clic en un colaborador para ver su dashboard. "A evaluar" incluye a quienes tienen status EVALUADO y ${f.periodo === 'TODAS' ? 'tienen alguna evaluación registrada (todas, de cualquier período)' : f.periodo === 'DIA75' ? 'están entre los días 60 y 120 desde su ingreso' : 'están activos, incluidos quienes están en período de prueba (se indica el día en que van; su resultado es la evaluación Día 75 si la tienen en este período)'}.</p>
       </div>
@@ -1385,7 +1576,7 @@
   }
 
   function historialHtml(st, e) {
-    const lista = (st.todas || []).filter(x => x.empleadoId === e.empleadoId).sort((a, b) => String(a.periodo).localeCompare(String(b.periodo)));
+    const lista = (st.todas || []).filter(x => x.empleadoId === e.empleadoId && !retenida(x)).sort((a, b) => String(a.periodo).localeCompare(String(b.periodo)));
     if (lista.length < 2) return '';
     return `<div class="ev-card"><h4 class="ev-h4">Tendencia del colaborador</h4>
       <p class="ev-muted ev-small">No decidas por un solo mes: revisa la evolución de los últimos meses.</p>
@@ -1409,11 +1600,11 @@
   // Todas las evaluaciones conocidas de un colaborador (consolidado, equipo o propias), sin duplicar
   function evalsDe(st, empId) {
     const vistos = new Map();
-    [].concat(st.todas || [], st.hechas || [], st.mias || []).forEach(e => { if (String(e.empleadoId) === String(empId)) vistos.set(e.id, e); });
+    [].concat(st.todas || [], st.hechas || [], st.mias || []).forEach(e => { if (String(e.empleadoId) === String(empId) && !retenida(e)) vistos.set(e.id, e); });
     return Array.from(vistos.values()).sort(ordenEval);
   }
 
-  // Línea de tendencia en SVG (sin librerías): bandas de nivel en 65/75/85/95 %
+  // Línea de tendencia en SVG (sin librerías): bandas en el inicio de cada categoría
   function lineaSvg(serie, opciones = {}) {
     if (!serie.length) return '<p class="ev-muted">Sin datos todavía.</p>';
     const W = 640, H = opciones.alto || 190, L = 38, R = 14, T = 14, B = 30;
@@ -1433,7 +1624,7 @@
 
   function barraH(etiqueta, v, extra = '') {
     const p = Math.max(0, Math.min(1, Number(v) || 0));
-    return `<div class="ev-dim"><div class="ev-dim-top"><span>${etiqueta}</span><strong>${pct(p)}${extra}</strong></div>
+    return `<div class="ev-dim"><div class="ev-dim-top"><span>${etiqueta}</span><strong><span class="ev-tx-k ${clasePct(p)}">${pct(p)}</span>${extra}</strong></div>
       <div class="ev-bar"><div class="ev-bar-fill ${claseNivel(nivelDe(p))}" style="width:${Math.round(p * 100)}%"></div></div></div>`;
   }
 
@@ -1464,14 +1655,14 @@
     const items = ultC ? ITEMS.map((it, i) => ({ i, it, ult: Number(ultC.calificaciones[i]) || 0, prom: promItem(i) || 0 })) : [];
     const debiles = items.slice().sort((a, b) => a.prom - b.prom || a.ult - b.ult).slice(0, 3);
     const fuertes = items.slice().sort((a, b) => b.prom - a.prom || b.ult - a.ult).slice(0, 3);
-    const lista = l => l.map(x => `<li><span>${esc(x.it.c)}</span><strong class="ev-c${Math.round(x.prom)}">${(Math.round(x.prom * 10) / 10).toString()}</strong></li>`).join('');
+    const lista = l => l.map(x => `<li><span>${esc(x.it.c)}</span><strong class="${claseNota(x.prom)}">${(Math.round(x.prom * 10) / 10).toString()}</strong></li>`).join('');
 
     return cab + `
       <div class="ev-kpis">
         <div class="ev-kpi"><span>Última evaluación</span><strong class="${claseNivel(nivelEval(ult))} ev-kpi-nivel">${pct(ult.porcentaje)}</strong><small>${esc(nivelEval(ult))} · ${esc(etiquetaPeriodo(ult.periodo))}</small></div>
         <div class="ev-kpi"><span>Promedio</span><strong>${pct(prom)}</strong><small>${evals.length} evaluación(es)</small></div>
         <div class="ev-kpi"><span>Vs. anterior</span><strong class="${delta === null ? '' : delta >= 0 ? 'ev-ok' : 'ev-danger'}">${delta === null ? '—' : puntos(delta)}</strong><small>${ant ? esc(etiquetaPeriodo(ant.periodo)) : 'Sin evaluación previa'}</small></div>
-        <div class="ev-kpi"><span>Estado</span><strong class="ev-kpi-txt">${ult.estado === 'confirmada' ? 'Confirmada' : 'Por confirmar'}</strong><small>${ult.proximaEvaluacion ? 'Próxima: ' + fechaCorta(ult.proximaEvaluacion) : ''}</small></div>
+        <div class="ev-kpi"><span>Estado</span><strong class="ev-kpi-txt">${ult.estado === 'confirmada' ? 'Recibida' : 'Sin abrir'}</strong><small>${ult.proximaEvaluacion ? 'Próxima: ' + fechaCorta(ult.proximaEvaluacion) : ''}</small></div>
       </div>
       <div class="ev-card"><h4 class="ev-h4">Evolución del resultado</h4>${lineaSvg(evals.map(e => ({ t: etiquetaCorta(e.periodo), v: Number(e.porcentaje) })), { titulo: 'Evolución de ' + nombre })}
         <p class="ev-muted ev-small">Líneas guía: ${NIVELES.filter(n => Number(n.min) > 0).slice().reverse().map(n => `${Math.round(Number(n.min) * 100)} % ${esc(n.n)}`).join(' · ')}. Mira la tendencia de varios meses, no un mes aislado.</p></div>
@@ -1491,14 +1682,14 @@
         <div class="ev-tabla-wrap ev-tabla-libre"><table class="ev-tabla">
           <thead><tr><th>Competencia</th><th class="ev-num">Peso</th><th class="ev-num">Última</th><th class="ev-num">Promedio</th><th>Histórico</th></tr></thead>
           <tbody>${items.map(x => `<tr><td>${x.i + 1}. ${esc(x.it.c)}</td><td class="ev-num">${x.it.peso}%</td>
-            <td class="ev-num"><span class="ev-cal-pill ev-c${x.ult}">${x.ult || '–'}</span></td>
+            <td class="ev-num"><span class="ev-cal-pill ${claseNota(x.ult)}">${x.ult || '–'}</span></td>
             <td class="ev-num">${(Math.round(x.prom * 10) / 10).toString()}</td>
-            <td><div class="ev-mini">${evC.map(e => { const v = Number(e.calificaciones[x.i]) || 0; return `<span class="ev-c${v}" style="height:${Math.round(v / escalaMax() * 100)}%" title="${esc(etiquetaPeriodo(e.periodo))}: ${v}"></span>`; }).join('')}</div></td></tr>`).join('')}</tbody>
+            <td><div class="ev-mini">${evC.map(e => { const v = Number(e.calificaciones[x.i]) || 0; return `<span class="${claseNota(v)}" style="height:${Math.round(v / escalaMax() * 100)}%" title="${esc(etiquetaPeriodo(e.periodo))}: ${v}"></span>`; }).join('')}</div></td></tr>`).join('')}</tbody>
         </table></div></div>` : ''}
       <div class="ev-card"><h4 class="ev-h4">Historial</h4>${evals.slice().reverse().map(e => `
         <button class="ev-mia" data-ev="ver" data-id="${e.id}">
           <div><strong>${esc(etiquetaPeriodo(e.periodo))}</strong><span class="ev-muted">Evaluó ${esc(e.evaluadorNombre || e.evaluadorId)} · ${fechaCorta(e.fechaAplicacion)}</span></div>
-          <div class="ev-mia-der">${chipNivel(e)}${chipEstado(e)}<i class="fas fa-chevron-right"></i></div>
+          <div class="ev-mia-der">${chipNivel(e)}${chipEstado(e)}${chipFeedback(e)}<i class="fas fa-chevron-right"></i></div>
         </button>`).join('')}</div>`;
   }
 
@@ -1506,22 +1697,23 @@
   function dashboardHtml(st, opts) {
     const f = st.filtro;
     const filas = filasResultados(st, opts);
-    const conEval = filas.filter(x => x.ev);
+    const conEval = filas.filter(x => x.ev && !retenida(x.ev));
+    const enRevision = filas.filter(x => x.ev && retenida(x.ev));
     const prom = promedio(conEval.map(x => Number(x.ev.porcentaje)));
     const cobertura = filas.length ? conEval.length / filas.length : 0;
-    const bajoUmbral = e => Number(e.porcentaje) < META;   // en la categoría más baja
-    const nivelBajo = (NIVELES[NIVELES.length - 1] || {}).n || '';
+    const bajoUmbral = requiereIntervencion;
     const enRiesgo = conEval.filter(x => bajoUmbral(x.ev));
+    const sinAtender = enRiesgo.filter(x => estadoIntervencion(x.ev) !== 'Atendida');
 
     // Tendencia por período (últimos 12 meses u 8 trimestres con datos)
     const meses = periodosDisponibles(trimestral() ? 8 : 12).slice().reverse();
     const serie = meses.map(m => {
-      const ev = st.todas.filter(e => e.tipo === TIPO_P() && e.periodo === m);
+      const ev = st.todas.filter(e => e.tipo === TIPO_P() && e.periodo === m && !retenida(e));
       return ev.length ? { t: etiquetaCorta(m), v: promedio(ev.map(e => Number(e.porcentaje))), n: `${ev.length} eval.` } : null;
     }).filter(Boolean);
     let deltaMes = null;
     if (f.periodo !== 'DIA75' && f.periodo !== 'TODAS') {
-      const prev = st.todas.filter(e => e.tipo !== 'DIA75' && e.periodo === periodoAnterior(f.periodo));
+      const prev = st.todas.filter(e => e.tipo !== 'DIA75' && e.periodo === periodoAnterior(f.periodo) && !retenida(e));
       if (prev.length && prom !== null) deltaMes = prom - promedio(prev.map(e => Number(e.porcentaje)));
     }
 
@@ -1552,32 +1744,36 @@
       const ant = idx > 0 ? hist[idx - 1] : null;
       const caida = ant ? Number(x.ev.porcentaje) - Number(ant.porcentaje) : 0;
       if (bajoUmbral(x.ev) || caida <= -0.10) {
-        alertas.push({ x, motivo: caida <= -0.10 ? `Bajó ${puntos(caida).replace('-', '')} vs. ${etiquetaPeriodo(ant.periodo)}` : nivelEval(x.ev) });
+        alertas.push({ x, motivo: (bajoUmbral(x.ev) ? `Intervención ${fb(x.ev).vencido ? 'vencida' : estadoIntervencion(x.ev).toLowerCase()} · ` : '') + (caida <= -0.10 ? `Bajó ${puntos(caida).replace('-', '')} vs. ${etiquetaPeriodo(ant.periodo)}` : nivelEval(x.ev)) });
       }
     });
 
     return `
       <div class="ev-kpis">
         <div class="ev-kpi"><span>Cobertura</span><strong>${pct(cobertura)}</strong><small>${conEval.length} de ${filas.length} evaluados</small></div>
-        <div class="ev-kpi"><span>Confirmadas</span><strong class="ev-ok">${conEval.filter(x => x.ev.estado === 'confirmada').length}</strong><small>${conEval.filter(x => x.ev.estado === 'enviada').length} por confirmar</small></div>
+        <div class="ev-kpi"><span>Recibidas</span><strong class="ev-ok">${conEval.filter(x => x.ev.estado === 'confirmada').length}</strong><small>${conEval.filter(x => x.ev.estado === 'enviada').length} sin abrir</small></div>
         <div class="ev-kpi"><span>Promedio general</span><strong class="${prom === null ? '' : claseNivel(nivelDe(prom)) + ' ev-kpi-nivel'}">${prom === null ? '—' : pct(prom)}</strong><small>${prom === null ? '' : nivelDe(prom)}</small></div>
         <div class="ev-kpi"><span>Vs. ${trimestral() ? 'trimestre' : 'mes'} anterior</span><strong class="${deltaMes === null ? '' : deltaMes >= 0 ? 'ev-ok' : 'ev-danger'}">${deltaMes === null ? '—' : puntos(deltaMes)}</strong><small>promedio general</small></div>
-        <div class="ev-kpi"><span>${esc(nivelBajo)}</span><strong class="ev-danger">${enRiesgo.length}</strong><small>${conEval.length ? `${pct(enRiesgo.length / conEval.length)} de los evaluados` : 'sin evaluaciones'}</small></div>
+        <div class="ev-kpi"><span>Intervención inmediata</span><strong class="ev-danger">${enRiesgo.length}</strong><small>${conEval.length ? `${sinAtender.length} sin atender · ${pct(enRiesgo.length / conEval.length)}` : 'sin evaluaciones'}</small></div>
         <div class="ev-kpi"><span>Pendientes</span><strong class="ev-warn">${filas.filter(x => x.estado === 'pendiente').length}</strong><small>${filas.filter(x => x.estado === 'sin-evaluador').length} sin evaluador</small></div>
       </div>
+      ${enRevision.length ? `<div class="ev-card ev-sesgo"><h4 class="ev-h4"><i class="fas fa-balance-scale"></i> Evaluaciones con posible sesgo</h4>
+        ${enRevision.map(x => `<button class="ev-mia" data-ev="ver" data-id="${x.ev.id}">
+          <div><strong>${esc(x.emp.nombre || x.emp.id)}</strong><span class="ev-muted">Evaluó ${esc(x.evaluador || '')} · ${esc(etiquetaPeriodo(x.ev.periodo))}</span></div>
+          <div class="ev-mia-der">${chipNivel(x.ev)}${chipEstado(x.ev)}<i class="fas fa-chevron-right"></i></div></button>`).join('')}</div>` : ''}
       <div class="ev-card"><h4 class="ev-h4">Tendencia del promedio general (${trimestral() ? 'trimestral' : 'mensual'})</h4>${lineaSvg(serie, { titulo: 'Promedio general por período' })}</div>
       <div class="ev-grid2">
         <div class="ev-card"><h4 class="ev-h4">Distribución por nivel · ${esc(etiquetaPeriodo(f.periodo))}</h4>${distHtml}</div>
         <div class="ev-card"><h4 class="ev-h4">Promedio por dimensión</h4>${conEval.length ? `<div class="ev-dims">${DIMENSIONES.map(d => barraH(d.t, promedio(conEval.map(x => Number((x.ev.dimensiones[d.k] || {}).porcentaje || 0))))).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
         <div class="ev-card"><h4 class="ev-h4">Promedio por ${f.unidad ? 'área' : 'unidad'}</h4>${areas.length ? `<div class="ev-dims">${areas.map(a => barraH(`${esc(a.a)} <span class="ev-muted ev-small">(${a.n})</span>`, a.p)).join('')}</div>` : '<p class="ev-muted">Sin datos.</p>'}</div>
-        <div class="ev-card"><h4 class="ev-h4">Competencias más bajas</h4>${conEvalC.length ? `<ol class="ev-ranking">${bajas.map(b => `<li><span>${esc(b.it.c)}</span><strong class="ev-c${Math.round(b.p)}">${(Math.round(b.p * 10) / 10).toString()}</strong></li>`).join('')}</ol>
+        <div class="ev-card"><h4 class="ev-h4">Competencias más bajas</h4>${conEvalC.length ? `<ol class="ev-ranking">${bajas.map(b => `<li><span>${esc(b.it.c)}</span><strong class="${claseNota(b.p)}">${(Math.round(b.p * 10) / 10).toString()}</strong></li>`).join('')}</ol>
           <p class="ev-muted ev-small">Promedio de 1 a 5 del período: dónde enfocar la capacitación.</p>` : '<p class="ev-muted">Sin datos.</p>'}</div>
       </div>
       <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-bell ev-warn"></i> Alertas</h4>
         ${alertas.length ? alertas.map(a => `<button class="ev-mia" data-ev="persona" data-emp="${esc(a.x.emp.id)}">
           <div><strong>${esc(a.x.emp.nombre || a.x.emp.id)}</strong><span class="ev-muted">${esc(a.x.emp.area || '')} · ${esc(a.motivo)}</span></div>
           <div class="ev-mia-der">${chipNivel(a.x.ev)}<i class="fas fa-chevron-right"></i></div></button>`).join('')
-          : `<p class="ev-muted">Sin alertas: nadie en «${esc(nivelBajo)}» ni con caídas de 10 puntos o más.</p>`}
+          : `<p class="ev-muted">Sin alertas: nadie requiere intervención inmediata ni tiene caídas de 10 puntos o más.</p>`}
       </div>`;
   }
 
@@ -1594,7 +1790,7 @@
     }
     return `<div class="ev-card ev-eliminar">
       <h4 class="ev-h4"><i class="fas fa-exclamation-triangle"></i> ¿Eliminar esta evaluación?</h4>
-      <p class="ev-muted">Se borra la evaluación de ${esc(e.empleadoNombre || e.empleadoId)} (${esc(etiquetaPeriodo(e.periodo))}) y su fila en la hoja EVALUACIONES. Queda una copia de respaldo para auditoría.${e.estado === 'confirmada' ? ' <strong>El colaborador ya la había confirmado.</strong>' : ''}</p>
+      <p class="ev-muted">Se borra la evaluación de ${esc(e.empleadoNombre || e.empleadoId)} (${esc(etiquetaPeriodo(e.periodo))}) y su fila en la hoja EVALUACIONES. Queda una copia de respaldo para auditoría.${e.estado === 'confirmada' ? ' <strong>El colaborador ya la recibió.</strong>' : ''}</p>
       <textarea data-ev="motivo-eliminar" maxlength="300" rows="2" placeholder="Motivo (recomendado)"></textarea>
       <div class="ev-actions ev-mt">
         <button class="ev-btn" data-ev="eliminar-cancelar">Cancelar</button>
@@ -1626,12 +1822,13 @@
   function ir(st, vista, cambios = {}) {
     st.pila = st.pila || [];
     st.pila.push({ vista: st.vista, sel: st.sel, persona: st.persona });
-    Object.assign(st, cambios, { vista, confirmandoEliminar: false, reuPedir: false, reuAgendar: false });
+    Object.assign(st, cambios, { vista, confirmandoEliminar: false, reuPedir: false, reuAgendar: false, reuRealizar: false });
     pintar(st);
+    if (vista === 'detalle') marcarRecibida(st, st.sel);
   }
   function volver(st) {
     const prev = (st.pila || []).pop();
-    st.confirmandoEliminar = false; st.reuPedir = false; st.reuAgendar = false;
+    st.confirmandoEliminar = false; st.reuPedir = false; st.reuAgendar = false; st.reuRealizar = false;
     if (prev) Object.assign(st, prev);
     else { st.vista = st.volverA || 'inicio'; st.sel = null; }
     // Si la evaluación que se veía ya no existe (eliminada), subir un nivel más
@@ -1641,23 +1838,25 @@
 
   function exportarExcel(st, opts) {
     const filas = filasResultados(st, opts);
-    const cols = ['ID', 'Colaborador', 'Área', 'Cargo', 'Evaluador', 'Período', 'Estado', 'Puntaje', '% Total', 'Estado del desempeño',
+    const cols = ['ID', 'Colaborador', 'Área', 'Cargo', 'Evaluador', 'Período', 'Estado', 'Puntaje', '% Total', 'Estado del desempeño', 'Intervención inmediata', 'Estado de la intervención', 'Feedback', 'Feedback hasta',
       ...DIMENSIONES.map(d => d.t + ' %'), ...ITEMS.map((it, i) => `${i + 1}. ${it.c}`),
-      'Fortalezas', 'Oportunidades de mejora', 'Compromisos', 'Confirmada', 'Confirmar hasta', 'Vigente hasta', 'Reunión'];
+      'Fortalezas', 'Oportunidades de mejora', 'Compromisos', 'Recibida', 'Vigente hasta', 'Reunión'];
     const celda = v => `<td>${esc(v == null ? '' : v)}</td>`;
     const cuerpo = filas.map(x => {
       const e = x.ev;
       const r = e && e.reunion;
       return '<tr>' + [x.emp.id, x.emp.nombre, x.emp.area, x.emp.cargo, x.evaluador,
         e ? (e.tipo === 'DIA75' ? 'Día 75' : etiquetaPeriodo(e.periodo)) : etiquetaPeriodo(st.filtro.periodo),
-        e ? (e.estado === 'confirmada' ? 'Confirmada' : (e.confirmacionVencida ? 'No confirmada' : 'Enviada'))
+        e ? ({ confirmada: 'Recibida', revision: 'En revisión TTHH', devuelta: 'Devuelta por TTHH' }[e.estado] || 'Enviada')
           : ({ pendiente: 'Pendiente', vencida: 'Plazo vencido', 'en-prueba': `En período de prueba (día ${x.prueba})` }[x.estado] || 'Sin evaluador'),
         e ? e.puntaje : '', e ? Math.round(Number(e.porcentaje) * 1000) / 10 : '', e ? nivelEval(e) : '',
+        e ? (requiereIntervencion(e) ? 'SÍ' : 'NO') : '', e && requiereIntervencion(e) && !retenida(e) ? (fb(e).vencido ? 'Vencida' : estadoIntervencion(e)) : '',
+        e ? ({ realizada: 'Realizado', agendada: 'Agendado', pendiente: 'Pendiente', opcional: 'Opcional' }[fb(e).estado] || '') : '', e && fb(e).exigido ? fechaCorta(fb(e).vence) : '',
         ...DIMENSIONES.map(d => e && e.dimensiones[d.k] ? Math.round(Number(e.dimensiones[d.k].porcentaje || 0) * 1000) / 10 : ''),
         ...ITEMS.map((_, i) => e && mismoCuestionario(e) ? e.calificaciones[i] : ''),
-        e ? e.fortalezas : '', e ? e.mejoras : '', e ? e.compromisos : '', e && e.confirmadaEn ? String(e.confirmadaEn).slice(0, 10) : '',
-        e ? fechaCorta(e.venceConfirmar) : '', e ? fechaCorta(e.vigenteHasta) : '',
-        r ? (r.estado === 'agendada' ? `Agendada ${fechaCorta(r.fecha)} ${r.hora || ''}` : 'Solicitada') : ''
+        e ? e.fortalezas : '', e ? e.mejoras : '', e ? e.compromisos : '', e ? fechaDeHora(e.confirmadaEn) : '',
+        e ? fechaCorta(e.vigenteHasta) : '',
+        r ? (r.estado === 'realizada' ? `Realizada ${fechaCorta(r.realizadaEn)}` : r.estado === 'agendada' ? `Agendada ${fechaCorta(r.fecha)} ${r.hora || ''}` : 'Solicitada') : ''
       ].map(celda).join('') + '</tr>';
     }).join('');
     const html = `<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${cuerpo}</tbody></table></body></html>`;
@@ -1805,7 +2004,7 @@
         aplicarConfig(o.config, o.version, o.reaperturas);
         configCargada = Date.now();
         st.cfgVersion = o.version; st.cfgFecha = o.creadoEn; st.cfgPor = o.creadoPor;
-        st.cfg = JSON.parse(JSON.stringify(Object.assign({}, BASE, o.config)));
+        st.cfg = JSON.parse(JSON.stringify(actualizarConfig(o.config)));
         st.versiones = h && h.ok ? h.versiones : [];
         st.dirty = false; st.cfgError = ''; st.cfgComentario = '';
       } catch (e) {
@@ -1831,6 +2030,7 @@
   }
 
   function cambioConfig(st, a, el, final) {
+    if (a === 'cfg-interv') { st.cfg.niveles[Number(el.dataset.i)].i = el.checked; st.dirty = true; return repintarSinSalto(st); }
     if (a === 'cfg-comentario') { st.cfgComentario = el.value; return; }
     if (a === 'cfg-oblig') {
       const v = Number(el.dataset.v);
@@ -1883,7 +2083,7 @@
     }
     else if (a === 'cfg-up-dim') mover(g.dimensiones, i, i - 1);
     else if (a === 'cfg-down-dim') mover(g.dimensiones, i, i + 1);
-    else if (a === 'cfg-add-nivel') g.niveles.push({ min: 0.5, n: 'Nuevo nivel' });
+    else if (a === 'cfg-add-nivel') g.niveles.push({ min: 0.5, n: 'Nuevo nivel', color: 'ambar', msg: '' });
     else if (a === 'cfg-del-nivel') { if (g.niveles.length <= 1) return; const n = g.niveles[i].n; g.niveles.splice(i, 1); if (g.recomendaciones) delete g.recomendaciones[n]; }
     else if (a === 'cfg-add-esc') { if (g.escala.length >= 10) return; g.escala.push({ v: g.escala.length + 1, t: 'Nuevo valor', d: '' }); }
     else if (a === 'cfg-del-esc') { if (g.escala.length <= 2) return toast('La escala necesita al menos 2 valores.', 'warning'); const v = g.escala.pop().v; g.obligatoriaObs = (g.obligatoriaObs || []).filter(x => Number(x) !== Number(v)); }
@@ -1899,7 +2099,7 @@
     const suma = sumaPesos(g.items);
     if (suma !== 100) return toast(`Los pesos deben sumar 100 % (suman ${suma} %).`, 'warning');
     if (!g.niveles.some(n => Number(n.min) === 0)) return toast('Un nivel debe empezar en 0 %.', 'warning');
-    g.meta = umbralAlerta(g.niveles);   // umbral interno de alerta a RR.HH. (no se muestra como meta)
+    g.meta = umbralAlerta(g.niveles);   // umbral de intervención inmediata
     st.guardandoCfg = true; repintarSinSalto(st);
     try {
       const res = await rpc(st.ses, 'eval_config', { modo: 'guardar', config: g, version: st.cfgVersion, comentario: st.cfgComentario });
@@ -1979,27 +2179,29 @@
               <option value="TRIMESTRAL" ${g.frecuencia === 'TRIMESTRAL' ? 'selected' : ''}>Trimestral (ene–mar, abr–jun, jul–sep, oct–dic)</option>
             </select><small class="ev-muted">El seguimiento Día 75 de nuevos ingresos no cambia.</small></label>
           <label class="ev-campo"><span>Día límite para evaluar (mes siguiente al cierre)</span>${num('plazos.evaluarDia', pl.evaluarDia, 1, 28)}<small class="ev-muted">Ej.: 10 → ${g.frecuencia === 'TRIMESTRAL' ? 'el trimestre jul–sep se evalúa hasta el 10 de octubre' : 'septiembre se evalúa hasta el 10 de octubre'}.</small></label>
-          <label class="ev-campo"><span>Días para confirmar</span>${num('plazos.confirmarDias', pl.confirmarDias, 1, 60)}<small class="ev-muted">Desde que el jefe envía la evaluación.</small></label>
+          <label class="ev-campo"><span>Días para el feedback obligatorio</span>${num('plazos.feedbackDias', pl.feedbackDias || 7, 1, 60)}<small class="ev-muted">Desde que se envía la evaluación (intervención inmediata o cierre de trimestre).</small></label>
           <label class="ev-campo"><span>Vigencia del resultado (días)</span>${num('plazos.vigenciaDias', pl.vigenciaDias, 7, 400)}<small class="ev-muted">Después se considera desactualizado.</small></label>
           <label class="ev-campo"><span>Avisar con anticipación (días)</span>${num('plazos.avisoDias', pl.avisoDias, 0, 15)}<small class="ev-muted">Notificaciones de plazos por vencer.</small></label>
         </div>
       </div>
 
       <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-layer-group"></i> Categorías de desempeño</h4>
-        <p class="ev-muted ev-small">Cada categoría empieza en un porcentaje mínimo (incluido); una debe empezar en 0 %. Se avisa a RR.HH. de las evaluaciones que caen en la categoría más baja.</p>
-        <div class="ev-cfg-lista">${nivelesOrden.map(({ n, i }) => `<div class="ev-cfg-fila">
-          <span class="ev-nivel ${claseNivelCfg(g, n.n)}">&nbsp;</span>
+        <p class="ev-muted ev-small">Cada categoría empieza en un porcentaje mínimo (incluido); una debe empezar en 0 %. El color se usa en el resultado, las dimensiones y las notas (la nota 1 toma el color de la categoría más baja y la 5 el de la más alta). Con «Intervención inmediata» el feedback y los compromisos son obligatorios y se avisa a TTHH.</p>
+        <div class="ev-cfg-lista">${nivelesOrden.map(({ n, i }) => `<div class="ev-cfg-nivel"><div class="ev-cfg-fila">
+          <span class="ev-cal-pill ${claseNivelCfg(g, n.n)}">&nbsp;</span>
           <input type="text" class="ev-cfg-in ev-cfg-grow" data-ev="cfg" data-p="niveles.${i}.n" data-t="txt" data-old="${esc(n.n)}" value="${esc(n.n)}" maxlength="40">
           <label class="ev-small">desde ${por(`niveles.${i}.min`, n.min)} %</label>
+          <select class="ev-select ev-select-sm" data-ev="cfg" data-p="niveles.${i}.color" data-t="txt" title="Color">${COLORES.map(k => `<option value="${k}" ${k === colorNivel(n.n, g.niveles) ? 'selected' : ''}>${{ rojo: 'Rojo', ambar: 'Ámbar', verde: 'Verde', azul: 'Azul' }[k]}</option>`).join('')}</select>
+          <label class="ev-check ev-small"><input type="checkbox" data-ev="cfg-interv" data-i="${i}" ${n.i ? 'checked' : ''}> Intervención inmediata</label>
           ${btnIco('cfg-del-nivel', i, 'fa-trash-alt', 'Quitar nivel')}
-        </div>`).join('')}</div>
+        </div>${area(`niveles.${i}.msg`, n.msg, 1, 'Mensaje que acompaña al resultado', 300)}</div>`).join('')}</div>
         <button type="button" class="ev-btn ev-btn-sm" data-ev="cfg-add-nivel"><i class="fas fa-plus"></i> Agregar nivel</button>
       </div>
 
       <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-star-half-alt"></i> Escala de calificación</h4>
         <p class="ev-muted ev-small">Marca las calificaciones que exigen una observación con un hecho concreto.</p>
         <div class="ev-cfg-lista">${g.escala.map((x, i) => `<div class="ev-cfg-fila ev-cfg-fila-top">
-          <span class="ev-cal-pill ev-c${Math.min(5, i + 1)}">${i + 1}</span>
+          <span class="ev-cal-pill ${claseNota(i + 1, g.escala.length, g.niveles)}">${i + 1}</span>
           <div class="ev-cfg-grow">${txt(`escala.${i}.t`, x.t, 'maxlength="40" placeholder="Nombre"')}${area(`escala.${i}.d`, x.d, 2, 'Descripción', 300)}</div>
           <label class="ev-check ev-small"><input type="checkbox" data-ev="cfg-oblig" data-v="${i + 1}" ${(g.obligatoriaObs || []).map(Number).includes(i + 1) ? 'checked' : ''}> Exige observación</label>
         </div>`).join('')}</div>
@@ -2030,13 +2232,14 @@
             ${btnIco('cfg-del-item', i, 'fa-trash-alt', 'Quitar pregunta')}
           </div>
           ${area(`items.${i}.m`, it.m, 2, 'Comportamiento esperado (lo que verá el evaluador)', 400)}
+          ${area(`items.${i}.a`, it.a, 1, 'Qué evaluar: alcance para el evaluador (opcional)', 400)}
           ${area(`items.${i}.d75`, it.d75, 1, 'Texto distinto para el seguimiento Día 75 (opcional)', 400)}
         </div>`).join('')}
         <button type="button" class="ev-btn ev-btn-sm" data-ev="cfg-add-item"><i class="fas fa-plus"></i> Agregar pregunta</button>
       </div>
 
-      <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-lightbulb"></i> Qué hacer según el nivel</h4>
-        ${nivelesOrden.map(({ n }) => `<label class="ev-campo"><span>${esc(n.n)}</span>${area(`recomendaciones.${n.n}`, (g.recomendaciones || {})[n.n], 2, 'Recomendación para el evaluador', 400)}</label>`).join('')}
+      <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-lightbulb"></i> Qué hacer según la categoría (lo lee el evaluado)</h4>
+        ${nivelesOrden.map(({ n }) => `<label class="ev-campo"><span>${esc(n.n)}</span>${area(`recomendaciones.${n.n}`, (g.recomendaciones || {})[n.n], 2, 'Qué puede hacer el evaluado', 400)}</label>`).join('')}
       </div>
 
       <div class="ev-card ev-cfg-pie">
@@ -2046,7 +2249,7 @@
       </div>
 
       <div class="ev-card"><h4 class="ev-h4"><i class="fas fa-unlock-alt"></i> Reabrir plazo para evaluar</h4>
-        <p class="ev-muted ev-small">Permite al evaluador registrar o corregir un mes cuyo plazo ya venció. El plazo para confirmar se reabre desde la evaluación.</p>
+        <p class="ev-muted ev-small">Permite al evaluador registrar o corregir un mes cuyo plazo ya venció. Una evaluación ya recibida se reabre desde la propia evaluación.</p>
         <div class="ev-filtros">
           <select class="ev-select" data-ev="cfg-reabrir-emp"><option value="">Colaborador…</option>${emps.map(e => `<option value="${esc(e.id)}">${esc(e.nombre || e.id)}</option>`).join('')}</select>
           <select class="ev-select" data-ev="cfg-reabrir-mes">${periodosDisponibles(6).map(m => `<option value="${m}" ${m === periodoPorDefecto() ? 'selected' : ''}>${etiquetaPeriodo(m)}</option>`).join('')}</select>
@@ -2064,10 +2267,8 @@
   }
   // Color de un nivel en el editor (según los niveles que se están editando)
   function claseNivelCfg(g, nombre) {
-    const orden = g.niveles.slice().sort((a, b) => Number(b.min) - Number(a.min));
-    const i = orden.findIndex(x => x.n === nombre);
-    const k = orden.length;
-    return i < 0 ? '' : 'ev-n' + (k <= 1 ? 5 : Math.round(5 - i * 4 / (k - 1)));
+    const c = colorNivel(nombre, g.niveles);
+    return c ? 'ev-k-' + c : '';
   }
 
   // Inicio del consolidado: el pintar genérico delega en pintarResultados cuando corresponde
