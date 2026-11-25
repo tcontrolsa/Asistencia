@@ -2,14 +2,20 @@
  * TCONTROL · Solicitudes de permisos y vacaciones (fase 1 del flujo de permisos, 2026-11-10)
  * Compartido por index.html (app → Permisos) y supervisor.html (panel → Permisos).
  *
- * Flujo (docs/Flujo permisos.pdf, versión corregida):
- *   Vacaciones y permiso personal → solicitud digital → aprueba el jefe inmediato (empleados.jefe_inmediato_id).
- *     Sin jefe asignado, jefe inactivo o jefe = el mismo colaborador → pasa directo a TTHH.
- *     Sin respuesta del jefe en 8 horas laborables → pasa a TTHH (lo hace Apps Script: permisos_escalado.gs).
- *     Vacaciones sin saldo suficiente: se permite si el colaborador acepta el descuento al rol.
- *   Permiso médico y calamidad → no se aprueban: se registran al instante y se avisa al jefe y a TTHH.
- *     Los documentos (72 h) y el descuento al rol llegan en la fase 3.
- *   Al aprobarse (o registrarse) una solicitud por días se crean los registros de ausencia en asistencia
+ * Flujo (desde 2026-11-25): toda solicitud (vacaciones, permiso personal, permiso médico y calamidad) espera la
+ * aprobación o el rechazo del jefe inmediato (empleados.jefe_inmediato_id). Sin esa respuesta no es válida y no llega
+ * a TTHH: no justifica nada, no crea registros y TTHH no la ve ni recibe avisos.
+ *   Sin jefe asignado, jefe inactivo o jefe = el mismo colaborador → la aprueba o rechaza TTHH en lugar del jefe.
+ *   Un administrador del panel puede responder en lugar del jefe; TTHH no.
+ *   Sin respuesta al llegar el inicio del permiso → CADUCADA («No válida»). Plazo en caduca_en (ver caducidad()):
+ *     lo aplica la app al leer y lo escribe y avisa Apps Script (permisos_escalado.gs), que también recuerda al jefe.
+ *   Vacaciones sin saldo suficiente: se permite si el colaborador acepta el descuento al rol.
+ *   Permiso personal: solo por horas.
+ *   Eliminar (solo administradores, en el panel): queda como CANCELADA con eliminada = true, deja de verse en la app y
+ *     se deshace lo que produjo (registros de asistencia, horas cargadas a vacaciones). El documento se conserva como
+ *     constancia en el filtro «Eliminadas».
+ *   Permiso médico y calamidad: al aprobarse quedan REGISTRADA, se avisa a TTHH y empiezan las 72 h de documentos.
+ *   Al aprobarse una solicitud por días se crean los registros de ausencia en asistencia
  *   (FirebaseBackend.guardarRegistro, igual que el registro de ausencias del supervisor). Calamidad se
  *   registra como FALTA_JUSTIFICADA con la razón «CALAMIDAD DOMÉSTICA». Los permisos por horas no crean
  *   registro: el colaborador marca su salida y su regreso como siempre.
@@ -28,21 +34,21 @@
 
   const COL = 'solicitudes_permiso';
   const CFG_DOC = ['configuracion', 'permisos'];
-  const MIN_ESCALADO = 8 * 60;              // 8 horas laborables
+  const MIN_RESPUESTA = 8 * 60;             // plazo mínimo cuando el permiso ya empezó: 8 horas laborables
   const JORNADA = { ini: 7 * 60 + 30, fin: 16 * 60 + 15 };   // 07:30–16:15 (HORA_ENTRADA_REF / HORA_SALIDA_REF)
   const DIAS_ATRAS_CALAMIDAD = 30;
   const FERIADOS_MD = ['1/1', '2/16', '2/17', '4/3', '4/30', '5/1', '5/25', '8/10', '10/9', '11/2', '11/3', '12/6', '12/25'];
   const FERIADOS_FECHA = ['2026-06-26', '2026-11-20'];
 
   const TIPOS = {
-    VACACIONES: { label: 'Vacaciones', icono: 'fa-umbrella-beach', color: 'pm-c-azul', aprobacion: true, modalidades: ['DIAS'], registro: 'VACACIONES',
+    VACACIONES: { label: 'Vacaciones', icono: 'fa-umbrella-beach', color: 'pm-c-azul', modalidades: ['DIAS'], registro: 'VACACIONES',
       ayuda: 'Días completos. Los aprueba tu jefe inmediato.' },
-    PERMISO_PERSONAL: { label: 'Permiso personal', icono: 'fa-user-clock', color: 'pm-c-violeta', aprobacion: true, modalidades: ['HORAS', 'DIAS'], registro: 'PERMISO_PERSONAL',
-      ayuda: 'Por horas o días. Lo aprueba tu jefe inmediato.' },
-    PERMISO_MEDICO: { label: 'Permiso médico', icono: 'fa-notes-medical', color: 'pm-c-verde', aprobacion: false, modalidades: ['HORAS', 'DIAS'], registro: 'PERMISO_MEDICO',
-      ayuda: 'Se registra al instante. Entrega el certificado a TTHH en 72 h.' },
-    CALAMIDAD: { label: 'Calamidad doméstica', icono: 'fa-exclamation-circle', color: 'pm-c-rojo', aprobacion: false, modalidades: ['DIAS'], registro: 'FALTA_JUSTIFICADA',
-      ayuda: 'Puede registrarse después. Entrega los documentos a TTHH en 72 h.' }
+    PERMISO_PERSONAL: { label: 'Permiso personal', icono: 'fa-user-clock', color: 'pm-c-violeta', modalidades: ['HORAS'], registro: 'PERMISO_PERSONAL',
+      ayuda: 'Solo por horas. Lo aprueba tu jefe inmediato.' },
+    PERMISO_MEDICO: { label: 'Permiso médico', icono: 'fa-notes-medical', color: 'pm-c-verde', documentos: true, modalidades: ['HORAS', 'DIAS'], registro: 'PERMISO_MEDICO',
+      ayuda: 'Lo aprueba tu jefe inmediato. Después, certificado a TTHH en 72 h.' },
+    CALAMIDAD: { label: 'Calamidad doméstica', icono: 'fa-exclamation-circle', color: 'pm-c-rojo', documentos: true, modalidades: ['DIAS'], registro: 'FALTA_JUSTIFICADA',
+      ayuda: 'Puede pedirse después. La aprueba tu jefe; luego, documentos a TTHH en 72 h.' }
   };
   const ESTADOS = {
     PENDIENTE_JEFE: { txt: 'Espera a tu jefe', txtAprob: 'Por aprobar', clase: 'pm-e-pend' },
@@ -50,9 +56,11 @@
     APROBADA: { txt: 'Aprobada', clase: 'pm-e-ok' },
     RECHAZADA: { txt: 'No aprobada', clase: 'pm-e-no' },
     CANCELADA: { txt: 'Cancelada', clase: 'pm-e-gris' },
+    CADUCADA: { txt: 'No válida', clase: 'pm-e-no' },
     REGISTRADA: { txt: 'Registrada', clase: 'pm-e-ok' }
   };
   const PENDIENTES = ['PENDIENTE_JEFE', 'PENDIENTE_TTHH'];
+  const SIN_EFECTO = ['RECHAZADA', 'CANCELADA', 'CADUCADA'];
   const MIN_DIA = 480;   // 8 h = 1 día de vacaciones
   // Concordancia: «Vacaciones aprobadas», «Permiso médico aprobado», «Calamidad doméstica registrada»
   const part = (T, raiz) => raiz + ({ VACACIONES: "as", CALAMIDAD: "a" }[Object.keys(TIPOS).find(k => TIPOS[k] === T)] || "o");
@@ -128,6 +136,36 @@
     return t;
   }
 
+  // ---------------------------------------------------------------- plazo para responder
+  const inicioPermiso = s => s.modalidad === 'HORAS' && s.hora_desde
+    ? new Date(`${s.desde}T${String(s.hora_desde).slice(0, 5)}:00`)
+    : new Date(`${(s.fechas || [])[0] || s.desde}T${hm24(JORNADA.ini)}:00`);
+  // Hasta cuándo se puede responder: el inicio del permiso. Si al pedirlo ya empezó («Hoy no vengo», permiso marcado
+  // al salir o al entrar, calamidad posterior), y siempre en permiso médico y calamidad (no se planifican), el plazo
+  // es de al menos 8 horas laborables.
+  function caducidad(s, ahora) {
+    const ini = inicioPermiso(s);
+    if (!s.origen && !(TIPOS[s.tipo] || {}).documentos && ini > ahora) return ini;
+    const minimo = sumarMinutosLaborables(ahora, MIN_RESPUESTA);
+    return minimo > ini ? minimo : ini;
+  }
+  // Las pedidas antes del 2026-11-25 no traen caduca_en: el inicio del permiso o el plazo que tenía el jefe, lo último
+  function caducaEn(s) {
+    if (s.caduca_en) return new Date(s.caduca_en);
+    const ini = inicioPermiso(s), jefe = new Date(s.vence_jefe || s.creada_en || 0);
+    return jefe > ini ? jefe : ini;
+  }
+  // Solicitud tal como vale ahora: una pendiente con el plazo cumplido ya no es válida aunque el servidor aún no la
+  // haya marcado
+  function vigente(s) {
+    if (!PENDIENTES.includes(s.estado)) return s;
+    const c = caducaEn(s);
+    return c <= new Date() ? Object.assign({}, s, { estado: 'CADUCADA', caduca_en: c.toISOString() }) : s;
+  }
+  const deDoc = d => vigente(Object.assign({ id: d.id }, d.data()));
+  // TTHH solo recibe lo aprobado; lo de quien no tiene jefe lo responde TTHH (escalada)
+  const visibleTTHH = s => ['APROBADA', 'REGISTRADA', 'PENDIENTE_TTHH'].includes(s.estado) || !!s.escalada;
+
   // ---------------------------------------------------------------- configuración (lista TTHH)
   let _cfg = null, _cfgEn = 0;
   async function leerConfig(forzar = false) {
@@ -182,9 +220,9 @@
     if (!jefe || !activo(jefe)) return { jefe: null, motivo: 'jefe_inactivo' };
     return { jefe, motivo: '' };
   }
-  const MOTIVO_TTHH = { sin_jefe: 'No tienes jefe inmediato asignado', propio: 'Tu ficha te tiene como tu propio jefe', jefe_inactivo: 'Tu jefe inmediato no está activo', sin_respuesta: 'El jefe no respondió en 8 horas laborables' };
+  const MOTIVO_TTHH = { sin_jefe: 'No tienes jefe inmediato asignado', propio: 'Tu ficha te tiene como tu propio jefe', jefe_inactivo: 'Tu jefe inmediato no está activo', sin_respuesta: 'El jefe no respondió a tiempo' };
   // Lo mismo dicho a TTHH o al jefe (tercera persona)
-  const MOTIVO_TTHH_3 = { sin_jefe: "No tiene jefe inmediato asignado", propio: "Su ficha lo tiene como su propio jefe", jefe_inactivo: "Su jefe inmediato no está activo", sin_respuesta: "El jefe no respondió en 8 horas laborables" };
+  const MOTIVO_TTHH_3 = { sin_jefe: "No tiene jefe inmediato asignado", propio: "Su ficha lo tiene como su propio jefe", jefe_inactivo: "Su jefe inmediato no está activo", sin_respuesta: "El jefe no respondió a tiempo" };
 
   // Saldo de vacaciones (hoja CALCULAR_vacaciones, columna J) menos los días de vacaciones futuros ya pedidos o aprobados.
   // También devuelve la lista de días de vacaciones (la usa el cálculo de la bolsa) y la capacidad en minutos para
@@ -215,7 +253,7 @@
     try {
       const snap = await db().collection(COL).where('empleadoId', '==', String(emp.id)).get();
       snap.forEach(doc => {
-        const s = doc.data();
+        const s = deDoc(doc);
         if (doc.id === excluirId || !['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA'].includes(s.estado)) return;
         if (s.tipo === 'VACACIONES') comprometidos += (s.fechas || []).filter(f => f > hoy).length;
         // Horas a vacaciones: se acumulan sin cortar por año (lo que al 30/nov no llega a 8 h pasa al año siguiente)
@@ -268,7 +306,7 @@
       saldoVacaciones(emp, excluirId),
       db().collection(COL).where('empleadoId', '==', String(emp.id)).get()
     ]);
-    const solicitudes = otras.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    const solicitudes = otras.docs.map(deDoc);
 
     // Saldo de la bolsa por período (26–25)
     const saldos = {}, iniciales = {};
@@ -346,7 +384,7 @@
       saldoVacaciones(emp),
       db().collection(COL).where('empleadoId', '==', String(emp.id)).get()
     ]);
-    const sols = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    const sols = snap.docs.map(deDoc);
     const b = RJ.saldoBolsaPeriodo({ empleado: Object.assign({}, emp, { registros: regs }), registros: regs, vacaciones: (vac && vac.vacaciones) || [], hoy, solicitudes: sols });
     const per = b.periodo;
     const total = b.pasante ? 0 : RJ.BOLSA_MIN;
@@ -490,6 +528,7 @@
     const hoy = hoyStr();
     const re = /^\d{4}-\d{2}-\d{2}$/;
     const desde = String(p.desde || ''), hasta = modalidad === 'HORAS' ? desde : String(p.hasta || '');
+    if (p.tipo === 'PERMISO_PERSONAL' && p.modalidad === 'DIAS') return { error: 'El permiso personal se pide solo por horas' };
     if (!re.test(desde) || !re.test(hasta)) return { error: 'Selecciona las fechas' };
     if (hasta < desde) return { error: 'La fecha final no puede ser anterior a la inicial' };
     if (p.tipo === 'CALAMIDAD') {
@@ -514,6 +553,8 @@
       // que ve el cálculo de la bolsa del panel (2026-11-12; antes se contaba regreso − salida)
       minutos = minutosJornada(a, b);
       if (!minutos) return { error: 'El permiso debe estar dentro de la jornada (07:30 a 16:15)' };
+      // Se pide antes de la hora para que alcance a aprobarse (el que nace al marcar ya empezó)
+      if (p.tipo === 'PERMISO_PERSONAL' && !p.origen && new Date(`${desde}T${horaDesde}:00`) <= new Date()) return { error: 'Esa hora ya pasó: pide el permiso antes de la hora de salida' };
     }
     if (!motivo && p.tipo !== 'VACACIONES') return { error: 'Escribe el motivo' };
 
@@ -521,8 +562,8 @@
     const previas = await db().collection(COL).where('empleadoId', '==', String(emp.id)).get();
     let choque = null;
     previas.forEach(doc => {
-      const s = doc.data();
-      if (choque || ['RECHAZADA', 'CANCELADA'].includes(s.estado)) return;
+      const s = deDoc(doc);
+      if (choque || SIN_EFECTO.includes(s.estado)) return;
       const comunes = (s.fechas || []).filter(f => fechas.includes(f));
       if (!comunes.length) return;
       if (modalidad === 'HORAS' && s.modalidad === 'HORAS') {
@@ -569,31 +610,23 @@
       sol.acepta_cargo = !!p.aceptaCargo;
     }
 
-    if (T.aprobacion) {
-      const ap = await aprobadorDe(emp);
-      if (ap.jefe) {
-        sol.estado = 'PENDIENTE_JEFE';
-        sol.aprobador_id = String(ap.jefe.id);
-        sol.aprobador_nombre = ap.jefe.nombre || '';
-        sol.vence_jefe = sumarMinutosLaborables(ahora, MIN_ESCALADO).toISOString();
-      } else {
-        sol.estado = 'PENDIENTE_TTHH';
-        sol.escalada = true;
-        sol.escalada_en = ahora.toISOString();
-        sol.motivo_tthh = ap.motivo;
-      }
+    // Siempre espera respuesta: del jefe inmediato o, si no hay jefe que pueda responder, de TTHH
+    const ap = await aprobadorDe(emp);
+    if (ap.jefe) {
+      sol.estado = 'PENDIENTE_JEFE';
+      sol.aprobador_id = String(ap.jefe.id);
+      sol.aprobador_nombre = ap.jefe.nombre || '';
     } else {
-      sol.estado = 'REGISTRADA';
-      const jefe = (await aprobadorDe(emp)).jefe;
-      if (jefe) { sol.aprobador_id = String(jefe.id); sol.aprobador_nombre = jefe.nombre || ''; }
-      sol.docs_estado = 'PENDIENTE';
-      sol.docs_vence = new Date(ahora.getTime() + 72 * 3600000).toISOString();
+      sol.estado = 'PENDIENTE_TTHH';
+      sol.escalada = true;
+      sol.escalada_en = ahora.toISOString();
+      sol.motivo_tthh = ap.motivo;
     }
+    sol.caduca_en = caducidad(sol, ahora).toISOString();
 
     const ref = await db().collection(COL).add(sol);
     sol.id = ref.id;
-    if (sol.estado === 'REGISTRADA') await crearRegistros(sol, `${quien.nombre || quien.id} (${T.label})`);
-    avisar(sol.estado === 'REGISTRADA' ? 'registrada' : 'creada', sol).catch(e => console.warn('Permisos: avisos no enviados', e));
+    avisar('creada', sol).catch(e => console.warn('Permisos: avisos no enviados', e));
     return { ok: true, solicitud: sol };
   }
 
@@ -669,28 +702,33 @@
       await db().runTransaction(async tx => {
         const snap = await tx.get(ref);
         if (!snap.exists) throw new Error('La solicitud ya no existe');
-        const s = snap.data();
-        if (!PENDIENTES.includes(s.estado)) throw new Error(`La solicitud ya fue ${(ESTADOS[s.estado] || {}).txt || s.estado}`.toLowerCase());
+        const s = deDoc(snap);
+        if (s.estado === 'CADUCADA') throw new Error('La solicitud ya no es válida: venció el plazo para responderla');
+        if (!PENDIENTES.includes(s.estado)) throw new Error(`La solicitud ya está resuelta (${((ESTADOS[s.estado] || {}).txt || s.estado).toLowerCase()})`);
         const esJefe = String(s.aprobador_id) === String(quien.id) && s.estado === 'PENDIENTE_JEFE';
-        if (!esJefe && !tthh && !esAdmin) throw new Error('No puedes resolver esta solicitud');
+        const comoTTHH = tthh && s.estado === 'PENDIENTE_TTHH';
+        if (!esJefe && !comoTTHH && !esAdmin) throw new Error(tthh ? 'Primero debe responder el jefe inmediato' : 'No puedes resolver esta solicitud');
         if (String(s.empleadoId) === String(quien.id)) throw new Error('No puedes aprobar tu propia solicitud');
         const ahora = ahoraIso();
+        const docs = accion === 'APROBAR' && !!(TIPOS[s.tipo] || {}).documentos;
         const upd = {
-          estado: accion === 'APROBAR' ? 'APROBADA' : 'RECHAZADA',
+          estado: accion === 'APROBAR' ? (docs ? 'REGISTRADA' : 'APROBADA') : 'RECHAZADA',
           resuelta_por: quien.nombre || String(quien.id), resuelta_por_id: String(quien.id),
-          resuelta_como: esJefe ? 'JEFE' : (tthh ? 'TTHH' : 'ADMIN'), resuelta_en: ahora,
+          resuelta_como: esJefe ? 'JEFE' : (comoTTHH ? 'TTHH' : 'ADMIN'), resuelta_en: ahora,
           comentario: String(comentario || '').trim().slice(0, 400),
           historial: firebase.firestore.FieldValue.arrayUnion({ en: ahora, quien: quien.nombre || String(quien.id), accion: accion === 'APROBAR' ? 'APROBADA' : 'RECHAZADA' })
         };
         if (final) Object.assign(upd, final);
+        if (docs) Object.assign(upd, { docs_estado: 'PENDIENTE', docs_vence: new Date(Date.now() + 72 * 3600000).toISOString() });
         tx.update(ref, upd);
         sol = Object.assign({ id }, s, upd);
       });
     } catch (e) {
       return { error: e.message || String(e) };
     }
-    if (sol.estado === 'APROBADA') await crearRegistros(sol, `${sol.resuelta_por} (${sol.resuelta_como === 'JEFE' ? 'jefe inmediato' : 'TTHH'})`);
-    avisar(sol.estado === 'APROBADA' ? 'aprobada' : 'rechazada', sol).catch(e => console.warn('Permisos: avisos no enviados', e));
+    const aprobada = sol.estado !== 'RECHAZADA';
+    if (aprobada) await crearRegistros(sol, `${sol.resuelta_por} (${{ JEFE: 'jefe inmediato', TTHH: 'TTHH', ADMIN: 'administrador' }[sol.resuelta_como]})`);
+    avisar(aprobada ? 'aprobada' : 'rechazada', sol).catch(e => console.warn('Permisos: avisos no enviados', e));
     return { ok: true, solicitud: sol };
   }
 
@@ -701,7 +739,7 @@
       await db().runTransaction(async tx => {
         const snap = await tx.get(ref);
         if (!snap.exists) throw new Error('La solicitud ya no existe');
-        const s = snap.data();
+        const s = deDoc(snap);
         if (String(s.empleadoId) !== String(quien.id)) throw new Error('Solo quien la pidió puede cancelarla');
         if (!PENDIENTES.includes(s.estado)) throw new Error('Solo se cancelan solicitudes que aún no se resuelven');
         const ahora = ahoraIso();
@@ -712,6 +750,93 @@
     } catch (e) { return { error: e.message || String(e) }; }
     avisar('cancelada', sol).catch(() => { });
     return { ok: true };
+  }
+
+  // ---------------------------------------------------------------- eliminar (administradores del panel)
+  // Borra los registros de asistencia que creó la solicitud: solo los que llevan su código en la razón.
+  async function borrarRegistros(s) {
+    const FB = window.FirebaseBackend;
+    const errores = [];
+    let borrados = 0;
+    const fechas = s.modalidad === 'DIAS' ? (s.fechas || []) : [];
+    if (!fechas.length || !FB) return { borrados, errores };
+    const suya = x => JSON.stringify(x).includes(`Solicitud ${s.id}`);
+    try {
+      const snap = await db().collection('registros').where('empleadoId', '==', String(s.empleadoId)).get();
+      for (const d of snap.docs.filter(d => suya(d.data()))) {
+        try { await db().collection('registros').doc(d.id).delete(); borrados++; }
+        catch (e) { errores.push(`registro ${d.id}: ${e.message || e}`); }
+      }
+    } catch (e) { errores.push('asistencia no leída: ' + (e.message || e)); }
+    // Días ya archivados (Google Sheets / base histórica)
+    try {
+      const res = await FB._obtenerRegistrosArchivados({ empleadoId: String(s.empleadoId) }, 1, 20000);
+      if (!res || !res.ok || !Array.isArray(res.registros)) throw new Error((res && res.error) || 'sin respuesta');
+      const tipo = TIPOS[s.tipo].registro;
+      for (const f of fechas) {
+        const dia = res.registros.filter(x => String(x.empleadoId || '').trim() === String(s.empleadoId) && FB._normFecha(x.fecha) === f);
+        const mio = dia.find(suya);
+        if (mio) {
+          const x = await FB._enviarCambioArchivado({ accion: 'eliminarRegistroArchivado', empleadoId: String(s.empleadoId), fecha: f, tipo: String(mio.tipo || tipo).toUpperCase() });
+          if (x && x.ok !== false && !x.error) borrados++; else errores.push(`${fechaCorta(f)}: ${(x && x.error) || 'no se borró del histórico'}`);
+        } else if (dia.some(x => String(x.tipo || '').toUpperCase() === tipo)) {
+          errores.push(`${fechaCorta(f)}: hay un registro archivado del mismo tipo sin el código de la solicitud; revísalo en Detalle de Empleado`);
+        }
+      }
+    } catch (e) { errores.push('histórico no revisado: ' + (e.message || e)); }
+    return { borrados, errores };
+  }
+
+  async function deshacerEliminada(s) {
+    const r = await borrarRegistros(s);
+    const upd = { eliminada_registros: r.borrados, eliminada_error: r.errores.join(' | ').slice(0, 900) };
+    await db().collection(COL).doc(s.id).set(upd, { merge: true }).catch(() => { });
+    return r;
+  }
+
+  async function eliminar(id, quien, motivo, esAdmin) {
+    motivo = String(motivo || '').trim().slice(0, 400);
+    if (!esAdmin) return { error: 'Solo un administrador puede eliminar solicitudes' };
+    if (!motivo) return { error: 'Escribe el motivo' };
+    const ref = db().collection(COL).doc(id);
+    let sol = null, antes = '';
+    try {
+      await db().runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error('La solicitud ya no existe');
+        const s = deDoc(snap);
+        if (s.eliminada) throw new Error('La solicitud ya fue eliminada');
+        antes = s.estado;
+        const ahora = ahoraIso();
+        const upd = {
+          estado: 'CANCELADA', eliminada: true, estado_anterior: s.estado, eliminada_en: ahora, eliminada_motivo: motivo,
+          eliminada_por: quien.nombre || String(quien.id), eliminada_por_id: String(quien.id),
+          historial: firebase.firestore.FieldValue.arrayUnion({ en: ahora, quien: quien.nombre || String(quien.id), accion: 'ELIMINADA' })
+        };
+        tx.update(ref, upd);
+        sol = Object.assign({}, s, upd);
+      });
+    } catch (e) { return { error: e.message || String(e) }; }
+    const conRegistros = ['APROBADA', 'REGISTRADA'].includes(antes);
+    const hecho = conRegistros ? await deshacerEliminada(sol) : { borrados: 0, errores: [] };
+    if (conRegistros || PENDIENTES.includes(antes)) avisarEliminada(sol, conRegistros).catch(e => console.warn('Permisos: aviso de eliminación no enviado', e));
+    return { ok: true, solicitud: sol, borrados: hecho.borrados, errores: hecho.errores };
+  }
+
+  // Avisos con datos mínimos: el motivo no viaja por WhatsApp
+  async function avisarEliminada(s, estabaAprobada) {
+    const T = TIPOS[s.tipo] || { label: s.tipo };
+    const per = periodoTxt(s);
+    const quien = `${nombreCorto(s.nombre)} (${s.empleadoId})`;
+    await campana(s.empleadoId, 'permiso_cancelado', `Solicitud de ${T.label.toLowerCase()} eliminada`, `${per} · ${nombreCorto(s.eliminada_por)} · ${s.eliminada_motivo}`, s, 'eliminada');
+    const otros = new Set(s.aprobador_id ? [String(s.aprobador_id)] : []);
+    if (estabaAprobada) (await destinatariosTTHH()).forEach(d => otros.add(String(d.id)));
+    [s.empleadoId, s.eliminada_por_id].forEach(x => otros.delete(String(x)));
+    await Promise.allSettled([...otros].map(x => campana(x, 'permiso_cancelado', 'Solicitud eliminada', `${quien} · ${T.label.toLowerCase()} ${per} · por ${nombreCorto(s.eliminada_por)}`, s, 'eliminada')));
+    const colab = await leerEmpleado(s.empleadoId);
+    const r = await whatsapp(colab, saludoWa(colab && colab.nombre) + `🗑️ Un administrador eliminó tu solicitud de *${T.label.toLowerCase()}* ${per}. Ya no es válida` +
+      (estabaAprobada ? ' y ese tiempo deja de estar justificado' : '') + '.\n\nEl motivo está en la campana de la app. Si necesitas aclararlo, habla con tu jefe inmediato.');
+    await db().collection(COL).doc(s.id).set({ avisos: { aviso_eliminada: r && r.ok ? 'WhatsApp enviado' : `WhatsApp no enviado: ${(r && r.error) || 'sin respuesta'}` } }, { merge: true }).catch(() => { });
   }
 
   // ---------------------------------------------------------------- fase 5: permisos al marcar en la app
@@ -732,8 +857,8 @@
     const snap = await db().collection(COL).where('empleadoId', '==', String(empId)).get();
     let hallada = null;
     snap.forEach(doc => {
-      const s = Object.assign({ id: doc.id }, doc.data());
-      if (hallada || ['RECHAZADA', 'CANCELADA'].includes(s.estado) || !(s.fechas || []).includes(hoy)) return;
+      const s = deDoc(doc);
+      if (hallada || SIN_EFECTO.includes(s.estado) || !(s.fechas || []).includes(hoy)) return;
       if (s.modalidad !== 'HORAS') { hallada = s; return; }
       const a2 = minutosDe(s.hora_desde), b2 = minutosDe(s.hora_hasta);
       if (a < b2 && a2 < b) hallada = s;
@@ -759,7 +884,7 @@
 
   /**
    * El colaborador marcó salida (o entrada tardía) por permiso personal o médico en la app: se crea la solicitud
-   * por horas de hoy. Personal → la aprueba el jefe; médico → queda registrada con 72 h para el certificado.
+   * por horas de hoy, que espera la respuesta del jefe inmediato.
    * Si ya tenía una solicitud que cubre ese tramo, solo se le anota la marcación.
    * p: { emp, tipo, origen 'SALIDA'|'ENTRADA_TARDIA', horaDesde, horaHasta, regresa, motivo, registroId, aceptaCargo, planBolsa }
    */
@@ -792,8 +917,8 @@
     const hoy = hoyStr();
     const r = minutosDe(horaRegreso);
     const snap = await db().collection(COL).where('empleadoId', '==', String(empId)).get();
-    const abiertas = snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
-      .filter(s => s.regreso_pendiente === true && s.desde === hoy && !['RECHAZADA', 'CANCELADA'].includes(s.estado));
+    const abiertas = snap.docs.map(deDoc)
+      .filter(s => s.regreso_pendiente === true && s.desde === hoy && !SIN_EFECTO.includes(s.estado));
     const hechas = [];
     for (const s of abiertas) {
       const a = minutosDe(s.hora_desde), b = minutosDe(s.hora_hasta);
@@ -858,48 +983,42 @@
 
     if (evento === 'creada') {
       // El motivo puede tener datos de salud: no viaja por WhatsApp, se lee en la app (requiere sesión)
+      const plazo = `antes del ${horaIso(caducaEn(s).toISOString())}`;
+      const porOtro = s.creada_por && String(s.creada_por.id) !== String(s.empleadoId);
       const verbo = { SALIDA: 'marcó salida con', ENTRADA_TARDIA: 'marcó entrada tardía con' }[s.origen] || 'solicita';
-      const lineas = `*${quien}* ${verbo} *${T.label.toLowerCase()}* ${per}.` + (s.motivo ? '\nEl motivo está en la solicitud.' : '') +
+      const lineas = (porOtro ? `*${nombreCorto(s.creada_por.nombre)}* solicita a nombre de *${quien}* ` : `*${quien}* ${verbo} `) + `*${T.label.toLowerCase()}* ${per}.` + (s.motivo ? '\nEl motivo está en la solicitud.' : '') +
         (s.acepta_descuento ? `\n⚠️ Sin saldo suficiente: aceptó el descuento al rol de ${s.dias_sin_saldo} día(s).` : '') +
         (s.plan_bolsa && (s.plan_bolsa.vacaciones_min || s.plan_bolsa.rol_min)
           ? `\n⚠️ Supera su bolsa de 4 h: ${s.plan_bolsa.vacaciones_min ? durTxt(s.plan_bolsa.vacaciones_min) + ' a vacaciones' : ''}${s.plan_bolsa.vacaciones_min && s.plan_bolsa.rol_min ? ' y ' : ''}${s.plan_bolsa.rol_min ? durTxt(s.plan_bolsa.rol_min) + ' al rol' : ''} (${s.acepta_cargo ? 'lo aceptó' : 'no aceptó el cargo a vacaciones: se descuenta del rol'}).` : '');
       if (s.estado === 'PENDIENTE_JEFE') {
         const jefe = await leerEmpleado(s.aprobador_id);
-        await campana(s.aprobador_id, 'permiso_solicitud', `Solicitud de ${T.label.toLowerCase()}`, `${quien} ${per}`, s, 'jefe');
-        resultado('aviso_jefe', await whatsapp(jefe, saludoWa(jefe && jefe.nombre) + '📝 ' + lineas + `\n\nSi no respondes en 8 horas laborables, pasará a TTHH.` + pieWa));
+        await campana(s.aprobador_id, 'permiso_solicitud', `Solicitud de ${T.label.toLowerCase()}`, `${quien} ${per} · responde ${plazo}`, s, 'jefe');
+        resultado('aviso_jefe', await whatsapp(jefe, saludoWa(jefe && jefe.nombre) + '📝 ' + lineas + `\n\nNecesita tu respuesta *${plazo}*: sin aprobación no es válida ni llega a TTHH.` + pieWa));
       } else {
         const lista = await destinatariosTTHH();
         await Promise.allSettled(lista.map(d => campana(d.id, 'permiso_solicitud', `Solicitud de ${T.label.toLowerCase()} para TTHH`, `${quien} ${per} · ${MOTIVO_TTHH_3[s.motivo_tthh] || ''}`, s, 'tthh')));
-        const rs = await Promise.all(lista.map(d => whatsapp(d, saludoWa(d.nombre) + '📝 ' + lineas + `\n\nLlega a TTHH porque: ${(MOTIVO_TTHH_3[s.motivo_tthh] || '').toLowerCase()}.` + pieWa)));
+        const rs = await Promise.all(lista.map(d => whatsapp(d, saludoWa(d.nombre) + '📝 ' + lineas + `\n\nLlega a TTHH porque: ${(MOTIVO_TTHH_3[s.motivo_tthh] || '').toLowerCase()}. Necesita tu respuesta *${plazo}*; sin respuesta no es válida.` + pieWa)));
         avisos.aviso_tthh = `WhatsApp ${rs.filter(r => r.ok).length}/${lista.length}`;
       }
-    } else if (evento === 'registrada') {
-      const porOtro = s.creada_por && String(s.creada_por.id) !== String(s.empleadoId);
-      const autor = porOtro ? `${nombreCorto(s.creada_por.nombre)} registró a nombre de ${quien}` : `${quien} registró`;
-      const txt = `${autor} ${T.label.toLowerCase()} ${per}` + (s.motivo ? ` · ${s.motivo}` : '');
-      const lista = await destinatariosTTHH();
-      // A quien la registró no se le avisa de su propia acción
-      const destinos = lista.filter(d => !s.creada_por || String(d.id) !== String(s.creada_por.id));
-      if (s.aprobador_id && String(s.aprobador_id) !== String(s.creada_por && s.creada_por.id) && !destinos.some(d => String(d.id) === String(s.aprobador_id))) destinos.push(await leerEmpleado(s.aprobador_id) || { id: s.aprobador_id });
-      await Promise.allSettled(destinos.map(d => campana(d.id, 'permiso_registrado', `${T.label} ${part(T, "registrad")}`, txt, s, 'info')));
-      const wa = (porOtro ? `📋 *${nombreCorto(s.creada_por.nombre)}* registró a nombre de *${quien}* *` : `📋 *${quien}* registró *`) + `${T.label.toLowerCase()}* ${per}.` +
-        '\n\nEs informativo: no requiere aprobación. Los documentos deben llegar a TTHH en 72 horas.';
-      const rs = await Promise.all(destinos.map(d => whatsapp(d, saludoWa(d.nombre) + wa)));
-      avisos.aviso_jefe_tthh = `WhatsApp ${rs.filter(r => r.ok).length}/${destinos.length}`;
-      if (String(s.creada_por && s.creada_por.id) !== String(s.empleadoId)) {
-        await campana(s.empleadoId, 'permiso_registrado', `${T.label} ${part(T, "registrad")} a tu nombre`, `${per} · por ${nombreCorto(s.creada_por.nombre)}`, s, 'col');
-      }
+      if (porOtro) await campana(s.empleadoId, 'permiso_solicitud', `${T.label} ${part(T, 'pedid')} a tu nombre`, `${per} · por ${nombreCorto(s.creada_por.nombre)} · espera la aprobación`, s, 'col');
     } else if (evento === 'aprobada' || evento === 'rechazada') {
       const ok = evento === 'aprobada';
       await campana(s.empleadoId, ok ? 'permiso_aprobado' : 'permiso_rechazado', ok ? `${T.label} ${part(T, "aprobad")}` : `${T.label} no ${part(T, "aprobad")}`,
         `${per} · ${nombreCorto(s.resuelta_por)}` + (s.comentario ? ` · ${s.comentario}` : ''), s, 'col');
       resultado('aviso_colaborador', await whatsapp(colab, saludoWa(colab && colab.nombre) + (ok
-        ? `✅ Tu solicitud de *${T.label.toLowerCase()}* ${per} fue *aprobada* por ${nombreCorto(s.resuelta_por)}.` + (s.modalidad === 'HORAS' ? '\n\nRecuerda registrar tu salida y tu regreso en la app.' : '')
+        ? `✅ Tu solicitud de *${T.label.toLowerCase()}* ${per} fue *aprobada* por ${nombreCorto(s.resuelta_por)}.` + (T.documentos ? `\n\nEntrega los documentos a TTHH antes del ${horaIso(s.docs_vence)} (app → *Permisos*); sin ellos se descuenta del rol.` : '')
         : `❌ Tu solicitud de *${T.label.toLowerCase()}* ${per} *no fue aprobada*.` + (s.comentario ? `\nMotivo: ${s.comentario}` : '') + '\n\nSi necesitas aclararlo, habla con tu jefe inmediato.')));
       if (ok) {
         const lista = await destinatariosTTHH();
         await Promise.allSettled(lista.filter(d => String(d.id) !== String(s.resuelta_por_id))
           .map(d => campana(d.id, 'permiso_aprobado', `${T.label} ${part(T, "aprobad")}`, `${quien} ${per} · aprobó ${nombreCorto(s.resuelta_por)}`, s, 'tthh')));
+        // Médico y calamidad: TTHH recibe también WhatsApp porque debe revisar los documentos
+        if (T.documentos) {
+          const otros = lista.filter(d => String(d.id) !== String(s.resuelta_por_id));
+          const rs = await Promise.all(otros.map(d => whatsapp(d, saludoWa(d.nombre) +
+            `📋 *${nombreCorto(s.resuelta_por)}* aprobó *${T.label.toLowerCase()}* de *${quien}* ${per}.\n\nLos documentos deben llegar a TTHH en 72 horas.`)));
+          avisos.aviso_tthh_aprobada = `WhatsApp ${rs.filter(r => r.ok).length}/${otros.length}`;
+        }
       }
     } else if (evento === 'cancelada') {
       if (s.estado === 'CANCELADA' && s.aprobador_id) await campana(s.aprobador_id, 'permiso_cancelado', 'Solicitud cancelada', `${quien} canceló ${T.label.toLowerCase()} ${per}`, s, 'cancel');
@@ -912,7 +1031,7 @@
 
   // ---------------------------------------------------------------- lecturas
   function escuchar(consulta, cb) {
-    return consulta.onSnapshot(snap => cb(snap.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => tsMs(b.creada) - tsMs(a.creada))),
+    return consulta.onSnapshot(snap => cb(snap.docs.map(deDoc).sort((a, b) => tsMs(b.creada) - tsMs(a.creada))),
       err => { console.warn('Permisos: lectura en vivo falló', err); cb(null, err); });
   }
   async function contarPorAprobar(id) {
@@ -924,7 +1043,7 @@
         ? await db().collection(COL).where('estado', 'in', PENDIENTES).get()
         : await db().collection(COL).where('aprobador_id', '==', yo).get();
       let n = 0;
-      snap.forEach(doc => { const s = doc.data(); if ((tthh && PENDIENTES.includes(s.estado)) || (s.estado === 'PENDIENTE_JEFE' && String(s.aprobador_id) === yo)) n++; });
+      snap.forEach(doc => { const s = deDoc(doc); if ((tthh && s.estado === 'PENDIENTE_TTHH') || (s.estado === 'PENDIENTE_JEFE' && String(s.aprobador_id) === yo)) n++; });
       return n;
     } catch (e) { return 0; }
   }
@@ -941,6 +1060,7 @@
       }[s.docs_estado || 'PENDIENTE'];
       if (d) { txt = d[0]; clase = d[1]; }
     }
+    if (s.eliminada) { txt = 'Eliminada'; clase = 'pm-e-gris'; }
     return `<span class="pm-estado ${clase}">${esc(txt)}</span>`;
   }
   function periodoHtml(s) {
@@ -969,12 +1089,18 @@
     }
     if (s.acepta_descuento) lineas.push(`<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> Sin saldo suficiente: aceptó el descuento al rol de ${s.dias_sin_saldo} día(s).</div>`);
     if (s.estado === 'PENDIENTE_JEFE') {
-      lineas.push(`<div class="pm-sub"><i class="fas fa-user-tie"></i> ${opts.yoId && String(s.aprobador_id) === String(opts.yoId) ? "Te toca aprobarla" : 'La aprueba ' + esc(nombreCorto(s.aprobador_nombre))}${s.vence_jefe ? ` · pasa a TTHH el ${esc(horaIso(s.vence_jefe))} si no hay respuesta` : ''}</div>`);
+      lineas.push(`<div class="pm-sub"><i class="fas fa-user-tie"></i> ${opts.yoId && String(s.aprobador_id) === String(opts.yoId) ? "Te toca aprobarla" : 'La aprueba ' + esc(nombreCorto(s.aprobador_nombre))}</div>`);
     } else if (s.estado === 'PENDIENTE_TTHH') {
       lineas.push(`<div class="pm-sub"><i class="fas fa-users"></i> La revisa TTHH · ${esc((opts.comoAprobador || opts.conNombre ? MOTIVO_TTHH_3 : MOTIVO_TTHH)[s.motivo_tthh] || '')}</div>`);
-    } else if (s.estado === 'APROBADA' || s.estado === 'RECHAZADA') {
-      lineas.push(`<div class="pm-sub"><i class="fas ${s.estado === 'APROBADA' ? 'fa-check' : 'fa-times'}"></i> ${s.estado === 'APROBADA' ? 'Aprobó' : 'Rechazó'} ${esc(nombreCorto(s.resuelta_por))}${s.resuelta_como === 'TTHH' ? ' (TTHH)' : ''} · ${esc(horaIso(s.resuelta_en))}${s.comentario ? `<br>«${esc(s.comentario)}»` : ''}</div>`);
-    } else if (s.estado === 'REGISTRADA') {
+    } else if (s.estado === 'CADUCADA') {
+      lineas.push(`<div class="pm-alerta"><i class="fas fa-hourglass-end"></i> No se respondió antes del ${esc(horaIso(caducaEn(s).toISOString()))}: la solicitud no es válida${s.escalada ? '' : ' y no llegó a TTHH'}.</div>`);
+    } else if (s.estado === 'APROBADA' || s.estado === 'RECHAZADA' || (s.estado === 'REGISTRADA' && s.resuelta_por)) {
+      lineas.push(`<div class="pm-sub"><i class="fas ${s.estado === 'RECHAZADA' ? 'fa-times' : 'fa-check'}"></i> ${s.estado === 'RECHAZADA' ? 'Rechazó' : 'Aprobó'} ${esc(nombreCorto(s.resuelta_por))}${s.resuelta_como === 'TTHH' ? ' (TTHH)' : s.resuelta_como === 'ADMIN' ? ' (administrador)' : ''} · ${esc(horaIso(s.resuelta_en))}${s.comentario ? `<br>«${esc(s.comentario)}»` : ''}</div>`);
+    }
+    if (PENDIENTES.includes(s.estado)) {
+      lineas.push(`<div class="pm-alerta"><i class="fas fa-hourglass-half"></i> Aún no es válida. Sin respuesta antes del ${esc(horaIso(caducaEn(s).toISOString()))}, no será válida.</div>`);
+    }
+    if (s.estado === 'REGISTRADA') {
       // Fase 3: estado de los documentos (la subida y la revisión de TTHH se conectan en el siguiente paso)
       const de = s.docs_estado || 'PENDIENTE';
       const txtDocs = {
@@ -990,6 +1116,10 @@
     if (s.modalidad === 'DIAS' && ['APROBADA', 'REGISTRADA'].includes(s.estado)) {
       if (s.registros_error) lineas.push(`<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No se registraron todos los días en asistencia. Avisa a TTHH.</div>`);
       else if ((s.registros || []).length) lineas.push(`<div class="pm-sub"><i class="fas fa-calendar-check"></i> Registrado en asistencia</div>`);
+    }
+    if (s.eliminada) {
+      lineas.push(`<div class="pm-sub"><i class="fas fa-trash"></i> Eliminó ${esc(nombreCorto(s.eliminada_por))} · ${esc(horaIso(s.eliminada_en))} · estaba «${esc((ESTADOS[s.estado_anterior] || {}).txt || s.estado_anterior)}»${s.eliminada_registros ? ` · ${s.eliminada_registros} registro(s) de asistencia borrado(s)` : ''}<br>«${esc(s.eliminada_motivo)}»</div>`);
+      if (s.eliminada_error) lineas.push(`<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> Falta deshacer: ${esc(s.eliminada_error)}</div>`);
     }
     const acciones = opts.acciones ? opts.acciones(s) : '';
     return `<article class="pm-tarjeta" data-id="${esc(s.id)}">
@@ -1016,7 +1146,7 @@
     modal.innerHTML = `
       <div class="pm-dialogo" role="dialog" aria-modal="true" aria-labelledby="pmTitulo">
         <div class="pm-dcab">
-          <div><h3 id="pmTitulo">${esc(opts.titulo || (opts.elegirEmpleado ? 'Registrar a nombre de un colaborador' : 'Nueva solicitud'))}</h3><div class="pm-sub">${esc(opts.subtitulo || 'Permisos y vacaciones')}</div></div>
+          <div><h3 id="pmTitulo">${esc(opts.titulo || (opts.elegirEmpleado ? 'Pedir a nombre de un colaborador' : 'Nueva solicitud'))}</h3><div class="pm-sub">${esc(opts.subtitulo || 'Permisos y vacaciones')}</div></div>
           <button type="button" class="pm-cerrar" data-pm="cerrar" aria-label="Cerrar">&times;</button>
         </div>
         <div class="pm-dcuerpo">
@@ -1102,6 +1232,7 @@
     $('pmAcepta').addEventListener('change', recalcular);
     $("pmAceptaCargo").addEventListener("change", recalcular);
 
+    const horaPasada = () => st.tipo === 'PERMISO_PERSONAL' && $('pmDesde').value && new Date(`${$('pmDesde').value}T${$('pmHoraDesde').value}:00`) <= new Date();
     async function recalcular() {
       mensaje('');
       const T = TIPOS[st.tipo];
@@ -1117,17 +1248,21 @@
         const mj = !isNaN(a) && !isNaN(b) && b > a ? minutosJornada(a, b) : 0;
         partes.push(mj ? `<div><i class="fas fa-clock"></i> ${durTxt(mj)} de permiso${mj < b - a ? ' <span class="pm-sub">(sin receso ni almuerzo)</span>' : ''}</div>` : '<div class="pm-sub">Indica la hora de salida y de regreso.</div>');
         if (desde && !esLaborable(desde)) partes.push('<div class="pm-sub">Esa fecha no es laborable.</div>');
+        if (horaPasada()) partes.push('<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> Esa hora ya pasó: pide el permiso antes de la hora de salida.</div>');
       } else {
         partes.push(fechas.length ? `<div><i class="fas fa-calendar-day"></i> ${fechas.length} día${fechas.length === 1 ? '' : 's'} laborable${fechas.length === 1 ? '' : 's'} <span class="pm-sub">(sin fines de semana ni feriados)</span></div>` : '<div class="pm-sub">El rango no tiene días laborables.</div>');
       }
       // Quién la aprueba
-      if (T.aprobacion) {
+      {
         if (st.aprob === undefined) { st.aprob = null; const empId = st.emp.id; aprobadorDe(st.emp).then(r => { if (st.emp && st.emp.id === empId) { st.aprob = r; recalcular(); } }); }
         if (st.aprob === null) partes.push('<div class="pm-sub"><i class="fas fa-spinner fa-spin"></i> Buscando a tu jefe inmediato…</div>');
-        else if (st.aprob) partes.push(st.aprob.jefe ? `<div><i class="fas fa-user-tie"></i> La aprueba <strong>${esc(nombreCorto(st.aprob.jefe.nombre))}</strong> (jefe inmediato). Si no responde en 8 horas laborables, pasa a TTHH.</div>`
-          : `<div><i class="fas fa-users"></i> La revisa <strong>TTHH</strong>: ${esc((MOTIVO_TTHH[st.aprob.motivo] || '').toLowerCase())}.</div>`);
-      } else {
-        partes.push('<div><i class="fas fa-info-circle"></i> No necesita aprobación: se registra al enviar y se avisa a tu jefe inmediato y a TTHH. Entrega los documentos a TTHH en 72 horas; sin ellos se descuenta del rol.</div>');
+        else if (st.aprob) partes.push(st.aprob.jefe ? `<div><i class="fas fa-user-tie"></i> La aprueba <strong>${esc(nombreCorto(st.aprob.jefe.nombre))}</strong> (jefe inmediato). Hasta que la apruebe no es válida.</div>`
+          : `<div><i class="fas fa-users"></i> La aprueba <strong>TTHH</strong>: ${esc((MOTIVO_TTHH[st.aprob.motivo] || '').toLowerCase())}. Hasta que la apruebe no es válida.</div>`);
+        if (fechas.length && !horaPasada()) {
+          const cad = caducidad({ tipo: st.tipo, modalidad: st.modalidad, desde, fechas, hora_desde: $('pmHoraDesde').value }, new Date());
+          partes.push(`<div><i class="fas fa-hourglass-half"></i> Plazo para responder: <strong>${esc(horaIso(cad.toISOString()))}</strong>. Sin respuesta, la solicitud no es válida.</div>`);
+        }
+        if (T.documentos) partes.push('<div><i class="fas fa-file-medical"></i> Al aprobarse hay 72 horas para entregar los documentos a TTHH; sin ellos se descuenta del rol.</div>');
       }
       // Saldo de vacaciones
       let sinSaldo = 0;
@@ -1179,8 +1314,8 @@
       if (sinSaldo) $('pmTxtDescuento').innerHTML = `No tienes saldo para ${sinSaldo} día${sinSaldo === 1 ? '' : 's'}. <strong>Acepto que ${sinSaldo === 1 ? 'ese día se descuente' : 'esos días se descuenten'} del rol.</strong>`;
       st.sinSaldo = sinSaldo;
       const motivoOk = st.tipo === 'VACACIONES' || $('pmMotivo').value.trim();
-      btn.disabled = st.enviando || !motivoOk || (st.modalidad === "DIAS" && !fechas.length) || (sinSaldo > 0 && !$("pmAcepta").checked) || st.saldo === "cargando" || planCargando || (necesitaCargo && !$("pmAceptaCargo").checked);
-      btn.innerHTML = T.aprobacion ? '<i class="fas fa-paper-plane"></i> Enviar solicitud' : '<i class="fas fa-check"></i> Registrar';
+      btn.disabled = st.enviando || !motivoOk || horaPasada() || (st.modalidad === "DIAS" && !fechas.length) || (sinSaldo > 0 && !$("pmAcepta").checked) || st.saldo === "cargando" || planCargando || (necesitaCargo && !$("pmAceptaCargo").checked);
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar solicitud';
     }
 
     $('pmEnviar').addEventListener('click', async () => {
@@ -1203,8 +1338,7 @@
         if (!res || res.error) throw new Error((res && res.error) || 'No se pudo enviar');
         cerrar();
         const s = res.solicitud;
-        toast(s.estado === 'REGISTRADA' ? `${TIPOS[s.tipo].label} ${part(TIPOS[s.tipo], "registrad")}. Se avisó a tu jefe y a TTHH.`
-          : s.estado === 'PENDIENTE_JEFE' ? `Solicitud enviada a ${nombreCorto(s.aprobador_nombre)}` : 'Solicitud enviada a TTHH', 'success');
+        toast(`Solicitud enviada a ${s.estado === 'PENDIENTE_JEFE' ? nombreCorto(s.aprobador_nombre) : 'TTHH'}. No es válida hasta que se apruebe.`, 'success');
         if (typeof opts.onCreada === 'function') opts.onCreada(s);
       } catch (e) {
         mensaje(e.message || String(e));
@@ -1227,10 +1361,10 @@
       modal.innerHTML = `<div class="pm-dialogo pm-dialogo-chico" role="dialog" aria-modal="true" aria-labelledby="pmTitRech">
         <div class="pm-dcab"><div><h3 id="pmTitRech">${esc(cfg.titulo || 'No aprobar')}</h3><div class="pm-sub">${esc(nombreCorto(s.nombre))} · ${esc((TIPOS[s.tipo] || {}).label || s.tipo)}</div></div>
           <button type="button" class="pm-cerrar" data-pm="no" aria-label="Cerrar">&times;</button></div>
-        <div class="pm-dcuerpo"><label class="pm-etq" for="pmRechMotivo">${esc(cfg.etiqueta || 'Motivo (lo verá el colaborador)')}</label>
+        <div class="pm-dcuerpo">${cfg.aviso ? `<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> ${esc(cfg.aviso)}</div>` : ''}<label class="pm-etq" for="pmRechMotivo">${esc(cfg.etiqueta || 'Motivo (lo verá el colaborador)')}</label>
           <textarea id="pmRechMotivo" class="pm-campo" rows="3" maxlength="400" placeholder="${esc(cfg.ejemplo || 'Ej: esa semana hay entrega de proyecto')}"></textarea></div>
         <div class="pm-dpie"><button type="button" class="pm-btn pm-btn-sec" data-pm="no">Volver</button>
-          <button type="button" class="pm-btn pm-btn-rojo" data-pm="si" disabled><i class="fas fa-times"></i> ${esc(cfg.boton || 'No aprobar')}</button></div></div>`;
+          <button type="button" class="pm-btn pm-btn-rojo" data-pm="si" disabled><i class="fas ${cfg.boton === 'Eliminar' ? 'fa-trash' : 'fa-times'}"></i> ${esc(cfg.boton || 'No aprobar')}</button></div></div>`;
       document.body.appendChild(modal);
       const ta = modal.querySelector('#pmRechMotivo'), si = modal.querySelector('[data-pm="si"]');
       ta.addEventListener('input', () => { si.disabled = !ta.value.trim(); });
@@ -1505,7 +1639,7 @@
     const recalcularTiempo = () => montarResumenTiempo(boxTiempo, yo.id);
 
     function pendientesParaMi() {
-      return (st.aprobar || []).filter(s => (s.estado === 'PENDIENTE_JEFE' && String(s.aprobador_id) === yo.id) || (st.tthh && PENDIENTES.includes(s.estado)));
+      return (st.aprobar || []).filter(s => (s.estado === 'PENDIENTE_JEFE' && String(s.aprobador_id) === yo.id) || (st.tthh && s.estado === 'PENDIENTE_TTHH'));
     }
     function pintar() {
       tabs.hidden = !(st.tthh || st.esJefe || (st.aprobar && st.aprobar.length));
@@ -1566,7 +1700,7 @@
     });
 
     st.subs.push(escuchar(db().collection(COL).where('empleadoId', '==', yo.id), (l, err) => {
-      if (err) st.errMias = 'No se pudieron cargar tus solicitudes.'; else { st.errMias = ''; st.mias = l; }
+      if (err) st.errMias = 'No se pudieron cargar tus solicitudes.'; else { st.errMias = ''; l = l.filter(s => !s.eliminada); st.mias = l; }
       pintar();
       if (!err) {
         const firma = JSON.stringify(l.map(s => [s.id, s.estado, s.minutos, s.cargo_vacaciones_min, s.docs_estado]).sort());
@@ -1579,7 +1713,7 @@
       const q = st.tthh ? db().collection(COL) : db().collection(COL).where('aprobador_id', '==', yo.id);
       st.subs.push(escuchar(q, (l, err) => {
         if (err) st.errAprobar = 'No se pudieron cargar las solicitudes por aprobar.';
-        else { st.errAprobar = ''; st.aprobar = l.filter(s => String(s.empleadoId) !== yo.id); }
+        else { st.errAprobar = ''; st.aprobar = l.filter(s => !s.eliminada && String(s.empleadoId) !== yo.id && (!st.tthh || visibleTTHH(s) || String(s.aprobador_id) === yo.id)); }
         if (st.enlace && st.enlace.id && st.aprobar && st.aprobar.some(s => s.id === st.enlace.id)) st.tab = 'aprobar';
         pintar();
       }));
@@ -1603,16 +1737,21 @@
         </nav>
         <div class="pm-pacc">
           <a class="pm-btn pm-btn-guia" href="./guias/permisos/guia-permisos.html#panel" target="_blank" rel="noopener" title="Abre la guía en otra pestaña"><i class="fas fa-book-open"></i> Guía paso a paso</a>
-          <button type="button" class="pm-btn pm-btn-sec" data-pm="a-nombre"><i class="fas fa-user-plus"></i> Registrar médico o calamidad</button>
+          <button type="button" class="pm-btn pm-btn-sec" data-pm="a-nombre"><i class="fas fa-user-plus"></i> Pedir médico o calamidad</button>
         </div>
       </div>
       <div class="pm-cuerpo"></div></div>`;
     const cuerpo = cont.querySelector('.pm-cuerpo');
     const puedeResolver = () => st.tthh || opts.admin;
+    // En lugar del jefe solo responde un administrador; TTHH no las ve hasta que el jefe las apruebe
+    const puedeResponder = s => PENDIENTES.includes(s.estado) && String(s.empleadoId) !== yo.id &&
+      (opts.admin || (st.tthh && s.estado === 'PENDIENTE_TTHH') || (s.estado === 'PENDIENTE_JEFE' && String(s.aprobador_id) === yo.id));
+    const visibles = () => (st.lista || []).filter(s => !s.eliminada).filter(s => opts.admin || !st.tthh || visibleTTHH(s) || String(s.aprobador_id) === yo.id);
 
+    const eliminadas = () => opts.admin ? (st.lista || []).filter(s => s.eliminada) : [];
     function filtrar() {
       const q = st.busca.trim().toLowerCase();
-      return (st.lista || []).filter(s => {
+      return (st.filtro === 'ELIM' ? eliminadas() : visibles()).filter(s => {
         if (st.filtro === 'PEND' && !PENDIENTES.includes(s.estado)) return false;
         const de = s.estado === 'REGISTRADA' ? (s.docs_estado || 'PENDIENTE') : '';
         if (st.filtro === 'DOCS' && !['PENDIENTE', 'RECHAZADO'].includes(de)) return false;
@@ -1626,12 +1765,12 @@
       cont.querySelectorAll('.pm-tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === st.tab ? 'true' : 'false'));
       cont.querySelector('[data-pm="a-nombre"]').hidden = !puedeResolver();
       if (st.tab === 'tthh') { pintarTTHH(); return; }
-      const pendientes = (st.lista || []).filter(s => PENDIENTES.includes(s.estado)).length;
+      const pendientes = visibles().filter(s => PENDIENTES.includes(s.estado)).length;
       const deDe = s => s.estado === 'REGISTRADA' ? (s.docs_estado || 'PENDIENTE') : '';
-      const docs = (st.lista || []).filter(s => ['PENDIENTE', 'RECHAZADO'].includes(deDe(s))).length;
-      const porValidar = (st.lista || []).filter(s => deDe(s) === 'ENTREGADO').length;
-      const vencidos = (st.lista || []).filter(s => deDe(s) === 'VENCIDO').length;
-      const avisoTthh = !st.cfg.tthh.length ? '<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No hay personas de TTHH configuradas: las solicitudes sin jefe y las que pasan a TTHH llegan a los supervisores administradores. Configúralas en «Personas de TTHH».</div>' : '';
+      const docs = visibles().filter(s => ['PENDIENTE', 'RECHAZADO'].includes(deDe(s))).length;
+      const porValidar = visibles().filter(s => deDe(s) === 'ENTREGADO').length;
+      const vencidos = visibles().filter(s => deDe(s) === 'VENCIDO').length;
+      const avisoTthh = !st.cfg.tthh.length ? '<div class="pm-alerta"><i class="fas fa-exclamation-triangle"></i> No hay personas de TTHH configuradas: las solicitudes sin jefe y las aprobadas llegan a los supervisores administradores. Configúralas en «Personas de TTHH».</div>' : '';
       const filtros = `<div class="pm-filtros">
         <div class="pm-seg" role="group" aria-label="Filtro">
           <button type="button" data-filtro="PEND" aria-pressed="${st.filtro === 'PEND'}">Pendientes (${pendientes})</button>
@@ -1639,6 +1778,7 @@
           <button type="button" data-filtro="VENCIDOS" aria-pressed="${st.filtro === 'VENCIDOS'}">Vencidos (${vencidos})</button>
           <button type="button" data-filtro="DOCS" aria-pressed="${st.filtro === 'DOCS'}">Faltan documentos (${docs})</button>
           <button type="button" data-filtro="TODAS" aria-pressed="${st.filtro === 'TODAS'}">Todas</button>
+          ${opts.admin ? `<button type="button" data-filtro="ELIM" aria-pressed="${st.filtro === 'ELIM'}">Eliminadas (${eliminadas().length})</button>` : ''}
         </div>
         <input type="search" class="pm-campo pm-buscar" id="pmBuscar" placeholder="Buscar por nombre, ID, área o motivo" value="${esc(st.busca)}" aria-label="Buscar">
       </div>`;
@@ -1649,18 +1789,20 @@
         const l = filtrar();
         html = l.length ? `<div class="pm-grid">${l.slice(0, 200).map(s => tarjeta(s, {
           conNombre: true, comoAprobador: true, yoId: yo.id, docs: { yoId: yo.id, revisar: puedeResolver() },
-          acciones: x => PENDIENTES.includes(x.estado) && puedeResolver() && String(x.empleadoId) !== yo.id
-            ? `<button type="button" class="pm-btn pm-btn-rojo pm-btn-chico" data-resolver="RECHAZAR" data-id="${esc(x.id)}"><i class="fas fa-times"></i> No aprobar</button>
-               <button type="button" class="pm-btn pm-btn-verde pm-btn-chico" data-resolver="APROBAR" data-id="${esc(x.id)}"><i class="fas fa-check"></i> Aprobar${x.estado === 'PENDIENTE_JEFE' ? ' (en lugar del jefe)' : ''}</button>` : ''
+          acciones: x => (opts.admin && !x.eliminada ? `<button type="button" class="pm-btn pm-btn-sec pm-btn-chico pm-btn-eliminar" data-eliminar="${esc(x.id)}"><i class="fas fa-trash"></i> Eliminar</button>` : '') +
+            (opts.admin && x.eliminada && x.eliminada_error ? `<button type="button" class="pm-btn pm-btn-pri pm-btn-chico" data-reintentar="${esc(x.id)}"><i class="fas fa-redo"></i> Reintentar</button>` : '') +
+            (puedeResponder(x) ? `<button type="button" class="pm-btn pm-btn-rojo pm-btn-chico" data-resolver="RECHAZAR" data-id="${esc(x.id)}"><i class="fas fa-times"></i> No aprobar</button>
+               <button type="button" class="pm-btn pm-btn-verde pm-btn-chico" data-resolver="APROBAR" data-id="${esc(x.id)}"><i class="fas fa-check"></i> Aprobar${x.estado === 'PENDIENTE_JEFE' && String(x.aprobador_id) !== yo.id ? ' (en lugar del jefe)' : ''}</button>` : '')
         })).join('')}</div>` : `<div class="pm-vacio"><i class="fas fa-inbox"></i><strong>${st.filtro === 'PEND' ? 'No hay solicitudes pendientes' : 'Sin resultados'}</strong></div>`;
       }
-      cuerpo.innerHTML = avisoTthh + (puedeResolver() ? '' : '<div class="pm-sub pm-nota">Solo las personas de TTHH y los administradores pueden aprobar desde aquí. Los jefes aprueban desde la app.</div>') + filtros + html;
+      cuerpo.innerHTML = avisoTthh + (puedeResolver() ? '' : '<div class="pm-sub pm-nota">Los jefes aprueban desde la app. En lugar del jefe solo puede responder un administrador.</div>') + filtros + html;
       const b = cuerpo.querySelector('#pmBuscar');
       if (b) b.addEventListener('input', () => { st.busca = b.value; const pos = b.selectionStart; pintar(); const nb = cuerpo.querySelector('#pmBuscar'); nb.focus(); nb.setSelectionRange(pos, pos); });
       if (st.enlace && st.enlace.id) {
         const el = cuerpo.querySelector(`[data-id="${CSS.escape(st.enlace.id)}"]`);
         if (el) { el.classList.add('pm-destacada'); el.scrollIntoView({ block: 'center' }); st.enlace = null; }
         else if (st.lista && st.filtro !== 'TODAS') { st.filtro = 'TODAS'; pintar(); }
+        else if (st.lista) st.enlace = null;   // eliminada o no visible
       }
     }
     function pintarTTHH() {
@@ -1668,7 +1810,7 @@
       const opciones = empleados().filter(e => !ids.includes(String(e.id))).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
       cuerpo.innerHTML = `<section class="pm-config">
         <h3 class="pm-h3">Personas de TTHH</h3>
-        <p class="pm-sub">Reciben las solicitudes sin jefe asignado y las que el jefe no responde en 8 horas laborables, los avisos de permisos médicos y calamidades, y pueden aprobar o rechazar cualquier solicitud pendiente desde la app o este panel.</p>
+        <p class="pm-sub">Reciben las solicitudes solo después de que el jefe las aprueba y revisan los documentos de permisos médicos y calamidades. Aprueban o rechazan únicamente las de quien no tiene un jefe que pueda responder.</p>
         <ul class="pm-personas">${st.cfg.tthh.length ? st.cfg.tthh.map(x => `<li><span><i class="fas fa-user"></i> ${esc(nombreCorto(x.nombre))} <span class="pm-sub">· ${esc(x.id)}</span></span>
           ${opts.admin ? `<button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-quitar="${esc(x.id)}">Quitar</button>` : ''}</li>`).join('') : '<li class="pm-sub">Nadie configurado todavía.</li>'}</ul>
         ${opts.admin ? `<div class="pm-fila pm-fila-agregar"><select id="pmNuevoTthh" class="pm-campo" aria-label="Persona a agregar"><option value="">Agregar persona…</option>${opciones.map(e => `<option value="${esc(e.id)}">${esc(nombreCorto(e.nombre))} · ${esc(e.id)}${e.area ? ' · ' + esc(e.area) : ''}</option>`).join('')}</select>
@@ -1696,6 +1838,32 @@
       if (f) { st.filtro = f.dataset.filtro; pintar(); return; }
       const res = t.closest('[data-resolver]');
       if (res) { const s = (st.lista || []).find(x => x.id === res.dataset.id); if (s) accionResolver(res, s, res.dataset.resolver, yo, !!opts.admin); return; }
+      const del = t.closest('[data-eliminar]');
+      if (del && opts.admin) {
+        const s = (st.lista || []).find(x => x.id === del.dataset.eliminar);
+        if (!s) return;
+        const motivo = await pedirMotivoRechazo(s, {
+          titulo: 'Eliminar solicitud', etiqueta: 'Motivo (lo verá el colaborador)', ejemplo: 'Ej: solicitud duplicada; se pidió por error', boton: 'Eliminar',
+          aviso: ['APROBADA', 'REGISTRADA'].includes(s.estado) ? 'Ya está aprobada: se borrarán sus registros de asistencia y las horas cargadas a vacaciones, y ese tiempo dejará de estar justificado. No se puede deshacer.'
+            : 'Dejará de verse en la app y no se puede deshacer. Queda constancia en «Eliminadas».'
+        });
+        if (!motivo) return;
+        del.disabled = true;
+        const r = await eliminar(s.id, yo, motivo, !!opts.admin);
+        if (r.error) { toast(r.error, 'error'); del.disabled = false; return; }
+        toast(r.errores.length ? 'Solicitud eliminada, pero falta deshacer algo: revisa «Eliminadas».' : 'Solicitud eliminada', r.errores.length ? 'error' : 'success');
+        if (r.borrados && typeof window.cargarDatosCompletos === 'function') window.cargarDatosCompletos(true, true);
+        return;
+      }
+      const rein = t.closest('[data-reintentar]');
+      if (rein && opts.admin) {
+        const s = (st.lista || []).find(x => x.id === rein.dataset.reintentar);
+        if (!s) return;
+        rein.disabled = true;
+        const r = await deshacerEliminada(s);
+        toast(r.errores.length ? 'Todavía falta: ' + r.errores[0] : 'Listo: ya no queda nada por deshacer', r.errores.length ? 'error' : 'success');
+        return;
+      }
       const q = t.closest('[data-quitar]');
       if (q) { await guardarLista(st.cfg.tthh.filter(x => x.id !== q.dataset.quitar)); return; }
       if (t.closest('[data-pm="agregar-tthh"]')) {
@@ -1734,7 +1902,7 @@
     })();
     st.subs.push(escuchar(db().collection(COL), (l, err) => {
       if (err) st.err = 'No se pudieron cargar las solicitudes.'; else { st.err = ''; st.lista = l; }
-      if (typeof opts.onPendientes === 'function' && st.lista) opts.onPendientes(st.lista.filter(s => PENDIENTES.includes(s.estado)).length);
+      if (typeof opts.onPendientes === 'function' && st.lista) opts.onPendientes(visibles().filter(s => PENDIENTES.includes(s.estado)).length);
       if (st.tab === 'bandeja') pintar();
     }));
     pintar();
@@ -1746,7 +1914,7 @@
 
   window.Permisos = {
     montarApp, montarPanel, abrirFormulario, contarPorAprobar,
-    crearSolicitud, resolver, cancelar, leerConfig, esTTHH, resumenTiempo, montarResumenTiempo, planMarcacion, registrarDesdeMarcacion, ajustarRegreso,
-    _internos: { minutosJornada, solicitudQueCubre, repartoFinal, fechasLaborables, sumarMinutosLaborables, esLaborable, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, verDocumento, revisarDocumentos }
+    crearSolicitud, resolver, cancelar, eliminar, leerConfig, esTTHH, resumenTiempo, montarResumenTiempo, planMarcacion, registrarDesdeMarcacion, ajustarRegreso,
+    _internos: { minutosJornada, solicitudQueCubre, repartoFinal, fechasLaborables, sumarMinutosLaborables, esLaborable, caducidad, caducaEn, vigente, visibleTTHH, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, verDocumento, revisarDocumentos }
   };
 })();

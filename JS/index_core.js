@@ -1681,225 +1681,23 @@ window.abrirModalReporteFueraArea = function () {
         return;
     }
 
-    // Permisos (fase 5): «Hoy no vengo» es una solicitud del flujo de permisos (vacaciones y permiso personal los
-    // aprueba el jefe; permiso médico y calamidad se registran con 72 h para documentos). El modal anterior
-    // (justificaba al instante) queda solo como respaldo si permisos.js no cargó.
+    // Permisos: «Hoy no vengo» es una solicitud del flujo de permisos y no justifica el día hasta que el jefe la
+    // apruebe (al aprobarse se crea el registro de ausencia). El permiso personal no aparece: es solo por horas.
     if (window.Permisos && typeof window.Permisos.abrirFormulario === 'function' && empleado && empleado.id) {
-        const hoyPm = getLocalHoyStr(new Date());
         window.Permisos.abrirFormulario({
             empId: String(empleado.id),
             titulo: 'Hoy no vengo',
-            subtitulo: 'Elige el motivo: tu jefe y TTHH reciben el aviso',
-            tiposPermitidos: ['VACACIONES', 'PERMISO_PERSONAL', 'PERMISO_MEDICO', 'CALAMIDAD'],
+            subtitulo: 'Elige el motivo: tu jefe debe aprobarlo',
+            tiposPermitidos: ['VACACIONES', 'PERMISO_MEDICO', 'CALAMIDAD'],
             creadoPor: { id: String(empleado.id), nombre: empleado.nombre || '', rol: 'COLABORADOR' },
-            onCreada: s => {
-                if (s && s.modalidad === 'DIAS' && (s.fechas || []).includes(hoyPm)) {
-                    try {
-                        localStorage.setItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyPm}`, JSON.stringify({
-                            tipo: s.tipo, texto: s.tipo, fecha: hoyPm, solicitud: s.id || '', estado: s.estado, timestamp: new Date().toISOString()
-                        }));
-                    } catch (e) { }
-                }
+            onCreada: () => {
+                _avisoPermisoHoy = { fecha: '', lista: null, en: 0 };
                 if (typeof renderHomePage === 'function') renderHomePage();
             }
         });
         return;
     }
-
-    const existingModal = document.getElementById('modalReporteFueraArea');
-    if (existingModal) existingModal.remove();
-
-    const hoyStrLocal = getLocalHoyStr(new Date());
-    let tipoPrevio = '';
-    let obsPrevia = '';
-    if (typeof empleado !== 'undefined' && empleado && empleado.id) {
-        const stored = localStorage.getItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`);
-        if (stored) {
-            try {
-                const p = JSON.parse(stored);
-                if (p.tipo) tipoPrevio = p.tipo;
-                if (p.observacion) obsPrevia = p.observacion;
-            } catch (e) { }
-        }
-    }
-
-    const modal = document.createElement('div');
-    modal.id = 'modalReporteFueraArea';
-    modal.className = 'modal-backdrop-custom';
-    modal.style.cssText = `
-        position: fixed; inset: 0; z-index: 99999;
-        background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px);
-        display: flex; align-items: center; justify-content: center; padding: 16px;
-    `;
-
-    modal.innerHTML = `
-        <div style="background: #ffffff; border-radius: 20px; width: 100%; max-width: 440px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; animation: zoomIn 0.25s ease;">
-            <!-- Header -->
-            <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 18px 20px; color: white; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="background: rgba(255,255,255,0.2); width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;">
-                        📍
-                    </div>
-                    <div>
-                        <h5 style="margin: 0; font-size: 16px; font-weight: 800; letter-spacing: 0.3px;">Reportar Estado de Hoy</h5>
-                        <div style="font-size: 11px; opacity: 0.9;">Fuera del Área de Registro</div>
-                    </div>
-                </div>
-                <button type="button" onclick="document.getElementById('modalReporteFueraArea').remove()" style="background: none; border: none; color: white; font-size: 22px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
-            </div>
-
-            <!-- Body -->
-            <div style="padding: 20px;">
-                <!-- ALERTA INSTITUCIONAL OBLIGATORIA -->
-                <div style="background: #fff7ed; border: 1.5px solid #fdba74; border-left: 4px solid #ea580c; border-radius: 12px; padding: 12px 14px; margin-bottom: 18px;">
-                    <div style="display: flex; gap: 10px; align-items: flex-start;">
-                        <i class="fas fa-exclamation-triangle" style="color: #ea580c; font-size: 16px; margin-top: 2px;"></i>
-                        <div style="font-size: 12px; color: #9a3412; font-weight: 600; line-height: 1.45;">
-                            <strong>Aviso Importante:</strong> Debe regularizar este evento con su supervisor tal como ya está establecido institucionalmente.<br>
-                            <span style="color: #c2410c; font-weight: 800;">Recuerde que las faltas injustificadas son tomadas como vacaciones.</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="margin-bottom: 16px;">
-                    <label style="display: block; font-size: 12.5px; font-weight: 800; color: #334155; margin-bottom: 8px; text-transform: uppercase;">
-                        Seleccione su Estado de Hoy (Jornada Completa) *
-                    </label>
-                    <select id="selectEstadoFueraArea" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1.5px solid #cbd5e1; font-size: 14px; font-weight: 700; color: #0f172a; background: #f8fafc; outline: none; cursor: pointer;">
-                        <option value="" ${!tipoPrevio ? 'selected' : ''} disabled>Seleccione…</option>
-                        <option value="VACACIONES" ${tipoPrevio === 'VACACIONES' ? 'selected' : ''}>🏖️ VACACIÓN</option>
-                        <optgroup label="📋 PERMISO JUSTIFICADO">
-                            <option value="PERMISO_PERSONAL" ${tipoPrevio === 'PERMISO_PERSONAL' ? 'selected' : ''}>👤 Permiso Personal</option>
-                            <option value="PERMISO_MEDICO" ${tipoPrevio === 'PERMISO_MEDICO' ? 'selected' : ''}>🩺 Permiso Médico</option>
-                            <option value="FALTA_JUSTIFICADA" ${tipoPrevio === 'FALTA_JUSTIFICADA' ? 'selected' : ''}>📋 Falta Justificada</option>
-                        </optgroup>
-                    </select>
-                </div>
-
-                <div style="margin-bottom: 18px;">
-                    <label style="display: block; font-size: 12.5px; font-weight: 800; color: #334155; margin-bottom: 8px; text-transform: uppercase;">
-                        Observaciones / Detalle (Opcional)
-                    </label>
-                    <textarea id="obsReporteFueraArea" rows="2" placeholder="Ej: Atendiendo cliente en campo, cita médica..." style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1.5px solid #cbd5e1; font-size: 13px; color: #0f172a; box-sizing: border-box; resize: none;">${escapeHtml(obsPrevia)}</textarea>
-                </div>
-
-                <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button type="button" onclick="document.getElementById('modalReporteFueraArea').remove()" style="padding: 10px 18px; border-radius: 10px; background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 700; font-size: 13px; cursor: pointer;">
-                        Cancelar
-                    </button>
-                    <button type="button" onclick="window.guardarReporteFueraArea()" style="padding: 10px 22px; border-radius: 10px; background: #2563eb; border: none; color: white; font-weight: 800; font-size: 13px; cursor: pointer; box-shadow: 0 4px 10px rgba(37,99,235,0.3); display: inline-flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-check-circle"></i> Confirmar Reporte
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-};
-
-window.guardarReporteFueraArea = async function () {
-    const sel = document.getElementById('selectEstadoFueraArea');
-    if (!sel) return;
-    const tipo = sel.value;
-    const obs = document.getElementById('obsReporteFueraArea')?.value.trim() || '';
-    const hoyStrLocal = getLocalHoyStr(new Date());
-    if (!tipo) {
-        mostrarToast('Seleccione su estado de hoy', 'error');
-        sel.focus();
-        return;
-    }
-
-    let textoEstado = sel.options[sel.selectedIndex].text;
-    if (!confirm(`¿Confirmas que HOY NO VIENES A TRABAJAR?\n\nSe registrará "${textoEstado.replace(/^[^A-Za-zÁÉÍÓÚ]+/, '')}" por la jornada completa.\n\nSi estás en la empresa y el GPS falla, cancela y registra tu entrada en la terminal del guardia.`)) return;
-    const uRep = evaluarUbicacion();
-
-    if (window.SesionFirebase && typeof window.SesionFirebase.asegurar === 'function') {
-        await window.SesionFirebase.asegurar(empleado.id, { siempre: true, motivo: 'Para guardar tu reporte, confirma que eres tú.' }).catch(() => null);
-    }
-
-    showLoading(true);
-    try {
-        const payload = {
-            id: empleado.id,
-            empleadoId: empleado.id,
-            tipo: tipo,
-            fecha: hoyStrLocal,
-            fecha_falta: hoyStrLocal,
-            hora: '00:00:00',
-            modo: tipo === 'TRABAJO_DE_CAMPO' ? 'CAMPO' : 'OFICINA',
-            razon_ausencia: obs || textoEstado,
-            razon_justificac: obs || textoEstado,
-            justificado: 'SI',
-            quien_justifica: 'Colaborador (Reporte Fuera de Área)',
-            dispositivo: 'APP_COLABORADOR_EXTERNO',
-            origen_app: 'COLABORADOR',
-            // Dónde estaba al reportar (para auditar casos de GPS impreciso)
-            lat: posicion.lat || '',
-            lng: posicion.lng || '',
-            precision_gps: uRep.acc,
-            distancia_m: uRep.dist
-        };
-
-        let res = null;
-        if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarRegistro === 'function') {
-            res = await window.FirebaseBackend.guardarRegistro(payload);
-        } else if (typeof guardarRegistroAPI === 'function') {
-            res = await guardarRegistroAPI(payload);
-        }
-        if (res && res.error) throw new Error(res.error);
-
-        // Guardar confirmación en localStorage
-        const infoReporte = {
-            tipo: tipo,
-            texto: textoEstado,
-            fecha: hoyStrLocal,
-            observacion: obs,
-            timestamp: new Date().toISOString()
-        };
-        localStorage.setItem(`tcontrol_reporte_fuera_${empleado.id}_${hoyStrLocal}`, JSON.stringify(infoReporte));
-
-        // Actualizar registrosCompletos localmente
-        if (!Array.isArray(registrosCompletos)) registrosCompletos = [];
-        registrosCompletos = registrosCompletos.filter(r => {
-            const rf = getVal(r, 'fecha', 0) || r.fecha || r[0];
-            return rf !== hoyStrLocal;
-        });
-        registrosCompletos.push({
-            fecha: hoyStrLocal,
-            tipo: tipo,
-            hora: '00:00:00',
-            razon_ausencia: obs || textoEstado,
-            justificado: 'SI',
-            modo: payload.modo
-        });
-
-        const m = document.getElementById('modalReporteFueraArea');
-        if (m) m.remove();
-
-        mostrarToast('✅ Estado de hoy reportado exitosamente', 'success');
-        if (typeof renderHomePage === 'function') {
-            renderHomePage();
-        }
-
-        // Notificar proactivamente a Supervisión / Admins vía WhatsApp
-        if (window.OpenWAService && typeof window.OpenWAService.notificarSupervisorEstadoFueraArea === 'function') {
-            window.OpenWAService.notificarSupervisorEstadoFueraArea({
-                empleadoId: empleado.id,
-                empleadoNombre: empleado.nombre,
-                empleadoArea: empleado.area,
-                tipo: tipo,
-                textoEstado: textoEstado,
-                observacion: obs,
-                fecha: hoyStrLocal
-            }).catch(e => console.warn("[ReporteFuera] No se pudo enviar WhatsApp a supervisión:", e));
-        }
-    } catch (err) {
-        console.error("Error al reportar fuera de área:", err);
-        mostrarToast('Error al enviar reporte: ' + err.message, 'error');
-    } finally {
-        showLoading(false);
-    }
+    mostrarToast('No se pudo abrir Permisos. Revisa tu conexión, vuelve a abrir la app e inténtalo de nuevo.', 'error');
 };
 
 function solicitarPermisoGPS() {
@@ -2536,9 +2334,7 @@ function solicitudPermisoTrasMarcar(tipoReg, info, hora, registroId) {
         if (!r || r.error) throw new Error((r && r.error) || 'sin respuesta');
         if (r.omitida || r.existente) return;
         const s = r.solicitud || {};
-        setTimeout(() => mostrarToast(s.estado === 'REGISTRADA'
-            ? 'Permiso médico registrado: entrega el certificado a TTHH en 72 horas (Permisos).'
-            : 'Se envió tu permiso a tu jefe inmediato para su aprobación.', 'success'), 2500);
+        setTimeout(() => mostrarToast(`Se envió tu permiso a ${s.estado === 'PENDIENTE_TTHH' ? 'TTHH' : 'tu jefe inmediato'}: no es válido hasta que se apruebe.`, 'success'), 2500);
     }).catch(e => {
         console.warn('[Permisos] Solicitud no creada al marcar:', e);
         setTimeout(() => mostrarToast('Tu marcación se guardó, pero no se pudo crear la solicitud de permiso: pídelo en Permisos.', 'error'), 2500);
@@ -5357,7 +5153,7 @@ function renderHomePage() {
     pintarAvisoPermisoHoy();
 }
 
-// Permisos por horas (2026-11-12): el horario pedido manda. El día del permiso se avisa que no hace falta marcar
+// Permisos por horas (2026-11-12): el horario pedido manda. El día de un permiso aprobado se avisa que no hace falta marcar
 // la salida ni el regreso del permiso: solo la entrada y la salida de la jornada (si llega a las 16:15, ni la salida).
 let _avisoPermisoHoy = { fecha: '', lista: null, en: 0 };
 async function pintarAvisoPermisoHoy() {
@@ -5368,26 +5164,36 @@ async function pintarAvisoPermisoHoy() {
             const snap = await firebase.firestore().collection('solicitudes_permiso').where('empleadoId', '==', String(empleado.id)).get();
             _avisoPermisoHoy = {
                 fecha: hoy, en: Date.now(),
-                lista: snap.docs.map(d => d.data()).filter(x => x.modalidad === 'HORAS' && x.desde === hoy && !x.origen &&
-                    ['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA', 'REGISTRADA'].includes(x.estado))
+                lista: snap.docs.map(d => d.data()).filter(x => !x.origen && (x.modalidad === 'HORAS'
+                    ? x.desde === hoy && ['PENDIENTE_JEFE', 'PENDIENTE_TTHH', 'APROBADA', 'REGISTRADA'].includes(x.estado)
+                    : (x.fechas || []).includes(hoy) && ['PENDIENTE_JEFE', 'PENDIENTE_TTHH'].includes(x.estado)))
             };
         }
         const page = document.querySelector('#mainContent > .page');
         if (currentPage !== 'home' || !page || document.getElementById('avisoPermisoHoy')) return;
-        const lista = _avisoPermisoHoy.lista.sort((a, b) => String(a.hora_desde).localeCompare(String(b.hora_desde)));
+        // Pendiente con el plazo cumplido: ya no es válida (el servidor la marca cada 15 minutos)
+        const pendiente = x => String(x.estado).startsWith('PENDIENTE');
+        const lista = _avisoPermisoHoy.lista.filter(x => !pendiente(x) || !x.caduca_en || new Date(x.caduca_en) > new Date())
+            .sort((a, b) => String(a.hora_desde).localeCompare(String(b.hora_desde)));
         if (!lista.length) return;
-        const tipoTxt = t => t === 'PERMISO_MEDICO' ? 'permiso médico' : 'permiso personal';
-        const estTxt = x => ({ PENDIENTE_JEFE: 'pendiente de tu jefe', PENDIENTE_TTHH: 'pendiente de TTHH', APROBADA: 'aprobado', REGISTRADA: 'registrado' })[x.estado] || '';
-        const hastaFin = lista.some(x => String(x.hora_hasta).slice(0, 5) >= '16:15');
+        const tipoTxt = t => ({ PERMISO_MEDICO: 'permiso médico', VACACIONES: 'vacaciones', CALAMIDAD: 'calamidad doméstica' })[t] || 'permiso personal';
+        const estTxt = x => ({ PENDIENTE_JEFE: 'pendiente de tu jefe', PENDIENTE_TTHH: 'pendiente de TTHH', APROBADA: 'aprobado', REGISTRADA: 'aprobado' })[x.estado] || '';
+        const tramo = x => x.modalidad === 'HORAS' ? ` de ${escapeHtml(String(x.hora_desde).slice(0, 5))} a ${escapeHtml(String(x.hora_hasta).slice(0, 5))}` : '';
+        const validos = lista.filter(x => !pendiente(x));
+        const hastaFin = validos.some(x => String(x.hora_hasta).slice(0, 5) >= '16:15');
+        const notas = [];
+        if (validos.length) notas.push(hastaFin
+            ? 'No necesitas marcar la salida: tu jornada termina cuando empieza el permiso. Marca solo tu entrada.'
+            : 'No necesitas marcar la salida ni el regreso del permiso: marca solo tu entrada y tu salida de la jornada.');
+        if (validos.length < lista.length) notas.push('<strong>Lo pendiente aún no es válido:</strong> espera la aprobación antes de ausentarte.');
         const div = document.createElement('div');
         div.id = 'avisoPermisoHoy';
         div.setAttribute('role', 'status');
-        div.style.cssText = 'margin:0 0 12px;background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.45;color:#3b0764;';
-        div.innerHTML = `<div style="font-weight:800;margin-bottom:4px;"><i class="fas fa-user-clock"></i> Hoy tienes ${lista.map(x =>
-            `${tipoTxt(x.tipo)} de ${escapeHtml(String(x.hora_desde).slice(0, 5))} a ${escapeHtml(String(x.hora_hasta).slice(0, 5))} (${estTxt(x)})`).join(' y ')}</div>
-            <div>${hastaFin
-                ? 'No necesitas marcar la salida: tu jornada termina cuando empieza el permiso. Marca solo tu entrada.'
-                : 'No necesitas marcar la salida ni el regreso del permiso: marca solo tu entrada y tu salida de la jornada.'}</div>`;
+        div.style.cssText = `margin:0 0 12px;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.45;${validos.length
+            ? 'background:#f5f3ff;border:1.5px solid #c4b5fd;color:#3b0764;' : 'background:#fffbeb;border:1.5px solid #fcd34d;color:#78350f;'}`;
+        div.innerHTML = `<div style="font-weight:800;margin-bottom:4px;"><i class="fas ${validos.length ? 'fa-user-clock' : 'fa-hourglass-half'}"></i> Hoy ${validos.length ? 'tienes' : 'pediste'} ${lista.map(x =>
+            `${tipoTxt(x.tipo)}${tramo(x)} (${estTxt(x)})`).join(' y ')}</div>
+            <div>${notas.join(' ')}</div>`;
         page.insertBefore(div, page.firstChild);
     } catch (e) { console.warn('[Permisos] Aviso del día no mostrado:', e); }
 }

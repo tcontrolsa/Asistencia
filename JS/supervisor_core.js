@@ -5009,7 +5009,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
   let solicitudesPermisoEmp = window._solicitudesPermisoCache[id] || [];
   if (window.firebase && firebase.firestore) {
     firebase.firestore().collection('solicitudes_permiso').where('empleadoId', '==', String(id)).get().then(snap => {
-      const lista = snap.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(s => (s.estado === 'APROBADA' && s.tipo === 'PERMISO_PERSONAL') || (s.estado === 'REGISTRADA' && (s.tipo === 'PERMISO_MEDICO' || s.tipo === 'CALAMIDAD')) || (s.estado === 'RECHAZADA' && s.origen) || (s.modalidad === 'HORAS' && s.estado !== 'CANCELADA'));
+      const lista = snap.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(s => (s.estado === 'APROBADA' && s.tipo === 'PERMISO_PERSONAL') || (s.estado === 'REGISTRADA' && (s.tipo === 'PERMISO_MEDICO' || s.tipo === 'CALAMIDAD')) || (s.estado === 'RECHAZADA' && s.origen) || (s.modalidad === 'HORAS' && (s.estado !== 'CANCELADA' || s.origen)));
       const cambio = JSON.stringify(lista.map(s => [s.id, s.estado, s.minutos, s.hora_desde, s.hora_hasta, s.vacaciones_por_dia, s.docs_estado])) !== JSON.stringify(solicitudesPermisoEmp.map(s => [s.id, s.estado, s.minutos, s.hora_desde, s.hora_hasta, s.vacaciones_por_dia, s.docs_estado]));
       window._solicitudesPermisoCache[id] = lista;
       solicitudesPermisoEmp = lista;

@@ -391,7 +391,7 @@
   // el descuento; permiso médico o calamidad por días con descuento confirmado (docs_estado DESCONTADO) → esos días
   // dejan de estar justificados.
   // Fase 5: permiso marcado en la app (salida o entrada tardía) que el jefe rechazó → esa salida temprana o ese
-  // atraso de ese día dejan de estar justificados.
+  // atraso de ese día dejan de estar justificados. Lo mismo si caducó sin respuesta (CADUCADA, 2026-11-25).
   // Permisos por horas (2026-11-12): el horario pedido manda. Toda solicitud por horas que no esté cancelada recorta
   // la jornada marcada en ese horario, haya marcado o no la salida y el regreso del permiso (si los marcó, no se
   // cuenta dos veces). Ese tiempo queda como faltante y se clasifica como siempre: permiso médico registrado →
@@ -403,13 +403,17 @@
     (solicitudes || []).forEach(s => {
       if (!s) return;
       // Un rechazo que llegó antes de la hora del permiso no cuenta: lo normal es que se quedara trabajando
-      const rechazoAntes = s.estado === 'RECHAZADA' && !s.origen && s.resuelta_en && s.hora_desde &&
-        new Date(s.resuelta_en) < new Date(`${s.desde}T${String(s.hora_desde).slice(0, 5)}:00`);
+      // (igual si llegó la hora sin respuesta: CADUCADA, no es válida)
+      const noAprobada = s.estado === 'RECHAZADA' || s.estado === 'CADUCADA';
+      const noAprobadaEn = s.estado === 'CADUCADA' ? s.caduca_en : s.resuelta_en;
+      const rechazoAntes = noAprobada && !s.origen && noAprobadaEn && s.hora_desde &&
+        new Date(noAprobadaEn) <= new Date(`${s.desde}T${String(s.hora_desde).slice(0, 5)}:00`);
       if (s.modalidad === 'HORAS' && s.estado !== 'CANCELADA' && s.desde && !rechazoAntes) {
         const a = obtenerMinutos(s.hora_desde), b = obtenerMinutos(s.hora_hasta);
         if (a !== null && b !== null && b > a) (permisoHoras[s.desde] = permisoHoras[s.desde] || []).push({ a, b });
       }
-      if (s.estado === 'RECHAZADA' && s.origen && s.desde) {
+      // Una marcada en la app que se canceló o eliminó tampoco se aprobó (desde 2026-11-25, traen caduca_en)
+      if ((noAprobada || (s.estado === 'CANCELADA' && s.caduca_en)) && s.origen && s.desde) {
         marcacionRechazada[s.desde] = Object.assign(marcacionRechazada[s.desde] || {}, { [s.origen]: true });
         return;
       }

@@ -48,6 +48,7 @@
 .pm-btn-sec { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
 .pm-btn-verde { background: #16a34a; color: #fff; }
 .pm-btn-rojo { background: #fff; color: #b91c1c; border: 1px solid #fca5a5; }
+.pm-btn-eliminar { margin-right: auto; color: #b91c1c; }
 
 /* Insignia del menú de la app */
 #navItemPermisos { position: relative; }
