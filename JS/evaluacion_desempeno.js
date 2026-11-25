@@ -606,6 +606,101 @@
       ${opciones.acciones || ''}`;
   }
 
+  // ---------------------------------------------------------------- bloqueo del módulo (lo maneja el admin master)
+  // Firestore configuracion/bloqueo_desarrollo {activo, mensaje}. Bloquea Desarrollo en la app y «Mi equipo» en el
+  // panel; Resultados y Configuración siguen abiertos. Mientras el documento no exista, rige lo de aquí abajo.
+  // También pausa los recordatorios diarios (notificaciones.gs).
+  const BLOQUEO_BASE = {
+    activo: true, mensaje: ['¡Estamos avanzando con nuestro primer mes de Evaluación de Desempeño! 🚀📊',
+      '',
+      'El día lunes 30 tendremos una reunión para revisar cómo se ha desarrollado este primer mes, compartir novedades y resolver inquietudes sobre el proceso para que puedan completar el nuevo periodo. Les pedimos estar atentos a la convocatoria.',
+      '',
+      '⚠️ Por el momento, les solicitamos no completar las evaluaciones del nuevo período. Es importante esperar a la reunión, ya que allí se brindarán las indicaciones correspondientes.',
+      '',
+      '¡Gracias por su compromiso y participación! 🙌'].join('\n')
+  };
+  let bloqueo = null;              // null = todavía no se sabe
+  let bloqueoEscucha = false;
+  const bloqueoOyentes = new Set();
+  const CLAVE_BLOQUEO = 'tcontrol_eval_bloqueo';
+  function bloqueoGuardado() {
+    try { return JSON.parse(localStorage.getItem(CLAVE_BLOQUEO) || 'null'); } catch (e) { return null; }
+  }
+  function aplicarBloqueo(b) {
+    bloqueo = b;
+    try { localStorage.setItem(CLAVE_BLOQUEO, JSON.stringify({ activo: b.activo, mensaje: b.mensaje })); } catch (e) { }
+    bloqueoOyentes.forEach(o => { if (o.cont.isConnected) o.f(); else bloqueoOyentes.delete(o); });
+  }
+  const refBloqueo = () => firebase.firestore().collection('configuracion').doc('bloqueo_desarrollo');
+  // Llama a `f` cuando se conoce el estado y cada vez que cambia
+  function alCambiarBloqueo(cont, f) {
+    bloqueoOyentes.add({ cont, f });
+    if (bloqueo) f();
+    if (bloqueoEscucha) return;
+    bloqueoEscucha = true;
+    // Sin respuesta de Firestore se usa el último estado conocido en este equipo
+    const sinRespuesta = () => { if (!bloqueo) aplicarBloqueo(bloqueoGuardado() || { activo: false, mensaje: '' }); };
+    try {
+      setTimeout(sinRespuesta, 6000);
+      refBloqueo().onSnapshot(d => {
+        if (!d.exists) { if (!d.metadata.fromCache) aplicarBloqueo(Object.assign({}, BLOQUEO_BASE)); return; }
+        const x = d.data() || {};
+        aplicarBloqueo({ activo: x.activo === true, mensaje: String(x.mensaje || BLOQUEO_BASE.mensaje) });
+      }, e => { bloqueoEscucha = false; console.warn('Evaluaciones: no se pudo leer el bloqueo', e); sinRespuesta(); });
+    } catch (e) { bloqueoEscucha = false; sinRespuesta(); }
+  }
+  async function guardarBloqueo(activo, mensaje, por) {
+    const tope = new Promise((_, no) => setTimeout(() => no(new Error('No hubo respuesta del servidor. Revisa tu conexión.')), 12000));
+    await Promise.race([refBloqueo().set({ activo, mensaje, actualizado_por: String(por || ''), actualizado_en: new Date().toISOString() }), tope]);
+  }
+  const bloqueoHtml = mensaje => `<div class="ev-card ev-bloqueo"><div class="ev-bloqueo-ico"><i class="fas fa-lock"></i></div>
+    <h3>Desarrollo está en pausa</h3><p>${esc(mensaje)}</p></div>`;
+
+  // Barra del panel: el master bloquea, edita el mensaje y desbloquea; los demás solo ven que está bloqueado
+  function montarBarraBloqueo(cont, opts) {
+    let modo = '', texto = '', ocupado = false;
+    const pintarBarra = () => {
+      if (!bloqueo || (!bloqueo.activo && !opts.esMaster)) { cont.innerHTML = ''; return; }
+      const on = bloqueo.activo;
+      const botones = !opts.esMaster || modo === 'editar' ? '' : modo === 'desbloquear'
+        ? `<span class="ev-small">¿Abrir Desarrollo para todos?</span>
+           <button class="ev-btn ev-btn-sm ev-btn-primary" data-b="si" ${ocupado ? 'disabled' : ''}>Sí, desbloquear</button><button class="ev-btn ev-btn-sm" data-b="no">Cancelar</button>`
+        : on ? '<button class="ev-btn ev-btn-sm" data-b="editar"><i class="fas fa-pen"></i> Mensaje</button><button class="ev-btn ev-btn-sm ev-btn-primary" data-b="desbloquear"><i class="fas fa-unlock"></i> Desbloquear</button>'
+          : '<button class="ev-btn ev-btn-sm" data-b="editar"><i class="fas fa-lock"></i> Bloquear</button>';
+      cont.innerHTML = `<div class="ev-card ev-barra-blq ${on ? 'ev-barra-blq-on' : ''}">
+        <div class="ev-barra-blq-fila"><i class="fas fa-${on ? 'lock' : 'lock-open'}"></i>
+          <span><strong>${on ? 'Desarrollo está bloqueado' : 'Desarrollo está abierto'}</strong>${on ? '<span class="ev-small ev-muted"> · La app muestra el mensaje y los recordatorios diarios están en pausa. Resultados sigue disponible.</span>' : ''}</span>
+          <span class="ev-barra-blq-bot">${botones}</span></div>
+        ${modo === 'editar' && opts.esMaster ? `<label class="ev-campo ev-mt"><span>Mensaje que verá el personal</span><textarea data-b="texto" rows="9" maxlength="1500">${esc(texto)}</textarea></label>
+          <div class="ev-actions"><button class="ev-btn ev-btn-sm" data-b="no">Cancelar</button><button class="ev-btn ev-btn-sm ev-btn-primary" data-b="guardar" ${ocupado ? 'disabled' : ''}>${on ? 'Guardar mensaje' : 'Bloquear Desarrollo'}</button></div>` : ''}
+      </div>`;
+    };
+    const guardar = async (activo, mensaje, aviso) => {
+      ocupado = true; pintarBarra();
+      try {
+        await guardarBloqueo(activo, mensaje, opts.empleado.id);
+        modo = ''; toast(aviso, 'success');
+      } catch (e) { toast('No se guardó: ' + (e.message || e), 'error'); }
+      ocupado = false; pintarBarra();
+    };
+    cont.addEventListener('input', ev => { if (ev.target.dataset.b === 'texto') texto = ev.target.value; });
+    cont.addEventListener('click', ev => {
+      const b = ev.target.closest('button[data-b]');
+      if (!b || !opts.esMaster || ocupado) return;
+      const a = b.dataset.b;
+      if (a === 'no') modo = '';
+      else if (a === 'editar') { modo = 'editar'; texto = bloqueo.mensaje || BLOQUEO_BASE.mensaje; }
+      else if (a === 'desbloquear') modo = 'desbloquear';
+      else if (a === 'si') return guardar(false, bloqueo.mensaje || '', 'Desarrollo quedó abierto');
+      else if (a === 'guardar') {
+        if (!texto.trim()) return toast('Escribe el mensaje.', 'warning');
+        return guardar(true, texto.trim(), bloqueo.activo ? 'Mensaje guardado' : 'Desarrollo quedó bloqueado');
+      }
+      pintarBarra();
+    });
+    alCambiarBloqueo(cont, () => { if (modo !== 'editar') pintarBarra(); });
+  }
+
   // ---------------------------------------------------------------- vista del colaborador / evaluador
   function montar(cont, opts) {
     const st = {
@@ -618,7 +713,15 @@
     cont.addEventListener('submit', ev => manejarSubmit(st, ev));
     cont.addEventListener('change', ev => manejarCambio(st, ev));
     cont.addEventListener('input', ev => manejarInput(st, ev));
-    if (!opts.diferido) { if (st.ses) cargar(st); else pintar(st); }
+    if (!opts.diferido) {
+      st.bloqueable = true;
+      pintar(st);
+      alCambiarBloqueo(cont, () => {
+        if (bloqueo.activo || st.iniciado) return pintar(st);
+        st.iniciado = true;
+        if (st.ses) cargar(st); else pintar(st);
+      });
+    }
     return st;
   }
 
@@ -647,6 +750,8 @@
   const AVISO_EQUIPO = 'Tu equipo de evaluación cambió. Ingresa tu contraseña de nuevo para actualizarlo.';
 
   async function cargar(st) {
+    if (st.bloqueable && (!bloqueo || bloqueo.activo)) return pintar(st);
+    st.iniciado = true;
     st.cargando = true; st.error = '';
     pintar(st);
     try {
@@ -1301,6 +1406,7 @@
    */
   function montarPanel(cont, opts) {
     cont.innerHTML = `<div class="ev-root ev-panel">
+      <div data-ev-bloqueo></div>
       <div class="ev-subtabs" role="tablist">
         <button class="ev-subtab ev-subtab-on" data-sub="resultados"><i class="fas fa-chart-bar"></i> Resultados</button>
         <button class="ev-subtab" data-sub="equipo"><i class="fas fa-users"></i> Mi equipo</button>
@@ -1312,6 +1418,7 @@
       <div data-subpanel="asignaciones" hidden></div>
       <div data-subpanel="config" hidden></div>
     </div>`;
+    montarBarraBloqueo(cont.querySelector('[data-ev-bloqueo]'), opts);
     const sub = k => cont.querySelector(`[data-subpanel="${k}"]`);
     const montados = {};
     const abrir = k => {
@@ -2274,6 +2381,8 @@
   // Inicio del consolidado: el pintar genérico delega en pintarResultados cuando corresponde
   const pintarGenerico = pintar;
   pintar = function (st) {
+    if (st.bloqueable && !bloqueo) { st.cont.innerHTML = '<div class="ev-root"><div class="ev-card ev-vacio"><i class="fas fa-spinner fa-spin"></i> Cargando…</div></div>'; return; }
+    if (st.bloqueable && bloqueo.activo) { st.cont.innerHTML = `<div class="ev-root">${bloqueoHtml(bloqueo.mensaje)}</div>`; return; }
     if (st.pintarInicio && st.ses && !st.cargando && !['form', 'detalle', 'persona'].includes(st.vista)) return st.pintarInicio();
     return pintarGenerico(st);
   };

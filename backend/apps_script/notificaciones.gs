@@ -275,6 +275,12 @@ function recordatoriosDiarios() {
       Logger.log('Fin de semana: sin recordatorios · ' + JSON.stringify(resumen));
       return resumen;
     }
+    // Desarrollo bloqueado por el admin master: no se pide evaluar ni dar feedback mientras nadie puede entrar
+    if (desarrolloBloqueado_()) {
+      resumen.borradas = borrarNotificacionesViejas_();
+      Logger.log('Desarrollo bloqueado: sin recordatorios · ' + JSON.stringify(resumen));
+      return resumen;
+    }
     var hoy = Utilities.formatDate(new Date(), NOTIF_TZ, 'yyyy-MM-dd');
     var partes = hoy.split('-').map(Number);
     var empleados = listarEmpleadosFirestore_();
@@ -450,6 +456,15 @@ function diasCubiertosHoy_() {
     dias.push({ anio: p[0], mes: p[1], dia: p[2] });
   }
   return dias;
+}
+
+// Firestore configuracion/bloqueo_desarrollo (lo maneja el panel). Sin documento = bloqueado, igual que en la app.
+function desarrolloBloqueado_() {
+  var res = fetchFirestore_(notifBaseFirestore_() + '/configuracion/bloqueo_desarrollo?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
+  if (res.getResponseCode() === 404) return true;
+  if (res.getResponseCode() !== 200) return false;
+  var f = JSON.parse(res.getContentText()).fields || {};
+  return !!(f.activo && f.activo.booleanValue === true);
 }
 
 // Días que adelanta la ejecución de hoy: 0 y, si es viernes, también 1 (sábado) y 2 (domingo)
