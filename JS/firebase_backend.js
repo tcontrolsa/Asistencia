@@ -771,6 +771,18 @@ window.FirebaseBackend = {
         return { ok: true, esVinculacionExistente: tieneClave };
     },
 
+    // En segundo plano: Firestore ya guardó. Sin sesión o si el servidor rechaza, solo queda el aviso en la consola.
+    async _perfilAHoja(empleadoId, datos) {
+        try {
+            const u = firebase.auth && firebase.auth().currentUser;
+            const idToken = u ? await u.getIdToken() : '';
+            if (!idToken) return { ok: false, sinSesion: true };
+            const r = await this._post({ accion: 'actualizarPerfilEmpleado', idToken, empleadoId, ...datos });
+            if (!r || !r.ok) console.warn('Perfil no copiado a la hoja:', (r && r.error) || 'sin respuesta');
+            return r;
+        } catch (e) { console.warn('Perfil no copiado a la hoja:', e); return { ok: false }; }
+    },
+
     async actualizarPerfilEmpleado(params) {
         const empleadoId = params.empleadoId?.toString() || params.id?.toString();
         if (!empleadoId) return { error: "ID no proporcionado" };
@@ -861,11 +873,13 @@ window.FirebaseBackend = {
             }
         }
 
-        // Dual-write to Sheets si corresponde (sin contraseñas: no viajan en la URL)
+        // Copia en la hoja EMPLEADOS (ahí llega el código de «¿Olvidaste tu contraseña?»): por POST y con la sesión de
+        // Firebase de quien guarda. Contraseña y dispositivo no van: los maneja el servidor.
         try {
-            const { passwordHash, pin, oldPasswordHash, oldPin, ...paraHoja } = params;
-            this._jsonp({ accion: 'actualizarPerfilEmpleado', ...paraHoja });
-        } catch (e) { }
+            const paraHoja = {};
+            ['nombre', 'foto_url', 'telefono', 'fechaNacimiento'].forEach(k => { if (params[k] !== undefined && params[k] !== null) paraHoja[k] = params[k]; });
+            if (Object.keys(paraHoja).length) this._perfilAHoja(empDoc.id, paraHoja);
+        } catch (e) { console.warn('Perfil en la hoja:', e); }
 
         return { ok: true, mensaje: "Perfil actualizado exitosamente en Firebase" };
     },

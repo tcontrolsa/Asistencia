@@ -571,6 +571,10 @@ function doPost(e) {
         var fnCred = { credEstado: credEstado, credCrear: credCrear, credCambiar: credCambiar, credAdmin: credAdmin }[data.accion];
         return ContentService.createTextOutput(JSON.stringify(fnCred(data))).setMimeType(ContentService.MimeType.JSON);
       }
+      // Copia del perfil a la hoja EMPLEADOS: exige la sesión de Firebase de quien llama
+      if (data.accion === 'actualizarPerfilEmpleado') {
+        return ContentService.createTextOutput(JSON.stringify(actualizarPerfilEmpleado(data))).setMimeType(ContentService.MimeType.JSON);
+      }
       // Servidor de la oficina (sincronización con Postgres): lectura de 'empleados' con la cuenta de servicio
       if (data.accion === 'leerColeccionServidor' && typeof leerColeccionServidor === 'function') {
         return ContentService.createTextOutput(JSON.stringify(leerColeccionServidor(data)))
@@ -676,11 +680,23 @@ function doOptions(e) {
   return ContentService.createTextOutput("").setHeaders(headers);
 }
 
+// Cerradas por seguridad: solo pedían la API Key pública y leían o cambiaban datos con los que se entra a una cuenta
+// (hoja EMPLEADOS: teléfono que recibe el código de recuperación, rol, contraseña antigua y dispositivo). La app y el
+// panel ya no las usan (trabajan sobre Firestore). actualizarPerfilEmpleado sigue solo por POST y con sesión.
+const ACCIONES_CERRADAS = [
+  'actualizarPerfilEmpleado', 'obtenerInfoEmpleado', 'obtenerEstado', 'obtenerDatosSupervisor', 'exportarBaseDatosParaFirebase',
+  'agregarSupervisor', 'eliminarSupervisor', 'registrarDispositivo', 'verificarPIN', 'verificarDispositivo', 'verificarToken',
+  'desvincularDispositivo'
+];
+
 function procesarAccion(params) {
   const accion = params.accion;
   
   if (!accion) {
     return { error: "No se especificó acción" };
+  }
+  if (ACCIONES_CERRADAS.indexOf(String(accion)) !== -1) {
+    return { ok: false, cerrada: true, error: "Esta acción ya no está disponible sin iniciar sesión. Actualiza la aplicación." };
   }
   
   console.log("Procesando acción:", accion, params);
@@ -1566,51 +1582,68 @@ function verificarPIN(pin, deviceToken, empleadoId) {
   }
 }
 
-function actualizarPerfilEmpleado(params) {
+// p: { idToken, empleadoId, nombre?, foto_url?, telefono?, fechaNacimiento? }
+// La propia persona cambia lo suyo; admin y master, lo de otros; un supervisor, solo lo de colaboradores.
+// Los datos del Admin Master solo los cambia él. Contraseña, rol y dispositivo no se tocan aquí (credenciales.gs).
+function actualizarPerfilEmpleado(p) {
+  const id = String((p && (p.empleadoId || p.id)) || '').trim();
+  if (!id) return { ok: false, error: "ID de empleado no especificado" };
+  let quien = null;
+  try { quien = credQuienLlama_(p.idToken); } catch (e) { console.error('actualizarPerfilEmpleado sesión:', e); }
+  if (!quien) return { ok: false, sinSesion: true, error: "Tu sesión de seguridad no está activa. Confirma tu contraseña y vuelve a intentarlo." };
+  if (!puedeCambiarPerfil_(quien, id)) {
+    registrarAcceso_(id, 'perfilHoja', 'rechazado', 'por ' + quien.uid + ' (' + quien.rol + ')');
+    return { ok: false, error: "No tienes permiso para cambiar los datos de esta persona." };
+  }
+
+  // Un texto que empieza con = + - @ se guardaría como fórmula
+  const limpio = function (v, max) { return String(v).replace(/[\r\n\t]+/g, ' ').trim().replace(/^[=+\-@]+/, '').trim().slice(0, max); };
+  const C = COLUMNAS_EMPLEADOS;
+  const cambios = [];
+  if (p.nombre !== undefined && p.nombre !== null && limpio(p.nombre, 90)) cambios.push([C.NOMBRE, limpio(p.nombre, 90)]);
+  if (p.foto_url !== undefined && p.foto_url !== null && /^(https:\/\/\S+)?$/.test(String(p.foto_url).trim()) && String(p.foto_url).length <= 1500) {
+    cambios.push([C.FOTO_URL, String(p.foto_url).trim()]);
+  }
+  if (p.fechaNacimiento !== undefined && /^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})$/.test(String(p.fechaNacimiento).trim())) {
+    cambios.push([C.FECHA_NACIMIENTO, String(p.fechaNacimiento).trim()]);
+  }
+  // Vacío o inválido no borra el de la hoja: ahí llega el código de «¿Olvidaste tu contraseña?»
+  const telefono = p.telefono !== undefined && p.telefono !== null ? normalizarTelefonoEc_(p.telefono) : null;
+  if (telefono) cambios.push([C.TELEFONO, '0' + telefono.slice(3)]);
+  if (!cambios.length) return { ok: true, mensaje: "Sin cambios para la hoja" };
+
   const lock = LockService.getDocumentLock();
   try {
     lock.waitLock(15000);
-    const empleadoId = String(params.empleadoId || params.id || '').trim();
-    if (!empleadoId) return { error: "ID de empleado no especificado" };
-
     const sheet = SpreadsheetApp.getActive().getSheetByName(HOJA_EMPLEADOS);
-    if (!sheet) return { error: "Hoja EMPLEADOS no encontrada" };
-
+    if (!sheet) return { ok: false, error: "Hoja EMPLEADOS no encontrada" };
     const data = sheet.getDataRange().getValues();
-    let filaIdx = -1;
+    let fila = -1;
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][COLUMNAS_EMPLEADOS.ID]).trim() === empleadoId) {
-        filaIdx = i + 1;
-        break;
-      }
+      if (String(data[i][C.ID]).trim() === id) { fila = i; break; }
     }
-    if (filaIdx === -1) return { error: "Empleado no encontrado" };
-
-    if (params.nombre !== undefined && params.nombre !== null) {
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.NOMBRE + 1).setValue(String(params.nombre).trim());
-    }
-    if (params.foto_url !== undefined && params.foto_url !== null) {
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.FOTO_URL + 1).setValue(String(params.foto_url).trim());
-    }
-    if (params.passwordHash !== undefined || params.pin !== undefined) {
-      const pHash = String(params.passwordHash !== undefined ? params.passwordHash : params.pin).trim();
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.PIN + 1).setValue(pHash);
-    }
-    if (params.deviceToken !== undefined) {
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.DEVICE_TOKEN + 1).setValue(String(params.deviceToken).trim());
-    }
-    if (params.telefono !== undefined && params.telefono !== null) {
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.TELEFONO + 1).setValue(String(params.telefono).trim());
-    }
-    if (params.fechaNacimiento !== undefined && params.fechaNacimiento !== null) {
-      sheet.getRange(filaIdx, COLUMNAS_EMPLEADOS.FECHA_NACIMIENTO + 1).setValue(String(params.fechaNacimiento).trim());
+    if (fila === -1) return { ok: false, error: "Empleado no encontrado" };
+    cambios.forEach(function (c) { sheet.getRange(fila + 1, c[0] + 1).setValue(c[1]); });
+    if (telefono && normalizarTelefonoEc_(data[fila][C.TELEFONO]) !== telefono) {
+      const anterior = normalizarTelefonoEc_(data[fila][C.TELEFONO]);
+      registrarAcceso_(id, 'perfilHoja', 'ok', 'teléfono ' + (anterior ? mascaraTelefono_(anterior) : '(vacío)') + ' → ' + mascaraTelefono_(telefono) + ' por ' + quien.uid);
+      CacheService.getScriptCache().remove('emp_acc_' + id);
     }
     return { ok: true, mensaje: "Perfil actualizado exitosamente" };
-  } catch(e) {
-    return { error: e.toString() };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e2) { }
   }
+}
+
+function puedeCambiarPerfil_(quien, id) {
+  if (quien.uid === id) return true;
+  if (id === SESION_FB_MASTER) return false;
+  if (quien.rol === 'master' || quien.rol === 'admin') return true;
+  if (quien.rol !== 'supervisor') return false;
+  const emp = leerEmpleadoFirestore_(id);
+  return !!emp && rolSesionFirebase_(id, emp) === 'colaborador';
 }
 
 // =================== EMPLEADOS ===================
