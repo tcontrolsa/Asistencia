@@ -3118,7 +3118,6 @@ function cargarAsistencia() {
                 <option value="">+ Razón...</option>
                 <option value="Vacación">🏖️ Vacación</option>
                 <optgroup label="📋 Permiso Justificado">
-                    <option value="Permiso Personal">👤 Permiso Personal</option>
                     <option value="Permiso Médico">🩺 Permiso Médico</option>
                     <option value="Falta Justificada">✅ Falta Justificada</option>
                 </optgroup>
@@ -3470,6 +3469,15 @@ function filtrarAsistenciaTabla() {
   $('asistenciaTablaContainer').innerHTML = html;
 }
 
+// Permiso personal: solo por horas y con aprobación del jefe (módulo Permisos, 2026-11-25). El panel ya no lo
+// registra por día completo; los días que ya lo tienen se siguen viendo y editando.
+function bloquearPersonalPorDia(tipo, registrosDia) {
+  if (tipo !== 'PERMISO_PERSONAL') return false;
+  if ((registrosDia || []).some(r => String(r.tipo || '').toUpperCase() === 'PERMISO_PERSONAL')) return false;
+  mostrarToast('El permiso personal es solo por horas: el colaborador lo pide en la app (Permisos) y lo aprueba su jefe.', 'error');
+  return true;
+}
+
 window.guardarRazonAusenciaGlobal = async function (empleadoId, valorSeleccionado) {
   if (!valorSeleccionado) return;
   let razonFinal = valorSeleccionado;
@@ -3483,6 +3491,10 @@ window.guardarRazonAusenciaGlobal = async function (empleadoId, valorSeleccionad
   }
 
   const mappedTipo = mapRazonAusenciaATipo(razonFinal);
+  if (bloquearPersonalPorDia(mappedTipo, (empCache.find(x => x.id === empleadoId)?.registros || []).filter(r => r.fecha === hoy))) {
+    cargarAsistencia();
+    return;
+  }
 
   // OPTIMISTIC UPDATE
   const emp = empCache.find(x => x.id === empleadoId);
@@ -3568,6 +3580,10 @@ window.guardarRazonAusenciaFecha = async function (empleadoId, fecha, valorSelec
   }
 
   const mappedTipo = mapRazonAusenciaATipo(razonFinal);
+  if (bloquearPersonalPorDia(mappedTipo, (empCache.find(x => x.id === empleadoId)?.registros || []).filter(r => r.fecha === fecha))) {
+    mostrarDetalle(empleadoId, parseInt(document.getElementById('filtroPeriodoDetalle')?.value || '0'));
+    return;
+  }
   const esFechaPasada = (fecha < hoy);
   const emp = empCache.find(x => x.id === empleadoId);
   const yaArchivado = Boolean((emp?.registros || []).some(r => r.fecha === fecha && (String(r.id || '').startsWith('arch_') || r.archivado)));
@@ -8442,6 +8458,7 @@ window.guardarEventoFuturo = async function () {
   const fInicio = $('futFechaInicio').value;
   const fFin = $('futFechaFin').value;
   const tipo = $('futTipo').value;
+  if (bloquearPersonalPorDia(tipo)) return;
   const observacion = $('futObservacion').value.trim() || 'Registrado por supervisor';
 
   if (!eid) {
@@ -13842,6 +13859,9 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   if (optVac) optVac.disabled = false;
   if (optFer) optFer.disabled = false;
   if (optInas) optInas.disabled = false;
+  // Permiso personal por día: solo se muestra si el día ya lo tenía
+  const optPers = document.getElementById('modalOptPersonal');
+  if (optPers) optPers.hidden = optPers.disabled = razonActual !== 'Permiso Personal';
 
   // Razón de ausencia
   const razonSel = document.getElementById('modalJornadaRazonSelect');
@@ -14213,6 +14233,7 @@ window.guardarModalGestionJornada = async function () {
 
   const tieneHoras = Boolean(hEntrada || hSalida);
   const esAusenciaCompleta = !tieneHoras && Boolean(razonFinal);
+  if (esAusenciaCompleta && bloquearPersonalPorDia(mapRazonAusenciaATipo(razonFinal), ctx.regsDia)) return;
   const totalPermisos = minsJust + minsPers + minsMed;
 
   // 1. VALIDACIÓN: Límite técnico de 720 min por categoría
