@@ -957,6 +957,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
 
     // Horas extras independientes (no compensan faltantes): reglas compartidas con el detalle
     let autorizadoGlobal = Boolean(autorizacionExtrasDia(e, regsDia));
+    let madrugadaDia = 0;
 
     periodosDia.forEach(p => {
       if (!p.entrada || !p.salida) return;
@@ -975,16 +976,20 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
         }
       } else {
         let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+        const noche = minutosMadrugada(f, mE, mS); // 00:00–06:00: al 100 %
         if (enCampo) {
+          hC100 += noche;
+          madrugadaDia += noche;
           if (mS <= H_INI || mE >= H_FIN) {
-            hC50 += duracion;
+            hC50 += duracion - noche;
           } else {
             let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-            let mExtra = duracion - mNormal;
+            let mExtra = duracion - mNormal - noche;
             hCN += mNormal;
             hC50 += mExtra;
           }
         } else {
+          if (autorizadoGlobal) { h100 += noche; madrugadaDia += noche; }
           if (autorizadoGlobal && mS > H_FIN) {
             h50 += (mS - Math.max(mE, H_FIN));
           }
@@ -992,11 +997,11 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
       }
     });
     if (esFestivo) {
-      // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min si almorzó en planta; antes del 26/09/2026, 45 min si > 4 h)
+      // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min; ver almuerzoFinSemana)
       ({ h100, hC100 } = descontarAlmuerzo100(f, periodosDia, h100, hC100));
     } else {
       // 50 %: solo si el día supera 45 min; oficina con tope de 120, campo sin tope
-      const rep50 = repartirExtra50(h50, hC50);
+      const rep50 = repartirExtra50(h50, hC50, madrugadaDia);
       h50 = rep50.oficina;
       hC50 = rep50.campo;
     }

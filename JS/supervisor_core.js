@@ -801,7 +801,8 @@ window.esEmpleadoPasante = esEmpleadoPasante;
 // REGLAS DE JORNADA Y HORAS EXTRA (oct 2026)
 // - Lunes a viernes: 07:30–16:15 con 45 min de almuerzo (480 min netos).
 // - Sábado, domingo y feriados: 07:00–15:15; todo lo trabajado es extra al 100 %
-//   (se descuentan 45 min de almuerzo si trabajó más de 4 h).
+//   (desde el 26/10/2026 se descuentan siempre 30 min de almuerzo, almuerce o no).
+// - Lunes a viernes de 00:00 a 06:00: extra al 100 % (desde el 26/10/2026, pedido 2026-11-25).
 // - Extra al 50 %: solo si supera 45 min en el día; se cuenta completa con tope de 120 min
 //   para lo de oficina. Lo trabajado en campo no tiene tope.
 // - Autorización automática de extras solo para las áreas TALLER y BODEGA; el resto, solo si un
@@ -855,7 +856,16 @@ window.ajusteDescansoDia = ajusteDescansoDia;
 // Sábado, domingo y feriado desde el 26/09/2026 (pedido 2026-10-27): se descuentan 30 min de almuerzo solo a
 // quien almorzó EN PLANTA (eligió «En planta»: almuerzo SI, PLANTA o EXTRA), sin importar cuántas
 // horas trabajó. «Fuera» (NO / FUERA) no descuenta. Antes del 26/09/2026: 45 min si trabajó más de 4 h.
+// Desde el 26/10/2026 (pedido 2026-11-25): 30 min siempre, almuerce o no.
 const ALMUERZO_FIN_SEMANA_MIN = 30;
+const REGLAS_NOV_DESDE = '2026-10-26';
+const FIN_MADRUGADA_MIN = 360; // 06:00
+// Minutos de un tramo de lunes a viernes entre las 00:00 y las 06:00: extra al 100 %
+function minutosMadrugada(fecha, mE, mS) {
+  if (!fecha || fecha < REGLAS_NOV_DESDE) return 0;
+  return Math.max(0, Math.min(mS, FIN_MADRUGADA_MIN) - Math.max(mE, 0));
+}
+window.minutosMadrugada = minutosMadrugada;
 function almorzoEnPlanta(items) {
   const si = r => !!r && ['SI', 'PLANTA', 'EXTRA'].includes(String(r.almuerzo || '').trim().toUpperCase());
   return (items || []).some(x => si(x) || (!!x && (si(x.entrada) || si(x.salida))));
@@ -864,6 +874,7 @@ window.almorzoEnPlanta = almorzoEnPlanta;
 // Minutos de almuerzo de un sábado, domingo o feriado. items: registros o períodos {entrada, salida} del día.
 function almuerzoFinSemana(fecha, items, trabajado) {
   if (!fecha || fecha < DESCANSOS_DESDE) return trabajado > 240 ? ALMUERZO_MIN : 0;
+  if (fecha >= REGLAS_NOV_DESDE) return ALMUERZO_FIN_SEMANA_MIN;
   return almorzoEnPlanta(items) ? ALMUERZO_FIN_SEMANA_MIN : 0;
 }
 window.almuerzoFinSemana = almuerzoFinSemana;
@@ -883,7 +894,16 @@ window.descontarAlmuerzo100 = descontarAlmuerzo100;
 // más que eso (decisión 2026-10-26: si alguien salió entre las 10:00 y las 11:45 no se le resta el receso).
 function descansoDia(fecha, periodosDia, empId, esFestivo, ajuste, tope) {
   if (!fecha || fecha < DESCANSOS_DESDE) return null;
-  if (esFestivo) return almuerzoFinSemana(fecha, periodosDia, 0);   // sábado, domingo y feriado: 30 min si almorzó en planta
+  if (esFestivo) {   // sábado, domingo y feriado: 30 min (nunca más que lo trabajado: sin salida no hay qué descontar)
+    const alm = almuerzoFinSemana(fecha, periodosDia, 0);
+    if (fecha < REGLAS_NOV_DESDE) return alm;
+    const trabajado = (periodosDia || []).reduce((t, p) => {
+      const a = p && p.entrada ? obtenerMinutos(p.entrada.hora || p.entrada.timestamp) : null;
+      const b = p && p.salida ? obtenerMinutos(p.salida.hora || p.salida.timestamp) : null;
+      return a !== null && b !== null && b > a ? t + (b - a) : t;
+    }, 0);
+    return Math.min(alm, trabajado);
+  }
   const aj = ajuste !== undefined && ajuste !== null ? String(ajuste).toUpperCase() : ajusteDescansoDia(empId, fecha);
   if (aj === 'NO') return 0;
   if (aj === 'SI') return ALMUERZO_MIN;
@@ -925,9 +945,10 @@ function aplicarReglaExtra50(minutos) {
 window.aplicarReglaExtra50 = aplicarReglaExtra50;
 
 // Reparto del 50 % del día: el umbral de 45 min se mide con todo (oficina + campo);
-// oficina con tope de 120 min y campo completo, sin tope.
-function repartirExtra50(oficina, campo) {
-  if (oficina + campo <= EXTRA50_UMBRAL_MIN) return { oficina: 0, campo: 0 };
+// oficina con tope de 120 min y campo completo, sin tope. Lo de 00:00 a 06:00 (que va al 100 %) también
+// cuenta para superar el umbral.
+function repartirExtra50(oficina, campo, madrugada) {
+  if (oficina + campo + (madrugada || 0) <= EXTRA50_UMBRAL_MIN) return { oficina: 0, campo: 0 };
   return { oficina: Math.min(oficina, EXTRA50_TOPE_MIN), campo };
 }
 window.repartirExtra50 = repartirExtra50;
@@ -964,6 +985,18 @@ function salidaExtrasPorConfirmar(salida, regsDia) {
 }
 window.salidaExtrasPorConfirmar = salidaExtrasPorConfirmar;
 
+// Salidas del día cuyas extras esperan confirmación (POR CONFIRMAR). periodos: [{entrada, salida}]
+function salidasPorConfirmarDia(e, periodos, regsDia, festivo) {
+  if (!autorizacionExtrasDia(e, regsDia)) return [];
+  return (periodos || []).filter(p => {
+    if (!p.entrada || !p.salida || !salidaExtrasPorConfirmar(p.salida, regsDia)) return false;
+    const mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
+    const mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
+    return mE !== null && mS !== null && mS > mE && (festivo || mS > HORA_SALIDA_REF);
+  }).map(p => p.salida);
+}
+window.salidasPorConfirmarDia = salidasPorConfirmarDia;
+
 // Minutos de salida que valen para horas extra: sin confirmar, ninguno (fin de semana) o hasta la
 // salida normal (día laborable). null = el tramo no suma extras.
 function salidaParaExtras(mS, salida, regsDia, festivo) {
@@ -984,9 +1017,8 @@ function esFinDeSemanaOFeriado(fecha) {
 }
 window.esFinDeSemanaOFeriado = esFinDeSemanaOFeriado;
 
-// Horas extra de un día con las reglas vigentes (misma lógica que el detalle y los reportes).
-// Devuelve minutos { h50, hC50, h100, hC100 } (oficina / campo).
-function calcularExtrasDia(e, fecha, registrosDia) {
+// Registros del día en orden y sus tramos completos [{entrada, salida}]
+function periodosDeRegistros(registrosDia) {
   const regs = [...(registrosDia || [])].sort((a, b) => {
     if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
     return String(a.hora || '').localeCompare(String(b.hora || ''));
@@ -998,10 +1030,18 @@ function calcularExtrasDia(e, fecha, registrosDia) {
     if (t === 'ENTRADA' || t === 'RETORNO_CAMPO' || t === 'ENTRADA_CAMPO') pendiente = r;
     else if ((t === 'SALIDA' || t === 'SALIDA_CAMPO') && pendiente) { periodos.push({ entrada: pendiente, salida: r }); pendiente = null; }
   });
+  return { regs, periodos };
+}
+window.periodosDeRegistros = periodosDeRegistros;
+
+// Horas extra de un día con las reglas vigentes (misma lógica que el detalle y los reportes).
+// Devuelve minutos { h50, hC50, h100, hC100 } (oficina / campo).
+function calcularExtrasDia(e, fecha, registrosDia) {
+  const { regs, periodos } = periodosDeRegistros(registrosDia);
   const res = { h50: 0, hC50: 0, h100: 0, hC100: 0 };
   if (!autorizacionExtrasDia(e, regs)) return res;
   const festivo = esFinDeSemanaOFeriado(fecha);
-  let oficina50 = 0, campo50 = 0;
+  let oficina50 = 0, campo50 = 0, madrugada = 0;
   periodos.forEach(p => {
     const mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
     const mSReg = obtenerMinutos(p.salida.hora || p.salida.timestamp);
@@ -1010,17 +1050,23 @@ function calcularExtrasDia(e, fecha, registrosDia) {
     const enCampo = p.entrada.modo === 'CAMPO' || p.salida.modo === 'CAMPO';
     if (festivo) {
       if (enCampo) res.hC100 += mS - mE; else res.h100 += mS - mE;
-    } else if (enCampo) {
+      return;
+    }
+    const noche = minutosMadrugada(fecha, mE, mS); // 00:00–06:00: al 100 %
+    madrugada += noche;
+    if (enCampo) {
       const normal = Math.max(0, Math.min(mS, HORA_SALIDA_REF) - Math.max(mE, HORA_ENTRADA_REF));
-      campo50 += (mS - mE) - normal;
-    } else if (mS > HORA_SALIDA_REF) {
-      oficina50 += mS - Math.max(mE, HORA_SALIDA_REF);
+      campo50 += (mS - mE) - normal - noche;
+      res.hC100 += noche;
+    } else {
+      if (mS > HORA_SALIDA_REF) oficina50 += mS - Math.max(mE, HORA_SALIDA_REF);
+      res.h100 += noche;
     }
   });
   if (festivo) {
     Object.assign(res, descontarAlmuerzo100(fecha, regs, res.h100, res.hC100));
   } else {
-    const rep50 = repartirExtra50(oficina50, campo50);
+    const rep50 = repartirExtra50(oficina50, campo50, madrugada);
     res.h50 = rep50.oficina;
     res.hC50 = rep50.campo;
   }
@@ -4186,7 +4232,7 @@ function cargarReportes() {
       let autorizado = Boolean(autorizacionExtrasDia(e, regsDia));
 
       let extraMins50Acum = 0;
-      let campo50Dia = 0, extra100Dia = 0, campo100Dia = 0;
+      let campo50Dia = 0, extra100Dia = 0, campo100Dia = 0, madrugadaDia = 0;
 
       periodosDia.forEach(p => {
         if (!p.entrada || !p.salida) return;
@@ -4205,16 +4251,20 @@ function cargarReportes() {
           }
         } else {
           let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+          const noche = minutosMadrugada(fecha, mE, mS); // 00:00–06:00: al 100 %
           if (enCampo) {
+            campo100Dia += noche;
+            madrugadaDia += noche;
             if (mS <= H_INI || mE >= H_FIN) {
-              campo50Dia += duracion;
+              campo50Dia += duracion - noche;
             } else {
               let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-              let mExtra = duracion - mNormal;
+              let mExtra = duracion - mNormal - noche;
               horasCampoNormales += mNormal;
               campo50Dia += mExtra;
             }
           } else {
+            if (autorizado) { extra100Dia += noche; madrugadaDia += noche; }
             if (autorizado && mS > H_FIN) {
               extraMins50Acum += (mS - Math.max(mE, H_FIN));
             }
@@ -4223,16 +4273,16 @@ function cargarReportes() {
       });
 
       if (esFestivo) {
-        // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min si almorzó en planta; antes del 26/09/2026, 45 min si > 4 h)
+        // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min; ver almuerzoFinSemana)
         ({ h100: extra100Dia, hC100: campo100Dia } = descontarAlmuerzo100(fecha, periodosDia, extra100Dia, campo100Dia));
-        horasExtra100 += extra100Dia;
-        horasCampo100 += campo100Dia;
       } else {
         // 50 %: solo si el día supera 45 min; oficina con tope de 120, campo sin tope
-        const rep50 = repartirExtra50(extraMins50Acum, campo50Dia);
+        const rep50 = repartirExtra50(extraMins50Acum, campo50Dia, madrugadaDia);
         horasExtra50 += rep50.oficina;
         horasCampo50 += rep50.campo;
       }
+      horasExtra100 += extra100Dia;
+      horasCampo100 += campo100Dia;
 
       // Sumar permisos asignados manualmente
       const regPermiso = regsDia.find(r => r.tipo === 'ENTRADA') || regsDia.find(r => r.tiempo_justificado_mins || r.permiso_personal_mins || r.permiso_medico_mins) || regsDia[0];
@@ -5740,7 +5790,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       totDescanso += minutosTrabajadosHoy > 0 ? descansoAplicado : 0;
       const motivoDsc = ajusteDsc === 'NO' ? 'Ajuste: sin descuento' : ajusteDsc === 'SI' ? 'Ajuste: 45 min'
         : dscDia === null ? (descansoAplicado ? (esFestivo ? 'Más de 4 h' : 'Regla anterior') : 'Menos de 4 h')
-        : esFestivo ? (descansoAplicado ? 'Almorzó en planta' : 'Almorzó fuera')
+        : esFestivo ? (f >= REGLAS_NOV_DESDE ? 'Fin de semana o feriado' : descansoAplicado ? 'Almorzó en planta' : 'Almorzó fuera')
         : descansoAplicado === 45 ? 'Receso + almuerzo' : descansoAplicado === 15 ? 'Solo receso'
         : descansoAplicado === 30 ? 'Solo almuerzo' : 'Sin descanso';
       const colorDsc = ajusteDsc ? '#7c3aed' : (dscDia !== null && !esFestivo && descansoAplicado < 45) ? '#15803d' : '#475569';
@@ -5777,20 +5827,26 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         extBadge = '<span class="pill ok" title="Automático para las áreas TALLER y BODEGA (más de 45 min; tope 120 min en oficina, sin tope en campo)">AUTO</span>';
       }
       let extBadgeHtml = extBadge;
-      const extrasPorConfirmar = autorizadoGlobal && periodosDia.some(p => p.entrada && p.salida && salidaExtrasPorConfirmar(p.salida, regsDia)
-        && (esFestivo || obtenerMinutos(p.salida.hora || p.salida.timestamp) > HORA_SALIDA_REF));
+      const extrasPorConfirmar = salidasPorConfirmarDia(e, periodosDia, regsDia, esFestivo).length > 0;
+      // Ya confirmadas por un supervisor (salida que completó el sistema): se puede quitar la confirmación
+      const extrasConfirmadas = !extrasPorConfirmar && origenAutorizacion
+        && regsDia.some(r => esSalidaSinRegistrar(r) && String(r.autoriza || '').toUpperCase().startsWith('SUPERVISOR:'));
+      const puedeConfirmarExtras = typeof window.confirmarExtrasDia === 'function' && tienePermisoAdmin();
       if (extrasPorConfirmar) {
         // Salida completada por el sistema: las extras quedan en espera hasta que el supervisor las autorice
         extBadge = '<span class="pill" style="background:#fef3c7; color:#92400e;" title="No registró la salida (la completó el sistema): las horas extra no se cuentan hasta que un supervisor las autorice. Si la hora no es correcta, corrígela antes en Gestionar.">POR CONFIRMAR</span>';
-        extBadgeHtml = esMaster && regsDia.length > 0
-          ? `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', 'NO', '${f}')">${extBadge}</span>`
+        extBadgeHtml = puedeConfirmarExtras
+          ? `${extBadge}<button type="button" class="btn-confirmar-extras" onclick="event.stopPropagation();confirmarExtrasDia('${e.id}', '${f}')" title="Contar las horas extra de este día con la hora de salida que se muestra"><i class="fas fa-check"></i> Confirmar</button>`
           : extBadge;
+      } else if (extrasConfirmadas && puedeConfirmarExtras) {
+        extBadge = '<span class="pill ok" title="Confirmadas por un supervisor (la salida la completó el sistema). Clic para quitar la confirmación">CONFIRMADO</span>';
+        extBadgeHtml = `<span class="editable-pill" onclick="event.stopPropagation();quitarConfirmacionExtras('${e.id}', '${f}')">${extBadge}</span>`;
       } else if (esMaster && regsDia.length > 0 && !esFalta && origenAutorizacion !== 'taller' && origenAutorizacion !== 'campo') {
         extBadgeHtml = `<span class="editable-pill" onclick="event.stopPropagation();editarValorRegistro('${e.id}', '${regsDia[0].tipo}', '${regsDia[0].id}', 'horasExtra', '${extBadgeVal}', '${f}')">${extBadge}</span>`;
       }
 
       let extraMins50Acum = 0;
-      let extraMins100Acum = 0;
+      let madrugadaDia = 0;
 
       periodosDia.forEach(p => {
         if (!p.entrada || !p.salida) return;
@@ -5809,16 +5865,20 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           }
         } else {
           let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+          const noche = minutosMadrugada(f, mE, mS); // 00:00–06:00: al 100 %
           if (enCampo) {
+            hC100 += noche;
+            madrugadaDia += noche;
             if (mS <= H_INI || mE >= H_FIN) {
-              hC50 += duracion;
+              hC50 += duracion - noche;
             } else {
               let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-              let mExtra = duracion - mNormal;
+              let mExtra = duracion - mNormal - noche;
               hCN += mNormal;
               hC50 += mExtra;
             }
           } else {
+            if (autorizadoGlobal) { h100 += noche; madrugadaDia += noche; }
             if (autorizadoGlobal && mS > H_FIN) {
               extraMins50Acum += (mS - Math.max(mE, H_FIN));
             }
@@ -5827,11 +5887,11 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       });
 
       if (esFestivo) {
-        // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min si almorzó en planta; antes del 26/09/2026, 45 min si > 4 h)
+        // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (30 min; ver almuerzoFinSemana)
         ({ h100, hC100 } = descontarAlmuerzo100(f, periodosDia, h100, hC100));
       } else {
         // 50 %: solo si el día supera 45 min de extra; oficina con tope de 120 min, campo sin tope
-        const rep50 = repartirExtra50(extraMins50Acum, hC50);
+        const rep50 = repartirExtra50(extraMins50Acum, hC50, madrugadaDia);
         h50 = rep50.oficina;
         hC50 = rep50.campo;
       }
@@ -6163,7 +6223,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar jornada y permisos de esta fecha">
       <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
       <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">${horaE}</td>
-      <td style="font-size:11px; padding:6px 8px; text-align:center; line-height:1.2;" title="${esFestivo ? 'Sábado, domingo y feriado: 30 min solo si almorzó en planta' : 'Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30 descontados de las horas trabajadas'}">${celdaDescansoHtml}</td>
+      <td style="font-size:11px; padding:6px 8px; text-align:center; line-height:1.2;" title="${esFestivo ? (f >= REGLAS_NOV_DESDE ? 'Sábado, domingo y feriado: 30 min siempre, almuerce o no' : 'Sábado, domingo y feriado: 30 min solo si almorzó en planta') : 'Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30 descontados de las horas trabajadas'}">${celdaDescansoHtml}</td>
       <td class="hora-cell" style="font-size:11.5px; font-weight:600; padding:6px 8px; text-align:center;">
         ${horaS}
         ${modActual !== 'EMPRESA' ? `<div style="margin-top:2px;">${modalidadCell}</div>` : ''}
@@ -6548,6 +6608,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             <button class="btn btn-primary" onclick="window.mostrarModalCampoSupervisor('${e.id}')" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; background:#059669; border-color:#059669; color:white; cursor:pointer;">
               <i class="fas fa-hammer"></i> Trabajo en Campo
             </button>
+            ${typeof window.botonExtrasPorConfirmarHtml === 'function' ? window.botonExtrasPorConfirmarHtml(e, R_INI, R_FIN) : ''}
             ${botonCampoAutorizadoHtml(e)}
             ${botonTeletrabajoHtml(e)}
             <button class="btn" onclick="window.verBitacoraMarcaciones('${e.id}')" title="Intentos de marcación desde la app y sus resultados" style="font-size:11px; padding:4px 10px; height:auto; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border:1.5px solid #94a3b8; background:#f8fafc; color:#334155;">
@@ -13852,7 +13913,8 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   if (lblDsc) lblDsc.textContent = finDeSemanaDsc ? 'Almuerzo de fin de semana o feriado' : 'Descuento de receso y almuerzo';
   const infoDscIni = document.getElementById('modalJornadaDescansoInfo');
   if (infoDscIni) infoDscIni.innerHTML = finDeSemanaDsc
-    ? (almorzoEnPlanta([{ almuerzo: ctxDsc.almuerzoActual }])
+    ? (ctxDsc.fecha >= REGLAS_NOV_DESDE ? 'Sábado, domingo o feriado: se descuentan <b>30 min</b> de almuerzo, almuerce o no.'
+      : almorzoEnPlanta([{ almuerzo: ctxDsc.almuerzoActual }])
       ? 'Sábado, domingo o feriado: almorzó en planta, se descuentan <b>30 min</b>.'
       : 'Sábado, domingo o feriado: almorzó fuera, <b>no se descuenta</b> almuerzo.')
     : 'Receso 10:00–10:15 (15 min) y almuerzo 30 min desde las 12:30: se descuentan solo si estaba en la empresa a esa hora.';
@@ -13958,7 +14020,8 @@ window.recalcularTiemposModalJornada = function () {
       if (dscModal !== null) dur -= dscModal;
       const infoDsc = document.getElementById('modalJornadaDescansoInfo');
       if (infoDsc && dscModal !== null && esFestivo) {
-        infoDsc.innerHTML = dscModal ? 'Sábado, domingo o feriado: almorzó en planta, se descuentan <b>30 min</b>.'
+        infoDsc.innerHTML = ctx.fecha >= REGLAS_NOV_DESDE ? 'Sábado, domingo o feriado: se descuentan <b>30 min</b> de almuerzo, almuerce o no.'
+          : dscModal ? 'Sábado, domingo o feriado: almorzó en planta, se descuentan <b>30 min</b>.'
           : 'Sábado, domingo o feriado: almorzó fuera, <b>no se descuenta</b> almuerzo.';
       } else if (infoDsc && dscModal !== null) {
         infoDsc.innerHTML = ajusteModal === 'NO' ? 'No se descuenta receso ni almuerzo este día.'

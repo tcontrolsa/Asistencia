@@ -5425,7 +5425,7 @@ function avisoAlmuerzoFindeHtml() {
     if (!(dow === 0 || dow === 6 || esFeriado(hoy))) return '';
     const dia = dow === 6 ? 'sábado' : dow === 0 ? 'domingo' : 'feriado';
     return `<div class="aviso-almuerzo-finde" style="margin: 10px auto 0; max-width: 360px; text-align: left; background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: 12px; padding: 9px 12px; font-size: 12.5px; color: #78350f; line-height: 1.45;">
-        <i class="fas fa-info-circle" style="color: #d97706;"></i> Hoy es <b>${dia}</b>: si almuerzas <b>en planta</b> se descuentan <b>30 min</b> de tus horas trabajadas. Si almuerzas <b>fuera</b>, no se descuenta.</div>`;
+        <i class="fas fa-info-circle" style="color: #d97706;"></i> Hoy es <b>${dia}</b>: se descuentan <b>30 min de almuerzo</b> de tus horas trabajadas, almuerces o no.</div>`;
 }
 window.avisoAlmuerzoFindeHtml = avisoAlmuerzoFindeHtml;
 
@@ -5763,7 +5763,8 @@ function renderHistoryPage() {
                             <div><b>Receso:</b> 10:00 a 10:15 (15 min).</div>
                             <div><b>Almuerzo:</b> 30 min · primer turno 12:30 a 13:00 o segundo turno 13:00 a 13:30.</div>
                             <div style="margin-top: 6px;">Receso y almuerzo (45 min) <b>no se cuentan como horas trabajadas</b>, pero solo se descuentan si estabas en la empresa a esa hora: si sales antes del almuerzo, no se te descuenta el almuerzo; si sales antes de las 10:00, tampoco el receso.</div>
-                            <div style="margin-top: 6px;"><b>Sábado, domingo y feriados:</b> 07:00 a 15:15, sin receso. Se descuentan <b>30 min de almuerzo solo si almuerzas en planta</b> (eliges «En planta» en «¿Dónde almuerzas hoy?»), trabajes las horas que trabajes. Si eliges «Fuera», no se descuenta.</div>
+                            <div style="margin-top: 6px;"><b>Sábado, domingo y feriados:</b> 07:00 a 15:15, sin receso. Se descuentan <b>30 min de almuerzo, almuerces o no</b>, trabajes las horas que trabajes.</div>
+                            <div style="margin-top: 6px;"><b>De 00:00 a 06:00:</b> las horas extra se cuentan al 100 %.</div>
                         </div>
                     </details>
                     
@@ -5927,8 +5928,15 @@ function getVal(reg, key, idx) {
 const DESCANSOS_DESDE_APP = '2026-09-26';
 // Sábado, domingo y feriado desde el 26/09/2026: 30 min de almuerzo solo si almorzó en planta (almorzo = true),
 // sin importar las horas; «Fuera» no descuenta. Antes del 26/09/2026: 45 min si trabajó más de 4 h (null).
+// Desde el 26/10/2026 (pedido 2026-11-25): 30 min siempre, almuerce o no; y de lunes a viernes, lo trabajado
+// de 00:00 a 06:00 es extra al 100 % (mismas reglas que supervisor_core.js).
+const REGLAS_NOV_DESDE_APP = '2026-10-26';
+function minutosMadrugadaApp(fecha, mE, mS) {
+    return fecha && fecha >= REGLAS_NOV_DESDE_APP ? Math.max(0, Math.min(mS, 360) - Math.max(mE, 0)) : 0;
+}
 function descansoDiaApp(fecha, tramos, empId, esFestivo, tope, almorzo) {
     if (!fecha || fecha < DESCANSOS_DESDE_APP) return null;
+    if (esFestivo && fecha >= REGLAS_NOV_DESDE_APP) return Math.min(30, tramos.reduce((t, [a, b]) => t + (b - a), 0));
     if (esFestivo) return almorzo ? 30 : 0;
     const aj = ((window._ajustesDescanso || {})[`${String(empId || '').trim()}_${fecha}`] || {}).d || '';
     if (aj === 'NO') return 0;
@@ -6302,7 +6310,7 @@ function calcularEstadisticas(offset = 0) {
             || esTallerEmp;
 
         let extraMins50Acum = 0;
-        let campo50Dia = 0, extra100Dia = 0, campo100Dia = 0;
+        let campo50Dia = 0, extra100Dia = 0, campo100Dia = 0, madrugadaDia = 0;
 
         periodosDia.forEach(p => {
             if (!p.entrada || !p.salida) return;
@@ -6333,16 +6341,20 @@ function calcularEstadisticas(offset = 0) {
                 }
             } else {
                 let H_INI = H_INI_REF, H_FIN = H_FIN_REF;
+                const noche = minutosMadrugadaApp(fechaKey, mE, mS); // 00:00–06:00: al 100 %
                 if (enCampo) {
+                    campo100Dia += noche;
+                    madrugadaDia += noche;
                     if (mS <= H_INI || mE >= H_FIN) {
-                        campo50Dia += duracion;
+                        campo50Dia += duracion - noche;
                     } else {
                         let mNormal = Math.min(mS, H_FIN) - Math.max(mE, H_INI);
-                        let mExtra = duracion - mNormal;
+                        let mExtra = duracion - mNormal - noche;
                         horasCampoNormales += mNormal;
                         campo50Dia += mExtra;
                     }
                 } else {
+                    if (autorizado) { extra100Dia += noche; madrugadaDia += noche; }
                     if (autorizado && mS > H_FIN) {
                         extraMins50Acum += (mS - Math.max(mE, H_FIN));
                     }
@@ -6352,24 +6364,24 @@ function calcularEstadisticas(offset = 0) {
 
         if (esFestivo) {
             // Sábado, domingo y feriado: todo al 100 %, menos el almuerzo (mismas reglas que el panel):
-            // desde el 26/09/2026, 30 min si almorzó en planta; antes, 45 min si trabajó más de 4 h
+            // desde el 26/10/2026, 30 min siempre; del 26/09 al 25/10, si almorzó en planta; antes, 45 min si trabajó más de 4 h
             if (fechaKey >= DESCANSOS_DESDE_APP) {
-                const alm = almorzoPlanta ? 30 : 0, deEmpresa = Math.min(extra100Dia, alm);
+                const alm = fechaKey >= REGLAS_NOV_DESDE_APP || almorzoPlanta ? 30 : 0, deEmpresa = Math.min(extra100Dia, alm);
                 extra100Dia -= deEmpresa;
                 campo100Dia = Math.max(0, campo100Dia - (alm - deEmpresa));
             } else if (extra100Dia + campo100Dia > 240) {
                 if (extra100Dia >= 45) extra100Dia -= 45;
                 else campo100Dia = Math.max(0, campo100Dia - 45);
             }
-            horasExtra100 += extra100Dia;
-            horasCampo100 += campo100Dia;
         } else {
             // 50 %: solo si el día supera 45 min; oficina con tope de 120, campo sin tope
-            if (extraMins50Acum + campo50Dia > 45) {
+            if (extraMins50Acum + campo50Dia + madrugadaDia > 45) {
                 horasExtra50 += Math.min(extraMins50Acum, 120);
                 horasCampo50 += campo50Dia;
             }
         }
+        horasExtra100 += extra100Dia;
+        horasCampo100 += campo100Dia;
 
         // Acumular tiempo trabajado
         totalNetWorked += netWorked;

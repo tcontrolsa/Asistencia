@@ -27,6 +27,7 @@
   const ALMUERZO_MIN = 45;
   const ALMUERZO_FIN_SEMANA_MIN = 30;
   const DESCANSOS_DESDE = '2026-09-26';
+  const REGLAS_NOV_DESDE = '2026-10-26'; // almuerzo de fin de semana siempre (30 min, almuerce o no)
   const DESCANSOS_LV = [{ id: 'receso', inicio: 600, min: 15 }, { id: 'almuerzo', inicio: 750, min: 30 }];
   const FERIADOS_MD = ['1/1', '2/16', '2/17', '4/3', '4/30', '5/1', '5/25', '8/10', '10/9', '11/2', '11/3', '12/6', '12/25'];
 
@@ -174,11 +175,21 @@
   }
   function almuerzoFinSemana(fecha, items, trabajado) {
     if (!fecha || fecha < DESCANSOS_DESDE) return trabajado > 240 ? ALMUERZO_MIN : 0;
+    if (fecha >= REGLAS_NOV_DESDE) return ALMUERZO_FIN_SEMANA_MIN;
     return almorzoEnPlanta(items) ? ALMUERZO_FIN_SEMANA_MIN : 0;
   }
   function descansoDia(fecha, periodosDia, empId, esFestivo, ajuste, tope) {
     if (!fecha || fecha < DESCANSOS_DESDE) return null;
-    if (esFestivo) return almuerzoFinSemana(fecha, periodosDia, 0);
+    if (esFestivo) {   // 30 min, nunca más que lo trabajado
+      const alm = almuerzoFinSemana(fecha, periodosDia, 0);
+      if (fecha < REGLAS_NOV_DESDE) return alm;
+      const trabajado = (periodosDia || []).reduce((t, p) => {
+        const a = p && p.entrada ? obtenerMinutos(p.entrada.hora || p.entrada.timestamp) : null;
+        const b = p && p.salida ? obtenerMinutos(p.salida.hora || p.salida.timestamp) : null;
+        return a !== null && b !== null && b > a ? t + (b - a) : t;
+      }, 0);
+      return Math.min(alm, trabajado);
+    }
     const aj = ajuste !== undefined && ajuste !== null ? String(ajuste).toUpperCase() : ajusteDescansoDia(empId, fecha);
     if (aj === 'NO') return 0;
     if (aj === 'SI') return ALMUERZO_MIN;
