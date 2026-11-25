@@ -36,41 +36,86 @@ function avisoAlmuerzosDiario() {
   var hm = Utilities.formatDate(ahora, AVISO_ALM_TZ, 'HH:mm');
   var hora = /^\d{2}:\d{2}$/.test(String(cfg.hora || '')) ? cfg.hora : AVISO_ALM_HORA_DEFECTO;
   if (hm < hora || cfg.ultimo_envio === hoy) return;
+  var previo = reintentoAvisoAlm_(cfg, hoy);   // destinatarios que fallaron en un intento anterior de hoy
   // Pasadas 3 horas de la hora fijada ya no se envía (el pedido ya se hizo)
-  if (minutosAvisoAlm_(hm) - minutosAvisoAlm_(hora) > 180) return;
+  if (minutosAvisoAlm_(hm) - minutosAvisoAlm_(hora) > 180) {
+    // Si quedaban destinatarios sin recibirlo, se cierra el día dejando constancia de quiénes fueron
+    if (previo) guardarEstadoAvisoAlm_({ ultimo_envio: hoy, ultimo_resultado: resumenAvisoAlm_(previo, previo.pendientes) + ' · se dejó de reintentar', reintento_fecha: '' });
+    return;
+  }
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return;
   try {
     cfg = leerConfigAvisoAlm_();   // releer dentro del candado: otra ejecución pudo enviarlo
     if (cfg.ultimo_envio === hoy) return;
-    var r = enviarAvisoAlmuerzos_(cfg, hoy, false);
-    guardarEstadoAvisoAlm_({ ultimo_envio: hoy, ultimo_resultado: r.resumen, ultimo_total: r.total, ultimo_en: new Date().toISOString() });
+    previo = reintentoAvisoAlm_(cfg, hoy);
+    var r = enviarAvisoAlmuerzos_(cfg, hoy, false, previo);
+    var pend = r.pendientes || [];
+    var ahoraIso = new Date().toISOString();
+    if (r.destinos > 0 && pend.length) {
+      // Falló a alguien (túnel de WhatsApp caído, número sin WhatsApp…): NO se da por enviado y se reintenta en 5 min,
+      // pero solo a quienes faltan (los que ya lo recibieron no vuelven a recibirlo). Máximo 6 reintentos.
+      var intentos = (previo ? previo.intentos : 0) + 1;
+      if (intentos >= 6) {
+        guardarEstadoAvisoAlm_({ ultimo_envio: hoy, ultimo_resultado: r.resumen + ' · se dejó de reintentar', ultimo_total: r.total, ultimo_en: ahoraIso, reintento_fecha: '' });
+      } else {
+        guardarEstadoAvisoAlm_({
+          ultimo_resultado: 'REINTENTANDO · ' + r.resumen, ultimo_total: r.total, ultimo_en: ahoraIso,
+          reintento_fecha: hoy, reintento_pendientes: JSON.stringify(pend), reintento_texto: r.texto,
+          reintento_destinos: r.destinos, reintento_intentos: intentos
+        });
+      }
+    } else {
+      guardarEstadoAvisoAlm_({ ultimo_envio: hoy, ultimo_resultado: r.resumen, ultimo_total: r.total, ultimo_en: ahoraIso, reintento_fecha: '' });
+    }
     Logger.log(r.resumen);
   } finally {
     lock.releaseLock();
   }
 }
 
+/** Estado de un envío parcial de HOY ({pendientes, texto, total, destinos, intentos}) o null si no hay. */
+function reintentoAvisoAlm_(cfg, hoy) {
+  if (!cfg || cfg.reintento_fecha !== hoy) return null;
+  var pend;
+  try { pend = JSON.parse(cfg.reintento_pendientes || '[]'); } catch (e) { return null; }
+  if (!pend.length || !cfg.reintento_texto) return null;
+  return { pendientes: pend, texto: cfg.reintento_texto, total: Number(cfg.ultimo_total) || 0,
+           destinos: Number(cfg.reintento_destinos) || pend.length, intentos: Number(cfg.reintento_intentos) || 0 };
+}
+
+function resumenAvisoAlm_(base, pendientes) {
+  var ok = base.destinos - pendientes.length;
+  return base.total + ' almuerzos · WhatsApp a ' + ok + ' de ' + base.destinos +
+    (pendientes.length ? ' · no llegó a: ' + pendientes.map(function (d) { return d.nombre; }).join(', ') : '');
+}
+
 // ---------------------------------------------------------------- conteo y envío
-function enviarAvisoAlmuerzos_(cfg, hoy, simular) {
-  var c = contarAlmuerzosHoy_(hoy);
+/**
+ * `previo` (opcional) = envío parcial anterior de hoy: se manda el MISMO texto solo a quienes faltaban.
+ * Devuelve {total, enviados, destinos, pendientes:[{nombre, numero}], texto, resumen}.
+ */
+function enviarAvisoAlmuerzos_(cfg, hoy, simular, previo) {
+  var c = previo ? { total: previo.total } : contarAlmuerzosHoy_(hoy);
   if (!c.total) return { total: 0, resumen: 'Sin almuerzos registrados hoy: no se envió mensaje.' };
 
-  var texto = textoAvisoAlm_(c, hoy);
-  var destinos = destinatariosAvisoAlm_(cfg);
+  var texto = previo ? previo.texto : textoAvisoAlm_(c, hoy);
+  var destinos = previo ? previo.pendientes : destinatariosAvisoAlm_(cfg);
   if (!destinos.length) return { total: c.total, resumen: c.total + ' almuerzos; sin destinatarios con teléfono válido.' };
   if (simular) return { total: c.total, resumen: 'SIMULACIÓN · ' + destinos.length + ' destinatarios: ' + destinos.map(function (d) { return d.nombre; }).join(', ') + '\n\n' + texto };
 
-  var ok = 0, fallos = [];
+  var pendientes = [], errores = [];
   destinos.forEach(function (d) {
     var res = typeof enviarWhatsAppAcceso_ === 'function' ? enviarWhatsAppAcceso_(d.numero, texto) : { ok: false, error: 'Falta enviarWhatsAppAcceso_' };
-    if (res && res.ok) ok++; else fallos.push(d.nombre + ' (' + ((res && res.error) || 'sin respuesta') + ')');
+    if (!(res && res.ok)) { pendientes.push({ nombre: d.nombre, numero: d.numero }); errores.push(d.nombre + ' (' + ((res && res.error) || 'sin respuesta') + ')'); }
     Utilities.sleep(700);   // OpenWA: tope de 10 por segundo, compartido con el bot
   });
+  var total = previo ? previo.destinos : destinos.length;
+  var enviados = total - pendientes.length;
   return {
-    total: c.total,
-    resumen: c.total + ' almuerzos · WhatsApp a ' + ok + ' de ' + destinos.length + (fallos.length ? ' · fallaron: ' + fallos.join(', ') : '')
+    total: c.total, enviados: enviados, destinos: total, pendientes: pendientes, texto: texto,
+    resumen: c.total + ' almuerzos · WhatsApp a ' + enviados + ' de ' + total + (errores.length ? ' · fallaron: ' + errores.join(', ') : '')
   };
 }
 
@@ -214,6 +259,13 @@ function guardarEstadoAvisoAlm_(campos) {
 }
 
 // ---------------------------------------------------------------- editor (▶)
+/** Vuelve a enviar el aviso de HOY (después de arreglar el túnel de WhatsApp). Solo dentro de la ventana de 3 horas. */
+function reenviarAvisoAlmuerzosHoy() {
+  guardarEstadoAvisoAlm_({ ultimo_envio: '', reintento_fecha: '' });   // reenvía a TODOS (descarta el reintento parcial)
+  avisoAlmuerzosDiario();
+  Logger.log('Resultado: ' + (leerConfigAvisoAlm_().ultimo_resultado || '(sin resultado)'));
+}
+
 /** Ejecutar una vez: revisa cada 5 minutos y envía una sola vez al día, a la hora del panel. */
 function instalarAvisoAlmuerzos() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
