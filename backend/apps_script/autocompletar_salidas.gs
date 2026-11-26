@@ -221,7 +221,7 @@ function regularizarSalidasFinDeSemana(ssParam) {
 
         // Si se habían asignado horas extras artificiales por el sistema debido a los 16:15:00, removerlas
         const autVal = String(fila[colAutoriza] || '').trim().toUpperCase();
-        if (autVal.includes('SISTEMA') || autVal.includes('>45 MIN')) {
+        if (!autVal.startsWith('SUPERVISOR:') && (autVal.includes('SISTEMA') || autVal.includes('>45 MIN'))) { // lo confirmado por un supervisor se respeta
           fila[colHE] = 'NO';
           fila[colAutoriza] = '';
         }
@@ -249,7 +249,7 @@ function regularizarSalidasFinDeSemana(ssParam) {
         const key = `${empId}_${fClave}`;
         if (diasCorregidosKeys.has(key)) {
           const autVal = String(fila[colAutoriza] || '').trim().toUpperCase();
-          if (autVal.includes('SISTEMA') || autVal.includes('>45 MIN')) {
+          if (!autVal.startsWith('SUPERVISOR:') && (autVal.includes('SISTEMA') || autVal.includes('>45 MIN'))) { // lo confirmado por un supervisor se respeta
             fila[colHE] = 'NO';
             fila[colAutoriza] = '';
             filasModificadas.add(i);

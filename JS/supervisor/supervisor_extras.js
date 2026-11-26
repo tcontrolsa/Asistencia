@@ -163,7 +163,9 @@
   window.quitarConfirmacionExtras = async function (id, fecha) {
     if (!permitido() || st.guardando) return;
     const e = fichaDe(id);
-    const regs = ((e && e.registros) || []).filter(r => r.fecha === fecha && String(r.autoriza || '').toUpperCase().startsWith('SUPERVISOR:'));
+    // Solo la confirmación de salidas que completó el sistema; una autorización de extras hecha aparte se mantiene
+    const regs = ((e && e.registros) || []).filter(r => r.fecha === fecha && esSalidaSinRegistrar(r)
+      && String(r.autoriza || '').toUpperCase().startsWith('SUPERVISOR:'));
     if (!regs.length) return;
     if (!confirm(`¿Quitar la confirmación de horas extra de ${e.nombre} del ${dmy(fecha)}?\n\nVolverán a quedar POR CONFIRMAR y no contarán.`)) return;
     const tareas = regs.map(r => [`${e.nombre} ${dmy(fecha)}`, () => guardarFila({ id: String(e.id).trim(), fecha, salida: r }, 'SISTEMA (>45 MIN)', 'NO')]);
