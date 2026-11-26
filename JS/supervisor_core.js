@@ -839,6 +839,150 @@ function desgloseDescontarTexto(b, aDescontar) {
 }
 window.desgloseDescontarTexto = desgloseDescontarTexto;
 
+// ---- Detalle de «T. Descontar» en el historial del período (pedido 2026-11-25) ----
+// Motivos del descuento de un día; siempre suman b.rawDescuento (el cálculo es de ReglasJornada.calcularBolsa).
+// sinMarcas: no tiene ninguna marcación ese día (conRegistros: pero sí un registro de ausencia, p. ej. descontada por TTHH)
+function motivosDescuento(b, { sinMarcas = false, conRegistros = false, pasante = false } = {}) {
+  if (!b || !b.rawDescuento) return [];
+  const out = [];
+  let resto = b.rawDescuento;
+  const agregar = (tipo, texto, min) => {
+    const m = Math.min(resto, Math.max(0, min || 0));
+    if (m > 0) { out.push({ tipo, texto, min: m }); resto -= m; }
+  };
+  agregar('personal', 'Permiso personal', b.tiempoPersonal);
+  if (sinMarcas) {
+    agregar('inasistencia', conRegistros ? 'Ausencia sin justificar' : 'Sin marcaciones (inasistencia)', resto);
+    return out;
+  }
+  agregar('sinsalida', 'No registró salida', b.penalSinSalida);
+  agregar('atraso', 'Atraso', b.atrasoMinsDia);
+  agregar('anticipada', 'Salida anticipada', b.salidaTempMinsDia);
+  agregar('faltante', pasante ? 'Entrada sin salida (pasante)' : 'Tiempo faltante sin justificar', resto);
+  return out;
+}
+
+// Celda «T. Descontar» de un día: valor y, si intervino la bolsa de 4 h, la cuenta a la vista
+function celdaDescontarHtml(b, aDescontar, enCurso) {
+  const t = m => minutosAHHMMSS(m || 0).slice(0, 5);
+  const titulo = escapeHtml(desgloseDescontarTexto(b, aDescontar));
+  const usado = (b && b.consumo4h) || 0;
+  const curso = enCurso ? '<div class="td-nota">En curso</div>' : '';
+  if (aDescontar > 0) {
+    const cuenta = usado > 0 ? `<div class="td-nota">${t(b.rawDescuento)} − bolsa ${t(usado)}</div>` : '';
+    return `<span class="td-valor" title="${titulo}">${minutosAHHMMSS(aDescontar)}</span>${cuenta}${curso}`;
+  }
+  if (usado > 0) {
+    return `<span class="td-bolsa" title="${titulo}"><i class="fas fa-piggy-bank" style="font-size:9px;"></i> Bolsa −${minutosAHHMMSS(usado)}</span><div class="td-nota">quedan ${t(b.saldoBolsa)}</div>${curso}`;
+  }
+  return '<span style="color:#94a3b8;">—</span>';
+}
+
+// Cuadro «¿De dónde sale T. Descontar?»: la cuenta del período, el total por motivo, los días sin marcaciones
+// (con lo que quedaría si se justifican) y la tabla día por día con el saldo de la bolsa.
+// dias: [{ fecha, b, sinMarcas, conRegistros, enCurso, campo: {desde, hasta, motivo} | null, sinDatos }]
+function cuadroDescontarHtml({ dias, bolsa, verificando, abierto }) {
+  if (verificando) return '';
+  const t = m => minutosAHHMMSS(m || 0).slice(0, 5);
+  const fCorta = f => `${String(f).slice(8, 10)}/${String(f).slice(5, 7)}`;
+  const diaSem = f => ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][new Date(f + 'T12:00:00').getDay()];
+  const lista = (dias || []).filter(d => d.b && d.b.rawDescuento > 0).sort((a, b) => a.fecha.localeCompare(b.fecha))
+    .map(d => ({ ...d, motivos: motivosDescuento(d.b, { ...d, pasante: !bolsa }) }));
+  if (lista.length === 0) return '';
+
+  const bruto = lista.reduce((s, d) => s + d.b.rawDescuento, 0);
+  const usado = lista.reduce((s, d) => s + d.b.consumo4h, 0);
+  const neto = lista.reduce((s, d) => s + d.b.descuentoNeto, 0);
+  const libre = Math.max(0, bolsa - usado);
+
+  const porMotivo = {};
+  lista.forEach(d => d.motivos.forEach(m => {
+    const g = porMotivo[m.texto] = porMotivo[m.texto] || { tipo: m.tipo, min: 0, dias: 0 };
+    g.min += m.min; g.dias++;
+  }));
+  const chips = Object.entries(porMotivo).sort((a, b) => b[1].min - a[1].min).map(([texto, g]) =>
+    `<span class="td-chip td-chip-${g.tipo}">${texto}: <b>${t(g.min)}</b> · ${g.dias} día${g.dias === 1 ? '' : 's'}</span>`).join('');
+
+  const cuenta = bolsa > 0
+    ? `Descuentos del período <b>${t(bruto)}</b> − bolsa de 4 h <b>${t(usado)}</b> = <b class="${neto > 0 ? 'td-rojo' : 'td-verde'}">${t(neto)} a descontar</b>${libre > 0 ? ` <span class="td-gris">(quedan ${t(libre)} de la bolsa)</span>` : ''}`
+    : `Descuentos del período = <b class="td-rojo">${t(neto)} a descontar</b>`;
+
+  // Días sin marcaciones: lo que más pesa y lo que se confunde (el permiso de campo autoriza a marcar fuera, no justifica)
+  const ausencias = lista.filter(d => d.sinMarcas && !d.conRegistros);
+  const quedaria = quitar => t(Math.max(0, bruto - quitar - bolsa));
+  let avisos = ausencias.map(d => `
+      <div class="td-aviso">
+        <i class="fas fa-exclamation-triangle"></i>
+        <div>
+          <b>${diaSem(d.fecha)} ${fCorta(d.fecha)} no tiene marcaciones:</b> cuenta como inasistencia de ${t(d.b.rawDescuento)}${d.b.consumo4h ? ` (gastó ${t(d.b.consumo4h)} de la bolsa y dejó ${t(d.b.descuentoNeto)} a descontar)` : ''}.
+          ${d.campo ? `<div>Tenía <b>permiso de campo aprobado</b> del ${fCorta(d.campo.desde)} al ${fCorta(d.campo.hasta)}${d.campo.motivo ? ` (${escapeHtml(d.campo.motivo)})` : ''}, pero no marcó ese día. El permiso autoriza a marcar fuera de la empresa; no justifica el día por sí solo.</div>` : ''}
+          ${d.sinDatos ? '<div>Ese día no hay registros de ningún colaborador: puede faltar el histórico.</div>' : ''}
+          <div>Si se justifica, T. Descontar del período quedaría en <b>${quedaria(d.b.rawDescuento)}</b>.</div>
+        </div>
+        <button type="button" class="td-btn" onclick="window.enfocarFechaEnDetalle('${d.fecha}')"><i class="fas fa-sliders-h"></i> Gestionar</button>
+      </div>`).join('');
+  if (ausencias.length > 1) {
+    avisos += `<div class="td-gris" style="margin-top:6px;">Si se justifican los ${ausencias.length} días sin marcaciones, quedaría en <b>${quedaria(ausencias.reduce((s, d) => s + d.b.rawDescuento, 0))}</b>.</div>`;
+  }
+
+  const filasTabla = lista.map(d => `
+          <tr onclick="window.enfocarFechaEnDetalle('${d.fecha}')" title="Clic para gestionar este día"${d.sinMarcas ? ' class="td-fila-falta"' : ''}>
+            <td>${diaSem(d.fecha)} ${fCorta(d.fecha)}${d.enCurso ? ' <span class="td-gris">(hoy, en curso)</span>' : ''}</td>
+            <td style="text-align:left;">${d.motivos.map(m => d.motivos.length > 1 ? `${m.texto} ${t(m.min)}` : m.texto).join(' + ')}${d.sinMarcas && d.campo ? ' <span class="td-gris">· permiso de campo sin marcar</span>' : ''}</td>
+            <td>${t(d.b.rawDescuento)}</td>
+            <td>${d.b.consumo4h ? '−' + t(d.b.consumo4h) : '—'}</td>
+            <td>${t(d.b.saldoBolsa)}</td>
+            <td class="${d.b.descuentoNeto > 0 ? 'td-rojo' : 'td-verde'}"><b>${t(d.b.descuentoNeto)}</b></td>
+          </tr>`).join('');
+
+  return `
+      <div class="td-cuadro">
+        <div class="td-titulo"><i class="fas fa-calculator"></i> ¿De dónde sale T. Descontar?</div>
+        <div class="td-cuenta">${cuenta}</div>
+        <div class="td-chips">${chips}</div>
+        ${avisos}
+        <details id="detDescontarDias"${abierto ? ' open' : ''}>
+          <summary>Ver día por día (${lista.length})</summary>
+          <div class="td-scroll">
+            <table>
+              <thead><tr><th>Fecha</th><th style="text-align:left;">Motivo</th><th>Descuento</th><th>Bolsa usada</th><th>Saldo bolsa</th><th>A descontar</th></tr></thead>
+              <tbody>${filasTabla}</tbody>
+              <tfoot><tr><td>Total</td><td></td><td>${t(bruto)}</td><td>${usado ? '−' + t(usado) : '—'}</td><td>${t(libre)}</td><td class="${neto > 0 ? 'td-rojo' : 'td-verde'}">${t(neto)}</td></tr></tfoot>
+            </table>
+          </div>
+        </details>
+      </div>`;
+}
+
+const ESTILOS_DESCONTAR = `<style>
+  .td-valor { color:#dc2626; font-weight:800; background:#fee2e2; padding:2px 7px; border-radius:6px; border:1px solid #fca5a5; cursor:help; white-space:nowrap; }
+  .td-bolsa { color:#64748b; font-size:10px; font-weight:700; cursor:help; white-space:nowrap; }
+  .td-nota { font-size:9.5px; color:#64748b; font-weight:600; margin-top:3px; white-space:nowrap; }
+  .td-cuadro { margin:0 0 10px; padding:10px 14px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; font-size:12px; color:#334155; line-height:1.5; }
+  .td-titulo { font-weight:800; color:#0f172a; display:flex; align-items:center; gap:6px; }
+  .td-titulo i { color:#2563eb; }
+  .td-cuenta { margin-top:4px; font-size:13px; }
+  .td-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .td-chip { background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; border-radius:6px; padding:2px 8px; font-size:11px; }
+  .td-chip-inasistencia { background:#ffe4e6; border-color:#fecdd3; color:#9f1239; }
+  .td-aviso { display:flex; flex-wrap:wrap; gap:9px; align-items:flex-start; margin-top:8px; padding:8px 10px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; color:#713f12; }
+  .td-aviso > i { color:#d97706; margin-top:3px; }
+  .td-aviso > div { flex:1; min-width:200px; }
+  .td-btn { flex-shrink:0; border:1px solid #fcd34d; background:#fff; color:#92400e; font-size:11px; font-weight:700; border-radius:7px; padding:4px 9px; cursor:pointer; }
+  .td-cuadro details { margin-top:8px; }
+  .td-cuadro summary { cursor:pointer; font-weight:700; color:#2563eb; }
+  .td-scroll { overflow-x:auto; margin-top:6px; }
+  .td-cuadro table { width:100%; border-collapse:collapse; font-size:11.5px; font-variant-numeric:tabular-nums; }
+  .td-cuadro th, .td-cuadro td { padding:4px 8px; border-bottom:1px solid #f1f5f9; text-align:center; white-space:nowrap; }
+  .td-cuadro th { color:#64748b; font-weight:700; font-size:10.5px; }
+  .td-cuadro th:first-child, .td-cuadro td:first-child { text-align:left; }
+  .td-cuadro tbody tr { cursor:pointer; }
+  .td-cuadro tbody tr:hover { background:#f8fafc; }
+  .td-cuadro tbody tr.td-fila-falta { background:#fff1f2; }
+  .td-cuadro tfoot td { font-weight:800; border-top:2px solid #cbd5e1; border-bottom:none; }
+  .td-rojo { color:#dc2626; } .td-verde { color:#047857; } .td-gris { color:#64748b; }
+</style>`;
+
 // Descansos de lunes a viernes desde el 26/09/2026 (pedido 2026-10-26): receso 10:00–10:15 (15 min) y almuerzo
 // 30 min (turnos 12:30–13:00 y 13:00–13:30; para el cálculo cuenta 12:30). Juntos son los 45 min de siempre,
 // pero cada uno se descuenta solo si la persona estaba en la empresa cuando empezaba: quien sale antes del
@@ -5465,6 +5609,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     let totDescuentoBruto = 0;
     let totDescuentoBrutoTotalRaw = 0;
     let totDescuentoNeto = 0;
+    const diasDescontar = []; // cuadro «¿De dónde sale T. Descontar?»
     const esSuperPermiso = ['7', '1058'].includes(String(sessionData.id || ''));
     let fechasARegularizar = [];
     const esPasanteDet = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
@@ -5981,6 +6126,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         ? infoBeneficio.descuentoNeto
         : (tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins));
       const descuentoDiaVis = descuentoDia;
+      const sinMarcas = !tieneAsistencia;
+      const campoDia = (sinMarcas && e.campo_autorizado === true && e.campo_desde && f >= e.campo_desde && f <= (e.campo_hasta || e.campo_desde))
+        ? { desde: e.campo_desde, hasta: e.campo_hasta || e.campo_desde, motivo: (e.campo_solicitud && e.campo_solicitud.motivo) || e.campo_motivo || '' }
+        : null;
+      diasDescontar.push({
+        fecha: f, b: infoBeneficio, sinMarcas, conRegistros: regsDia.length > 0, enCurso: f === hoyStrLocal, campo: campoDia,
+        sinDatos: Boolean(sinMarcas && window._diasSinDatosAsistencia && window._diasSinDatosAsistencia.has(f))
+      });
 
       const todosRegsConModo = regsDia.filter(r => r.modo);
       const tieneCampo = todosRegsConModo.some(r => r.modo === 'CAMPO');
@@ -6173,14 +6326,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
         return `<tr id="fila-fecha-${f}" style="${rowStyle} cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')" title="Clic para gestionar este día">
         <td style="white-space:nowrap; font-weight:600; font-size:10.5px; padding:6px 8px; cursor:pointer;" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')">${fechaFormateada}</td>
-        <td colspan="9" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
+        <td colspan="6" style="font-size:10.5px; padding:6px 12px; background:${cardBg}; border-left:3px solid ${cardBorder}; cursor:pointer;" onclick="window.abrirModalGestionJornada('${targetEmpId}', '${f}')">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="display:inline-flex; align-items:center; gap:5px; font-weight:800; color:${badgeColor}; background:${badgeBg}; padding:3px 8px; border-radius:6px; border:1px solid ${cardBorder}; font-size:10.5px;">
                 ${icon} ${razonMostrar.toUpperCase()}
               </span>
               <span style="font-size:10.5px; color:#64748b; font-weight:600;">
-                ${escapeHtml(descMostrar)}
+                ${escapeHtml(descMostrar)}${campoDia && descuentoDia + consumo4h > 0 ? ' · <span style="color:#92400e;"><i class="fas fa-hammer"></i> Permiso de campo aprobado, sin marcar</span>' : ''}
               </span>
             </div>
             <button type="button" onclick="event.stopPropagation(); window.abrirModalGestionJornada('${targetEmpId}', '${f}')" style="font-size:10.5px; color:#4f46e5; font-weight:700; display:inline-flex; align-items:center; gap:4px; background:#ffffff; padding:3px 10px; border-radius:12px; border:1px solid #c7d2fe; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
@@ -6188,6 +6341,8 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             </button>
           </div>
         </td>
+        <td style="text-align:center; font-size:11px; padding:6px 8px;">${celdaDescontarHtml(infoBeneficio, descuentoDiaVis, f === hoyStrLocal)}</td>
+        <td colspan="2" style="text-align:center; color:#94a3b8;">—</td>
       </tr>`;
       }
 
@@ -6248,9 +6403,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       <td style="font-size:11px; padding:6px 8px; text-align:center;">${aBadge}</td>
       <td style="text-align:center; font-size:10.5px; padding:6px 8px;">${celdaNovedadesHtml}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;">
-        ${descuentoDiaVis > 0 ? `<span style="color:#dc2626; font-weight:800; background:#fee2e2; padding:2px 7px; border-radius:6px; border:1px solid #fca5a5; cursor:help;" title="${escapeHtml(desgloseDescontarTexto(infoBeneficio, descuentoDiaVis))}">${minutosAHHMMSS(descuentoDiaVis)}</span>`
-          : consumo4h > 0 ? `<span style="color:#64748b; font-size:10px; font-weight:700; cursor:help;" title="${escapeHtml(desgloseDescontarTexto(infoBeneficio, 0))}"><i class="fas fa-piggy-bank" style="font-size:9px;"></i> Bolsa −${minutosAHHMMSS(consumo4h)}</span>`
-          : '<span style="color:#94a3b8;">—</span>'}
+        ${celdaDescontarHtml(infoBeneficio, descuentoDiaVis, f === hoyStrLocal)}
       </td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}">${celdaH50Html}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}">${celdaH100Html}</td>
@@ -6265,7 +6418,13 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
 
     let celdaTotalDescuentoHtml = '—';
     if (totDescontarFinal > 0) {
-      celdaTotalDescuentoHtml = `<span style="color:var(--red); font-weight:700;" title="Total Bruto: ${minutosAHHMMSS(totDescuentoBruto)} - 4h Beneficio = ${minutosAHHMMSS(totDescontarFinal)}">${minutosAHHMMSS(totDescontarFinal)}</span>`;
+      const bolsaUsada = Math.max(0, totDescuentoBruto - totDescontarFinal);
+      celdaTotalDescuentoHtml = `<span style="color:var(--red); font-weight:700;">${minutosAHHMMSS(totDescontarFinal)}</span>`
+        + (bolsaUsada > 0 ? `<div class="td-nota">${minutosAHHMMSS(totDescuentoBruto).slice(0, 5)} − bolsa ${minutosAHHMMSS(bolsaUsada).slice(0, 5)}</div>` : '');
+    }
+
+    if (totDescontarFinal <= 0 && totDescuentoBruto > 0) {
+      celdaTotalDescuentoHtml = `<span style="color:#047857; font-weight:700;">00:00:00</span><div class="td-nota">${minutosAHHMMSS(totDescuentoBruto).slice(0, 5)} − bolsa ${minutosAHHMMSS(totDescuentoBruto).slice(0, 5)}</div>`;
     }
 
     // Fila de totales para el tfoot
@@ -6306,6 +6465,14 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       wrapBanner.innerHTML = bannerDetalleHTML(fechasARegularizar);
     }
 
+    const detAbierto = document.getElementById('detDescontarDias');
+    const cuadroDescontar = cuadroDescontarHtml({
+      dias: diasDescontar, bolsa: esPasanteDet ? 0 : window.ReglasJornada.BOLSA_MIN, verificando: verificandoHistorial,
+      abierto: Boolean(detAbierto && detAbierto.open)
+    });
+    const wrapDescontar = document.getElementById('contenedorDescontarDetalle');
+    if (wrapDescontar) wrapDescontar.innerHTML = cuadroDescontar;
+
     // La tarjeta "Jornada y Tiempos" se dibuja una vez: actualizarla con los totales recalculados
     const kpiHoras = document.getElementById('kpiDetTotalHoras');
     if (kpiHoras) kpiHoras.textContent = `${String(thH).padStart(2, '0')}:${String(thM).padStart(2, '0')}`;
@@ -6329,7 +6496,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     const chipPunt = document.getElementById('detChipPuntual');
     if (chipPunt) chipPunt.outerHTML = chipPuntualHtml();
 
-    return { filas, tfootRow, fechasARegularizar };
+    return { filas, tfootRow, fechasARegularizar, cuadroDescontar };
   }
 
   // Renderizado inicial con la tabla vacía de vacaciones
@@ -6641,6 +6808,9 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
           ${bannerDetalleHTML(fechasARegularizar)}
         </div>
 
+        ${ESTILOS_DESCONTAR}
+        <div id="contenedorDescontarDetalle">${initialTable.cuadroDescontar}</div>
+
         <details class="ayuda-descontar" style="margin:0 0 10px; font-size:12px; color:#475569;">
           <summary style="cursor:pointer; font-weight:700; color:#2563eb; display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-question-circle"></i> ¿Cómo se calcula «T. Descontar»?</summary>
           <div style="margin-top:8px; padding:10px 14px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; line-height:1.55;">
@@ -6649,6 +6819,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             <div>3. Se suman <b>15 min</b> por cada día sin registrar la salida.</div>
             <div>4. <b>El permiso personal sí se descuenta</b> (el médico y el tiempo justificado no). Descuento del día = permiso personal + tiempo sin justificar (o el atraso, si es mayor).</div>
             <div>5. Cada período hay una <b>bolsa de 4 horas</b>: se usa en orden de fecha y cubre los primeros descuentos (atrasos, faltantes, permiso personal y penalizaciones). Cuando se acaba, lo demás se descuenta. Los días cubiertos por la bolsa muestran <i class="fas fa-piggy-bank"></i> «Bolsa −tiempo».</div>
+            <div>6. Un <b>día laborable sin marcaciones</b> cuenta como inasistencia de 8 h hasta que se justifique en Gestionar. El <b>permiso de campo</b> autoriza a marcar fuera de la empresa, pero no justifica el día si no se marca.</div>
             <div style="margin-top:6px; color:#64748b;">Pasa el cursor sobre un valor de la columna T. Descontar para ver su desglose.</div>
           </div>
         </details>
