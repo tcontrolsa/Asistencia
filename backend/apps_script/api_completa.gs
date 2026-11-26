@@ -839,10 +839,24 @@ function procesarAccion(params, validada) {
       var nombreHojaArch = String(params.hoja || '').toUpperCase() === 'VACACIONES' ? 'VACACIONES' : 'REGISTROS';
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nombreHojaArch);
       if (!sheet) return { ok: true, registros: [], hoja: nombreHojaArch };
-      var dataRange = sheet.getDataRange().getValues();
+      var empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
+      // `ultimas`: solo las últimas N filas (lo recién archivado queda al final). Lo usa la pasada
+      // rápida de la base histórica tras archivar; sin el parámetro lee toda la hoja como siempre.
+      var ultimasN = parseInt(params.ultimas, 10) || 0;
+      var filaInicialArch = 2;
+      var dataRange;
+      if (ultimasN > 0 && !empIdReq) {
+        var ultFila = sheet.getLastRow();
+        if (ultFila < 2) return { ok: true, registros: [], hoja: nombreHojaArch, filaInicial: 2 };
+        var nCols = Math.max(sheet.getLastColumn(), 25);
+        filaInicialArch = Math.max(2, ultFila - ultimasN + 1);
+        dataRange = [sheet.getRange(1, 1, 1, nCols).getValues()[0]]
+          .concat(sheet.getRange(filaInicialArch, 1, ultFila - filaInicialArch + 1, nCols).getValues());
+      } else {
+        dataRange = sheet.getDataRange().getValues();
+      }
       if (dataRange.length <= 1) return { ok: true, registros: [] };
       var registros = [];
-      var empIdReq = params.empleadoId ? String(params.empleadoId).trim() : null;
       var tz = Session.getScriptTimeZone() || 'America/Guayaquil';
 
       var headers = dataRange[0] || [];
@@ -908,7 +922,7 @@ function procesarAccion(params, validada) {
           tiempo_justificado_mins: (valTJ !== undefined && valTJ !== '' && !isNaN(Number(valTJ))) ? Number(valTJ) : 0
         });
       }
-      return { ok: true, registros: registros, hoja: nombreHojaArch };
+      return { ok: true, registros: registros, hoja: nombreHojaArch, filaInicial: filaInicialArch };
 
     case 'justificarDia':
     case 'actualizarRegistroArchivado':
