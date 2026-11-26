@@ -188,256 +188,9 @@ function doPost(e) {
       if (rechazoPost) return ContentService.createTextOutput(JSON.stringify(rechazoPost)).setMimeType(ContentService.MimeType.JSON);
 
       if (data.accion === 'archivarRegistros') {
-        // Un archivado a la vez: con dos paneles abiertos o con los reintentos del panel, dos ejecuciones
-        // simultáneas leían las claves antes de que la otra escribiera y duplicaban filas (VACACIONES ×4).
-        var lockArchivo = LockService.getDocumentLock();
-        if (!lockArchivo.tryLock(30000)) {
-          return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Otro archivado en curso (lock): reintenta en unos segundos' })).setMimeType(ContentService.MimeType.JSON);
-        }
-        try {
-        var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || "GMT-5";
-        var normDate = function(v) {
-          if (!v) return '';
-          if (v instanceof Date) return Utilities.formatDate(v, tz, "yyyy-MM-dd");
-          var s = String(v).trim();
-          var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-          if (mDMY) return mDMY[3] + '-' + ('0' + mDMY[2]).slice(-2) + '-' + ('0' + mDMY[1]).slice(-2);
-          var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
-          if (mYMD) return mYMD[1] + '-' + ('0' + mYMD[2]).slice(-2) + '-' + ('0' + mYMD[3]).slice(-2);
-          return s;
-        };
-        var normTime = function(v) {
-          if (!v) return '';
-          if (v instanceof Date) return Utilities.formatDate(v, tz, "HH:mm");
-          var s = String(v).trim();
-          var m = s.match(/^(\d{1,2}):(\d{2})/);
-          if (m) return ('0' + m[1]).slice(-2) + ':' + m[2];
-          return s;
-        };
-
-        var sheetRegs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
-        if (!sheetRegs) {
-          sheetRegs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('REGISTROS');
-          sheetRegs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS', 'TIEMPO_JUSTIFICADO_MINS']);
-        }
-        var sheetVacs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('VACACIONES');
-        if (!sheetVacs) {
-          sheetVacs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('VACACIONES');
-          sheetVacs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS', 'TIEMPO_JUSTIFICADO_MINS']);
-        }
-        
-        var registros = data.registros || [];
-        var almuerzosExtra = data.almuerzosExtra || [];
-        if ((!registros || registros.length === 0) && (!almuerzosExtra || almuerzosExtra.length === 0)) {
-          return ContentService.createTextOutput(JSON.stringify({ok: true, mensaje: "Sin registros para archivar" })).setMimeType(ContentService.MimeType.JSON);
-        }
-
-        // Cachear claves existentes de REGISTROS para evitar duplicados
-        var existingRegKeys = {};
-        var existingAbsenceRow = {}; // kFecha + '|' + kId -> rowIndex (1-indexed)
-        var existingAbsenceTipo = {}; // kFecha + '|' + kId -> tipo de esa fila
-        var filasVacacionEnRegistros = []; // vacaciones que quedaron en REGISTROS: se quitan al pasar a VACACIONES
-        var lastRowRegs = sheetRegs.getLastRow();
-        if (lastRowRegs > 1) {
-          var dataExistenteRegs = sheetRegs.getRange(2, 1, lastRowRegs - 1, 6).getValues();
-          for (var k = 0; k < dataExistenteRegs.length; k++) {
-            var fRow = dataExistenteRegs[k];
-            var kFecha = normDate(fRow[0]);
-            var kId = String(fRow[1]).trim();
-            var kTipo = String(fRow[3]).trim().toUpperCase();
-            var kHora = normTime(fRow[5]);
-            if (kFecha && kId) {
-              existingRegKeys[kFecha + '|' + kId + '|' + kTipo + '|' + kHora] = true;
-              if (esAusenciaTipo(kTipo) || kTipo === 'FALTA') {
-                existingAbsenceRow[kFecha + '|' + kId] = k + 2;
-                existingAbsenceTipo[kFecha + '|' + kId] = kTipo;
-              }
-            }
-          }
-        }
-
-        // Cachear claves existentes de VACACIONES para evitar duplicados
-        var existingVacKeys = {};
-        var lastRowVacs = sheetVacs.getLastRow();
-        if (lastRowVacs > 1) {
-          var dataExistenteVacs = sheetVacs.getRange(2, 1, lastRowVacs - 1, 4).getValues();
-          for (var kv = 0; kv < dataExistenteVacs.length; kv++) {
-            var vRow = dataExistenteVacs[kv];
-            var vFecha = normDate(vRow[0]);
-            var vId = String(vRow[1]).trim();
-            var vTipo = String(vRow[3]).trim().toUpperCase();
-            if (vFecha && vId) {
-              existingVacKeys[vFecha + '|' + vId + '|' + vTipo] = true;
-            }
-          }
-        }
-
-        var filasRegs = [];
-        var filasVacs = [];
-        var omitidosRegs = 0;
-
-        for (var i = 0; i < registros.length; i++) {
-          var r = registros[i];
-          var tsStr = r.timestamp ? String(r.timestamp) : new Date().toISOString();
-          
-          var r_fecha = r.fecha || '';
-          var r_id = r.empleadoId || '';
-          var r_nombre = r.nombre || '';
-          var r_tipo = r.tipo || '';
-          var r_almuerzo = r.almuerzo || '';
-          var r_hora = r.hora || '';
-          var r_lat = r.lat || '';
-          var r_lng = r.lng || '';
-          var r_dispositivo = r.dispositivo || '';
-          var r_dia = r.dia || '';
-          var r_modo = r.modo || '';
-          var r_horasExtra = r.horasExtra || '';
-          var r_autoriza = r.autoriza || '';
-          var r_razonSalidaTemprana = r.razon_salida_temprana || r.razonSalidaTemprana || r.razon_salida || '';
-          var r_quienJustifica = r.quien_justifica || r.quienJustifica || '';
-          var r_razonEntradaTardia = r.razon_entrada_tardia || r.razonEntradaTardia || '';
-          var r_quienJustificaEntrada = r.quien_justifica_entrada || r.quienJustificaEntrada || '';
-          var r_tipoSalida = r.tipo_salida || r.tipoSalida || '';
-          var r_razonPermiso = r.razon_permiso || r.razonPermiso || '';
-          var r_justificado = r.justificado || '';
-          var r_razonJustificac = r.razon_justificac || r.razon_ausencia || '';
-          var r_permisoPersonalMins = r.permiso_personal_mins || 0;
-          var r_permisoMedicoMins = r.permiso_medico_mins || 0;
-          var r_tiempoJustificadoMins = r.tiempo_justificado_mins || 0;
-
-          var esVacaciones = (String(r_tipo).toUpperCase() === 'VACACIONES' || String(r_tipo).toUpperCase() === 'VACACION');
-
-          if (esVacaciones) {
-            // Si esta vacación quedó también en REGISTROS (escritura inmediata antigua), se quita de ahí
-            var keyAbsVac = normDate(r_fecha) + '|' + String(r_id).trim();
-            var tipoEnRegs = existingAbsenceTipo[keyAbsVac];
-            if (existingAbsenceRow[keyAbsVac] && (tipoEnRegs === 'VACACIONES' || tipoEnRegs === 'VACACION')) {
-              filasVacacionEnRegistros.push(existingAbsenceRow[keyAbsVac]);
-              delete existingAbsenceRow[keyAbsVac];
-              delete existingAbsenceTipo[keyAbsVac];
-            }
-            var keyVac = normDate(r_fecha) + '|' + String(r_id).trim() + '|' + String(r_tipo).trim().toUpperCase();
-            if (existingVacKeys[keyVac]) {
-              omitidosRegs++;
-              continue;
-            }
-            existingVacKeys[keyVac] = true;
-            // Rellenar únicamente FECHA, ID, TIPO, TIMESTAMP
-            var rowVac = [
-              r_fecha, r_id, '', r_tipo, '', '', '', '', '', tsStr,
-              '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-            ];
-            filasVacs.push(rowVac);
-          } else {
-            var normF = normDate(r_fecha);
-            var normId = String(r_id).trim();
-            var normT = String(r_tipo).trim().toUpperCase();
-            var keyReg = normF + '|' + normId + '|' + normT + '|' + normTime(r_hora);
-            if (existingRegKeys[keyReg]) {
-              omitidosRegs++;
-              continue;
-            }
-
-            var keyAbs = normF + '|' + normId;
-            if ((esAusenciaTipo(normT) || normT === 'FALTA') && existingAbsenceRow[keyAbs]) {
-              var targetRow = existingAbsenceRow[keyAbs];
-              sheetRegs.getRange(targetRow, COLUMNAS.TIPO + 1).setValue(r_tipo);
-              sheetRegs.getRange(targetRow, COLUMNAS.HORA + 1).setValue(r_hora || '00:00:00');
-              sheetRegs.getRange(targetRow, COLUMNAS.JUSTIFICADO + 1).setValue(r_justificado || 'SI');
-              sheetRegs.getRange(targetRow, COLUMNAS.RAZON_AUSENCIA + 1).setValue(r_razonJustificac || r_tipo);
-              if (r_modo) sheetRegs.getRange(targetRow, COLUMNAS.MODO + 1).setValue(r_modo);
-              if (r_quienJustifica) sheetRegs.getRange(targetRow, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(r_quienJustifica);
-              omitidosRegs++;
-              continue;
-            }
-
-            existingRegKeys[keyReg] = true;
-            if (esAusenciaTipo(normT) || normT === 'FALTA') {
-              existingAbsenceRow[keyAbs] = sheetRegs.getLastRow() + filasRegs.length + 1;
-            }
-            filasRegs.push([
-              r_fecha, r_id, r_nombre, r_tipo, r_almuerzo, r_hora, r_lat, r_lng, r_dispositivo, tsStr,
-              r_dia, r_modo, r_horasExtra, r_autoriza, r_razonSalidaTemprana, r_quienJustifica,
-              r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso,
-              r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins, r_tiempoJustificadoMins
-            ]);
-          }
-        }
-        if (filasRegs.length > 0) {
-          sheetRegs.getRange(sheetRegs.getLastRow() + 1, 1, filasRegs.length, filasRegs[0].length).setValues(filasRegs);
-        }
-        if (filasVacs.length > 0) {
-          sheetVacs.getRange(sheetVacs.getLastRow() + 1, 1, filasVacs.length, filasVacs[0].length).setValues(filasVacs);
-        }
-        // Quitar de REGISTROS las vacaciones que ya quedaron en VACACIONES (de abajo hacia arriba)
-        filasVacacionEnRegistros.sort(function (a, b) { return b - a; }).forEach(function (fila) {
-          sheetRegs.deleteRow(fila);
-        });
-
-        // Archivado en bloque de Almuerzos Extra / Invitados
-        var filasAlm = [];
-        var omitidosAlm = 0;
-        if (almuerzosExtra && almuerzosExtra.length > 0) {
-          var sheetAlm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ALMUERZOS_EXTRA');
-          if (!sheetAlm) {
-            sheetAlm = SpreadsheetApp.getActiveSpreadsheet().insertSheet('ALMUERZOS_EXTRA');
-            sheetAlm.appendRow(["FECHA", "NOMBRE", "EMPRESA", "TIPO", "CANTIDAD", "HORA_REGISTRO", "TIMESTAMP", "OBSERVACIONES", "SUPERVISOR_ID"]);
-          }
-
-          var existingAlmKeys = {};
-          var lastRowAlm = sheetAlm.getLastRow();
-          if (lastRowAlm > 1) {
-            var dataExistenteAlm = sheetAlm.getRange(2, 1, lastRowAlm - 1, 6).getValues();
-            for (var ka = 0; ka < dataExistenteAlm.length; ka++) {
-              var aRow = dataExistenteAlm[ka];
-              var aFecha = normDate(aRow[0]);
-              var aNombre = String(aRow[1]).trim().toUpperCase();
-              var aTipo = String(aRow[3]).trim().toUpperCase();
-              var aHora = normTime(aRow[5]);
-              if (aFecha && aNombre) {
-                existingAlmKeys[aFecha + '|' + aNombre + '|' + aTipo + '|' + aHora] = true;
-              }
-            }
-          }
-
-          for (var j = 0; j < almuerzosExtra.length; j++) {
-            var a = almuerzosExtra[j];
-            var a_fecha = a.fecha || '';
-            var a_nombre = a.nombre || (a.invitado ? (a.invitado + (a.empleadoNombre ? ' (Inv. de ' + a.empleadoNombre + ')' : '')) : 'Almuerzo Extra');
-            var a_empresa = a.empresa || '';
-            var a_tipo = a.subtipo || a.tipo || a.tipoSolicitud || 'ALMUERZO_EXTRA';
-            var a_cantidad = parseInt(a.cantidad) || 1;
-            var a_hora = a.hora || a.horaRegistro || '';
-            var a_ts = a.timestamp ? String(a.timestamp) : new Date().toISOString();
-            var a_obs = a.observacionesCompletas || a.observaciones || '';
-            var a_supId = a.empleadoId || a.supervisorId || '';
-
-            var keyAlm = normDate(a_fecha) + '|' + String(a_nombre).trim().toUpperCase() + '|' + String(a_tipo).trim().toUpperCase() + '|' + normTime(a_hora);
-            if (existingAlmKeys[keyAlm]) {
-              omitidosAlm++;
-              continue;
-            }
-            existingAlmKeys[keyAlm] = true;
-            filasAlm.push([a_fecha, a_nombre, a_empresa, a_tipo, a_cantidad, a_hora, a_ts, a_obs, a_supId]);
-          }
-          if (filasAlm.length > 0) {
-            sheetAlm.getRange(sheetAlm.getLastRow() + 1, 1, filasAlm.length, filasAlm[0].length).setValues(filasAlm);
-          }
-        }
-
-        return ContentService.createTextOutput(JSON.stringify({
-          ok: true, 
-          guardados: filasRegs.length, 
-          vacacionesGuardadas: filasVacs.length,
-          almuerzosExtraGuardados: filasAlm.length,
-          omitidosDuplicadosRegs: omitidosRegs,
-          omitidosDuplicadosAlm: omitidosAlm
-        })).setMimeType(ContentService.MimeType.JSON);
-        } finally {
-          lockArchivo.releaseLock();
-        }
+        return ContentService.createTextOutput(JSON.stringify(archivarRegistrosEnHojas_(data))).setMimeType(ContentService.MimeType.JSON);
       }
-      
+
       if (data.accion === 'obtenerRegistrosArchivados') {
         var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
         if (!sheet) return ContentService.createTextOutput(JSON.stringify({ok: true, registros: []})).setMimeType(ContentService.MimeType.JSON);
@@ -702,6 +455,262 @@ const ACCIONES_CERRADAS = [
   'guardarConfiguraciones', 'toggleEmergencia', 'toggleCulturaTcontrol', 'obtenerConfiguracionWhatsApp', 'guardarModalidadSupervisor',
   'verificarClaveGuardia'
 ];
+
+/**
+ * Archivado a las hojas REGISTROS, VACACIONES y ALMUERZOS_EXTRA (con deduplicación y candado).
+ * data = { registros: [...], almuerzosExtra: [...] }. Lo usan doPost (panel de supervisor) y el archivado
+ * automático nocturno (archivado_automatico.gs). Devuelve { ok, guardados, ... } o { ok:false, error }.
+ */
+function archivarRegistrosEnHojas_(data) {
+    // Un archivado a la vez: con dos paneles abiertos o con los reintentos del panel, dos ejecuciones
+    // simultáneas leían las claves antes de que la otra escribiera y duplicaban filas (VACACIONES ×4).
+    var lockArchivo = LockService.getDocumentLock();
+    if (!lockArchivo.tryLock(30000)) {
+      return { ok: false, error: 'Otro archivado en curso (lock): reintenta en unos segundos' };
+    }
+    try {
+    var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || "GMT-5";
+    var normDate = function(v) {
+      if (!v) return '';
+      if (v instanceof Date) return Utilities.formatDate(v, tz, "yyyy-MM-dd");
+      var s = String(v).trim();
+      var mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (mDMY) return mDMY[3] + '-' + ('0' + mDMY[2]).slice(-2) + '-' + ('0' + mDMY[1]).slice(-2);
+      var mYMD = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (mYMD) return mYMD[1] + '-' + ('0' + mYMD[2]).slice(-2) + '-' + ('0' + mYMD[3]).slice(-2);
+      return s;
+    };
+    var normTime = function(v) {
+      if (!v) return '';
+      if (v instanceof Date) return Utilities.formatDate(v, tz, "HH:mm");
+      var s = String(v).trim();
+      var m = s.match(/^(\d{1,2}):(\d{2})/);
+      if (m) return ('0' + m[1]).slice(-2) + ':' + m[2];
+      return s;
+    };
+
+    var sheetRegs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('REGISTROS');
+    if (!sheetRegs) {
+      sheetRegs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('REGISTROS');
+      sheetRegs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS', 'TIEMPO_JUSTIFICADO_MINS']);
+    }
+    var sheetVacs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('VACACIONES');
+    if (!sheetVacs) {
+      sheetVacs = SpreadsheetApp.getActiveSpreadsheet().insertSheet('VACACIONES');
+      sheetVacs.appendRow(['FECHA', 'ID', 'NOMBRE', 'TIPO', 'ALMUERZO', 'HORA', 'LAT', 'LNG', 'DISPOSITIVO', 'TIMESTAMP', 'DIA', 'MODO', 'HORAS_EXTRA', 'AUTORIZA', 'RAZON_SALIDA_TEMPRANA', 'QUIEN_JUSTIFICA', 'RAZON_ENTRADA_TARDIA', 'QUIEN_JUSTIFICA_ENTRADA', 'TIPO_SALIDA', 'RAZON_PERMISO', 'JUSTIFICADO', 'RAZON_JUSTIFICAC', 'PERMISO_PERSONAL_MINS', 'PERMISO_MEDICO_MINS', 'TIEMPO_JUSTIFICADO_MINS']);
+    }
+    
+    var registros = data.registros || [];
+    var almuerzosExtra = data.almuerzosExtra || [];
+    if ((!registros || registros.length === 0) && (!almuerzosExtra || almuerzosExtra.length === 0)) {
+      return {ok: true, mensaje: "Sin registros para archivar" };
+    }
+
+    // Cachear claves existentes de REGISTROS para evitar duplicados
+    var existingRegKeys = {};
+    var existingAbsenceRow = {}; // kFecha + '|' + kId -> rowIndex (1-indexed)
+    var existingAbsenceTipo = {}; // kFecha + '|' + kId -> tipo de esa fila
+    var filasVacacionEnRegistros = []; // vacaciones que quedaron en REGISTROS: se quitan al pasar a VACACIONES
+    var lastRowRegs = sheetRegs.getLastRow();
+    if (lastRowRegs > 1) {
+      var dataExistenteRegs = sheetRegs.getRange(2, 1, lastRowRegs - 1, 6).getValues();
+      for (var k = 0; k < dataExistenteRegs.length; k++) {
+        var fRow = dataExistenteRegs[k];
+        var kFecha = normDate(fRow[0]);
+        var kId = String(fRow[1]).trim();
+        var kTipo = String(fRow[3]).trim().toUpperCase();
+        var kHora = normTime(fRow[5]);
+        if (kFecha && kId) {
+          existingRegKeys[kFecha + '|' + kId + '|' + kTipo + '|' + kHora] = true;
+          if (esAusenciaTipo(kTipo) || kTipo === 'FALTA') {
+            existingAbsenceRow[kFecha + '|' + kId] = k + 2;
+            existingAbsenceTipo[kFecha + '|' + kId] = kTipo;
+          }
+        }
+      }
+    }
+
+    // Cachear claves existentes de VACACIONES para evitar duplicados
+    var existingVacKeys = {};
+    var lastRowVacs = sheetVacs.getLastRow();
+    if (lastRowVacs > 1) {
+      var dataExistenteVacs = sheetVacs.getRange(2, 1, lastRowVacs - 1, 4).getValues();
+      for (var kv = 0; kv < dataExistenteVacs.length; kv++) {
+        var vRow = dataExistenteVacs[kv];
+        var vFecha = normDate(vRow[0]);
+        var vId = String(vRow[1]).trim();
+        var vTipo = String(vRow[3]).trim().toUpperCase();
+        if (vFecha && vId) {
+          existingVacKeys[vFecha + '|' + vId + '|' + vTipo] = true;
+        }
+      }
+    }
+
+    var filasRegs = [];
+    var filasVacs = [];
+    var omitidosRegs = 0;
+
+    for (var i = 0; i < registros.length; i++) {
+      var r = registros[i];
+      var tsStr = r.timestamp ? String(r.timestamp) : new Date().toISOString();
+      
+      var r_fecha = r.fecha || '';
+      var r_id = r.empleadoId || '';
+      var r_nombre = r.nombre || '';
+      var r_tipo = r.tipo || '';
+      var r_almuerzo = r.almuerzo || '';
+      var r_hora = r.hora || '';
+      var r_lat = r.lat || '';
+      var r_lng = r.lng || '';
+      var r_dispositivo = r.dispositivo || '';
+      var r_dia = r.dia || '';
+      var r_modo = r.modo || '';
+      var r_horasExtra = r.horasExtra || '';
+      var r_autoriza = r.autoriza || '';
+      var r_razonSalidaTemprana = r.razon_salida_temprana || r.razonSalidaTemprana || r.razon_salida || '';
+      var r_quienJustifica = r.quien_justifica || r.quienJustifica || '';
+      var r_razonEntradaTardia = r.razon_entrada_tardia || r.razonEntradaTardia || '';
+      var r_quienJustificaEntrada = r.quien_justifica_entrada || r.quienJustificaEntrada || '';
+      var r_tipoSalida = r.tipo_salida || r.tipoSalida || '';
+      var r_razonPermiso = r.razon_permiso || r.razonPermiso || '';
+      var r_justificado = r.justificado || '';
+      var r_razonJustificac = r.razon_justificac || r.razon_ausencia || '';
+      var r_permisoPersonalMins = r.permiso_personal_mins || 0;
+      var r_permisoMedicoMins = r.permiso_medico_mins || 0;
+      var r_tiempoJustificadoMins = r.tiempo_justificado_mins || 0;
+
+      var esVacaciones = (String(r_tipo).toUpperCase() === 'VACACIONES' || String(r_tipo).toUpperCase() === 'VACACION');
+
+      if (esVacaciones) {
+        // Si esta vacación quedó también en REGISTROS (escritura inmediata antigua), se quita de ahí
+        var keyAbsVac = normDate(r_fecha) + '|' + String(r_id).trim();
+        var tipoEnRegs = existingAbsenceTipo[keyAbsVac];
+        if (existingAbsenceRow[keyAbsVac] && (tipoEnRegs === 'VACACIONES' || tipoEnRegs === 'VACACION')) {
+          filasVacacionEnRegistros.push(existingAbsenceRow[keyAbsVac]);
+          delete existingAbsenceRow[keyAbsVac];
+          delete existingAbsenceTipo[keyAbsVac];
+        }
+        var keyVac = normDate(r_fecha) + '|' + String(r_id).trim() + '|' + String(r_tipo).trim().toUpperCase();
+        if (existingVacKeys[keyVac]) {
+          omitidosRegs++;
+          continue;
+        }
+        existingVacKeys[keyVac] = true;
+        // Rellenar únicamente FECHA, ID, TIPO, TIMESTAMP
+        var rowVac = [
+          r_fecha, r_id, '', r_tipo, '', '', '', '', '', tsStr,
+          '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+        ];
+        filasVacs.push(rowVac);
+      } else {
+        var normF = normDate(r_fecha);
+        var normId = String(r_id).trim();
+        var normT = String(r_tipo).trim().toUpperCase();
+        var keyReg = normF + '|' + normId + '|' + normT + '|' + normTime(r_hora);
+        if (existingRegKeys[keyReg]) {
+          omitidosRegs++;
+          continue;
+        }
+
+        var keyAbs = normF + '|' + normId;
+        if ((esAusenciaTipo(normT) || normT === 'FALTA') && existingAbsenceRow[keyAbs]) {
+          var targetRow = existingAbsenceRow[keyAbs];
+          sheetRegs.getRange(targetRow, COLUMNAS.TIPO + 1).setValue(r_tipo);
+          sheetRegs.getRange(targetRow, COLUMNAS.HORA + 1).setValue(r_hora || '00:00:00');
+          sheetRegs.getRange(targetRow, COLUMNAS.JUSTIFICADO + 1).setValue(r_justificado || 'SI');
+          sheetRegs.getRange(targetRow, COLUMNAS.RAZON_AUSENCIA + 1).setValue(r_razonJustificac || r_tipo);
+          if (r_modo) sheetRegs.getRange(targetRow, COLUMNAS.MODO + 1).setValue(r_modo);
+          if (r_quienJustifica) sheetRegs.getRange(targetRow, COLUMNAS.QUIEN_JUSTIFICA + 1).setValue(r_quienJustifica);
+          omitidosRegs++;
+          continue;
+        }
+
+        existingRegKeys[keyReg] = true;
+        if (esAusenciaTipo(normT) || normT === 'FALTA') {
+          existingAbsenceRow[keyAbs] = sheetRegs.getLastRow() + filasRegs.length + 1;
+        }
+        filasRegs.push([
+          r_fecha, r_id, r_nombre, r_tipo, r_almuerzo, r_hora, r_lat, r_lng, r_dispositivo, tsStr,
+          r_dia, r_modo, r_horasExtra, r_autoriza, r_razonSalidaTemprana, r_quienJustifica,
+          r_razonEntradaTardia, r_quienJustificaEntrada, r_tipoSalida, r_razonPermiso,
+          r_justificado, r_razonJustificac, r_permisoPersonalMins, r_permisoMedicoMins, r_tiempoJustificadoMins
+        ]);
+      }
+    }
+    if (filasRegs.length > 0) {
+      sheetRegs.getRange(sheetRegs.getLastRow() + 1, 1, filasRegs.length, filasRegs[0].length).setValues(filasRegs);
+    }
+    if (filasVacs.length > 0) {
+      sheetVacs.getRange(sheetVacs.getLastRow() + 1, 1, filasVacs.length, filasVacs[0].length).setValues(filasVacs);
+    }
+    // Quitar de REGISTROS las vacaciones que ya quedaron en VACACIONES (de abajo hacia arriba)
+    filasVacacionEnRegistros.sort(function (a, b) { return b - a; }).forEach(function (fila) {
+      sheetRegs.deleteRow(fila);
+    });
+
+    // Archivado en bloque de Almuerzos Extra / Invitados
+    var filasAlm = [];
+    var omitidosAlm = 0;
+    if (almuerzosExtra && almuerzosExtra.length > 0) {
+      var sheetAlm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ALMUERZOS_EXTRA');
+      if (!sheetAlm) {
+        sheetAlm = SpreadsheetApp.getActiveSpreadsheet().insertSheet('ALMUERZOS_EXTRA');
+        sheetAlm.appendRow(["FECHA", "NOMBRE", "EMPRESA", "TIPO", "CANTIDAD", "HORA_REGISTRO", "TIMESTAMP", "OBSERVACIONES", "SUPERVISOR_ID"]);
+      }
+
+      var existingAlmKeys = {};
+      var lastRowAlm = sheetAlm.getLastRow();
+      if (lastRowAlm > 1) {
+        var dataExistenteAlm = sheetAlm.getRange(2, 1, lastRowAlm - 1, 6).getValues();
+        for (var ka = 0; ka < dataExistenteAlm.length; ka++) {
+          var aRow = dataExistenteAlm[ka];
+          var aFecha = normDate(aRow[0]);
+          var aNombre = String(aRow[1]).trim().toUpperCase();
+          var aTipo = String(aRow[3]).trim().toUpperCase();
+          var aHora = normTime(aRow[5]);
+          if (aFecha && aNombre) {
+            existingAlmKeys[aFecha + '|' + aNombre + '|' + aTipo + '|' + aHora] = true;
+          }
+        }
+      }
+
+      for (var j = 0; j < almuerzosExtra.length; j++) {
+        var a = almuerzosExtra[j];
+        var a_fecha = a.fecha || '';
+        var a_nombre = a.nombre || (a.invitado ? (a.invitado + (a.empleadoNombre ? ' (Inv. de ' + a.empleadoNombre + ')' : '')) : 'Almuerzo Extra');
+        var a_empresa = a.empresa || '';
+        var a_tipo = a.subtipo || a.tipo || a.tipoSolicitud || 'ALMUERZO_EXTRA';
+        var a_cantidad = parseInt(a.cantidad) || 1;
+        var a_hora = a.hora || a.horaRegistro || '';
+        var a_ts = a.timestamp ? String(a.timestamp) : new Date().toISOString();
+        var a_obs = a.observacionesCompletas || a.observaciones || '';
+        var a_supId = a.empleadoId || a.supervisorId || '';
+
+        var keyAlm = normDate(a_fecha) + '|' + String(a_nombre).trim().toUpperCase() + '|' + String(a_tipo).trim().toUpperCase() + '|' + normTime(a_hora);
+        if (existingAlmKeys[keyAlm]) {
+          omitidosAlm++;
+          continue;
+        }
+        existingAlmKeys[keyAlm] = true;
+        filasAlm.push([a_fecha, a_nombre, a_empresa, a_tipo, a_cantidad, a_hora, a_ts, a_obs, a_supId]);
+      }
+      if (filasAlm.length > 0) {
+        sheetAlm.getRange(sheetAlm.getLastRow() + 1, 1, filasAlm.length, filasAlm[0].length).setValues(filasAlm);
+      }
+    }
+
+    return {
+      ok: true, 
+      guardados: filasRegs.length, 
+      vacacionesGuardadas: filasVacs.length,
+      almuerzosExtraGuardados: filasAlm.length,
+      omitidosDuplicadosRegs: omitidosRegs,
+      omitidosDuplicadosAlm: omitidosAlm
+    };
+    } finally {
+      lockArchivo.releaseLock();
+    }
+}
 
 // validada: la llamada ya pasó por rechazoSeguridad_ en doPost (seguridad_acciones.gs)
 function procesarAccion(params, validada) {

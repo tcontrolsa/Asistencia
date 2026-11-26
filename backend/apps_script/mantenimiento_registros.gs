@@ -456,7 +456,8 @@ function moverVacacionesAHojaVacaciones() {
 }
 
 /**
- * Mantenimiento diario (04:00): filas en blanco y vacaciones que quedaron en REGISTROS.
+ * Mantenimiento diario (04:00): filas en blanco, vacaciones que quedaron en REGISTROS, horas extra por confirmar,
+ * fichas → EMPLEADOS y archivado automático de Firestore a Sheets.
  */
 function mantenimientoDiario() {
   logsMantenimiento = [];
@@ -464,6 +465,11 @@ function mantenimientoDiario() {
   moverVacacionesAHojaVacaciones();
   // Horas extra por confirmar (salida completada por el sistema): se confirman solas (pedido 2026-11-25)
   try { confirmarExtrasPorConfirmar(); } catch (e) { Logger.log('Confirmar horas extra: ' + e); }
+  // Archivado automático Firestore → Sheets (archivado_automatico.gs): lo anterior a ayer. Va después de confirmar
+  // las extras para que el día ya esté completo. Si falla, no borra nada y reintenta la noche siguiente.
+  if (typeof archivadoAutomaticoDiario === 'function') {
+    try { archivadoAutomaticoDiario(); } catch (e) { Logger.log('Archivado automático: ' + e); }
+  }
   // Fichas nuevas o cambiadas en Firestore → hoja EMPLEADOS (empleados_hoja.gs)
   if (typeof sincronizarFichasEnEmpleados === 'function') {
     try { sincronizarFichasEnEmpleados(); } catch (e) { Logger.log('Fichas → EMPLEADOS: ' + e); }
