@@ -1528,7 +1528,9 @@
     try {
       const d = await obtenerDocumento(s, docId, yo).finally(() => { clearTimeout(t1); clearTimeout(t2); });
       if (!modal.isConnected) return;
-      modal.querySelector('[data-v="nombre"]').textContent = d.nombre;
+      const lista = s.docs || [];
+      const pos = lista.findIndex(x => x && x.id === docId);
+      modal.querySelector('[data-v="nombre"]').textContent = pos >= 0 ? nombreDoc(lista[pos], pos) : d.nombre;
       const cuerpo = modal.querySelector('[data-v="cuerpo"]');
       cuerpo.innerHTML = d.mime === 'application/pdf'
         ? `<iframe class="pm-visor-pdf" src="${d.url}" title="${esc(d.nombre)}"></iframe>`
@@ -1727,14 +1729,25 @@
     await db().collection(COL).doc(s.id).set({ avisos: { ['docs_' + accion.toLowerCase()]: r && r.ok ? 'WhatsApp enviado' : `WhatsApp no enviado: ${(r && r.error) || 'sin respuesta'}` } }, { merge: true }).catch(() => { });
   }
 
+  // Nombre claro para el documento (el del archivo suele ser un número largo de la cámara)
+  function nombreDoc(d, i) {
+    return d.mime === 'application/pdf' ? `Documento PDF ${i + 1}` : `Foto del documento ${i + 1}`;
+  }
+
   // Bloque de documentos de una tarjeta. op: { yoId, revisar }
   function bloqueDocs(s, op) {
     if (s.estado !== 'REGISTRADA' || !op) return '';
     const est = s.docs_estado || 'PENDIENTE';
     const esDueno = String(s.empleadoId) === String(op.yoId);
     const docs = (s.docs || []).filter(d => d && d.id);
-    const lista = docs.length ? `<div class="pm-docs">${docs.map(d => `<button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-doc-ver="${esc(s.id)}" data-doc="${esc(d.id)}" title="Abrir">
-      <i class="fas ${d.mime === 'application/pdf' ? 'fa-file-pdf' : 'fa-file-image'}"></i> ${esc(String(d.nombre || 'documento').slice(0, 28))}</button>`).join('')}</div>` : '';
+    const lista = docs.length ? `<div class="pm-docs">${docs.map((d, i) => {
+      const pdf = d.mime === 'application/pdf';
+      const meta = [d.subido_por ? 'Subido por ' + nombreCorto(d.subido_por) : '', d.subido_en ? horaIso(d.subido_en) : '', d.tamano ? pesoTxt(d.tamano) : ''].filter(Boolean).join(' · ');
+      return `<button type="button" class="pm-doc" data-doc-ver="${esc(s.id)}" data-doc="${esc(d.id)}" title="Abrir ${esc(d.nombre || '')}">
+        <span class="pm-doc-ico ${pdf ? 'pm-doc-pdf' : 'pm-doc-img'}"><i class="fas ${pdf ? 'fa-file-pdf' : 'fa-file-image'}"></i></span>
+        <span class="pm-doc-txt"><strong>${nombreDoc(d, i)}</strong>${meta ? `<small>${esc(meta)}</small>` : ''}</span>
+        <i class="fas fa-eye pm-doc-ver"></i></button>`;
+    }).join('')}</div>` : '';
     const b = [];
     if ((esDueno && DOCS_SUBIR.includes(est)) || (op.revisar && (DOCS_SUBIR.includes(est) || est === 'VENCIDO'))) {
       b.push(`<button type="button" class="pm-btn pm-btn-pri pm-btn-chico" data-doc-subir="${esc(s.id)}"><i class="fas fa-upload"></i> ${docs.length ? 'Subir otro documento' : 'Subir documento'}</button>`);
