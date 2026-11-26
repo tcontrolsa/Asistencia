@@ -9,6 +9,7 @@
  * 5. crearHojaReporte() - Vuelca los resultados del mantenimiento en la hoja "REPORTE_MANTENIMIENTO" con un formato profesional.
  * 6. ejecutarMantenimiento() - Ejecuta secuencialmente todas las acciones anteriores y muestra un reporte interactivo.
  * 7. eliminarFilasEnBlanco() - Quita de REGISTROS las filas totalmente vacías. instalarLimpiezaFilasEnBlanco() la programa a diario.
+ * 8. confirmarExtrasPorConfirmar() - Confirma las horas extra de los días cuya salida completó el sistema (POR CONFIRMAR).
  */
 
 // Mapeo oficial de columnas de REGISTROS (0-based)
@@ -461,6 +462,8 @@ function mantenimientoDiario() {
   logsMantenimiento = [];
   eliminarFilasEnBlanco();
   moverVacacionesAHojaVacaciones();
+  // Horas extra por confirmar (salida completada por el sistema): se confirman solas (pedido 2026-11-25)
+  try { confirmarExtrasPorConfirmar(); } catch (e) { Logger.log('Confirmar horas extra: ' + e); }
   // Fichas nuevas o cambiadas en Firestore → hoja EMPLEADOS (empleados_hoja.gs)
   if (typeof sincronizarFichasEnEmpleados === 'function') {
     try { sincronizarFichasEnEmpleados(); } catch (e) { Logger.log('Fichas → EMPLEADOS: ' + e); }
@@ -478,6 +481,102 @@ function instalarMantenimientoDiario() {
   });
   ScriptApp.newTrigger('mantenimientoDiario').timeBased().everyDays(1).atHour(4).inTimezone('America/Guayaquil').create();
   Logger.log('✅ Mantenimiento diario programado a las 04:00: filas en blanco y vacaciones a su hoja.');
+}
+
+/**
+ * Confirmación automática de horas extra POR CONFIRMAR (pedido 2026-11-25).
+ *
+ * Cuando el colaborador no registró la salida y la completó el sistema (AUTO_COMPLETAR, 15:15 o 16:15), el panel
+ * deja las extras de ese día POR CONFIRMAR: no cuentan hasta que alguien escribe "SUPERVISOR: nombre" en AUTORIZA.
+ * Esta función lo hace sola con todos los días pendientes (decisión del usuario: «Todos», también los que tienen la
+ * hora que puso el sistema). Mismo criterio que el panel (supervisor_core.js → salidasPorConfirmarDia):
+ *   - el día ya tiene autorizadas las extras: área TALLER o BODEGA, trabajo de campo ("(CAMPO)") o "Horas extra: SI"
+ *     sin nombre (registros antiguos); si no, no hay nada que confirmar;
+ *   - ningún registro del día dice todavía "SUPERVISOR: …";
+ *   - la salida completada es de sábado, domingo o feriado, o de lunes a viernes después de las 16:15, y hay una
+ *     entrada antes de ella.
+ * Escribe en esa SALIDA: HORAS_EXTRA = SI y AUTORIZA = "SUPERVISOR: CONFIRMACION AUTOMATICA" (sin la palabra
+ * SISTEMA, que otras rutinas tratan como autorización automática). Postgres la recibe con la sincronización normal.
+ * Solo desde el 26/10/2026 (período en que empezó a usarse) y hasta 45 días atrás.
+ */
+var CONFIRMAR_EXTRAS_DESDE = '2026-10-26';
+var CONFIRMAR_EXTRAS_DIAS = 45;
+var CONFIRMAR_EXTRAS_AUTORIZA = 'SUPERVISOR: CONFIRMACION AUTOMATICA';
+var CONFIRMAR_EXTRAS_AREAS = ['TALLER', 'BODEGA'];
+
+function confirmarExtrasPorConfirmar(simular) {
+  const tz = 'America/Guayaquil';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('REGISTROS');
+  const sheetEmp = ss.getSheetByName('EMPLEADOS');
+  if (!sheet || !sheetEmp) { Logger.log('❌ Falta la hoja REGISTROS o EMPLEADOS.'); return { confirmados: 0 }; }
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { confirmados: 0 };
+
+  const limite = new Date();
+  limite.setDate(limite.getDate() - CONFIRMAR_EXTRAS_DIAS);
+  let desde = Utilities.formatDate(limite, tz, 'yyyy-MM-dd');
+  if (desde < CONFIRMAR_EXTRAS_DESDE) desde = CONFIRMAR_EXTRAS_DESDE;
+  const hoy = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  const areas = {};
+  sheetEmp.getDataRange().getValues().slice(1).forEach(f => {
+    const id = String(f[0] === null || f[0] === undefined ? '' : f[0]).trim();
+    if (id) areas[id] = String(f[2] || '').trim().toUpperCase();
+  });
+
+  // A–V: fecha, id, nombre, tipo, …, hora (F), dispositivo (I), horas extra (M), autoriza (N), razón (O), razón just. (V)
+  const values = sheet.getRange(2, 1, lastRow - 1, 22).getValues();
+  const dias = {};
+  for (let i = 0; i < values.length; i++) {
+    const f = values[i];
+    const fecha = normalizarFechaClave(f[COL_REGISTROS.FECHA]);
+    const id = String(f[COL_REGISTROS.ID] === null || f[COL_REGISTROS.ID] === undefined ? '' : f[COL_REGISTROS.ID]).trim();
+    if (!fecha || !id || fecha < desde || fecha >= hoy) continue;
+    const k = id + '_' + fecha;
+    (dias[k] = dias[k] || { id: id, fecha: fecha, nombre: String(f[COL_REGISTROS.NOMBRE] || ''), filas: [] }).filas.push({
+      fila: i + 2,
+      tipo: String(f[COL_REGISTROS.TIPO] || '').trim().toUpperCase(),
+      mins: extraerMinutosDelDia(f[COL_REGISTROS.HORA]),
+      he: String(f[COL_REGISTROS.HORAS_EXTRA] || '').trim().toUpperCase(),
+      aut: String(f[COL_REGISTROS.AUTORIZA] || '').trim().toUpperCase(),
+      auto: String(f[8] || '').trim().toUpperCase() === 'AUTO_COMPLETAR' ||
+            /no registr/i.test(String(f[14] || '')) || /no registr/i.test(String(f[21] || ''))
+    });
+  }
+
+  const confirmados = [];
+  Object.keys(dias).forEach(k => {
+    const d = dias[k];
+    if (d.filas.some(r => r.aut.indexOf('SUPERVISOR:') === 0)) return;          // ya confirmado
+    const autorizado = CONFIRMAR_EXTRAS_AREAS.indexOf(areas[d.id] || '') !== -1 ||
+      d.filas.some(r => r.aut.indexOf('(CAMPO)') !== -1) ||
+      d.filas.some(r => r.he === 'SI' && r.aut === '');
+    if (!autorizado) return;
+    const dow = new Date(d.fecha + 'T12:00:00').getDay();
+    const festivo = dow === 0 || dow === 6 || esFeriadoFechaAuto_(d.fecha);
+    const entradas = d.filas.filter(r => ['ENTRADA', 'RETORNO_CAMPO', 'ENTRADA_CAMPO'].indexOf(r.tipo) !== -1 && r.mins !== null);
+    const salida = d.filas.filter(r => (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO') && r.auto && r.mins !== null &&
+      (festivo || r.mins > 975) && entradas.some(e => e.mins < r.mins)).pop();
+    if (salida) confirmados.push({ d: d, salida: salida });
+  });
+
+  confirmados.forEach(c => {
+    if (!simular) sheet.getRange(c.salida.fila, COL_REGISTROS.HORAS_EXTRA + 1, 1, 2).setValues([['SI', CONFIRMAR_EXTRAS_AUTORIZA]]);
+    logsMantenimiento.push({
+      tipo: 'AUTORIZADO_HE', hoja: 'REGISTROS', fila: c.salida.fila, id: c.d.id, nombre: c.d.nombre,
+      fecha: formatearFechaLog(c.d.fecha),
+      detalle: `Horas extra confirmadas automáticamente: salida completada por el sistema a las ${formatearMinutosAHora(c.salida.mins)}.`
+    });
+  });
+  Logger.log(`${simular ? '🔎 [Simulación] ' : '⚡ '}Horas extra por confirmar ${simular ? 'que se confirmarían' : 'confirmadas'}: ${confirmados.length}` +
+    (confirmados.length ? ' → ' + confirmados.map(c => c.d.id + ' ' + c.d.fecha).join(', ') : ''));
+  return { confirmados: confirmados.length, dias: confirmados.map(c => c.d.id + ' ' + c.d.fecha) };
+}
+
+/** Para revisar a mano desde el editor: muestra qué confirmaría sin escribir nada. */
+function simularConfirmarExtrasPorConfirmar() {
+  return confirmarExtrasPorConfirmar(true);
 }
 
 /**
@@ -939,6 +1038,7 @@ function ejecutarMantenimiento() {
 
   Logger.log("\n--- PASO 3: Autorizando horas extras automáticas (>45 min pos-jornada) ---");
   autorizarHorasExtrasAutomaticas();
+  confirmarExtrasPorConfirmar();
 
   Logger.log("\n--- PASO 4: Verificando cruce de asistencia y vacaciones ---");
   verificarConflictosVacaciones();

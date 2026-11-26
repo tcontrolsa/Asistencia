@@ -501,6 +501,10 @@ function autoCompletarSalidasFaltantesSheets() {
     const startRow = sheetRegs.getLastRow() + 1;
     sheetRegs.getRange(startRow, 1, filasAInsertar.length, 25).setValues(filasAInsertar);
     console.log(`✅ [Auto-completar] Proceso finalizado con éxito. Se insertaron ${filasAInsertar.length} registros de salida automáticamente en bloque.`);
+    // Las salidas recién completadas no dejan horas extra por confirmar (mantenimiento_registros.gs, pedido 2026-11-25)
+    if (typeof confirmarExtrasPorConfirmar === 'function') {
+      try { confirmarExtrasPorConfirmar(); } catch (e) { console.warn('Confirmar horas extra: ' + e); }
+    }
   } else {
     console.log("✅ [Auto-completar] No se detectaron salidas pendientes por insertar en los últimos 7 días.");
   }
