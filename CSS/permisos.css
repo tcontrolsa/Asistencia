@@ -136,3 +136,28 @@ a.pm-btn { text-decoration: none; }
 .pm-config + .pm-config { margin-top: 14px; }
 .pm-interruptor { align-items: flex-start; cursor: pointer; background: #fff; border-color: var(--pm-borde); color: var(--pm-fg); }
 .pm-interruptor input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 18px; }
+
+/* Subida y visor de documentos */
+.pm-zona { border: 2px dashed #cbd5e1; border-radius: 14px; padding: 20px 14px; display: grid; gap: 4px; justify-items: center; text-align: center; background: #f8fafc; color: #64748b; font-size: 13px; transition: border-color .15s, background .15s; }
+.pm-zona[hidden] { display: none; }
+.pm-zona > i { font-size: 30px; color: #2563eb; }
+.pm-zona strong { color: #0f172a; font-size: 14px; }
+.pm-zona-sobre { border-color: #2563eb; background: #eff6ff; }
+.pm-zona-btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+.pm-previa { display: flex; gap: 12px; align-items: center; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 10px; background: #fff; }
+.pm-previa[hidden] { display: none; }
+.pm-previa img { width: 84px; height: 84px; object-fit: cover; border-radius: 10px; flex: none; background: #f1f5f9; }
+.pm-previa-pdf { width: 84px; height: 84px; border-radius: 10px; flex: none; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; font-size: 34px; }
+.pm-previa-datos { display: grid; gap: 2px; min-width: 0; font-size: 12.5px; color: #64748b; }
+.pm-previa-datos strong { color: #0f172a; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-previa-ocupada { opacity: .6; pointer-events: none; }
+.pm-link { border: 0; background: none; color: #2563eb; font-weight: 700; font-size: 12.5px; padding: 0; cursor: pointer; justify-self: start; }
+.pm-cargando { padding: 28px 10px; text-align: center; color: #64748b; font-size: 13.5px; width: 100%; }
+.pm-msg-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+.pm-msg-error[hidden] { display: none; }
+.pm-aviso-docs { font-size: 12px; color: #64748b; }
+.pm-visor { max-width: 860px; height: calc(100vh - 32px); }
+.pm-visor-cuerpo { flex: 1; min-height: 0; overflow: auto; background: #f1f5f9; display: flex; align-items: center; justify-content: center; }
+.pm-visor-pdf { width: 100%; height: 100%; border: 0; }
+.pm-visor-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pm-visor .pm-dpie[hidden] { display: none; }

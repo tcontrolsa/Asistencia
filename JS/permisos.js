@@ -1429,60 +1429,221 @@
     throw new Error('Para los documentos necesitas confirmar tu contraseña. Hazlo y vuelve a intentarlo.');
   }
 
-  // Foto → JPEG de hasta 1600 px (los certificados fotografiados con el celular pesan varios MB)
-  function leerArchivo(file) {
+  // Foto → JPEG de hasta 1600 px (los certificados fotografiados con el celular pesan varios MB).
+  // Usa createImageBitmap + toBlob (más rápido y con la orientación correcta); no pasa por data URL gigantes.
+  function blobABase64(blob) {
     return new Promise((resolve, reject) => {
       const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
+      fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
       fr.onerror = () => reject(new Error('No se pudo leer el archivo'));
-      fr.readAsDataURL(file);
+      fr.readAsDataURL(blob);
     });
   }
+  async function abrirImagen(file) {
+    if (window.createImageBitmap) {
+      try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { /* se usa el método clásico */ }
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      return await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => mal(new Error('No se pudo abrir la foto')); i.src = url; });
+    } finally { setTimeout(() => URL.revokeObjectURL(url), 5000); }
+  }
+  // Devuelve { blob, mime, nombre, tamano }; el base64 se arma recién al enviar
   async function prepararArchivo(file) {
     const tipo = String(file.type || '').toLowerCase();
     if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(tipo)) throw new Error('Sube un PDF o una foto (JPG o PNG)');
-    let dataUrl = await leerArchivo(file);
-    let mime = tipo;
+    let blob = file, mime = tipo;
     if (tipo.startsWith('image/')) {
-      const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => mal(new Error('No se pudo abrir la foto')); i.src = dataUrl; });
-      const escala = Math.min(1, 1600 / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
-      const ctx = c.getContext('2d');
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      dataUrl = c.toDataURL('image/jpeg', 0.82);
+      const img = await abrirImagen(file);
+      const mayor = Math.max(img.width, img.height);
+      // Una foto ya liviana y de buen tamaño se envía tal cual (evita recomprimir y perder calidad)
+      if (tipo === 'image/jpeg' && file.size <= 900 * 1024 && mayor <= 1600) {
+        if (img.close) img.close();
+      } else {
+        const escala = Math.min(1, 1600 / mayor);
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        if (img.close) img.close();
+        blob = await new Promise((ok, mal) => c.toBlob(x => x ? ok(x) : mal(new Error('No se pudo reducir la foto')), 'image/jpeg', 0.82));
+      }
       mime = 'image/jpeg';
     }
-    const base64 = dataUrl.split(',')[1] || '';
-    if (base64.length * 0.75 > DOCS_MAX_BYTES) throw new Error('El archivo supera 6 MB');
+    if (blob.size > DOCS_MAX_BYTES) throw new Error('El archivo supera 6 MB' + (mime === 'application/pdf' ? '. Reduce el PDF o súbelo como foto.' : ''));
     const nombre = String(file.name || 'documento').replace(/\.[^.]+$/, '') + (mime === 'application/pdf' ? '.pdf' : '.jpg');
-    return { base64, mime, nombre };
+    return { blob, mime, nombre, tamano: blob.size };
   }
 
-  async function subirDocumento(s, file, yo) {
-    const arch = await prepararArchivo(file);
-    const idToken = await tokenSesion(yo.id);
-    const r = await window.FirebaseBackend._post({ accion: 'subirDocumentoPermiso', idToken, solicitudId: s.id, nombre: arch.nombre, mime: arch.mime, base64: arch.base64 });
+  function pesoTxt(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+
+  // alEtapa(texto) informa el avance; el token se pide mientras se lee el archivo (en paralelo)
+  async function subirDocumento(s, fileOArch, yo, alEtapa) {
+    const etapa = alEtapa || (() => { });
+    const tokenP = tokenSesion(yo.id);
+    tokenP.catch(() => { });
+    etapa('Preparando el archivo…');
+    const arch = fileOArch && fileOArch.blob ? fileOArch : await prepararArchivo(fileOArch);
+    const base64 = await blobABase64(arch.blob);
+    const idToken = await tokenP;
+    etapa('Enviando a TTHH…');
+    const r = await window.FirebaseBackend._post({ accion: 'subirDocumentoPermiso', idToken, solicitudId: s.id, nombre: arch.nombre, mime: arch.mime, base64 });
     if (!r || r.error) throw new Error((r && r.error) || 'No se pudo subir el documento');
     return r;
   }
 
+  // Visor dentro de la app: el documento se descarga una vez y se guarda en memoria (reabrirlo es instantáneo)
+  const cacheDocs = new Map();
+  async function obtenerDocumento(s, docId, yo) {
+    const clave = s.id + '|' + docId;
+    if (cacheDocs.has(clave)) return cacheDocs.get(clave);
+    const idToken = await tokenSesion(yo.id);
+    const r = await window.FirebaseBackend._post({ accion: 'verDocumentoPermiso', idToken, solicitudId: s.id, docId });
+    if (!r || r.error) throw new Error((r && r.error) || 'No se pudo abrir el documento');
+    const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
+    const doc = { url: URL.createObjectURL(new Blob([bytes], { type: r.mime })), mime: r.mime, nombre: r.nombre || 'documento' };
+    cacheDocs.set(clave, doc);
+    return doc;
+  }
+
   async function verDocumento(s, docId, yo) {
-    // La ventana se abre antes de esperar (los navegadores bloquean ventanas abiertas después de un await)
-    const ventana = window.open('', '_blank');
+    document.getElementById('pmVisor')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'pmVisor';
+    modal.className = 'pm-modal';
+    modal.innerHTML = `<div class="pm-dialogo pm-visor" role="dialog" aria-modal="true" aria-label="Documento">
+      <div class="pm-dcab"><div><h3>Documento</h3><div class="pm-sub" data-v="nombre"></div></div>
+        <button type="button" class="pm-cerrar" data-v="cerrar" aria-label="Cerrar">&times;</button></div>
+      <div class="pm-visor-cuerpo" data-v="cuerpo"><div class="pm-cargando"><i class="fas fa-spinner fa-spin"></i> Abriendo el documento…</div></div>
+      <div class="pm-dpie" data-v="pie" hidden></div></div>`;
+    document.body.appendChild(modal);
+    const cerrar = () => { modal.remove(); document.removeEventListener('keydown', tecla); };
+    const tecla = ev => { if (ev.key === 'Escape') cerrar(); };
+    document.addEventListener('keydown', tecla);
+    modal.addEventListener('click', ev => { if (ev.target === modal || ev.target.closest('[data-v="cerrar"]')) cerrar(); });
     try {
-      const idToken = await tokenSesion(yo.id);
-      const r = await window.FirebaseBackend._post({ accion: 'verDocumentoPermiso', idToken, solicitudId: s.id, docId });
-      if (!r || r.error) throw new Error((r && r.error) || 'No se pudo abrir el documento');
-      const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: r.mime }));
-      if (ventana) ventana.location.href = url; else window.location.href = url;
-      setTimeout(() => URL.revokeObjectURL(url), 120000);
+      const d = await obtenerDocumento(s, docId, yo);
+      if (!modal.isConnected) return;
+      modal.querySelector('[data-v="nombre"]').textContent = d.nombre;
+      const cuerpo = modal.querySelector('[data-v="cuerpo"]');
+      cuerpo.innerHTML = d.mime === 'application/pdf'
+        ? `<iframe class="pm-visor-pdf" src="${d.url}" title="${esc(d.nombre)}"></iframe>`
+        : `<img class="pm-visor-img" src="${d.url}" alt="${esc(d.nombre)}">`;
+      const pie = modal.querySelector('[data-v="pie"]');
+      pie.hidden = false;
+      pie.innerHTML = `<a class="pm-btn pm-btn-sec" href="${d.url}" target="_blank" rel="noopener"><i class="fas fa-up-right-from-square"></i> Abrir aparte</a>
+        <a class="pm-btn pm-btn-pri" href="${d.url}" download="${esc(d.nombre)}"><i class="fas fa-download"></i> Descargar</a>`;
     } catch (e) {
-      if (ventana) ventana.close();
+      cerrar();
       throw e;
     }
+  }
+
+  // Ventana de subida: elegir o fotografiar, ver cómo quedó, y recién entonces enviar
+  function dialogoSubir(s, yo) {
+    return new Promise(resolve => {
+      document.getElementById('pmSubir')?.remove();
+      const modal = document.createElement('div');
+      modal.id = 'pmSubir';
+      modal.className = 'pm-modal';
+      modal.innerHTML = `<div class="pm-dialogo" role="dialog" aria-modal="true" aria-labelledby="pmTitSub">
+        <div class="pm-dcab"><div><h3 id="pmTitSub">Subir documento</h3><div class="pm-sub">${esc((TIPOS[s.tipo] || {}).label || s.tipo)} · PDF o foto de hasta 6 MB</div></div>
+          <button type="button" class="pm-cerrar" data-u="cerrar" aria-label="Cerrar">&times;</button></div>
+        <div class="pm-dcuerpo">
+          <div class="pm-zona" data-u="zona" tabindex="0">
+            <i class="fas fa-cloud-arrow-up"></i>
+            <strong>Arrastra el archivo aquí</strong>
+            <span>o elige cómo subirlo</span>
+            <div class="pm-zona-btns">
+              <button type="button" class="pm-btn pm-btn-pri pm-btn-chico" data-u="foto"><i class="fas fa-camera"></i> Tomar foto</button>
+              <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-u="elegir"><i class="fas fa-folder-open"></i> Elegir archivo</button>
+            </div>
+          </div>
+          <div class="pm-previa" data-u="previa" hidden></div>
+          <div class="pm-msg-error" data-u="error" role="alert" hidden></div>
+          <div class="pm-aviso-docs"><i class="fas fa-lock"></i> Solo lo verás tú y TTHH. Las fotos se reducen solas para que suban rápido.</div>
+        </div>
+        <div class="pm-dpie"><button type="button" class="pm-btn pm-btn-sec" data-u="cerrar">Cancelar</button>
+          <button type="button" class="pm-btn pm-btn-pri" data-u="enviar" disabled><i class="fas fa-paper-plane"></i> Enviar a TTHH</button></div></div>`;
+      document.body.appendChild(modal);
+      const q = k => modal.querySelector(`[data-u="${k}"]`);
+      let arch = null, miniUrl = '', ocupado = false;
+      tokenSesion(yo.id).catch(() => { }); // calienta la sesión mientras eligen el archivo
+      const cerrar = r => { if (miniUrl) URL.revokeObjectURL(miniUrl); modal.remove(); document.removeEventListener('keydown', tecla); resolve(r); };
+      const tecla = ev => { if (ev.key === 'Escape' && !ocupado) cerrar(false); };
+      document.addEventListener('keydown', tecla);
+      const error = txt => { const e = q('error'); e.textContent = txt || ''; e.hidden = !txt; };
+
+      async function elegido(file) {
+        if (!file || ocupado) return;
+        error('');
+        arch = null; q('enviar').disabled = true;
+        const previa = q('previa');
+        previa.hidden = false;
+        previa.innerHTML = '<div class="pm-cargando"><i class="fas fa-spinner fa-spin"></i> Preparando…</div>';
+        try {
+          arch = await prepararArchivo(file);
+          if (miniUrl) URL.revokeObjectURL(miniUrl);
+          miniUrl = URL.createObjectURL(arch.blob);
+          const miniatura = arch.mime === 'application/pdf'
+            ? '<div class="pm-previa-pdf"><i class="fas fa-file-pdf"></i></div>'
+            : `<img src="${miniUrl}" alt="Vista previa">`;
+          previa.innerHTML = `${miniatura}<div class="pm-previa-datos"><strong>${esc(arch.nombre)}</strong><span>${pesoTxt(arch.tamano)}${file.size > arch.tamano + 51200 ? ` · reducida de ${pesoTxt(file.size)}` : ''}</span>
+            <button type="button" class="pm-link" data-u="cambiar">Cambiar</button></div>`;
+          q('zona').hidden = true;
+          q('enviar').disabled = false;
+        } catch (e) {
+          previa.hidden = true; previa.innerHTML = '';
+          error(e.message || String(e));
+        }
+      }
+
+      function elegirArchivo(camara) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = camara ? 'image/*' : 'application/pdf,image/jpeg,image/png,image/webp';
+        if (camara) input.setAttribute('capture', 'environment');
+        input.addEventListener('change', () => elegido(input.files && input.files[0]));
+        input.click();
+      }
+
+      async function enviar() {
+        if (!arch || ocupado) return;
+        ocupado = true; error('');
+        const btn = q('enviar');
+        btn.disabled = true;
+        q('previa').classList.add('pm-previa-ocupada');
+        modal.querySelectorAll('[data-u="cerrar"],[data-u="cambiar"]').forEach(x => { x.disabled = true; });
+        try {
+          await subirDocumento(s, arch, yo, txt => { btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${esc(txt)}`; });
+          cerrar(true);
+        } catch (e) {
+          ocupado = false;
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane"></i> Reintentar envío';
+          q('previa').classList.remove('pm-previa-ocupada');
+          modal.querySelectorAll('[data-u="cerrar"],[data-u="cambiar"]').forEach(x => { x.disabled = false; });
+          error(e.message || String(e));
+        }
+      }
+
+      modal.addEventListener('click', ev => {
+        const t = ev.target;
+        if (t === modal) { if (!ocupado) cerrar(false); return; }
+        const el = t.closest('[data-u]');
+        const k = el && el.dataset.u;
+        if (k === 'cerrar') cerrar(false);
+        else if (k === 'foto') elegirArchivo(true);
+        else if (k === 'elegir') elegirArchivo(false);
+        else if (k === 'cambiar') { arch = null; q('previa').hidden = true; q('zona').hidden = false; q('enviar').disabled = true; error(''); }
+        else if (k === 'enviar') enviar();
+      });
+      const zona = q('zona');
+      ['dragenter', 'dragover'].forEach(n => zona.addEventListener(n, ev => { ev.preventDefault(); zona.classList.add('pm-zona-sobre'); }));
+      ['dragleave', 'drop'].forEach(n => zona.addEventListener(n, ev => { ev.preventDefault(); zona.classList.remove('pm-zona-sobre'); }));
+      zona.addEventListener('drop', ev => elegido(ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]));
+    });
   }
 
   // TTHH: VALIDAR / RECHAZAR (documento entregado), DESCONTAR / PRORROGA (plazo vencido)
@@ -1599,19 +1760,7 @@
       return true;
     }
     if (subir) {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'application/pdf,image/jpeg,image/png,image/webp';
-      input.addEventListener('change', async () => {
-        const file = input.files && input.files[0];
-        if (!file) return;
-        const txt = subir.innerHTML;
-        subir.disabled = true;
-        subir.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subiendo…';
-        try { await subirDocumento(s, file, yo); toast('Documento enviado a TTHH', 'success'); }
-        catch (e) { toast(e.message || String(e), 'error'); subir.disabled = false; subir.innerHTML = txt; }
-      });
-      input.click();
+      if (await dialogoSubir(s, yo)) toast('Documento enviado a TTHH', 'success');
       return true;
     }
     const accion = acc.dataset.docAccion;
@@ -1934,6 +2083,6 @@
   window.Permisos = {
     montarApp, montarPanel, abrirFormulario, contarPorAprobar,
     crearSolicitud, resolver, cancelar, eliminar, leerConfig, esTTHH, resumenTiempo, montarResumenTiempo, planMarcacion, registrarDesdeMarcacion, ajustarRegreso,
-    _internos: { minutosJornada, solicitudQueCubre, repartoFinal, fechasLaborables, sumarMinutosLaborables, esLaborable, caducidad, caducaEn, vigente, visibleTTHH, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, verDocumento, revisarDocumentos }
+    _internos: { minutosJornada, solicitudQueCubre, repartoFinal, fechasLaborables, sumarMinutosLaborables, esLaborable, caducidad, caducaEn, vigente, visibleTTHH, planBolsa, saldoVacaciones, prepararArchivo, subirDocumento, dialogoSubir, verDocumento, revisarDocumentos }
   };
 })();
