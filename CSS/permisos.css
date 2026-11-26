@@ -161,3 +161,27 @@ a.pm-btn { text-decoration: none; }
 .pm-visor-pdf { width: 100%; height: 100%; border: 0; }
 .pm-visor-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .pm-visor .pm-dpie[hidden] { display: none; }
+
+/* Animaciones y mensajes de carga */
+.pm-progreso { display: grid; gap: 10px; }
+.pm-progreso[hidden] { display: none; }
+.pm-barra { height: 8px; border-radius: 99px; background: #e2e8f0; overflow: hidden; }
+.pm-barra > span { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #2563eb, #60a5fa); transition: width .6s ease; }
+.pm-barra-ind { width: 180px; margin-top: 10px; }
+.pm-barra-ind > span { width: 40%; animation: pm-desliza 1.2s ease-in-out infinite; }
+@keyframes pm-desliza { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+.pm-pasos { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; color: #94a3b8; }
+.pm-pasos i { width: 16px; text-align: center; font-size: 12px; }
+.pm-pasos .pm-paso-act { color: #1d4ed8; font-weight: 700; }
+.pm-pasos .pm-paso-ok { color: #16a34a; }
+.pm-prog-msg { display: grid; gap: 2px; background: #eff6ff; border-radius: 10px; padding: 9px 12px; font-size: 12.5px; color: #475569; }
+.pm-prog-msg strong { color: #1e3a8a; font-size: 13px; }
+.pm-exito { display: grid; gap: 4px; justify-items: center; text-align: center; padding: 14px 6px; color: #475569; font-size: 13px; }
+.pm-exito strong { color: #0f172a; font-size: 16px; }
+.pm-exito-ico { width: 56px; height: 56px; border-radius: 50%; background: #dcfce7; color: #16a34a; display: flex; align-items: center; justify-content: center; font-size: 26px; animation: pm-pop .45s cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes pm-pop { 0% { transform: scale(.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.pm-cargando-grande { display: grid; gap: 4px; justify-items: center; color: #64748b; font-size: 13px; }
+.pm-cargando-grande strong { color: #0f172a; font-size: 15px; }
+.pm-doc-anim { width: 54px; height: 54px; border-radius: 14px; background: #dbeafe; color: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 24px; animation: pm-late 1.2s ease-in-out infinite; }
+@keyframes pm-late { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .pm-doc-anim, .pm-barra-ind > span, .pm-exito-ico { animation: none; } }

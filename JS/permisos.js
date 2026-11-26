@@ -1515,15 +1515,18 @@
     modal.innerHTML = `<div class="pm-dialogo pm-visor" role="dialog" aria-modal="true" aria-label="Documento">
       <div class="pm-dcab"><div><h3>Documento</h3><div class="pm-sub" data-v="nombre"></div></div>
         <button type="button" class="pm-cerrar" data-v="cerrar" aria-label="Cerrar">&times;</button></div>
-      <div class="pm-visor-cuerpo" data-v="cuerpo"><div class="pm-cargando"><i class="fas fa-spinner fa-spin"></i> Abriendo el documento…</div></div>
+      <div class="pm-visor-cuerpo" data-v="cuerpo"><div class="pm-cargando pm-cargando-grande"><span class="pm-doc-anim"><i class="fas fa-file-lines"></i></span>
+        <strong data-v="msg">Abriendo el documento…</strong><span data-v="sub">Lo traemos de la carpeta privada.</span><div class="pm-barra pm-barra-ind"><span></span></div></div></div>
       <div class="pm-dpie" data-v="pie" hidden></div></div>`;
     document.body.appendChild(modal);
     const cerrar = () => { modal.remove(); document.removeEventListener('keydown', tecla); };
     const tecla = ev => { if (ev.key === 'Escape') cerrar(); };
     document.addEventListener('keydown', tecla);
     modal.addEventListener('click', ev => { if (ev.target === modal || ev.target.closest('[data-v="cerrar"]')) cerrar(); });
+    const t1 = setTimeout(() => { const m = modal.querySelector('[data-v="sub"]'); if (m) m.textContent = 'Los documentos se verifican antes de mostrarse; puede tardar unos segundos.'; }, 3000);
+    const t2 = setTimeout(() => { const m = modal.querySelector('[data-v="msg"]'); if (m) m.textContent = 'Sigue abriéndose…'; }, 9000);
     try {
-      const d = await obtenerDocumento(s, docId, yo);
+      const d = await obtenerDocumento(s, docId, yo).finally(() => { clearTimeout(t1); clearTimeout(t2); });
       if (!modal.isConnected) return;
       modal.querySelector('[data-v="nombre"]').textContent = d.nombre;
       const cuerpo = modal.querySelector('[data-v="cuerpo"]');
@@ -1561,6 +1564,7 @@
             </div>
           </div>
           <div class="pm-previa" data-u="previa" hidden></div>
+          <div class="pm-progreso" data-u="progreso" aria-live="polite" hidden></div>
           <div class="pm-msg-error" data-u="error" role="alert" hidden></div>
           <div class="pm-aviso-docs"><i class="fas fa-lock"></i> Solo lo verás tú y TTHH. Las fotos se reducen solas para que suban rápido.</div>
         </div>
@@ -1581,7 +1585,7 @@
         arch = null; q('enviar').disabled = true;
         const previa = q('previa');
         previa.hidden = false;
-        previa.innerHTML = '<div class="pm-cargando"><i class="fas fa-spinner fa-spin"></i> Preparando…</div>';
+        previa.innerHTML = '<div class="pm-cargando"><i class="fas fa-spinner fa-spin"></i> Revisando y reduciendo el archivo…</div>';
         try {
           arch = await prepararArchivo(file);
           if (miniUrl) URL.revokeObjectURL(miniUrl);
@@ -1615,10 +1619,36 @@
         btn.disabled = true;
         q('previa').classList.add('pm-previa-ocupada');
         modal.querySelectorAll('[data-u="cerrar"],[data-u="cambiar"]').forEach(x => { x.disabled = true; });
+        const prog = q('progreso');
+        const pasos = ['Preparando el archivo', 'Enviando a TTHH', 'Guardando en la carpeta privada'];
+        let paso = 0, esperas = [];
+        const pintar = (msg, sub) => {
+          prog.hidden = false;
+          prog.innerHTML = `<div class="pm-barra"><span style="width:${Math.round(((paso + 0.5) / pasos.length) * 100)}%"></span></div>
+            <ol class="pm-pasos">${pasos.map((p, i) => `<li class="${i < paso ? 'pm-paso-ok' : i === paso ? 'pm-paso-act' : ''}"><i class="fas ${i < paso ? 'fa-check' : i === paso ? 'fa-spinner fa-spin' : 'fa-circle'}"></i> ${p}</li>`).join('')}</ol>
+            <div class="pm-prog-msg"><strong>${esc(msg)}</strong>${sub ? `<span>${esc(sub)}</span>` : ''}</div>`;
+        };
+        pintar('Preparando tu documento…', 'No cierres esta ventana hasta que termine.');
         try {
-          await subirDocumento(s, arch, yo, txt => { btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${esc(txt)}`; });
+          await subirDocumento(s, arch, yo, txt => {
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${esc(txt)}`;
+            if (/Enviando/.test(txt)) {
+              paso = 1; pintar('Enviando el documento…', 'Depende de tu conexión; las fotos ya van reducidas.');
+              esperas.push(setTimeout(() => { paso = 2; pintar('Guardando de forma segura…', 'El archivo queda en una carpeta privada; solo TTHH y tú pueden verlo.'); }, 3500));
+              esperas.push(setTimeout(() => pintar('Esto está tardando más de lo normal…', 'Sigue en proceso. Espera unos segundos más, no vuelvas a enviarlo.'), 14000));
+            }
+          });
+          esperas.forEach(clearTimeout);
+          paso = pasos.length;
+          prog.hidden = false;
+          prog.innerHTML = `<div class="pm-exito"><span class="pm-exito-ico"><i class="fas fa-check"></i></span><strong>¡Documento enviado!</strong>
+            <span>TTHH recibió un aviso para validarlo. Te avisaremos si necesitan algo más.</span></div>`;
+          q('previa').hidden = true; btn.hidden = true;
+          await new Promise(r => setTimeout(r, 1800));
           cerrar(true);
         } catch (e) {
+          esperas.forEach(clearTimeout);
+          prog.hidden = true; prog.innerHTML = '';
           ocupado = false;
           btn.disabled = false;
           btn.innerHTML = '<i class="fas fa-paper-plane"></i> Reintentar envío';
