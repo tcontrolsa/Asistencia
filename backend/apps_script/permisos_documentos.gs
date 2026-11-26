@@ -28,8 +28,22 @@ var PERM_DOCS_ESTADOS_SUBIR = ['PENDIENTE', 'RECHAZADO'];
 
 // ---------------------------------------------------------------- identidad
 // Devuelve el ID del colaborador dueño del token de Firebase, o null
+// El resultado se guarda 5 min en caché (clave = huella del token): subir y luego ver no repiten la verificación.
+// Solo se guardan tokens válidos; uno revocado puede seguir valiendo hasta 5 min.
 function uidDeTokenFirebase_(idToken) {
   if (!idToken) return null;
+  var clave = '';
+  try {
+    clave = 'uidtok_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(idToken)));
+    var guardado = CacheService.getScriptCache().get(clave);
+    if (guardado) return guardado;
+  } catch (e) { clave = ''; }
+  var uid = uidDeTokenFirebaseSinCache_(idToken);
+  if (uid && clave) { try { CacheService.getScriptCache().put(clave, uid, 300); } catch (e) { } }
+  return uid;
+}
+
+function uidDeTokenFirebaseSinCache_(idToken) {
   var res = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + EVAL_API_KEY_FIREBASE, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ idToken: String(idToken) })
   });
@@ -38,15 +52,28 @@ function uidDeTokenFirebase_(idToken) {
   return u && u.localId ? String(u.localId) : null;
 }
 
+// configuracion/permisos (lista de TTHH) casi no cambia: 5 min en caché. Si no se pudo leer, no se guarda.
+function cfgPermisosEnCache_() {
+  var cache = null;
+  try {
+    cache = CacheService.getScriptCache();
+    var g = cache.get('perm_cfg_tthh');
+    if (g) return JSON.parse(g);
+  } catch (e) { cache = null; }
+  var r = fetchFirestore_(notifBaseFirestore_() + '/' + PERM_CFG + '?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return {};
+  var cfg = valorAvisoAlm_({ mapValue: { fields: JSON.parse(r.getContentText()).fields || {} } }) || {};
+  var soloTthh = { tthh: cfg.tthh || [] };
+  if (cache) { try { cache.put('perm_cfg_tthh', JSON.stringify(soloTthh), 300); } catch (e) { } }
+  return soloTthh;
+}
+
 function esTthhOAdminPermisos_(id) {
   id = String(id || '');
   if (!id) return false;
   if (id === '1058') return true;
-  var r = fetchFirestore_(notifBaseFirestore_() + '/' + PERM_CFG + '?key=' + EVAL_API_KEY_FIREBASE, { muteHttpExceptions: true });
-  if (r.getResponseCode() === 200) {
-    var cfg = valorAvisoAlm_({ mapValue: { fields: JSON.parse(r.getContentText()).fields || {} } }) || {};
-    if ((cfg.tthh || []).some(function (x) { return x && String(x.id) === id; })) return true;
-  }
+  var cfg = cfgPermisosEnCache_();
+  if ((cfg.tthh || []).some(function (x) { return x && String(x.id) === id; })) return true;
   var emp = leerEmpleadoFirestore_(id) || {};
   return String(emp.supervisor || emp.rol || '').toUpperCase().indexOf('ADMIN') !== -1;
 }
@@ -79,6 +106,7 @@ function carpetaDocsPermisos_() {
 // ---------------------------------------------------------------- subir
 // p: { idToken, solicitudId, nombre, mime, base64 }
 function subirDocumentoPermiso(p) {
+  var t0 = new Date().getTime();
   try {
     var uid = uidDeTokenFirebase_(p.idToken);
     if (!uid) return { error: 'Tu sesión venció. Confirma tu contraseña y vuelve a intentarlo.', sesion: true };
@@ -103,7 +131,8 @@ function subirDocumentoPermiso(p) {
     archivo.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
 
     var ahora = new Date().toISOString();
-    var quien = (leerEmpleadoFirestore_(uid) || {}).nombre || uid;
+    // Si sube el dueño, su nombre ya viene en la solicitud (se evita una lectura)
+    var quien = (esDueno && s.nombre) ? s.nombre : ((leerEmpleadoFirestore_(uid) || {}).nombre || uid);
     var doc = { id: archivo.getId(), nombre: limpio, mime: mime, tamano: bytes.length, subido_en: ahora, subido_por: quien, subido_por_id: uid };
     var campos = { docs_estado: 'ENTREGADO', docs_entregado_en: ahora, docs_motivo_rechazo: '' };
     var fields = {};
@@ -124,11 +153,68 @@ function subirDocumentoPermiso(p) {
       archivo.setTrashed(true);
       return { error: 'La solicitud cambió mientras subías el archivo. Recarga y vuelve a intentarlo.' };
     }
-    avisarDocumentoSubido_(s, quien);
+    encolarAvisoDocumento_(s, quien);
+    console.log('subirDocumentoPermiso: ' + (new Date().getTime() - t0) + ' ms, ' + bytes.length + ' bytes');
     return { ok: true, documento: doc };
   } catch (e) {
     return { error: 'No se pudo guardar el documento: ' + (e.message || e) };
   }
+}
+
+// El aviso a TTHH (varias escrituras + push) ya no hace esperar a quien sube: se anota en una cola y lo envía un
+// disparador de una sola vez a los pocos segundos. Si no se puede agendar, se envía en el momento como antes.
+function encolarAvisoDocumento_(s, quien) {
+  var bloqueo = LockService.getScriptLock();
+  var anotado = false;
+  try {
+    bloqueo.waitLock(3000);
+    var props = PropertiesService.getScriptProperties();
+    var cola = JSON.parse(props.getProperty('PERM_DOCS_AVISOS') || '[]');
+    cola.push({ id: s.id, quien: quien });
+    props.setProperty('PERM_DOCS_AVISOS', JSON.stringify(cola));
+    anotado = true;
+  } catch (e) {
+    Logger.log('Cola de avisos no disponible: ' + e);
+  } finally {
+    try { bloqueo.releaseLock(); } catch (e) { }
+  }
+  if (anotado) {
+    try { ScriptApp.newTrigger('procesarAvisosDocumentosPermisos').timeBased().after(5000).create(); return; }
+    catch (e) { Logger.log('No se pudo agendar el aviso (' + e + '): se envía ahora'); }
+  }
+  avisarDocumentoSubido_(s, quien);
+  if (anotado) vaciarColaAvisos_(s.id);
+}
+
+function vaciarColaAvisos_(solId) {
+  var bloqueo = LockService.getScriptLock();
+  try {
+    bloqueo.waitLock(3000);
+    var props = PropertiesService.getScriptProperties();
+    var cola = JSON.parse(props.getProperty('PERM_DOCS_AVISOS') || '[]').filter(function (x) { return x.id !== solId; });
+    props.setProperty('PERM_DOCS_AVISOS', JSON.stringify(cola));
+  } catch (e) { } finally { try { bloqueo.releaseLock(); } catch (e2) { } }
+}
+
+// Lo ejecuta el disparador de una sola vez (e.triggerUid): borra su propio disparador y envía lo que haya en la cola
+function procesarAvisosDocumentosPermisos(e) {
+  try {
+    if (e && e.triggerUid) {
+      ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getUniqueId() === e.triggerUid) ScriptApp.deleteTrigger(t); });
+    }
+  } catch (err) { Logger.log('No se borró el disparador: ' + err); }
+  var cola = [];
+  var bloqueo = LockService.getScriptLock();
+  try {
+    bloqueo.waitLock(10000);
+    var props = PropertiesService.getScriptProperties();
+    cola = JSON.parse(props.getProperty('PERM_DOCS_AVISOS') || '[]');
+    props.setProperty('PERM_DOCS_AVISOS', '[]');
+  } catch (err) { Logger.log('Cola de avisos no leída: ' + err); return; } finally { try { bloqueo.releaseLock(); } catch (e2) { } }
+  cola.forEach(function (x) {
+    var s = leerSolicitudPermiso_(String(x.id));
+    if (s) avisarDocumentoSubido_(s, x.quien);
+  });
 }
 
 // Aviso a TTHH: hay un documento por validar (sin nombre del archivo ni motivo: datos mínimos)
