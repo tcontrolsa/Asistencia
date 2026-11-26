@@ -1279,7 +1279,7 @@
           : `<div><i class="fas fa-users"></i> La aprueba <strong>TTHH</strong>: ${esc((MOTIVO_TTHH[st.aprob.motivo] || '').toLowerCase())}. Hasta que la apruebe no es válida.</div>`);
         if (fechas.length && !horaPasada()) {
           const cad = caducidad({ tipo: st.tipo, modalidad: st.modalidad, desde, fechas, hora_desde: $('pmHoraDesde').value }, new Date());
-          partes.push(`<div><i class="fas fa-hourglass-half"></i> Plazo para responder: <strong>${esc(horaIso(cad.toISOString()))}</strong>. Sin respuesta, la solicitud no es válida.</div>`);
+          partes.push(`<div><i class="fas fa-hourglass-half"></i> Plazo para responder: <strong>${esc(horaIso(cad.toISOString()))}</strong> · sin respuesta, la solicitud no es válida.</div>`);
         }
         if (T.documentos) partes.push('<div><i class="fas fa-file-medical"></i> Al aprobarse hay 72 horas para entregar los documentos a TTHH; sin ellos se descuenta del rol.</div>');
       }

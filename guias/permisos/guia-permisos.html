@@ -310,9 +310,10 @@ button, .marco, .tab, .paso-btn { -webkit-tap-highlight-color: transparent; touc
    VERSION y FECHA, agrega una línea en CAMBIOS y vuelve a publicar.
    Las capturas viven en img/ (ver README.md en la misma carpeta).
    ===================================================================== */
-const VERSION = '1.2';
-const FECHA = '25/11/2026';
+const VERSION = '1.3';
+const FECHA = '26/11/2026';
 const CAMBIOS = [
+  ['26/11/2026', 'Capturas nuevas: formularios con el plazo para responder, solicitudes «No válida», eliminar desde el panel y lo cargado a vacaciones en «Mi tiempo de permisos».'],
   ['26/11/2026', 'Desde el 26/11, lo que supera la bolsa de 4 horas (atrasos, faltantes, faltas sin justificar) se descuenta de las vacaciones (8 h = 1 día); solo sin saldo de vacaciones va al rol.'],
   ['25/11/2026', 'Toda solicitud espera la aprobación del jefe; sin respuesta no es válida y no llega a TTHH. Permiso médico y calamidad también. El permiso personal es solo por horas.'],
   ['19/11/2026', 'Adaptada a teléfonos: texto a tamaño normal, tablas en tarjetas, botones Anterior/Siguiente siempre a mano y cambio de paso deslizando la captura.'],
@@ -346,7 +347,7 @@ const PASOS = {
     { t: 'Revisa tus vacaciones', img: '03-vacaciones.png', marco: 'recorte',
       h: '<p>La tarjeta <b>Vacaciones</b> muestra tu saldo en <b>días completos</b> y cuántos días se descontaron este año por permisos.</p><p>Cada 8 horas de permiso que la bolsa no alcanza a cubrir descuentan 1 día de vacaciones. El año de vacaciones va del 1 de diciembre al 30 de noviembre.</p><div class="nota info">Las fracciones (horas acumuladas hacia el próximo día) solo las ve el supervisor en el panel.</div>' },
     { t: 'Revisa el descuento al rol', img: '04-rol.png', marco: 'recorte',
-      h: '<p>La tarjeta <b>Descuento al rol</b> suma lo que ni la bolsa ni las vacaciones cubren en el período de nómina:</p><ul><li><b>Atrasos, faltantes y permisos</b> que ya superaron la bolsa.</li><li><b>Permisos que vienen</b> sin saldo (aprobados o por aprobar).</li></ul><p>En verde «Sin descuento» si no hay nada que descontar.</p>' },
+      h: '<p>La tarjeta <b>Descuento al rol</b> suma lo que ni la bolsa ni las vacaciones cubren en el período de nómina:</p><ul><li><b>Atrasos, faltantes y permisos</b> que ya superaron la bolsa y las vacaciones.</li><li><b>Permisos que vienen</b> sin saldo (aprobados o por aprobar).</li><li><b>Atrasos y faltantes cargados a vacaciones</b>: desde el 26/11/2026 lo que supera la bolsa se descuenta primero de tus vacaciones (8 h = 1 día).</li></ul><p>En verde «Sin descuento» si no hay nada que ir al rol. Lo del día se calcula en la noche: mientras tanto aparece «Por calcular».</p>' },
     { t: 'Nueva solicitud: elige el tipo', img: '05-form-tipo.png', marco: 'tel',
       h: '<p>Toca <span class="kbd">+ Nueva solicitud</span> y elige el tipo:</p><ul><li><span class="chip c-azul">Vacaciones</span> días completos, las aprueba tu jefe.</li><li><span class="chip c-violeta">Permiso personal</span> solo por horas, lo aprueba tu jefe.</li><li><span class="chip c-verde">Permiso médico</span> lo aprueba tu jefe; después, certificado en 72 h.</li><li><span class="chip c-rojo">Calamidad doméstica</span> puede pedirse después; la aprueba tu jefe y luego documentos en 72 h.</li></ul>' },
     { t: 'Vacaciones por días', img: '07-form-vacaciones.png', marco: 'tel',
@@ -373,7 +374,7 @@ const PASOS = {
       h: '<p>En el panel, sección <b>Permisos</b>, pestaña <span class="kbd">Solicitudes</span>. Los filtros:</p><ul><li><b>Pendientes</b>: esperan al jefe o a TTHH.</li><li><b>Documentos por validar</b>: médicos y calamidades con archivos subidos.</li><li><b>Vencidos</b>: pasaron las 72 h sin documentos.</li><li><b>Faltan documentos</b>: aún dentro del plazo.</li><li><b>Todas</b>, con buscador por nombre, ID, área o motivo.</li></ul>' },
     { t: 'Aprobar en lugar del jefe', img: '13-panel-pendientes.png', marco: 'web',
       h: '<p>Solo un <b>supervisor administrador</b> puede responder en lugar del jefe, con el botón <span class="kbd">Aprobar (en lugar del jefe)</span>.</p><p>TTHH no ve las solicitudes hasta que el jefe las aprueba; responde únicamente las de quien no tiene un jefe que pueda hacerlo.</p>' },
-    { t: 'Eliminar una solicitud', img: null, icono: '🗑️',
+    { t: 'Eliminar una solicitud', img: '17-panel-eliminar.png', marco: 'web',
       h: '<p>Un <b>supervisor administrador</b> puede eliminar cualquier solicitud con <span class="kbd">Eliminar</span> y un motivo obligatorio (por ejemplo, duplicada o pedida por error).</p><ul><li>Deja de verse en la app y ya no es válida.</li><li>Si estaba aprobada, se borran sus registros de asistencia y las horas cargadas a vacaciones.</li><li>Se avisa al colaborador. Queda constancia en el filtro <b>Eliminadas</b>.</li></ul><div class="nota warn">No se puede deshacer.</div>' },
     { t: 'Pedir a nombre de alguien', img: '15-panel-a-nombre.png', marco: 'web',
       h: '<p>Con <span class="kbd">Pedir médico o calamidad</span> TTHH o un administrador pide un permiso médico o una calamidad a nombre de un colaborador que no puede hacerlo desde su teléfono.</p><p>También espera la aprobación del jefe; después corren las 72 horas para los documentos.</p>' },
@@ -479,6 +480,7 @@ const GALERIA_ESTADOS = `<section class="bloque"><h2>Cómo se ven las tarjetas</
   <p class="sub">Ejemplos reales de la ficha de prueba. Toca una para verla en grande.</p>
   <div class="galeria">
     <figure class="fig"><img src="img/21-tarjeta-no-aprobada.png" data-zoom="img/21-tarjeta-no-aprobada.png" alt="Tarjeta de permiso no aprobado"><figcaption><b>No aprobada.</b> Muestra el cargo aceptado, quién la rechazó y su motivo.</figcaption></figure>
+    <figure class="fig"><img src="img/24-tarjeta-no-valida.png" data-zoom="img/24-tarjeta-no-valida.png" alt="Tarjeta de solicitud no válida"><figcaption><b>No válida.</b> Nadie la aprobó ni rechazó antes de la hora del permiso: no justifica el tiempo y no llegó a TTHH.</figcaption></figure>
     <figure class="fig"><img src="img/23-tarjeta-validado.png" data-zoom="img/23-tarjeta-validado.png" alt="Tarjeta con documentos validados"><figcaption><b>Documentos validados.</b> El certificado quedó aceptado por TTHH.</figcaption></figure>
     <figure class="fig"><img src="img/22-tarjeta-descontado.png" data-zoom="img/22-tarjeta-descontado.png" alt="Tarjeta descontada del rol"><figcaption><b>Descontado del rol.</b> Venció el plazo de 72 h sin documentos.</figcaption></figure>
     <figure class="fig"><img src="img/20-tarjeta-medico-cancelada.png" data-zoom="img/20-tarjeta-medico-cancelada.png" alt="Tarjeta cancelada"><figcaption><b>Cancelada.</b> Creada al marcar la entrada y cancelada después.</figcaption></figure>
