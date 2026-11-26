@@ -151,7 +151,7 @@ window.FirebaseBackend = {
                     return await this.listarDesvinculados(params);
 
                 case 'exportarCalcularVacaciones':
-                    return await this._jsonp({ accion: 'exportarCalcularVacaciones' });
+                    return await this._servidor({ accion: 'exportarCalcularVacaciones' }, 120000);
                 case 'resetearPinesTodosLosEmpleados':
                 case 'resetearPinesEmpleados':
                     return await this.resetearPinesTodosLosEmpleados(params);
@@ -159,9 +159,9 @@ window.FirebaseBackend = {
                 case 'desvincularDispositivo':
                     return await this.desvincularDispositivo(params);
                 case 'escribirHojaActualizar':
-                    return await this._post(params);
+                    return await this._servidor({ ...params, empleados: typeof params.empleados === 'string' ? JSON.parse(params.empleados) : params.empleados }, 120000, 1, true);
                 case 'leerHojaActualizar':
-                    return await this._jsonp(params);
+                    return await this._servidor(params, 60000);
                 case 'registrarLog':
                     return await this.registrarLog(params);
                 case 'registrarLogWhatsApp':
@@ -184,7 +184,7 @@ window.FirebaseBackend = {
                 case 'crearReporteGoogleSheets':
                 case 'archivarMenuConsumido':
                 case 'obtenerHistorialMenuSugerencias':
-                    return await this._jsonp(params);
+                    return await this._servidor(params, 60000);
                 case 'obtenerAlmuerzosExtra':
                     try {
                         const resJson = await this._jsonp(params, 0, 1, 6000);
@@ -1942,12 +1942,12 @@ window.FirebaseBackend = {
         let sheetsPromise = (async () => {
             if (targetFecha >= hoyStrLocal) return { ok: true, omitido: 'día actual: solo Firestore' };
             try {
-                return await this._jsonp({
+                return await this._servidor({
                     accion: 'actualizarAlmuerzoSupervisor',
                     empleadoId: id,
                     almuerzo: nuevoAlmuerzo,
                     fecha: targetFecha
-                }, 0, 2, 35000);
+                }, 35000);
             } catch (e) {
                 console.warn("⚠️ Aviso al sincronizar almuerzo en Sheets:", e.message);
                 return { error: e.message };
@@ -2770,7 +2770,7 @@ window.FirebaseBackend = {
 
             // 2. Guardar en Google Sheets (Hoja CULTURA_PREGUNTAS)
             try {
-                await this._jsonp({
+                await this._servidor({
                     accion: 'guardarPreguntasCultura',
                     preguntas: typeof params.preguntas === 'string' ? params.preguntas : JSON.stringify(params.preguntas)
                 });
@@ -2854,7 +2854,7 @@ window.FirebaseBackend = {
                 if (configParaSheets.imagenesPlantillas) {
                     delete configParaSheets.imagenesPlantillas;
                 }
-                await this._jsonp({
+                await this._servidor({
                     accion: 'guardarConfiguracionWhatsApp',
                     config: JSON.stringify(configParaSheets)
                 });
@@ -2958,7 +2958,7 @@ window.FirebaseBackend = {
 
         let resSheets = null;
         try {
-            resSheets = await this._jsonp(params);
+            resSheets = await this._servidor(params, 60000);
         } catch (e) {
             console.warn("Error en eliminación Sheets:", e);
         }
@@ -3022,7 +3022,7 @@ window.FirebaseBackend = {
         // 2. Ejecutar traslado atómico a la hoja DESVINCULADOS en Google Sheets
         let resSheets = null;
         try {
-            resSheets = await this._jsonp({
+            resSheets = await this._servidor({
                 accion: 'desvincularColaborador',
                 empleadoId: empId,
                 cedula: empCedula,
@@ -3031,7 +3031,7 @@ window.FirebaseBackend = {
                 fechaDesvinculacion: fechaDesv,
                 supervisor: supervisor,
                 observaciones: params.observaciones || ''
-            }, 0, 2, 45000);
+            }, 90000);
         } catch (e) {
             console.warn("Aviso al ejecutar traslado a DESVINCULADOS en Google Sheets:", e);
             // Si la conexión con Sheets tarda o tiene timeout, Firestore ya archivó correctamente al colaborador
@@ -3049,7 +3049,7 @@ window.FirebaseBackend = {
         try {
             let resSheets = { ok: true, desvinculados: [] };
             try {
-                resSheets = await this._jsonp({ accion: 'listarDesvinculados' });
+                resSheets = await this._servidor({ accion: 'listarDesvinculados' }, 30000);
             } catch (e) {
                 console.warn("Sheets listarDesvinculados fallo, continuando con Firestore:", e);
             }
@@ -3219,7 +3219,7 @@ window.FirebaseBackend = {
 
             // Sincronizar con Google Sheets (dual write)
             try {
-                this._jsonp({ accion: 'resetearPinesEmpleados' });
+                this._servidor({ accion: 'resetearPinesEmpleados' }).catch(e => console.warn('Reseteo en la hoja:', e.message || e));
             } catch (e) {
                 console.warn("Aviso al sincronizar reseteo con Sheets:", e);
             }
@@ -3507,7 +3507,7 @@ window.FirebaseBackend = {
             // 2. Eliminar de la hoja ALMUERZOS_EXTRA en Google Sheets
             let sheetsResult = null;
             try {
-                sheetsResult = await this._jsonp({
+                sheetsResult = await this._servidor({
                     accion: 'eliminarAlmuerzoExtra',
                     fecha: fecha,
                     nombre: invitado,
@@ -4244,16 +4244,79 @@ window.FirebaseBackend = {
         };
     },
 
+    // Token de la sesión de Firebase. Al abrir la página Firebase tarda un momento en restaurarla: se espera (máx. 5 s).
+    async _idToken() {
+        try {
+            const a = firebase.auth && firebase.auth();
+            if (!a) return '';
+            if (!a.currentUser) {
+                await Promise.race([
+                    new Promise(res => { const fin = a.onAuthStateChanged(() => { setTimeout(() => fin(), 0); res(); }); }),
+                    new Promise(res => setTimeout(res, 5000))
+                ]);
+            }
+            return a.currentUser ? await a.currentUser.getIdToken() : '';
+        } catch (e) { return ''; }
+    },
+
+    // Acción de Apps Script que exige sesión (seguridad_acciones.gs): POST con el idToken, nunca en la URL.
+    // Como _jsonp, los valores viajan como texto (salvo crudo = true) y los fallos de red lanzan error.
+    async _servidor(params, timeoutMs = 25000, reintentos = 1, crudo = false) {
+        const idToken = await this._idToken();
+        if (!idToken) {
+            try { if (window.SesionFirebase && window.SesionFirebase.pedirPorPermiso) window.SesionFirebase.pedirPorPermiso(); } catch (e) { }
+            return { ok: false, sinSesion: true, error: 'Tu sesión de seguridad no está activa. Confirma tu contraseña y vuelve a intentarlo.' };
+        }
+        const datos = {};
+        for (const k in params) {
+            const v = params[k];
+            if (v === undefined || v === null) continue;
+            datos[k] = crudo ? v : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+        }
+        const url = (window.TCONTROL_CONFIG && window.TCONTROL_CONFIG.API_URL) || window.API_URL || 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsIEWZPbXXcHtLMaYqTlx2Allv7qkb9oe6ZGYt6lP6lCPZb/exec';
+        for (let intento = 0; ; intento++) {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, {
+                    method: 'POST', headers: { 'Content-Type': 'text/plain' }, signal: ctrl.signal,
+                    body: JSON.stringify({ ...datos, apiKey: 'TCONTROL_SECURE_2026_XYZ', idToken })
+                });
+                const texto = await res.text();
+                let r;
+                try { r = JSON.parse(texto); } catch (e) { throw new Error('Respuesta no válida del servidor'); }
+                if (r && r.error && /lock|candado|tiempo de espera|invoked too many times/i.test(String(r.error)) && intento < reintentos) {
+                    await new Promise(x => setTimeout(x, 1500)); continue;
+                }
+                return r;
+            } catch (e) {
+                if (intento >= reintentos) throw new Error(e.name === 'AbortError' ? 'Timeout en la conexión con Sheets' : 'Error de red al conectar con Sheets');
+                await new Promise(x => setTimeout(x, 1500));
+            } finally { clearTimeout(t); }
+        }
+    },
+
+    // Token de la base histórica: lo emite Apps Script a quien tiene sesión; vale para esa persona
     async _tokenHistorico() {
         const KEY = 'tcontrol_token_historico';
-        try {
-            const c = JSON.parse(sessionStorage.getItem(KEY) || 'null');
-            if (c && c.token && c.exp * 1000 - Date.now() > 5 * 60 * 1000) return c.token;
-        } catch (e) { }
-        const res = await this._jsonp({ accion: 'tokenHistorico' }, 0, 1, 15000);
-        if (!res || !res.ok || !res.token) throw new Error((res && res.error) || 'sin token');
-        try { sessionStorage.setItem(KEY, JSON.stringify({ token: res.token, exp: res.exp })); } catch (e) { }
-        return res.token;
+        const a = firebase.auth && firebase.auth();
+        const vigente = () => {
+            try {
+                const c = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+                const u = a && a.currentUser;
+                return c && c.token && c.uid && (!u || u.uid === c.uid) && c.exp * 1000 - Date.now() > 5 * 60 * 1000 ? c.token : '';
+            } catch (e) { return ''; }
+        };
+        if (vigente()) return vigente();
+        if (!(await this._idToken())) throw new Error('sin sesión');   // sin pedir contraseña: es solo lectura en segundo plano
+        if (!this._tokenHistoricoEnCurso) {
+            this._tokenHistoricoEnCurso = this._servidor({ accion: 'tokenHistorico' }, 20000).then(res => {
+                if (!res || !res.ok || !res.token) throw new Error((res && res.error) || 'sin token');
+                try { sessionStorage.setItem(KEY, JSON.stringify({ token: res.token, exp: res.exp, uid: res.uid })); } catch (e) { }
+                return res.token;
+            }).finally(() => { this._tokenHistoricoEnCurso = null; });
+        }
+        return this._tokenHistoricoEnCurso;
     },
 
     // Pide a sync-historico que copie Sheets a la base histórica ya (lo atiende en ~10 s, sin esperar
@@ -4444,6 +4507,12 @@ window.FirebaseBackend = {
                 }
                 if (!resp.ok) throw new Error('PostgREST HTTP ' + resp.status);
                 const res = await resp.json();
+                if (res && res.sesion && intento === 0) {          // token de antes de la sesión: se pide uno nuevo
+                    sessionStorage.removeItem('tcontrol_token_historico');
+                    fueToken = true;
+                    throw new Error(res.error);
+                }
+                if (res && res.ok === false) return res;
                 console.log(`⚡ ${p.accion} guardado en PostgreSQL${res && res.encolado ? ` (cambio #${res.encolado}, se replica a Sheets)` : ''}`);
                 // Que el refresco automático del panel (cada 2 min, usa caché) ya vea el cambio
                 if (res && res.ok && p.empleadoId) await this._refrescarCacheArchivados(base, token, p.empleadoId);
@@ -4453,7 +4522,7 @@ window.FirebaseBackend = {
             }
         }
         console.log(`📄 ${params.accion} directo a Sheets`);
-        return this._jsonp(params, 0, maxRetries, timeoutMs);
+        return this._servidor(params, timeoutMs, Math.max(0, maxRetries - 1));
     },
 
     _jsonp(params, _retryCount = 0, maxRetries = 2, timeoutMs = 15000) {
@@ -4895,10 +4964,10 @@ window.FirebaseBackend = {
 
         // Respaldo asíncrono en segundo plano a Google Sheets vía POST (sin bloquear ni arrojar error de timeout)
         try {
-            this._post({
+            this._servidor({
                 accion: 'registrarLogWhatsApp',
                 ...params
-            }).catch(() => { });
+            }, 30000, 0).catch(() => { });
         } catch (e) { }
 
         return { ok: true, guardado: guardadoFirestore };
@@ -4961,10 +5030,10 @@ window.FirebaseBackend = {
 
         // 2. Fallback a Google Sheets si Firestore no tiene registros o no está disponible
         try {
-            const sheetsRes = await this._jsonp({
+            const sheetsRes = await this._servidor({
                 accion: 'obtenerLogsWhatsApp',
                 ...params
-            }, 0, 1, 6000);
+            }, 15000, 0);
             return sheetsRes || { ok: true, logs: [] };
         } catch (e) {
             return { ok: true, logs: [], error: e.toString() };

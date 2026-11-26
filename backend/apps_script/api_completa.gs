@@ -184,6 +184,9 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
       
+      const rechazoPost = rechazoSeguridad_(data, true);
+      if (rechazoPost) return ContentService.createTextOutput(JSON.stringify(rechazoPost)).setMimeType(ContentService.MimeType.JSON);
+
       if (data.accion === 'archivarRegistros') {
         // Un archivado a la vez: con dos paneles abiertos o con los reintentos del panel, dos ejecuciones
         // simultáneas leían las claves antes de que la otra escribiera y duplicaban filas (VACACIONES ×4).
@@ -646,6 +649,12 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
 
+      // Acciones con sesión (seguridad_acciones.gs): ya validadas arriba
+      if (Object.prototype.hasOwnProperty.call(NIVEL_ACCION, String(data.accion))) {
+        delete data.idToken;
+        return ContentService.createTextOutput(JSON.stringify(procesarAccion(data, true))).setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Acceso seguro (acceso_seguro.gs): solo por POST, el PIN nunca viaja en la URL
       if (typeof ACCIONES_ACCESO !== 'undefined' && ACCIONES_ACCESO.indexOf(data.accion) !== -1) {
         return ContentService.createTextOutput(JSON.stringify(procesarAccesoSeguro(data)))
@@ -686,10 +695,16 @@ function doOptions(e) {
 const ACCIONES_CERRADAS = [
   'actualizarPerfilEmpleado', 'obtenerInfoEmpleado', 'obtenerEstado', 'obtenerDatosSupervisor', 'exportarBaseDatosParaFirebase',
   'agregarSupervisor', 'eliminarSupervisor', 'registrarDispositivo', 'verificarPIN', 'verificarDispositivo', 'verificarToken',
-  'desvincularDispositivo'
+  'desvincularDispositivo',
+  // Fase 2: la app y el panel hacen esto en Firestore; aquí solo quedaba la vía sin sesión
+  'guardarRegistro', 'obtenerRegistros', 'verificarCambios', 'actualizarBaseCampo', 'marcarAlmuerzoConsumido', 'obtenerListaCatering',
+  'obtenerEstadisticasConsumo', 'obtenerEmpleadosTaller', 'actualizarAutorizacionExtras', 'listarSupervisores', 'obtenerConfiguraciones',
+  'guardarConfiguraciones', 'toggleEmergencia', 'toggleCulturaTcontrol', 'obtenerConfiguracionWhatsApp', 'guardarModalidadSupervisor',
+  'verificarClaveGuardia'
 ];
 
-function procesarAccion(params) {
+// validada: la llamada ya pasó por rechazoSeguridad_ en doPost (seguridad_acciones.gs)
+function procesarAccion(params, validada) {
   const accion = params.accion;
   
   if (!accion) {
@@ -698,8 +713,12 @@ function procesarAccion(params) {
   if (ACCIONES_CERRADAS.indexOf(String(accion)) !== -1) {
     return { ok: false, cerrada: true, error: "Esta acción ya no está disponible sin iniciar sesión. Actualiza la aplicación." };
   }
+  if (validada !== true) {
+    const rechazo = rechazoSeguridad_(params, false);
+    if (rechazo) return rechazo;
+  }
   
-  console.log("Procesando acción:", accion, params);
+  console.log("Procesando acción:", accion);   // sin parámetros: llevan datos personales
   
   // Enrutamiento
   switch(accion) {
@@ -990,27 +1009,31 @@ function procesarAccion(params) {
  * El secreto vive en Propiedades del script → PGRST_JWT_SECRET (mismo valor que db/.env);
  * nunca en el código ni en el frontend. Vigencia: 12 horas.
  */
+// Solo con sesión de Firebase (seguridad_acciones.gs deja en params._quien a la persona verificada).
+// api.encolar_cambio_archivado (025_sesion_ediciones.sql) decide con estos datos quién puede editar.
 function emitirTokenHistorico(params) {
+  var quien = params && params._quien;
+  if (!quien) return { ok: false, sinSesion: true, error: MSG_SIN_SESION };
   var secreto = PropertiesService.getScriptProperties().getProperty('PGRST_JWT_SECRET');
   if (!secreto) return { ok: false, error: 'PGRST_JWT_SECRET no configurado en Propiedades del script' };
 
   var b64url = function (bytesOrString) {
     return Utilities.base64EncodeWebSafe(bytesOrString).replace(/=+$/, '');
   };
-  var exp = Math.floor(Date.now() / 1000) + 12 * 3600;
+  var gestor = ROLES_GESTOR.indexOf(quien.rol) !== -1;
+  var exp = Math.floor(Date.now() / 1000) + 8 * 3600;
   var header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   var payload = b64url(JSON.stringify({
-    role: 'tcontrol_lector',
-    empleado_id: params.empleadoId ? String(params.empleadoId).trim() : null,
-    exp: exp
+    role: 'tcontrol_lector', sesion: true, uid: quien.uid, empleado_id: quien.uid, rol: quien.rol,
+    gestor: gestor, tthh: gestor ? false : esTthhSeguridad_(quien.uid), exp: exp
   }));
   var firma = b64url(Utilities.computeHmacSha256Signature(header + '.' + payload, secreto));
-  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp };
+  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp, uid: quien.uid };
 }
 
 /** Ejecutar desde el editor (▶) para comprobar la configuración antes de publicar. */
 function probarTokenHistorico() {
-  var res = emitirTokenHistorico({});
+  var res = emitirTokenHistorico({ _quien: { uid: 'PRUEBA', rol: 'colaborador' } });
   if (!res.ok) throw new Error(res.error);
   Logger.log('Token emitido correctamente (vence ' + new Date(res.exp * 1000) + ')');
 }

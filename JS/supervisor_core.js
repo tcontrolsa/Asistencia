@@ -8247,11 +8247,14 @@ async function iniciarArchivadoFirebase() {
       mostrarToast(`Archivando lote ${loteActual} de ${totalLotes} (${chunk.length} asistencias, ${chunkAlmuerzos.length} pedidos de catering)...`, 'info');
 
       // Enviar lote a Google Apps Script usando POST
+      const idToken = await window.FirebaseBackend._idToken();   // el servidor solo archiva con sesión de supervisor
+      if (!idToken) throw new Error('Tu sesión de seguridad no está activa. Recarga la página y confirma tu contraseña.');
       const respuesta = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' }, // Evitar preflight CORS estricto
         body: JSON.stringify({
           apiKey: 'TCONTROL_SECURE_2026_XYZ',
+          idToken,
           accion: 'archivarRegistros',
           registros: chunk,
           almuerzosExtra: chunkAlmuerzos
