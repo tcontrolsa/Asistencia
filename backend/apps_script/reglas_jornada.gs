@@ -43,6 +43,58 @@ var window = (typeof window !== 'undefined') ? window : globalThis;
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
+  // ---------------------------------------------------------------- horarios especiales (2026-11-26)
+  // Excepciones al horario general (07:30–16:15) por persona. Se guardan en la ficha (empleados/{id}.horario_especial)
+  // como texto JSON: [{ "dias":[1,2,3,4,5], "entrada":"07:45", "salida":"16:30", "desde":"2026-11-26", "hasta":"", "nota":"" }]
+  // dias: 1 = lunes … 5 = viernes (solo días laborables; sábado, domingo y feriado siguen con sus reglas).
+  // desde / hasta (opcionales, AAAA-MM-DD): vigencia; fuera de ella rige el horario general.
+  // El atraso, la salida temprana, las horas extra, las salidas automáticas y los permisos se miden contra este horario.
+  const HORARIOS_ESPECIALES = {};   // id → lista normalizada (se llena con registrarHorarios)
+  function hmAMin(t) {
+    const m = /^\s*(\d{1,2})[:.hH](\d{2})/.exec(String(t == null ? '' : t));
+    if (!m) return null;
+    const h = parseInt(m[1], 10), mi = parseInt(m[2], 10);
+    return h <= 23 && mi <= 59 ? h * 60 + mi : null;
+  }
+  function minAHM(m) { return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
+  // Acepta el texto JSON de la ficha, una lista o un solo objeto; descarta lo que no sea válido
+  function parsearHorarios(v) {
+    let lista = v;
+    if (typeof v === 'string') { try { lista = JSON.parse(v); } catch (e) { return []; } }
+    if (lista && !Array.isArray(lista) && typeof lista === 'object') lista = [lista];
+    if (!Array.isArray(lista)) return [];
+    return lista.map(h => {
+      if (!h || typeof h !== 'object') return null;
+      const ent = hmAMin(h.entrada), sal = hmAMin(h.salida);
+      if (ent === null || sal === null || sal <= ent + 240) return null;
+      let dias = Array.isArray(h.dias) ? h.dias.map(Number).filter(d => d >= 1 && d <= 5) : [1, 2, 3, 4, 5];
+      if (!dias.length) dias = [1, 2, 3, 4, 5];
+      const f = x => /^\d{4}-\d{2}-\d{2}/.test(String(x || '')) ? String(x).slice(0, 10) : '';
+      return { dias, entrada: ent, salida: sal, desde: f(h.desde), hasta: f(h.hasta), nota: String(h.nota || '').slice(0, 120) };
+    }).filter(Boolean);
+  }
+  // Guarda los horarios de una lista de fichas (panel, app o Apps Script) para consultarlos por ID
+  function registrarHorarios(fichas) {
+    (fichas || []).forEach(e => {
+      if (!e || e.id === undefined || e.id === null) return;
+      const id = String(e.id).trim();
+      const l = parsearHorarios(e.horario_especial);
+      if (l.length) HORARIOS_ESPECIALES[id] = l; else delete HORARIOS_ESPECIALES[id];
+    });
+  }
+  // emp: ficha o ID. Devuelve { entrada, salida, especial } en minutos para esa fecha (entrada/salida generales si no hay excepción)
+  function horarioDe(emp, fecha) {
+    const base = { entrada: HORA_ENTRADA_REF, salida: HORA_SALIDA_REF, especial: false };
+    let lista = null;
+    if (emp && typeof emp === 'object') lista = emp.horario_especial !== undefined ? parsearHorarios(emp.horario_especial) : HORARIOS_ESPECIALES[String(emp.id || '').trim()];
+    else if (emp !== undefined && emp !== null) lista = HORARIOS_ESPECIALES[String(emp).trim()];
+    if (!lista || !lista.length || !fecha) return base;
+    const f = String(fecha).slice(0, 10);
+    const dow = new Date(f + 'T12:00:00').getDay();   // 0 domingo … 6 sábado
+    const h = lista.find(x => x.dias.includes(dow) && (!x.desde || f >= x.desde) && (!x.hasta || f <= x.hasta));
+    return h ? { entrada: h.entrada, salida: h.salida, especial: true, nota: h.nota } : base;
+  }
+
   function obtenerMinutos(valor) {
     if (!valor) return null;
     if (typeof valor === 'object') {
@@ -217,8 +269,9 @@ var window = (typeof window !== 'undefined') ? window : globalThis;
     return typeof tope === 'number' ? Math.min(nuevo, tope) : nuevo;
   }
 
-  function calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, empId) {
+  function calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, empId, emp) {
     if (esFestivo) return 0;
+    const hor = horarioDe(emp || empId, fecha);
     let ordBruto = 0, hasLunchGap = false, ultimoSalidaMins = null;
     if (Array.isArray(periodosDia)) {
       let primerTramo = true;
@@ -227,13 +280,13 @@ var window = (typeof window !== 'undefined') ? window : globalThis;
         let mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
         let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
         if (mE === null || mS === null || mS <= mE) return;
-        if (primerTramo && mE > HORA_ENTRADA_REF && mE <= HORA_ENTRADA_REF + TOLERANCIA_ENTRADA_MIN) mE = HORA_ENTRADA_REF;
+        if (primerTramo && mE > hor.entrada && mE <= hor.entrada + TOLERANCIA_ENTRADA_MIN) mE = hor.entrada;
         primerTramo = false;
         if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
           if (!hasLunchGap && ultimoSalidaMins >= 690 && ultimoSalidaMins <= 870 && mE - ultimoSalidaMins >= 30) hasLunchGap = true;
         }
         ultimoSalidaMins = mS;
-        const ordE = Math.max(HORA_ENTRADA_REF, mE), ordS = Math.min(HORA_SALIDA_REF, mS);
+        const ordE = Math.max(hor.entrada, mE), ordS = Math.min(hor.salida, mS);
         if (ordS > ordE) ordBruto += (ordS - ordE);
       });
     }
@@ -510,7 +563,7 @@ var window = (typeof window !== 'undefined') ? window : globalThis;
       let atrasoMins = 0;
       if (primerReg && !esPasanteDet && !esFestivo) {
         const mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
-        const refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+        const refEntrada = esFestivo ? 420 : horarioDe(e, f).entrada;
         if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
       }
 
@@ -521,7 +574,7 @@ var window = (typeof window !== 'undefined') ? window : globalThis;
       }
 
       let minsSalidaTemprana = 0;
-      const refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+      const refSalida = esFestivo ? 975 : horarioDe(e, f).salida;
       if (!esFestivo && !esPasanteDet && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
         minsSalidaTemprana = refSalida - ultimoSalidaMins;
       }
@@ -537,9 +590,10 @@ var window = (typeof window !== 'undefined') ? window : globalThis;
 
       const tramosPermiso = permisoHoras[f] || [];
       const periodosNeto = tramosPermiso.length ? recortarPeriodos(periodosDia, tramosPermiso) : periodosDia;
-      const permisoHastaFin = tramosPermiso.some(t => t.b >= HORA_SALIDA_REF);
+      const horDia = horarioDe(e, f);
+      const permisoHastaFin = tramosPermiso.some(t => t.b >= horDia.salida);
       const inconclusos = periodosDia.filter(p => p.entrada && (!p.salida || (esSalidaSinRegistrar(p.salida) && !permisoHastaFin))).length;
-      const netWorkedOrdinario = calcularNetWorkedOrdinario(periodosNeto, esFestivo, f, e.id);
+      const netWorkedOrdinario = calcularNetWorkedOrdinario(periodosNeto, esFestivo, f, e.id, e);
       const missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - netWorkedOrdinario);
       if (!esFestivo && f >= DESCANSOS_DESDE) minsSalidaTemprana = Math.min(minsSalidaTemprana, missingMinutesDia);
       if (!esFestivo && (atrasoMins + minsSalidaTemprana) > missingMinutesDia) {
@@ -656,6 +710,7 @@ var window = (typeof window !== 'undefined') ? window : globalThis;
     obtenerFechaInicioEfectivaEmpleado, ajusteDescansoDia, almorzoEnPlanta, almuerzoFinSemana, descansoDia,
     calcularNetWorkedOrdinario, esSalidaSinRegistrar, contarRegistrosInconclusos, recortarPeriodos, esCumpleanosEmpleadoEnFecha,
     beneficioCumpleanosDia, armarPorDia, calcularBolsa, saldoBolsaPeriodo,
-    CARGO_VACACIONES_DESDE, repartirExcedente, cargosJornadaDe
+    CARGO_VACACIONES_DESDE, repartirExcedente, cargosJornadaDe,
+    hmAMin, minAHM, parsearHorarios, registrarHorarios, horarioDe
   };
 })();

@@ -35,7 +35,15 @@
   const COL = 'solicitudes_permiso';
   const CFG_DOC = ['configuracion', 'permisos'];
   const MIN_RESPUESTA = 8 * 60;             // plazo mínimo cuando el permiso ya empezó: 8 horas laborables
-  const JORNADA = { ini: 7 * 60 + 30, fin: 16 * 60 + 15 };   // 07:30–16:15 (HORA_ENTRADA_REF / HORA_SALIDA_REF)
+  const JORNADA = { ini: 7 * 60 + 30, fin: 16 * 60 + 15 };   // 07:30–16:15 (HORA_ENTRADA_REF / HORA_SALIDA_REF): plazo del jefe
+  // Jornada de quien pide el permiso: la general o su horario especial (ficha → ReglasJornada.horarioDe). La fija montarApp.
+  const JORNADA_P = { ini: JORNADA.ini, fin: JORNADA.fin };
+  function fijarJornadaPropia(emp) {
+    let h = null;
+    try { h = window.ReglasJornada && window.ReglasJornada.horarioDe ? window.ReglasJornada.horarioDe(emp, (typeof window.getLocalHoyStr === 'function' ? window.getLocalHoyStr() : new Date().toISOString().slice(0, 10))) : null; } catch (e) { }
+    JORNADA_P.ini = h ? h.entrada : JORNADA.ini;
+    JORNADA_P.fin = h ? h.salida : JORNADA.fin;
+  }
   const DIAS_ATRAS_CALAMIDAD = 30;
   const FERIADOS_MD = ['1/1', '2/16', '2/17', '4/3', '4/30', '5/1', '5/25', '8/10', '10/9', '11/2', '11/3', '12/6', '12/25'];
   const FERIADOS_FECHA = ['2026-06-26', '2026-11-20'];
@@ -82,10 +90,10 @@
   function opcionesHora(desde, hasta, elegida, uso) {
     const out = [];
     for (let m = desde; m <= hasta; m += PASO_HORA) out.push(m);
-    if (uso === 'regresa' && out[out.length - 1] !== JORNADA.fin) out.push(JORNADA.fin);
+    if (uso === 'regresa' && out[out.length - 1] !== JORNADA_P.fin) out.push(JORNADA_P.fin);
     const sel = out.includes(elegida) ? elegida : out[0];
     return out.map(m => {
-      const nota = m === JORNADA.fin ? ' · fin de la jornada' : (m === JORNADA.ini && uso === 'sale' ? ' · inicio de la jornada' : '');
+      const nota = m === JORNADA_P.fin ? ' · fin de la jornada' : (m === JORNADA_P.ini && uso === 'sale' ? ' · inicio de la jornada' : '');
       return `<option value="${hm24(m)}"${m === sel ? ' selected' : ''}>${hm24(m)}${nota}</option>`;
     }).join('');
   }
@@ -571,7 +579,7 @@
       // Solo tiempo de jornada (07:30–16:15), sin el receso ni el almuerzo que caen dentro: es el faltante
       // que ve el cálculo de la bolsa del panel (2026-11-12; antes se contaba regreso − salida)
       minutos = minutosJornada(a, b);
-      if (!minutos) return { error: 'El permiso debe estar dentro de la jornada (07:30 a 16:15)' };
+      if (!minutos) return { error: `El permiso debe estar dentro de la jornada (${hm24(JORNADA_P.ini)} a ${hm24(JORNADA_P.fin)})` };
       // Se pide antes de la hora para que alcance a aprobarse (el que nace al marcar ya empezó)
       if (p.tipo === 'PERMISO_PERSONAL' && !p.origen && new Date(`${desde}T${horaDesde}:00`) <= new Date()) return { error: 'Esa hora ya pasó: pide el permiso antes de la hora de salida' };
     }
@@ -865,7 +873,7 @@
   // Minutos de jornada (07:30–16:15) entre dos horas, sin los descansos que caen dentro (receso, almuerzo):
   // es el mismo faltante que ve el cálculo de la bolsa del panel.
   function minutosJornada(a, b) {
-    const ini = Math.max(a, JORNADA.ini), fin = Math.min(b, JORNADA.fin);
+    const ini = Math.max(a, JORNADA_P.ini), fin = Math.min(b, JORNADA_P.fin);
     if (isNaN(ini) || isNaN(fin) || fin <= ini) return 0;
     const desc = (window.ReglasJornada && window.ReglasJornada.DESCANSOS_LV) || [];
     return Math.max(0, fin - ini - desc.reduce((t, d) => (ini <= d.inicio && d.inicio < fin ? t + d.min : t), 0));
@@ -1181,8 +1189,8 @@
               <div id="pmBoxHasta"><label class="pm-etq" for="pmHasta">Hasta</label><input type="date" id="pmHasta" class="pm-campo"></div>
             </div>
             <div class="pm-fila" id="pmBoxHoras" hidden>
-              <div><label class="pm-etq" for="pmHoraDesde">Sale a las</label><select id="pmHoraDesde" class="pm-campo">${opcionesHora(JORNADA.ini, JORNADA.fin - PASO_HORA, minutosDe('08:00'), 'sale')}</select></div>
-              <div><label class="pm-etq" for="pmHoraHasta">Regresa a las</label><select id="pmHoraHasta" class="pm-campo">${opcionesHora(minutosDe('08:00') + PASO_HORA, JORNADA.fin, minutosDe('10:00'), 'regresa')}</select></div>
+              <div><label class="pm-etq" for="pmHoraDesde">Sale a las</label><select id="pmHoraDesde" class="pm-campo">${opcionesHora(JORNADA_P.ini, JORNADA_P.fin - PASO_HORA, Math.max(minutosDe('08:00'), JORNADA_P.ini), 'sale')}</select></div>
+              <div><label class="pm-etq" for="pmHoraHasta">Regresa a las</label><select id="pmHoraHasta" class="pm-campo">${opcionesHora(Math.max(minutosDe('08:00'), JORNADA_P.ini) + PASO_HORA, JORNADA_P.fin, minutosDe('10:00'), 'regresa')}</select></div>
             </div>
             <label class="pm-etq" for="pmMotivo" id="pmLblMotivo">Motivo</label>
             <textarea id="pmMotivo" class="pm-campo" rows="2" maxlength="400"></textarea>
@@ -1245,7 +1253,7 @@
     // «Regresa a las» empieza después de la hora de salida (conserva la elegida si sigue siendo válida)
     $('pmHoraDesde').addEventListener('change', () => {
       const a = minutosDe($('pmHoraDesde').value), b = minutosDe($('pmHoraHasta').value);
-      $('pmHoraHasta').innerHTML = opcionesHora(a + PASO_HORA, JORNADA.fin, b > a ? b : Math.min(a + 2 * 60, JORNADA.fin), 'regresa');
+      $('pmHoraHasta').innerHTML = opcionesHora(a + PASO_HORA, JORNADA_P.fin, b > a ? b : Math.min(a + 2 * 60, JORNADA_P.fin), 'regresa');
       recalcular();
     });
     $('pmAcepta').addEventListener('change', recalcular);
@@ -1829,6 +1837,7 @@
     if (!cont || !opts || !opts.empleado || !opts.empleado.id) return;
     if (cont._pm) cont._pm.destruir();
     const yo = { id: String(opts.empleado.id), nombre: opts.empleado.nombre || '' };
+    fijarJornadaPropia(opts.empleado);
     const st = { tab: 'mias', mias: null, aprobar: null, tthh: false, esJefe: false, errMias: '', errAprobar: '', subs: [], enlace: opts.enlace || null };
     cont.innerHTML = `<div class="pm-app">
       <header class="pm-hero"><div><h2>Permisos y vacaciones</h2><p>Pide vacaciones o permisos y sigue su estado.</p></div>

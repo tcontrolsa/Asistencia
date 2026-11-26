@@ -3,6 +3,7 @@
  *
  * 1. enviarRegistro (desde la cola de Postgres, la reenvía sync-historico): WhatsApp a la persona.
  *      tipo enlace      → enlace privado de registro (un solo uso, 24 horas)
+ *      tipo invitacion  → igual, pero lo envió un supervisor admin desde el panel (72 horas)
  *      tipo registrado  → ese número ya es de un colaborador: que entre a la app
  *      tipo pendiente   → ya tiene una solicitud en revisión
  *      tipo rechazada   → su solicitud no fue aprobada
@@ -28,6 +29,13 @@ function enviarRegistro(p) {
       REGISTRO_URL_PAGINA + '#t=' + p.token + '\n\n' +
       'El enlace sirve *una sola vez* y vence en *24 horas*. No lo compartas.\n' +
       'Si no pediste registrarte, ignora este mensaje.';
+  } else if (p.tipo === 'invitacion') {
+    if (!/^[0-9a-f]{64}$/.test(String(p.token || ''))) return { ok: false, error: 'Enlace no válido' };
+    texto = saludo + 'Te invitamos a registrarte en la *app de asistencia*. Abre este enlace y completa tu nombre, fecha de nacimiento y correo:\n' +
+      REGISTRO_URL_PAGINA + '#t=' + p.token + '\n\n' +
+      'Después de revisar tus datos te avisaremos por aquí cuando tu cuenta esté activa.\n' +
+      'El enlace sirve *una sola vez* y vence en *72 horas*. No lo compartas.\n' +
+      'Si no esperabas esta invitación, ignora este mensaje.';
   } else if (p.tipo === 'registrado') {
     texto = saludo + 'Este número ya está registrado en la app de asistencia. Ingresa aquí con tu ID:\n' + REGISTRO_URL_APP + '\n\n' +
       'Si olvidaste tu ID o tu contraseña, consulta con tu supervisor.';

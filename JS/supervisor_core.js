@@ -5,6 +5,10 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxgmtQXWi-qDYyjT8kG6jsI
 const HORA_ENTRADA_REF = 450; // 7:30
 const TOLERANCIA_ENTRADA_MIN = 5; // hasta 07:35 no cuenta como atraso ni como faltante
 const HORA_SALIDA_REF = 975;  // 16:15
+// Horario propio de cada persona (excepciones guardadas en la ficha: ReglasJornada.horarioDe, JS/reglas_jornada.js).
+// e: ficha o ID; fecha AAAA-MM-DD. Sin excepción devuelven el horario general (07:30 / 16:15).
+function refEntradaDe(e, fecha) { return (window.ReglasJornada && window.ReglasJornada.horarioDe) ? window.ReglasJornada.horarioDe(e, fecha).entrada : HORA_ENTRADA_REF; }
+function refSalidaDe(e, fecha) { return (window.ReglasJornada && window.ReglasJornada.horarioDe) ? window.ReglasJornada.horarioDe(e, fecha).salida : HORA_SALIDA_REF; }
 const LAT_EMPRESA = -0.1288771313385675;
 const LNG_EMPRESA = -78.47896772889067;
 const RADIO_METROS = 250;
@@ -680,6 +684,7 @@ function minutosAHHMMSS(minutos) {
 
 function calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, empId) {
   if (esFestivo) return 0;
+  const refEnt = refEntradaDe(empId, fecha), refSal = refSalidaDe(empId, fecha);
   let ordBruto = 0;
   let hasLunchGap = false;
   let ultimoSalidaMins = null;
@@ -692,7 +697,7 @@ function calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, empId) {
       let mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
       if (mE === null || mS === null || mS <= mE) return;
       // Tolerancia de entrada (pedido 2026-10-27): llegar hasta 5 min tarde no es atraso ni faltante
-      if (primerTramo && mE > HORA_ENTRADA_REF && mE <= HORA_ENTRADA_REF + TOLERANCIA_ENTRADA_MIN) mE = HORA_ENTRADA_REF;
+      if (primerTramo && mE > refEnt && mE <= refEnt + TOLERANCIA_ENTRADA_MIN) mE = refEnt;
       primerTramo = false;
 
       if (ultimoSalidaMins !== null && mE > ultimoSalidaMins) {
@@ -705,8 +710,8 @@ function calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, empId) {
       }
       ultimoSalidaMins = mS;
 
-      let ordE = Math.max(HORA_ENTRADA_REF, mE);
-      let ordS = Math.min(HORA_SALIDA_REF, mS);
+      let ordE = Math.max(refEnt, mE);
+      let ordS = Math.min(refSal, mS);
       if (ordS > ordE) {
         ordBruto += (ordS - ordE);
       }
@@ -1147,7 +1152,7 @@ function salidasPorConfirmarDia(e, periodos, regsDia, festivo) {
     if (!p.entrada || !p.salida || !salidaExtrasPorConfirmar(p.salida, regsDia)) return false;
     const mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
     const mS = obtenerMinutos(p.salida.hora || p.salida.timestamp);
-    return mE !== null && mS !== null && mS > mE && (festivo || mS > HORA_SALIDA_REF);
+    return mE !== null && mS !== null && mS > mE && (festivo || mS > refSalidaDe(e, regsDia && regsDia[0] && regsDia[0].fecha));
   }).map(p => p.salida);
 }
 window.salidasPorConfirmarDia = salidasPorConfirmarDia;
@@ -1156,7 +1161,8 @@ window.salidasPorConfirmarDia = salidasPorConfirmarDia;
 // salida normal (día laborable). null = el tramo no suma extras.
 function salidaParaExtras(mS, salida, regsDia, festivo) {
   if (!salidaExtrasPorConfirmar(salida, regsDia)) return mS;
-  return festivo ? null : Math.min(mS, HORA_SALIDA_REF);
+  const r0 = regsDia && regsDia[0];
+  return festivo ? null : Math.min(mS, refSalidaDe(r0 && (r0.empleadoId || r0.empleado_id), r0 && r0.fecha));
 }
 window.salidaParaExtras = salidaParaExtras;
 
@@ -1196,6 +1202,7 @@ function calcularExtrasDia(e, fecha, registrosDia) {
   const res = { h50: 0, hC50: 0, h100: 0, hC100: 0 };
   if (!autorizacionExtrasDia(e, regs)) return res;
   const festivo = esFinDeSemanaOFeriado(fecha);
+  const rEnt = refEntradaDe(e, fecha), rSal = refSalidaDe(e, fecha);
   let oficina50 = 0, campo50 = 0, madrugada = 0;
   periodos.forEach(p => {
     const mE = obtenerMinutos(p.entrada.hora || p.entrada.timestamp);
@@ -1210,11 +1217,11 @@ function calcularExtrasDia(e, fecha, registrosDia) {
     const noche = minutosMadrugada(fecha, mE, mS); // 00:00–06:00: al 100 %
     madrugada += noche;
     if (enCampo) {
-      const normal = Math.max(0, Math.min(mS, HORA_SALIDA_REF) - Math.max(mE, HORA_ENTRADA_REF));
+      const normal = Math.max(0, Math.min(mS, rSal) - Math.max(mE, rEnt));
       campo50 += (mS - mE) - normal - noche;
       res.hC100 += noche;
     } else {
-      if (mS > HORA_SALIDA_REF) oficina50 += mS - Math.max(mE, HORA_SALIDA_REF);
+      if (mS > rSal) oficina50 += mS - Math.max(mE, rSal);
       res.h100 += noche;
     }
   });
@@ -1821,7 +1828,7 @@ function cargarDashboard() {
     if (entr) {
       hoyP++;
       let m = obtenerMinutos(entr.hora);
-      if (m !== null && !esFestivoHoy && m > refEntradaHoy + 5 && !esPas) hoyT++;   // sábado, domingo y feriado: sin atraso
+      if (m !== null && !esFestivoHoy && m > refEntradaDe(e, hoy) + 5 && !esPas) hoyT++;   // sábado, domingo y feriado: sin atraso
       if (sal) hoySalieron++;
     } else {
       hoyA++;
@@ -1850,7 +1857,7 @@ function cargarDashboard() {
       entradas.forEach(r => {
         let m = obtenerMinutos(r.hora);
         const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-        const refEntradaR = esFestivoR ? 420 : HORA_ENTRADA_REF;
+        const refEntradaR = esFestivoR ? 420 : refEntradaDe(e, r.fecha);
         if (m !== null && !esFestivoR && m > refEntradaR + 5) tard++;
       });
 
@@ -2114,9 +2121,10 @@ function cargarDashboard() {
         if (m !== null) {
           nE++;
           const esFestivoF = esFeriadoODomingo(fecha) || new Date(fecha + 'T12:00:00').getDay() === 6;
-          if (m > HORA_ENTRADA_REF + 5 && !esPasanteEmp && !esFestivoF) {
+          const refEntF = refEntradaDe(e, fecha);
+          if (m > refEntF + 5 && !esPasanteEmp && !esFestivoF) {
             tardE++;
-            let diffMin = m - HORA_ENTRADA_REF;
+            let diffMin = m - refEntF;
             minutosTardE += diffMin;
             let fechaLegible = `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
             detallesTardanzas.push(`${fechaLegible} (${firstE.hora.slice(0, 5)})`);
@@ -2529,14 +2537,14 @@ function cargarAnalisisTardanzas() {
       if (mins === null) return;
       sE += mins; nE++;
       const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-      const refEnt = esFestivoR ? 420 : HORA_ENTRADA_REF;
+      const refEnt = esFestivoR ? 420 : refEntradaDe(e, r.fecha);
       if (!esFestivoR && mins - refEnt > 5) { t++; m += mins - refEnt; }
     });
     salidas.forEach(r => {
       let mins = obtenerMinutos(r.hora);
       if (mins === null) return;
       const esFestivoR = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-      const refSal = esFestivoR ? JORNADA_FIN_SEMANA.salida : HORA_SALIDA_REF;
+      const refSal = esFestivoR ? JORNADA_FIN_SEMANA.salida : refSalidaDe(e, r.fecha);
       if (mins - refSal > 1) x++;
     });
     return { ...e, tardanzas: t, minP: m, extra: x, promE: nE ? Math.round(sE / nE) : null, nE, id: e.id };
@@ -3064,7 +3072,7 @@ function cargarAsistencia() {
     if (!e.entradaHoy) return false;
     if (typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(e)) return false;
     let m = obtenerMinutos(e.horaEntradaMs);
-    return m !== null && !esFestivoHoy && m > refEntradaHoy + 5;   // sábado, domingo y feriado: sin atraso
+    return m !== null && !esFestivoHoy && m > refEntradaDe(e, hoy) + 5;   // sábado, domingo y feriado: sin atraso
   }).length;
   let salieron = empCache.filter(e => {
     if (e.salidaHoy) return true;
@@ -3198,12 +3206,13 @@ function cargarAsistencia() {
 
     let horaV = e.horaEntradaMs || eReg?.hora || eReg?.timestamp;
     let mEnt = e.entradaHoy ? obtenerMinutos(horaV) : null;
-    let tard = !esPasante && !esFestivoHoy && (mEnt !== null && mEnt > refEntradaHoy + 5);
+    const refEntradaE = esFestivoHoy ? 420 : refEntradaDe(e, hoy), refSalidaE = esFestivoHoy ? JORNADA_FIN_SEMANA.salida : refSalidaDe(e, hoy);
+    let tard = !esPasante && !esFestivoHoy && (mEnt !== null && mEnt > refEntradaE + 5);
 
     let eHtml = '';
     if (e.entradaHoy) {
       if (tard) {
-        eHtml = `<span class="editable-cell rep-badge-pill rep-badge-atraso-alert" ${clickEntrada} title="${canEditAttendance ? 'Clic para editar entrada' : 'Entrada con atraso'}"><i class="fas fa-clock" style="font-size:9.5px;"></i> ${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'} <span class="delta-badge">+${formatearMinutos(mEnt - refEntradaHoy)}</span></span>`;
+        eHtml = `<span class="editable-cell rep-badge-pill rep-badge-atraso-alert" ${clickEntrada} title="${canEditAttendance ? 'Clic para editar entrada' : 'Entrada con atraso'}"><i class="fas fa-clock" style="font-size:9.5px;"></i> ${mEnt !== null ? minsToHHMM(mEnt) : 'Registrada'} <span class="delta-badge">+${formatearMinutos(mEnt - refEntradaE)}</span></span>`;
       } else {
         let badgeTitle = esPasante ? 'Entrada (Horario Flexible - Pasante)' : (canEditAttendance ? 'Clic para editar entrada' : 'Entrada puntual');
         let badgeIco = esPasante ? '<i class="fas fa-user-graduate" style="font-size:9.5px; color:#7c3aed;"></i>' : '<i class="fas fa-check" style="font-size:9.5px;"></i>';
@@ -3218,8 +3227,8 @@ function cargarAsistencia() {
     let mSal = tieneSalida ? obtenerMinutos(sHoraV) : null;
     let sHtml = '';
     if (tieneSalida) {
-      if (!esPasante && mSal !== null && (mSal - refSalidaHoy > 1)) {
-        sHtml = `<span class="editable-cell rep-badge-pill rep-badge-ex50" ${clickSalida} title="${canEditAttendance ? 'Clic para editar salida' : 'Salida con tiempo adicional'}"><i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i> ${mSal !== null ? minsToHHMM(mSal) : 'Registrada'} <span class="delta-badge" style="background:#dbeafe; color:#1d4ed8;">+${formatearMinutos(mSal - refSalidaHoy)}</span></span>`;
+      if (!esPasante && mSal !== null && (mSal - refSalidaE > 1)) {
+        sHtml = `<span class="editable-cell rep-badge-pill rep-badge-ex50" ${clickSalida} title="${canEditAttendance ? 'Clic para editar salida' : 'Salida con tiempo adicional'}"><i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i> ${mSal !== null ? minsToHHMM(mSal) : 'Registrada'} <span class="delta-badge" style="background:#dbeafe; color:#1d4ed8;">+${formatearMinutos(mSal - refSalidaE)}</span></span>`;
       } else {
         let badgeStyle = esPasante ? 'background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe;' : '';
         let badgeIco = esPasante ? '<i class="fas fa-user-graduate" style="font-size:9.5px;"></i>' : '<i class="fas fa-sign-out-alt" style="font-size:9.5px;"></i>';
@@ -4329,7 +4338,7 @@ function cargarReportes() {
       let atrasoMinsHoy = 0;
       if (primerReg && !esPasanteEmp && !esFestivo) {
         let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
-        let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+        let refEntrada = esFestivo ? 420 : refEntradaDe(e, fecha);
         if (mE !== null && mE > refEntrada + 5) {
           atrasoMinsHoy = mE - refEntrada;
         }
@@ -4429,7 +4438,7 @@ function cargarReportes() {
             if (autorizado) extra100Dia += duracion;
           }
         } else {
-          let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+          let H_INI = refEntradaDe(e, fecha), H_FIN = refSalidaDe(e, fecha);
           const noche = minutosMadrugada(fecha, mE, mS); // 00:00–06:00: al 100 %
           if (enCampo) {
             campo100Dia += noche;
@@ -4486,7 +4495,7 @@ function cargarReportes() {
       }
 
       // Los 45 min de almuerzo son derecho del usuario y neutros: no computan como falta ni atraso
-      let minsSalidaTempranaHoy = (!esFestivo && !esPasanteEmp && ultimoSalidaMins !== null && ultimoSalidaMins < HORA_SALIDA_REF) ? (HORA_SALIDA_REF - ultimoSalidaMins) : 0;
+      let minsSalidaTempranaHoy = (!esFestivo && !esPasanteEmp && ultimoSalidaMins !== null && ultimoSalidaMins < refSalidaDe(e, fecha)) ? (refSalidaDe(e, fecha) - ultimoSalidaMins) : 0;
       let missingMinutesDia = esFestivo ? 0 : Math.max(0, 480 - ((typeof calcularNetWorkedOrdinario === 'function') ? calcularNetWorkedOrdinario(periodosDia, esFestivo, fecha, e.id) : netWorked));
       if (!esFestivo && fecha >= DESCANSOS_DESDE) minsSalidaTempranaHoy = Math.min(minsSalidaTempranaHoy, missingMinutesDia);
       if (!esFestivo && (atrasoMinsHoy + minsSalidaTempranaHoy) > missingMinutesDia) {
@@ -5416,7 +5425,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
         sE += m;
         cE++;
         const esFestivo = esFeriadoODomingo(r.fecha) || (new Date(r.fecha + 'T12:00:00').getDay() === 6);
-        if (!esFestivo && m > HORA_ENTRADA_REF + 5) tardT++;
+        if (!esFestivo && m > refEntradaDe(e, r.fecha) + 5) tardT++;
       } else if (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO') { // las ausencias (hora 00:00) no cuentan en el promedio
         sS += m;
         cS++;
@@ -5772,7 +5781,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const esPasanteDet = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(e);
       if (primerReg && !esPasanteDet && !esFestivo) { // sábado, domingo y feriado: sin atraso
         let mE = obtenerMinutos(primerReg.timestamp || primerReg.hora);
-        let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+        let refEntrada = esFestivo ? 420 : refEntradaDe(e, f);
         if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
       }
 
@@ -5999,7 +6008,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       }
 
       let minsSalidaTemprana = 0;
-      let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+      let refSalida = esFestivo ? 975 : refSalidaDe(e, f);
       if (!esFestivo && !esPasanteDet && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
         minsSalidaTemprana = refSalida - ultimoSalidaMins;
       }
@@ -6054,7 +6063,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             if (autorizadoGlobal) h100 += duracion;
           }
         } else {
-          let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+          let H_INI = refEntradaDe(e, f), H_FIN = refSalidaDe(e, f);
           const noche = minutosMadrugada(f, mE, mS); // 00:00–06:00: al 100 %
           if (enCampo) {
             hC100 += noche;
@@ -9376,6 +9385,7 @@ async function _cargarDatosCompletos(force = false, silencioso = false, forceShe
       return;
     }
     empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+    if (window.ReglasJornada) window.ReglasJornada.registrarHorarios(empCache);   // horarios especiales por persona
     actualizarSelectorGrupo();
     empCache.forEach(emp => {
       if (emp.registros && emp.registros.length) {
@@ -10399,6 +10409,7 @@ window.addEventListener('archivadosActualizados', async () => {
         });
 
         empCache = (res.empleados || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+        if (window.ReglasJornada) window.ReglasJornada.registrarHorarios(empCache);   // horarios especiales por persona
     actualizarSelectorGrupo();
         empCache.forEach(emp => {
           const empIdKey = String(emp.id).trim();
@@ -13077,11 +13088,13 @@ window.forzarSincronizacionHistorica = async function () {
       const res = await window.FirebaseBackend.obtenerDatosSupervisor({ force: true, forceSheets: true });
       if (res && res.empleados) {
         empCache = res.empleados;
+        if (window.ReglasJornada) window.ReglasJornada.registrarHorarios(empCache);
       }
     } else if (typeof jsonpRequest === 'function') {
       const res = await jsonpRequest({ accion: 'obtenerDatosSupervisor', force: true, forceSheets: true });
       if (res && res.empleados) {
         empCache = res.empleados;
+        if (window.ReglasJornada) window.ReglasJornada.registrarHorarios(empCache);
       }
     }
 
@@ -13936,7 +13949,7 @@ window.abrirModalGestionJornada = function (empleadoId, fecha) {
   const primerReg = regsDia.find(r => r.tipo === 'ENTRADA' || r.tipo === 'RETORNO_CAMPO' || r.tipo === 'ENTRADA_CAMPO');
   if (primerReg && !esFestivo) { // sábado, domingo y feriado: sin atraso
     let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
-    let refEntrada = esFestivo ? 420 : 450; // 07:00 o 07:30
+    let refEntrada = esFestivo ? 420 : refEntradaDe(emp, fechaEfectiva); // 07:00 o 07:30 (o el horario propio)
     if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
   }
 
@@ -14285,8 +14298,8 @@ window.recalcularTiemposModalJornada = function () {
       else if (dur > 240) dur -= ALMUERZO_MIN; // sábado, domingo, feriado y días anteriores al 26/09/2026
       dur = Math.max(0, dur);
 
-      let refEntrada = esFestivo ? JORNADA_FIN_SEMANA.entrada : HORA_ENTRADA_REF;
-      let refSalida = esFestivo ? JORNADA_FIN_SEMANA.salida : HORA_SALIDA_REF;
+      let refEntrada = esFestivo ? JORNADA_FIN_SEMANA.entrada : refEntradaDe(ctx?.emp || ctx?.empleadoId, ctx?.fecha);
+      let refSalida = esFestivo ? JORNADA_FIN_SEMANA.salida : refSalidaDe(ctx?.emp || ctx?.empleadoId, ctx?.fecha);
       let ordE = Math.max(refEntrada, mE);
       let ordS = Math.min(refSalida, mS);
       let ordDur = (ordS > ordE) ? (ordS - ordE) : 0;

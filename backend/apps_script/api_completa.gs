@@ -2018,7 +2018,8 @@ function guardarRegistro(data) {
         const diaU = (diaDesc || '').toUpperCase();
         const esSab = diaU.includes('SÁB') || diaU.includes('SAB');
         const esDom = diaU.includes('DOM');
-        const refSalida = (esSab || esDom) ? 915 : 975; // L-V 16:15; sábado y domingo 15:15
+        if (!(esSab || esDom)) cargarHorariosEspeciales_();
+        const refSalida = (esSab || esDom) ? 915 : horarioSalidaMin_(infoEmpleado, Utilities.formatDate(ahora, Session.getScriptTimeZone(), 'yyyy-MM-dd')); // L-V 16:15 (o su horario especial); sábado y domingo 15:15
         if (minsSalida - refSalida > 45) {
           horasExtra = "SI";
           if (!autoriza) autoriza = "SISTEMA (>45 MIN)";

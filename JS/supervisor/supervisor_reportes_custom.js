@@ -865,7 +865,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
     let atrasoMins = 0;
     if (primerReg && !esFestivo) { // sábado, domingo y feriado: sin atraso
       let mE = obtenerMinutos(primerReg.hora || primerReg.timestamp);
-      let refEntrada = esFestivo ? 420 : HORA_ENTRADA_REF;
+      let refEntrada = esFestivo ? 420 : refEntradaDe(e, f);
       if (mE !== null && mE > refEntrada + 5) atrasoMins = mE - refEntrada;
     }
 
@@ -950,7 +950,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
     }
 
     let minsSalidaTemprana = 0;
-    let refSalida = esFestivo ? 975 : HORA_SALIDA_REF;
+    let refSalida = esFestivo ? 975 : refSalidaDe(e, f);
     if (!esFestivo && ultimoSalidaMins !== null && ultimoSalidaMins < refSalida) {
       minsSalidaTemprana = refSalida - ultimoSalidaMins;
     }
@@ -975,7 +975,7 @@ window.exportarExcelDetalleEmpleado = function (empleadoId, indexPeriodo, custom
           if (autorizadoGlobal) h100 += duracion;
         }
       } else {
-        let H_INI = HORA_ENTRADA_REF, H_FIN = HORA_SALIDA_REF;
+        let H_INI = refEntradaDe(e, f), H_FIN = refSalidaDe(e, f);
         const noche = minutosMadrugada(f, mE, mS); // 00:00–06:00: al 100 %
         if (enCampo) {
           hC100 += noche;

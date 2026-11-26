@@ -439,6 +439,7 @@ function autoCompletarSalidasFaltantesSheets() {
   const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
   const filasAInsertar = [];
   
+  cargarHorariosEspeciales_();   // salida automática según el horario propio (ficha), si lo tiene
   empleadosActivos.forEach(emp => {
     fechasAProcesar.forEach(fecha => {
       const key = `${emp.id}_${fecha}`;
@@ -456,9 +457,11 @@ function autoCompletarSalidasFaltantesSheets() {
 
         // Regla: en fines de semana y feriados salida a las 15:15:00; entre semana a las 16:15:00
         const esFinDeSemana = (dayOfWeek === 0 || dayOfWeek === 6 || esFeriadoFechaAuto_(fecha));
-        const horaSalida = esFinDeSemana ? '15:15:00' : '16:15:00';
-        const horaNum = esFinDeSemana ? 15 : 16;
-        const dateObj = new Date(y, m, d, horaNum, 15, 0);
+        // Entre semana: 16:15 o la salida de su horario especial (p. ej. 16:30)
+        const minSalidaAuto = esFinDeSemana ? 915 : horarioSalidaMin_(emp.id, fecha);
+        const horaNum = Math.floor(minSalidaAuto / 60), minNum = minSalidaAuto % 60;
+        const horaSalida = ('0' + horaNum).slice(-2) + ':' + ('0' + minNum).slice(-2) + ':00';
+        const dateObj = new Date(y, m, d, horaNum, minNum, 0);
 
         console.log(`⚠️ [FALTA DE SALIDA DETECTADA] ${emp.nombre} (${emp.id}) el ${fecha} (${diaSemana}). Salida configurada: ${horaSalida}`);
         

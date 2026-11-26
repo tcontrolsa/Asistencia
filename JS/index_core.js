@@ -2034,6 +2034,9 @@ window.fijarBaseCampo = async function () {
 };
 
 function obtenerHoraSalidaConfigrada() {
+    // Con horario especial en la ficha, la salida es la suya (p. ej. 16:30)
+    const hp = horarioPropioApp();
+    if (hp.especial) return `${String(Math.floor(hp.salida / 60)).padStart(2, '0')}:${String(hp.salida % 60).padStart(2, '0')}`;
     // Usar variable global HORA_SALIDA si existe, sino del localStorage, sino default
     return HORA_SALIDA || localStorage.getItem('HORA_SALIDA') || CONFIG.HORA_SALIDA;
 }
@@ -2285,9 +2288,18 @@ function permisoDeMarcacion(tipoReg) {
     return null;
 }
 
+// Horario propio del colaborador (excepciones de la ficha: ReglasJornada.horarioDe). Sin excepción: 07:30 / 16:15.
+function horarioPropioApp(fecha) {
+    try {
+        if (window.ReglasJornada && window.ReglasJornada.horarioDe) return window.ReglasJornada.horarioDe(empleado, fecha || getLocalHoyStr());
+    } catch (e) { }
+    return { entrada: 450, salida: 975, especial: false };
+}
 const _hhmmAhora = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function tramoPermisoMarcacion(info, hora) {
-    return info.origen === 'ENTRADA_TARDIA' ? { desde: '07:30', hasta: hora } : { desde: hora, hasta: '16:15' };
+    const hp = horarioPropioApp();
+    const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return info.origen === 'ENTRADA_TARDIA' ? { desde: hm(hp.entrada), hasta: hora } : { desde: hora, hasta: hm(hp.salida) };
 }
 
 // Permiso personal que no cabe en la bolsa de 4 h: el colaborador acepta el cargo antes de guardar la marcación.
@@ -2308,7 +2320,7 @@ async function confirmarCargoPermisoMarcacion(info) {
     if (p.vacaciones_min) partes.push(`• ${dur(p.vacaciones_min)} se cargarán a tus vacaciones (cada 8 h descuentan 1 día)`);
     if (p.rol_min) partes.push(`• ${dur(p.rol_min)} se descontarán del rol (no te alcanzan las vacaciones)`);
     const aviso = `Este permiso supera tu bolsa de 4 horas (te quedan ${dur(p.saldo_bolsa_inicial || 0)}):\n\n${partes.join('\n')}` +
-        (info.regresa ? '\n\nSe calculó hasta las 16:15; si regresas antes, se recalcula.' : '');
+        (info.regresa ? `\n\nSe calculó hasta las ${tramoPermisoMarcacion(info, '').hasta}; si regresas antes, se recalcula.` : '');
     if (confirm(`${aviso}\n\n¿Aceptas este cargo?`)) return { seguir: true, planBolsa: p, aceptaCargo: true };
     if (!p.vacaciones_min) return { seguir: false };
     if (confirm('¿Registrar la salida sin aceptar el cargo a vacaciones?\n\nTodo el tiempo que no cubre la bolsa se descontará del rol.')) return { seguir: true, planBolsa: p, aceptaCargo: false };
@@ -2779,7 +2791,8 @@ function esEntradaTardia() {
     const ahora = new Date();
     const [horaLimite, minutoLimite] = HORA_ENTRADA_LIMITE.split(':').map(Number);
     const ahoraMinutos = ahora.getHours() * 60 + ahora.getMinutes();
-    const limiteMinutos = horaLimite * 60 + minutoLimite;
+    // El límite de la empresa (07:45) se corre igual que el horario propio: entrando a las 07:45 el límite pasa a 08:00
+    const limiteMinutos = horaLimite * 60 + minutoLimite + (horarioPropioApp().entrada - 450);
     return ahoraMinutos > limiteMinutos;
 }
 
@@ -3277,6 +3290,7 @@ async function verificarPIN() {
                 campoDesde: res.empleado.campoDesde || '',
                 campoHasta: res.empleado.campoHasta || '',
                 tipoPersonal: res.empleado.tipoPersonal || '',
+                horario_especial: res.empleado.horario_especial || '',
                 campoSolicitud: res.empleado.campoSolicitud || null,
                 teletrabajoHabilitado: res.empleado.teletrabajoHabilitado === true || (typeof estadoRes !== 'undefined' && estadoRes && estadoRes.teletrabajoHabilitado === true),
                 teletrabajoAviso: res.empleado.teletrabajoAviso === true || (typeof estadoRes !== 'undefined' && estadoRes && estadoRes.teletrabajoAviso === true),
@@ -3521,6 +3535,7 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
                 campoDesde: estadoRes.campoDesde || '',
                 campoHasta: estadoRes.campoHasta || '',
                 tipoPersonal: estadoRes.tipoPersonal || '',
+                horario_especial: estadoRes.horario_especial || '',
                 campoSolicitud: estadoRes.campoSolicitud || null,
                 teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
                 teletrabajoAviso: estadoRes.teletrabajoAviso === true,
@@ -3759,6 +3774,7 @@ async function confirmarRegistroInicial() {
                     campoDesde: estadoRes.campoDesde || '',
                     campoHasta: estadoRes.campoHasta || '',
                     tipoPersonal: estadoRes.tipoPersonal || '',
+                    horario_especial: estadoRes.horario_especial || '',
                     campoSolicitud: estadoRes.campoSolicitud || null,
                     teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
                     teletrabajoAviso: estadoRes.teletrabajoAviso === true,
@@ -5180,7 +5196,8 @@ async function pintarAvisoPermisoHoy() {
         const estTxt = x => ({ PENDIENTE_JEFE: 'pendiente de tu jefe', PENDIENTE_TTHH: 'pendiente de TTHH', APROBADA: 'aprobado', REGISTRADA: 'aprobado' })[x.estado] || '';
         const tramo = x => x.modalidad === 'HORAS' ? ` de ${escapeHtml(String(x.hora_desde).slice(0, 5))} a ${escapeHtml(String(x.hora_hasta).slice(0, 5))}` : '';
         const validos = lista.filter(x => !pendiente(x));
-        const hastaFin = validos.some(x => String(x.hora_hasta).slice(0, 5) >= '16:15');
+        const finJornada = (() => { const s = horarioPropioApp().salida; return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; })();
+        const hastaFin = validos.some(x => String(x.hora_hasta).slice(0, 5) >= finJornada);
         const notas = [];
         if (validos.length) notas.push(hastaFin
             ? 'No necesitas marcar la salida: tu jornada termina cuando empieza el permiso. Marca solo tu entrada.'
@@ -5565,7 +5582,7 @@ function renderHistoryPage() {
                             <i class="fas fa-chevron-down" style="margin-left: auto; font-size: 11px; color: #94a3b8;"></i>
                         </summary>
                         <div style="font-size: 12.5px; color: #475569; line-height: 1.55; margin-top: 8px;">
-                            <div><b>Lunes a viernes:</b> 07:30 a 16:15 (8 horas de trabajo).</div>
+                            <div><b>Lunes a viernes:</b> ${(() => { const h = horarioPropioApp(); const f = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; return f(h.entrada) + ' a ' + f(h.salida) + (h.especial ? ' (horario especial)' : ''); })()} (8 horas de trabajo).</div>
                             <div><b>Receso:</b> 10:00 a 10:15 (15 min).</div>
                             <div><b>Almuerzo:</b> 30 min · primer turno 12:30 a 13:00 o segundo turno 13:00 a 13:30.</div>
                             <div style="margin-top: 6px;">Receso y almuerzo (45 min) <b>no se cuentan como horas trabajadas</b>, pero solo se descuentan si estabas en la empresa a esa hora: si sales antes del almuerzo, no se te descuenta el almuerzo; si sales antes de las 10:00, tampoco el receso.</div>
@@ -5889,7 +5906,9 @@ function calcularMinutosAtraso(horaEntrada, fechaEntrada) {
 
         // Hora esperada desde configuración (ej: "07:30")
         const [horaEsp, minEsp] = (HORA_INICIO_ESPERADA || "07:30").split(':').map(x => parseInt(x, 10));
-        const horaEsperada = (horaEsp * 60) + (minEsp || 0);
+        let horaEsperada = (horaEsp * 60) + (minEsp || 0);
+        const hp = horarioPropioApp(fechaEntrada);
+        if (hp.especial) horaEsperada = hp.entrada;   // horario propio de la ficha
 
         // Tolerancia de 5 minutos
         const diferencia = mEntrada - horaEsperada;
@@ -6035,7 +6054,7 @@ function calcularEstadisticas(offset = 0) {
             const horaEntrada = getVal(entrada, 'hora', 5) || getVal(entrada, 'timestamp', 2) || entrada.hora || entrada.timestamp || entrada[5];
             const mEntrada = obtenerMinutos(horaEntrada);
             if (mEntrada !== null) {
-                const refEntrada = esFestivo ? 420 : H_INI_REF;
+                const refEntrada = esFestivo ? 420 : horarioPropioApp(fechaKey).entrada;
                 const esPasanteLocal = (typeof esEmpleadoPasante === 'function') && esEmpleadoPasante(empleado);
                 if (mEntrada > refEntrada + 5 && !esPasanteLocal && !esFestivo) { // fin de semana y feriado: sin atraso
                     atrasos++;
@@ -6130,7 +6149,7 @@ function calcularEstadisticas(offset = 0) {
             const supConfirmo = registrosDia.some(r => autorizaDe(r).startsWith('SUPERVISOR:'));
             if (mS !== null && (dispS === 'AUTO_COMPLETAR' || razS.includes('no registr')) && !supConfirmo) {
                 if (esFestivo) return;
-                mS = Math.min(mS, H_FIN_REF);
+                mS = Math.min(mS, horarioPropioApp(fechaKey).salida);
             }
             if (mE === null || mS === null || mS <= mE) return;
             let duracion = mS - mE;
@@ -6146,7 +6165,8 @@ function calcularEstadisticas(offset = 0) {
                     if (autorizado) extra100Dia += duracion;
                 }
             } else {
-                let H_INI = H_INI_REF, H_FIN = H_FIN_REF;
+                const hpDia = horarioPropioApp(fechaKey);
+                let H_INI = hpDia.entrada, H_FIN = hpDia.salida;
                 const noche = minutosMadrugadaApp(fechaKey, mE, mS); // 00:00–06:00: al 100 %
                 if (enCampo) {
                     campo100Dia += noche;
@@ -8885,6 +8905,7 @@ async function verificarEstadoInicial() {
                         campoDesde: estadoRes.campoDesde || '',
                         campoHasta: estadoRes.campoHasta || '',
                         tipoPersonal: estadoRes.tipoPersonal || '',
+                        horario_especial: estadoRes.horario_especial || '',
                         campoSolicitud: estadoRes.campoSolicitud || null,
                         teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
                         teletrabajoAviso: estadoRes.teletrabajoAviso === true,

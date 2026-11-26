@@ -436,6 +436,7 @@ window.FirebaseBackend = {
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
                 tipoPersonal: empData.tipo_personal || '',
+                horario_especial: empData.horario_especial || '',   // excepción de horario (ReglasJornada.horarioDe)
                 campoSolicitud: empData.campo_solicitud || null,
                 teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
                 teletrabajoAviso: window.FirebaseBackend._teletrabajoAvisoAceptado(empData),
@@ -610,6 +611,7 @@ window.FirebaseBackend = {
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
                 tipoPersonal: empData.tipo_personal || '',
+                horario_especial: empData.horario_especial || '',   // excepción de horario (ReglasJornada.horarioDe)
                 campoSolicitud: empData.campo_solicitud || null,
                 teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
                 teletrabajoAviso: window.FirebaseBackend._teletrabajoAvisoAceptado(empData),
@@ -967,6 +969,7 @@ window.FirebaseBackend = {
             campoDesde: empData.campo_desde || '',
             campoHasta: empData.campo_hasta || '',
             tipoPersonal: empData.tipo_personal || '',
+            horario_especial: empData.horario_especial || '',   // excepción de horario (ReglasJornada.horarioDe)
             campoSolicitud: empData.campo_solicitud || null,
             teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
             teletrabajoAviso: window.FirebaseBackend._teletrabajoAvisoAceptado(empData),
@@ -1306,7 +1309,11 @@ window.FirebaseBackend = {
             if (hPartes.length >= 2) {
                 const minsSalida = parseInt(hPartes[0], 10) * 60 + parseInt(hPartes[1], 10);
                 const dayOfWeek = fechaRegistro.getDay(); // 0: Dom, 6: Sab
-                const refSalida = (dayOfWeek === 0 || dayOfWeek === 6) ? 915 : 975; // L-V 16:15; sábado y domingo 15:15
+                let refSalida = (dayOfWeek === 0 || dayOfWeek === 6) ? 915 : 975; // L-V 16:15; sábado y domingo 15:15
+                if (refSalida === 975 && window.ReglasJornada && window.ReglasJornada.horarioDe) {   // horario especial de la ficha
+                    const iso = `${fechaRegistro.getFullYear()}-${String(fechaRegistro.getMonth() + 1).padStart(2, '0')}-${String(fechaRegistro.getDate()).padStart(2, '0')}`;
+                    refSalida = window.ReglasJornada.horarioDe(infoEmpleado, iso).salida;
+                }
                 if (minsSalida - refSalida > 45) {
                     horasExtra = "SI";
                     if (!autoriza) autoriza = "SISTEMA (>45 MIN)";

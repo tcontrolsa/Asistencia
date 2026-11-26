@@ -275,7 +275,7 @@ window.obtenerEstadoEmpleadoEnFecha = function (emp, fechaStr) {
     const mEnt = obtenerMinutos(horaE);
     // Sábado, domingo y feriado no tienen atraso; los pasantes tienen horario flexible
     const esPasante = typeof esEmpleadoPasante === 'function' && esEmpleadoPasante(emp);
-    const esTardanza = !esFinSemanaOFeriado && !esPasante && mEnt !== null && mEnt > HORA_ENTRADA_REF + 5;
+    const esTardanza = !esFinSemanaOFeriado && !esPasante && mEnt !== null && mEnt > refEntradaDe(emp, fechaStr) + 5;
 
     if (esTardanza) {
       return {

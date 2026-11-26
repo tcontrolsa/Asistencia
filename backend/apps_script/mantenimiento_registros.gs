@@ -525,6 +525,7 @@ function confirmarExtrasPorConfirmar(simular) {
   if (desde < CONFIRMAR_EXTRAS_DESDE) desde = CONFIRMAR_EXTRAS_DESDE;
   const hoy = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
 
+  cargarHorariosEspeciales_();
   const areas = {};
   sheetEmp.getDataRange().getValues().slice(1).forEach(f => {
     const id = String(f[0] === null || f[0] === undefined ? '' : f[0]).trim();
@@ -563,7 +564,7 @@ function confirmarExtrasPorConfirmar(simular) {
     const festivo = dow === 0 || dow === 6 || esFeriadoFechaAuto_(d.fecha);
     const entradas = d.filas.filter(r => ['ENTRADA', 'RETORNO_CAMPO', 'ENTRADA_CAMPO'].indexOf(r.tipo) !== -1 && r.mins !== null);
     const salida = d.filas.filter(r => (r.tipo === 'SALIDA' || r.tipo === 'SALIDA_CAMPO') && r.auto && r.mins !== null &&
-      (festivo || r.mins > 975) && entradas.some(e => e.mins < r.mins)).pop();
+      (festivo || r.mins > horarioSalidaMin_(d.id, d.fecha)) && entradas.some(e => e.mins < r.mins)).pop();
     if (salida) confirmados.push({ d: d, salida: salida });
   });
 
@@ -604,6 +605,7 @@ function subrayarDuplicados() {
  *    - Columna N (AUTORIZA): "SISTEMA (>45 MIN)"
  */
 function autorizarHorasExtrasAutomaticas() {
+  cargarHorariosEspeciales_();   // salida de su horario propio (ficha), si lo tiene
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('REGISTROS');
   if (!sheet) {
@@ -699,7 +701,7 @@ function autorizarHorasExtrasAutomaticas() {
     // Lunes a Viernes: 16:15 = 975 minutos (975 + 45 = 1020 min / 17:00)
     // Sábado: 15:00 = 900 minutos (900 + 45 = 945 min / 15:45)
     // Domingo: día especial no ordinario
-    let refSalida = 975;
+    let refSalida = horarioSalidaMin_(g.id, g.fechaKey);   // 16:15 o la salida de su horario especial
     if (esSabado) {
       refSalida = 900;
     } else if (esDomingo) {

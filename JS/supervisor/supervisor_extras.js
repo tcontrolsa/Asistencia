@@ -54,7 +54,7 @@
         horaE: formatearHora24(entrada.hora || entrada.timestamp), horaS,
         campo: entrada.modo === 'CAMPO' || salida.modo === 'CAMPO',
         // 15:15 y 16:15 son las horas que pone el sistema solo; otra hora la puso un supervisor o la regularización
-        deSistema: horaS === '15:15' || horaS === '16:15',
+        deSistema: horaS === '15:15' || horaS === '16:15' || horaS === ((window.ReglasJornada && window.ReglasJornada.minAHM) ? window.ReglasJornada.minAHM(refSalidaDe(e, fecha)) : ''),   // 16:15 o la salida de su horario propio
         m50: despues.h50 + despues.hC50 - antes.h50 - antes.hC50,
         m100: despues.h100 + despues.hC100 - antes.h100 - antes.hC100
       });

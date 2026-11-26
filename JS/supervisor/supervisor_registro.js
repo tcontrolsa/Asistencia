@@ -5,7 +5,7 @@
 (() => {
   const KEY_SESION = 'tcontrol_sesion_eval';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { ses: null, lista: [], siguiente: '', error: '', cargando: false, abierta: '' };
+  const st = { ses: null, lista: [], siguiente: '', error: '', cargando: false, abierta: '', invitaciones: [], resultadoInv: null, enviandoInv: false };
   const toast = (m, t) => (typeof mostrarToast === 'function' ? mostrarToast(m, t) : alert(m));
   const supervisorId = () => { try { return String(JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').id || ''); } catch (e) { return ''; } };
   const esAdmin = () => !!(window.isMaster || window.isSupervisorAdmin);
@@ -78,7 +78,7 @@
     st.cargando = true; st.error = ''; pintar();
     try {
       const r = await llamar({ accion: 'listar' });
-      st.lista = r.solicitudes; st.siguiente = r.siguienteId;
+      st.lista = r.solicitudes; st.siguiente = r.siguienteId; st.invitaciones = r.invitaciones || [];
       actualizarInsignia();
     } catch (e) { st.error = e.message; }
     st.cargando = false; pintar();
@@ -146,6 +146,50 @@
     </article>`;
   }
 
+  // ---------------------------------------------------------------- invitar (solo el celular)
+  const ESTADO_INV = {
+    enviada: ['#059669', 'Invitación enviada'], invalido: ['#b91c1c', 'Número no válido'], repetido: ['#92400e', 'Repetido en la lista'],
+    ya_registrado: ['#92400e', 'Ya es colaborador: no se envió'], en_revision: ['#92400e', 'Ya tiene una solicitud por revisar'],
+    limite: ['#92400e', 'Ya se le enviaron 3 invitaciones hoy']
+  };
+  // Acepta uno por línea o separados por coma o punto y coma (el número puede llevar espacios: 099 123 4567)
+  const leerNumeros = t => String(t || '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+  function bloqueInvitar() {
+    const res = st.resultadoInv;
+    const fila = x => { const [c, t] = ESTADO_INV[x.estado] || ['#475569', x.estado]; return `<li style="padding:3px 0;"><b>${esc(x.telefono)}</b> · <span style="color:${c}; font-weight:700;">${t}</span></li>`; };
+    return `<section style="border:1px solid #bfdbfe; background:#eff6ff; border-radius:12px; padding:12px 14px; margin-bottom:14px;">
+      <div style="font-weight:800; font-size:13.5px; color:#1e3a8a;"><i class="fab fa-whatsapp" style="color:#16a34a;"></i> Invitar a registrarse</div>
+      <p style="font-size:12px; color:#475569; margin:4px 0 8px;">Escribe solo el celular. A cada número le llega por WhatsApp un enlace privado (un solo uso, 72 horas) donde la persona completa su nombre, fecha de nacimiento y correo. Tú apruebas la solicitud aquí.</p>
+      <form data-invitar>
+        <textarea name="tels" rows="3" placeholder="0991234567&#10;0987654321, 0969876543" style="${estiloInput} resize:vertical; font-family:inherit;"></textarea>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <span style="font-size:11.5px; color:#64748b;">Uno por línea o separados por coma. Máximo 50.</span>
+          <button type="submit" ${st.enviandoInv ? 'disabled' : ''} style="${boton('#16a34a', '#fff')}">${st.enviandoInv ? '<i class="fas fa-spinner fa-spin"></i> Enviando…' : '<i class="fas fa-paper-plane"></i> Enviar invitación'}</button>
+        </div>
+      </form>
+      ${res ? `<div style="margin-top:10px; padding:8px 10px; background:#fff; border:1px solid #dbeafe; border-radius:8px; font-size:12.5px;">
+        <div style="font-weight:800; color:#0f172a;">${res.enviadas} de ${res.resultados.length} invitación(es) en camino</div>
+        <ul style="list-style:none; margin:4px 0 0; padding:0;">${res.resultados.map(fila).join('')}</ul></div>` : ''}
+      ${st.invitaciones.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer; font-size:12px; font-weight:700; color:#475569;">Invitaciones sin usar (${st.invitaciones.length})</summary>
+        <ul style="list-style:none; margin:6px 0 0; padding:0; font-size:12px; color:#334155;">${st.invitaciones.map(i => `<li style="padding:3px 0; border-top:1px solid #dbeafe;">${esc(i.telefono)} · enviada ${fechaCorta(i.enviada)} · vence ${fechaCorta(i.vence)}${i.por ? ' · ' + esc(i.por) : ''}</li>`).join('')}</ul></details>` : ''}
+    </section>`;
+  }
+
+  async function invitar(form) {
+    const tels = leerNumeros(form.tels.value);
+    if (!tels.length) return toast('Escribe al menos un número de celular', 'warning');
+    if (tels.length > 50) return toast('Máximo 50 números por envío', 'warning');
+    if (!confirm(`¿Enviar la invitación por WhatsApp a ${tels.length} número(s)?`)) return;
+    st.enviandoInv = true; st.error = ''; pintar();
+    try {
+      const r = await llamar({ accion: 'invitar', telefonos: tels });
+      st.resultadoInv = r;
+      toast(r.enviadas ? `${r.enviadas} invitación(es) enviada(s) por WhatsApp` : 'No se envió ninguna invitación: revisa el detalle', r.enviadas ? 'success' : 'warning');
+      st.enviandoInv = false;
+      await cargar();
+    } catch (e) { st.enviandoInv = false; st.error = e.message; pintar(); }
+  }
+
   function pintar() {
     const m = caja();
     let cuerpo;
@@ -161,6 +205,7 @@
       const pend = st.lista.filter(s => s.estado === 'PENDIENTE');
       const hechas = st.lista.filter(s => s.estado !== 'PENDIENTE');
       cuerpo = `${st.error ? `<p style="color:#b91c1c; font-size:13px; font-weight:600;">${esc(st.error)}</p>` : ''}
+        ${bloqueInvitar()}
         ${pend.length ? pend.map(tarjeta).join('') : '<p style="text-align:center; color:#64748b; padding:20px 0;"><i class="fas fa-circle-check" style="color:#16a34a;"></i> No hay solicitudes por revisar.</p>'}
         ${hechas.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:#475569;">Resueltas en los últimos 60 días (${hechas.length})</summary>
           <ul style="list-style:none; padding:0; margin:8px 0 0; font-size:12.5px;">${hechas.map(s => `<li style="padding:6px 0; border-top:1px solid #f1f5f9;">
@@ -170,7 +215,7 @@
     m.innerHTML = `<div style="background:#f8fafc; border-radius:14px; width:100%; max-width:640px; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,.3);">
       <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb); color:#fff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center;">
         <div><div style="font-weight:800; font-size:15px;"><i class="fas fa-user-clock"></i> Solicitudes de registro</div>
-          <div style="font-size:11.5px; opacity:.9;">Personas que pidieron registrarse con su celular</div></div>
+          <div style="font-size:11.5px; opacity:.9;">Invita por celular y revisa a quienes piden registrarse</div></div>
         <div style="display:flex; gap:6px;">${st.ses ? `<button type="button" data-a="recargar" title="Actualizar" style="background:rgba(255,255,255,.15); border:0; color:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer;"><i class="fas fa-rotate"></i></button>` : ''}
           <button type="button" data-a="cerrar" aria-label="Cerrar" style="background:none; border:none; color:#fff; font-size:22px; cursor:pointer;">&times;</button></div>
       </div>
@@ -232,6 +277,7 @@
       } catch (e) { st.error = e.message; pintar(); }
     }
     if (f.matches('[data-aprobar]')) { st.error = ''; aprobar(f); }
+    if (f.matches('[data-invitar]')) invitar(f);
   }
 
   async function alClic(ev) {
