@@ -311,6 +311,7 @@
       <header class="epp-cab">
         <span class="epp-avatar">${esc(yo.nombre.charAt(0))}</span>
         <div><b>${esc(yo.nombre)}</b><small>${esc(yo.cargo)} · ${esc(yo.area)}</small></div>
+        <a class="epp-guia" href="guias/epp/guia-epp.html#colaborador" target="_blank" rel="noopener" aria-label="Guía de uso" title="Guía de uso"><i class="fas fa-circle-question"></i></a>
         ${D.demo ? '' : '<button class="epp-salir" data-a="salir" aria-label="Salir"><i class="fas fa-right-from-bracket"></i></button>'}
       </header>
       ${porConfirmar ? `<button class="epp-aviso-firma" data-a="firmar" data-id="${esc(porFirmar[0].id)}"><i class="fas fa-signature"></i><span>${porConfirmar === 1 ? 'Tienes 1 entrega por firmar' : `Tienes ${porConfirmar} entregas por firmar`}</span><b>Firmar</b></button>` : ''}

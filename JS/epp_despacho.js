@@ -130,7 +130,7 @@
     app.innerHTML = `
       ${barraDemo()}
       <header class="epp-top">
-        <div class="epp-marca"><span class="epp-ico"><i class="fas fa-hard-hat"></i></span><div><b>Despacho de EPP</b><small>${esc(quien())}</small></div>${D.demo ? '' : '<button class="epp-salir" data-a="salir" aria-label="Salir"><i class="fas fa-right-from-bracket"></i></button>'}</div>
+        <div class="epp-marca"><span class="epp-ico"><i class="fas fa-hard-hat"></i></span><div><b>Despacho de EPP</b><small>${esc(quien())}</small></div><a class="epp-guia" href="guias/epp/guia-epp.html#bodega" target="_blank" rel="noopener" aria-label="Guía de uso" title="Guía de uso"><i class="fas fa-circle-question"></i></a>${D.demo ? '' : '<button class="epp-salir" data-a="salir" aria-label="Salir"><i class="fas fa-right-from-bracket"></i></button>'}</div>
         <div class="epp-kpis">
           ${kpi(cuenta.PENDIENTE || 0, 'Pendientes', 'solicitudes', 'PENDIENTE', true)}
           ${kpi(cuenta.PREPARADA || 0, 'Por retirar', 'solicitudes', 'PREPARADA')}
