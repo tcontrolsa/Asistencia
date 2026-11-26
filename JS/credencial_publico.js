@@ -20,7 +20,7 @@
 
   const $app = document.getElementById('crApp');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { token: '', datos: null, error: '', enviando: false, foto: '', acepto: false, verAviso: false, invalido: false };
+  const st = { token: '', datos: null, error: '', enviando: false, foto: '', acepto: false, verAviso: false, invalido: false, preparando: false, progreso: null, exito: null };
   const fecha = f => { const m = String(f || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
   const codigoBonito = c => String(c || '').replace(/^(.{4})(.{4})$/, '$1-$2');
 
@@ -108,6 +108,31 @@
       <p class="vs-muted vs-small" style="margin:0">Versión del aviso: ${esc(d.version)}</p></div>`;
   }
 
+  // Avance mientras se guarda: pasos y un mensaje que cambia con el tiempo (ver pintarProgreso)
+  function bloqueProgreso() {
+    const p = st.progreso;
+    if (!p) return '';
+    return `<div class="vs-prog" role="status" aria-live="polite"><div class="vs-barra"><span style="width:${p.pct}%"></span></div>
+      <div class="vs-prog-msg"><strong>${esc(p.msg)}</strong>${p.sub ? `<span>${esc(p.sub)}</span>` : ''}</div></div>`;
+  }
+  function bloqueExito() {
+    return st.exito ? `<section class="vs-card vs-exito" role="status"><span class="vs-exito-ico"><i class="fas fa-check"></i></span>
+      <strong>${esc(st.exito.titulo)}</strong><span>${esc(st.exito.texto)}</span></section>` : '';
+  }
+  // Muestra mensajes por etapas mientras corre la promesa y los limpia al terminar
+  async function conProgreso(etapas, tarea) {
+    const timers = [];
+    const poner = e => { st.progreso = e; pintar(); };
+    poner(etapas[0]);
+    etapas.slice(1).forEach(e => timers.push(setTimeout(() => poner(e), e.alos)));
+    try { return await tarea(); } finally { timers.forEach(clearTimeout); st.progreso = null; }
+  }
+  function mostrarExito(titulo, texto) {
+    st.exito = { titulo, texto };
+    clearTimeout(st._hExito);
+    st._hExito = setTimeout(() => { st.exito = null; pintar(); }, 5000);
+  }
+
   function vistaCredencial() {
     const d = st.datos, c = d.credencial;
     const vigente = c.vigente, conFoto = !!c.foto;
@@ -134,6 +159,8 @@
         <label class="vs-check"><input type="checkbox" id="crAcepto" ${st.acepto ? 'checked' : ''}>
           <span>Leí el aviso y <strong>acepto</strong> que TCONTROL S.A. use mi foto solo para verificar mi identidad en portería mientras mi credencial esté vigente.</span></label>
         ${st.error ? `<div class="vs-error" role="alert"><i class="fas fa-exclamation-circle"></i> ${esc(st.error)}</div>` : ''}
+        ${st.preparando ? '<div class="vs-prog" role="status"><div class="vs-barra vs-barra-ind"><span></span></div><div class="vs-prog-msg"><strong>Preparando tu foto…</strong><span>La recortamos y reducimos para que suba rápido.</span></div></div>' : ''}
+        ${bloqueProgreso()}
         <input type="file" id="crArchivo" accept="image/*" capture="user" hidden>
         <div style="display:grid; gap:8px;">
           ${st.foto
@@ -146,7 +173,7 @@
         <p class="vs-small vs-muted" style="margin:10px 0 0;"><i class="fas fa-lightbulb"></i> De frente, con buena luz, sin gafas oscuras ni gorra.</p></section>`;
     } else fotoHtml = '';
 
-    return `${estado}
+    return `${bloqueExito()}${estado}
       <section class="vs-card" style="text-align:center;">
         <div class="vs-codigo-lbl">Credencial de visitante frecuente</div>
         <div style="display:flex; justify-content:center; gap:12px; align-items:center; margin-top:8px;">
@@ -185,16 +212,26 @@
       if (a === 'subir') {
         st.acepto = !!document.getElementById('crAcepto')?.checked;
         if (!st.acepto) { st.error = 'Para guardar tu foto marca que leíste y aceptas el aviso.'; return pintar(); }
-        st.enviando = true; pintar();
-        await llamar({ accion: 'foto', imagen: st.foto, acepto: 'true', version: st.datos.version });
+        st.enviando = true;
+        await conProgreso([
+          { pct: 25, msg: 'Enviando tu foto…', sub: 'No cierres esta página hasta que termine.' },
+          { pct: 65, msg: 'Guardando de forma segura…', sub: 'Solo la portería la verá mientras tu credencial esté vigente.', alos: 3500 },
+          { pct: 85, msg: 'Está tardando más de lo normal…', sub: 'Sigue en proceso. Espera unos segundos, no la envíes otra vez.', alos: 14000 }
+        ], () => llamar({ accion: 'foto', imagen: st.foto, acepto: 'true', version: st.datos.version }));
         st.foto = ''; st.acepto = false;
+        mostrarExito('¡Foto guardada!', 'En unos minutos te llega tu credencial actualizada.');
         mensaje('¡Listo! Guardamos tu foto. En unos minutos te llega tu credencial actualizada.');
       }
-      if (a === 'rechazar') { st.enviando = true; pintar(); await llamar({ accion: 'rechazar' }); st.foto = ''; mensaje('Entendido: tu credencial funciona sin foto.'); }
+      if (a === 'rechazar') {
+        st.enviando = true;
+        await conProgreso([{ pct: 50, msg: 'Guardando tu decisión…' }], () => llamar({ accion: 'rechazar' }));
+        st.foto = ''; mostrarExito('Entendido', 'Tu credencial funciona sin foto. Puedes cambiar de opinión cuando quieras.'); mensaje('Entendido: tu credencial funciona sin foto.');
+      }
       if (a === 'retirar') {
         if (!confirm('¿Retirar tu foto? Se borra ahora mismo y la portería ya no la verá. Tu credencial sigue vigente.')) return;
-        st.enviando = true; pintar();
-        await llamar({ accion: 'retirar' });
+        st.enviando = true;
+        await conProgreso([{ pct: 50, msg: 'Borrando tu foto…', sub: 'Se elimina ahora mismo.' }], () => llamar({ accion: 'retirar' }));
+        mostrarExito('Foto borrada', 'Retiraste tu consentimiento. Tu credencial sigue vigente.');
         mensaje('Tu foto fue borrada y retiraste tu consentimiento.');
       }
     } catch (e) { st.error = e.message; }
@@ -216,7 +253,9 @@
     if (ev.target.id === 'crAcepto') { st.acepto = ev.target.checked; return; }
     if (ev.target.id !== 'crArchivo') return;
     st.acepto = !!document.getElementById('crAcepto')?.checked;
+    st.preparando = true; st.error = ''; pintar();
     try { st.foto = await prepararFoto(ev.target.files && ev.target.files[0]); st.error = ''; } catch (e) { st.error = e.message; }
+    st.preparando = false;
     pintar();
   });
 

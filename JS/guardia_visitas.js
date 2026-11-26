@@ -749,8 +749,8 @@
       <div class="gv-nombre">${esc(v.nombre || '(sin nombre)')}${v.origen === 'porteria' ? ' <span class="gv-sincita">Sin cita</span>' : ''}${v.origen === 'frecuente' ? ' <span class="gv-sincita" style="background:#ccfbf1;color:#0f766e;">Visitante frecuente</span>' : ''}</div>
       <div class="vs-muted">${esc(v.empresa || '')}</div>
       ${f.foto ? `<div style="display:flex;gap:12px;align-items:center;margin:10px 0;padding:10px;border-radius:12px;background:#f0fdfa;border:1px solid #99f6e4">
-        <img src="${f.foto}" alt="Foto del visitante" width="96" height="96" style="border-radius:10px;object-fit:cover;flex:none">
-        <span style="font-size:13px;color:#134e4a"><b>Compare la foto con la persona</b> y con su documento de identidad.</span></div>`
+        <img src="${f.foto}" alt="Foto del visitante" width="96" height="96" class="gv-foto-ampliable" onclick="window.gvAmpliarFoto(this.src)" title="Toque para ampliar" style="border-radius:10px;object-fit:cover;flex:none;cursor:zoom-in">
+        <span style="font-size:13px;color:#134e4a"><b>Compare la foto con la persona</b> y con su documento de identidad.<br><small><i class="fas fa-magnifying-glass-plus"></i> Toque la foto para ampliarla.</small></span></div>`
         : v.origen === 'frecuente' ? '<div class="vs-muted" style="font-size:12.5px;margin-top:4px"><i class="fas fa-id-card"></i> Sin foto registrada: verifique solo con el documento.</div>' : ''}
       <dl class="vs-datos">
         <dt>Visita a</dt><dd>${esc(v.anfitrion)}</dd>
@@ -911,6 +911,19 @@
     return cargaLista;
   }
   // Foto del visitante frecuente (voluntaria, con su consentimiento). Si no carga, la ficha sigue sin ella.
+  // Foto ampliada para comparar con la persona (se cierra tocando fuera, con la X o con Escape)
+  window.gvAmpliarFoto = function (src) {
+    document.getElementById('gvVisorFoto')?.remove();
+    const m = document.createElement('div');
+    m.id = 'gvVisorFoto'; m.className = 'vs-visor-foto'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Foto ampliada');
+    m.innerHTML = `<button type="button" class="vs-visor-cerrar" aria-label="Cerrar">&times;</button><img src="${String(src).replace(/"/g, '')}" alt="Foto del visitante ampliada">`;
+    const cerrar = () => { m.remove(); document.removeEventListener('keydown', tecla); };
+    const tecla = ev => { if (ev.key === 'Escape') cerrar(); };
+    document.addEventListener('keydown', tecla);
+    m.addEventListener('click', cerrar);
+    document.body.appendChild(m);
+  };
+
   async function fotoFrecuente(codigo) {
     try {
       const b = await base(false);
