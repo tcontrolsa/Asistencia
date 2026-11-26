@@ -6,7 +6,7 @@
   const KEY_SESION = 'tcontrol_sesion_eval';
   const app = document.getElementById('exApp');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, detalle: null, adj: null, nx: null, rev: null, revModal: null, mv: { items: [], subiendo: false, resumen: '' }, pq: null, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
+  const st = { ses: null, d: null, tab: 'examenes', sel: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, evaluados: new Set(), msg: null, banco: null, emps: [], correos: {}, detalle: null, adj: null, nx: null, rev: null, revModal: null, ex: null, res: { q: '', orden: 'prom' }, bq: null, mv: { items: [], subiendo: false, resumen: '' }, pq: null, pers: { q: '', unidad: null, area: '', soloPart: false, edits: new Map(), guardando: false } };
   const fb = () => window.FirebaseBackend;
   const quitarTildes = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
@@ -83,7 +83,7 @@
       st.emps = snap.docs.map(d => d.data()).filter(e => e && e.id && String(e.activo ?? 'SI').toUpperCase() !== 'NO')
         .map(e => ({ id: String(e.id).trim(), nombre: String(e.nombre || '').trim(), unidad: String(e.unidad || '').trim(), area: String(e.area_nomina || e.area || '').trim(),
           cargo: String(e.cargo || '').trim(), cargoNomina: String(e.cargo_nomina || '').trim(), rolEval: String(e.evaluacion_rol || '').toUpperCase(),
-          evaluadorId: String(e.evaluador_id || '').trim() }))
+          evaluadorId: String(e.evaluador_id || '').trim(), foto: String(e.foto_url || '').trim() }))
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
     } catch (e) { st.emps = []; }
     if (st.pers.unidad === null) {
@@ -472,8 +472,42 @@
       porCalificar: entregaron.filter(i => (i.calificadas || 0) < i.preguntas) };
   }
 
+  // ---------- clasificar, buscar y ordenar exámenes ----------
+  const CLASES = { enviar: ['Por enviar', 'gris', 'fa-paper-plane'], calificar: ['Por calificar', 'morado', 'fa-pen-to-square'], curso: ['En curso', 'azul', 'fa-hourglass-half'], terminado: ['Terminado', 'verde', 'fa-circle-check'] };
+  const PRIO = { enviar: 0, calificar: 1, curso: 2, terminado: 3 };
+  const FILTROS_EX = [['todos', 'Todos'], ['enviar', 'Por enviar'], ['calificar', 'Por calificar'], ['curso', 'En curso'], ['terminado', 'Terminados']];
+  const ORDENES_EX = [['accion', 'Requieren acción primero'], ['recientes', 'Más recientes'], ['antiguos', 'Más antiguos'], ['nombre', 'Nombre (A–Z)'], ['nota', 'Mejor nota promedio']];
+
+  function claseExamen(e) {
+    const r = resumenExamen(e);
+    if (r.sinEnviar.length) return 'enviar';
+    if (r.porCalificar.length) return 'calificar';
+    if (r.rindiendo.length || r.enviadas.length > r.entregaron.length) return 'curso';
+    return 'terminado';
+  }
+  function notaProm(e) {
+    const v = e.intentos.filter(i => i.estado === 'ENTREGADO' && i.calificadas > 0 && Number(i.maximo) > 0).map(i => Number(i.puntos) / Number(i.maximo));
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : -1;
+  }
+  function examenesVisibles() {
+    const x = st.ex, q = quitarTildes(x.q);
+    const todos = st.d.examenes.map(e => ({ e, c: claseExamen(e) }));
+    const conteo = { todos: todos.length, enviar: 0, calificar: 0, curso: 0, terminado: 0 };
+    todos.forEach(o => { conteo[o.c]++; });
+    const reciente = (a, b) => new Date(b.e.creadoEn) - new Date(a.e.creadoEn);
+    const orden = { accion: (a, b) => PRIO[a.c] - PRIO[b.c] || reciente(a, b), recientes: reciente, antiguos: (a, b) => -reciente(a, b),
+      nombre: (a, b) => a.e.nombre.localeCompare(b.e.nombre, 'es', { numeric: true }), nota: (a, b) => notaProm(b.e) - notaProm(a.e) || reciente(a, b) }[x.orden] || reciente;
+    const lista = todos.filter(o => (x.filtro === 'todos' || o.c === x.filtro)
+      && (!q || quitarTildes(o.e.nombre + ' ' + o.e.intentos.map(i => i.nombre + ' ' + i.correo).join(' ')).includes(q))).sort(orden);
+    return { lista, conteo, total: todos.length };
+  }
+  const PRIO_PERSONA = { ENTREGADO: 1, INICIADO: 2, ENVIADO: 3, GENERADO: 4, ANULADO: 5 };
+  const ordenGente = (a, b) => ((a.estado === 'ENTREGADO' && a.calificadas >= a.preguntas) ? 1.5 : PRIO_PERSONA[a.estado] || 9) - ((b.estado === 'ENTREGADO' && b.calificadas >= b.preguntas) ? 1.5 : PRIO_PERSONA[b.estado] || 9) || a.nombre.localeCompare(b.nombre, 'es');
+  const guardarPrefsEx = () => { try { localStorage.setItem('exm_prefs_ex', JSON.stringify({ filtro: st.ex.filtro, orden: st.ex.orden })); } catch (e) { } };
+  const cargarPrefsEx = () => { let p = {}; try { p = JSON.parse(localStorage.getItem('exm_prefs_ex') || '{}'); } catch (e) { } return { q: '', filtro: FILTROS_EX.some(f => f[0] === p.filtro) ? p.filtro : 'todos', orden: ORDENES_EX.some(o => o[0] === p.orden) ? p.orden : 'accion', vista: new Map() }; };
+
   // ---------- pestaña Exámenes ----------
-  function tarjetaExamen(e) {
+  function tarjetaExamen(e, clase) {
     const r = resumenExamen(e);
     const meta = [`${e.minutos} min`, `${e.cantidad} preguntas`, e.exigirPantalla && 'Pantalla compartida', e.permitirAdjuntos && 'Admite archivos', e.iaPermitida && 'Con IA']
       .filter(Boolean).map(t => `<span class="meta">${esc(t)}</span>`).join('');
@@ -492,11 +526,12 @@
       e.intentos.some(i => i.estado === 'ENVIADO') && `<button data-enviar="${e.id}"><i class="fas fa-paper-plane"></i> Reenviar invitaciones a quienes no han entregado</button>`,
       `<div class="menu-sep"></div><button class="peligro-item" data-elim-ex="${e.id}"><i class="fas fa-trash"></i> Eliminar este examen…</button>`
     ].filter(Boolean);
-    const stat = (n, de, txt) => `<div class="stat"><b>${n}</b><span>${de != null ? ' de ' + de : ''}</span><small>${txt}</small></div>`;
+    const progreso = (n, de, txt, cl) => `<div class="prog"><div class="prog-cab"><b>${n}</b><span>de ${de}</span><small>${txt}</small></div><div class="prog-barra"><i class="${cl}" style="width:${de ? Math.round(100 * n / de) : 0}%"></i></div></div>`;
     const estadoRes = e.resultadosEnviadoEn
       ? `<p class="linea-ok"><i class="fas fa-circle-check"></i> Resultados enviados a tu correo el ${esc(fechaCorta(e.resultadosEnviadoEn))}</p>`
       : e.resultadosError ? `<p class="msg aviso">Los resultados no se pudieron enviar solos: ${esc(e.resultadosError)}. Usa «Enviar resultados a mi correo» o «Descargar Excel».</p>` : '';
-    const filas = e.intentos.map(i => {
+    const gente = [...e.intentos].sort(ordenGente);
+    const filas = gente.map(i => {
       const nota = i.estado === 'ANULADO' ? '' : (i.calificadas > 0
         ? `<b>${fmtPts(i.puntos)}</b> / ${fmtPts(i.maximo)} <span class="sub">· ${pct(i.puntos, i.maximo)} %</span>${barra(i.puntos, i.maximo)}${i.calificadas < i.preguntas ? `<div class="sub">Parcial: ${i.calificadas} de ${i.preguntas} preguntas</div>` : ''}`
         : (i.estado === 'ENTREGADO' ? '<span class="sub">Sin calificar</span>' : '<span class="sub">—</span>'));
@@ -504,120 +539,242 @@
         i.iniciadoEn ? `<button class="btn chico ${i.estado === 'ENTREGADO' ? 'primario' : ''}" data-revisar="${i.id}">${i.estado === 'ENTREGADO' ? 'Revisar y calificar' : 'Ver avance'}</button>` : '',
         (i.estado === 'GENERADO' || i.estado === 'ENVIADO') ? `<button class="btn chico" data-enviar="${e.id}" data-intento="${i.id}">${i.estado === 'ENVIADO' ? 'Reenviar' : 'Enviar'}</button> <button class="btn chico enlace-mal" data-anular="${i.id}">Anular</button>` : `<button class="btn chico enlace-mal" data-elim-int="${i.id}" title="Borrar el resultado de esta persona">Eliminar</button>`
       ].join(' ');
-      return `<tr class="${i.estado === 'ANULADO' ? 'tenue' : ''}"><td><b>${esc(i.nombre)}</b><div class="sub">${esc(i.correo)}</div></td>
+      return `<tr class="${i.estado === 'ANULADO' ? 'tenue' : ''}"><td><div class="pers">${avatar(i.nombre, fotoDePerfil(i.perfilId))}<div><button class="enlace-nombre" data-ficha="${i.perfilId}" title="Ver el detalle y las gráficas de esta persona">${esc(i.nombre)}</button><div class="sub">${esc(i.correo)}</div></div></div></td>
         <td>${insignia(i.estado)}${i.motivoCierre === 'tiempo' ? '<div class="sub">se acabó el tiempo</div>' : ''}${i.errorEnvio ? `<div class="sub mal">No se pudo enviar el correo: ${esc(i.errorEnvio)}</div>` : ''}</td>
-        <td>${i.iniciadoEn ? `${i.respondidas} de ${i.preguntas} respondidas` : '<span class="sub">—</span>'}</td>
+        <td>${i.iniciadoEn ? `${i.respondidas} de ${i.preguntas} respondidas` : '<span class="sub">—</span>'}${i.entregadoEn ? `<div class="sub">Entregó ${esc(fechaCorta(i.entregadoEn))}</div>` : ''}</td>
         <td>${nota}</td>
         <td>${i.incidencias ? `<span class="alerta" title="Salidas de la ventana, intentos de pegar, etc."><i class="fas fa-triangle-exclamation"></i> ${i.incidencias}</span>` : (i.iniciadoEn ? '<span class="sub">Ninguna</span>' : '')}</td>
         <td class="acc">${acc}</td></tr>`;
     }).join('');
-    return `<div class="ex-card examen"><div class="ex-top"><div><h3 class="titulo">${esc(e.nombre)}</h3><div class="metas">${meta}<span class="meta tenue">${esc(fechaCorta(e.creadoEn))}</span></div></div>
+    const abierta = st.ex.vista.has(e.id) ? st.ex.vista.get(e.id) : clase !== 'terminado';
+    const [claseTxt, claseCol, claseIco] = CLASES[clase];
+    const cuenta = e.intentos.filter(i => i.estado !== 'ANULADO').length;
+    return `<div class="ex-card examen clase-${clase}"><div class="cab-examen">
+        <div class="cab-titulo"><div class="linea-titulo"><span class="ins ${claseCol}"><i class="fas ${claseIco}"></i> ${claseTxt}</span><h3 class="titulo">${esc(e.nombre)}</h3></div><div class="metas">${meta}<span class="meta tenue">Creado ${esc(fechaCorta(e.creadoEn))}</span></div></div>
+        <div class="cab-prog">${progreso(r.enviadas.length, r.vivos.length, 'invitadas', 'azul')}${progreso(r.entregaron.length, r.vivos.length, 'entregaron', 'verde')}${progreso(r.calificadas.length, r.entregaron.length, 'calificadas', 'morado')}</div>
         <div class="acciones">${paso ? `<button class="btn primario" ${paso.attr}><i class="fas ${paso.ico}"></i> ${paso.txt}</button>` : ''}
           ${items.length ? `<details class="menu"><summary class="btn">Más <i class="fas fa-chevron-down"></i></summary><div class="menu-lista">${items.join('')}</div></details>` : ''}</div></div>
-      <div class="stats">${stat(r.enviadas.length, r.vivos.length, 'invitadas')}${stat(r.entregaron.length, r.vivos.length, 'entregaron')}${stat(r.calificadas.length, r.entregaron.length, 'calificadas')}</div>
       ${estadoRes}
-      <div class="scroll"><table class="tabla gente"><tr><th>Evaluado</th><th>Estado</th><th>Avance</th><th>Nota</th><th>Incidencias</th><th></th></tr>${filas}</table></div></div>`;
+      <button class="plegar-gente" data-togg="${e.id}" aria-expanded="${abierta}"><i class="fas fa-chevron-${abierta ? 'down' : 'right'}"></i> Personas <span class="cnt">${cuenta}</span>${r.porCalificar.length ? `<span class="cnt morado">${r.porCalificar.length} por calificar</span>` : ''}</button>
+      ${abierta ? `<div class="scroll"><table class="tabla gente"><tr><th>Evaluado</th><th>Estado</th><th>Avance</th><th>Nota</th><th>Incidencias</th><th></th></tr>${filas}</table></div>` : ''}</div>`;
+  }
+
+  // Guía de «qué sigue»: Personas → Preguntas → Crear → Enviar → Calificar (resalta el paso que toca)
+  function guiaPasos() {
+    const d = st.d, ex = d.examenes.map(e => resumenExamen(e));
+    const nPers = d.perfiles.filter(f => f.rol === 'EVALUADO').length;
+    const porEnviar = ex.reduce((a, r) => a + r.sinEnviar.length, 0), porCalificar = ex.reduce((a, r) => a + r.porCalificar.length, 0);
+    const pasos = [
+      { t: 'Personas', ok: nPers > 0, ico: 'fa-users', sub: nPers ? `${nPers} para evaluar` : 'Marca a quién evaluar', ir: 'personas', cta: 'Elegir personas' },
+      { t: 'Preguntas', ok: d.preguntas > 0, ico: 'fa-database', sub: d.preguntas ? `${d.preguntas} en tu banco` : 'Carga tu banco', ir: 'banco', cta: 'Cargar preguntas' },
+      { t: 'Crear examen', ok: d.examenes.length > 0, ico: 'fa-clipboard-list', sub: d.examenes.length ? `${d.examenes.length} creado(s)` : 'Armar el examen', ir: 'nuevo', cta: 'Crear examen' },
+      { t: 'Enviar', ok: d.examenes.length > 0 && !porEnviar, ico: 'fa-paper-plane', sub: porEnviar ? `${porEnviar} sin enviar` : 'Invitaciones al día', ir: 'enviar', cta: 'Ver lo que falta enviar' },
+      { t: 'Calificar', ok: d.examenes.length > 0 && !porEnviar && !porCalificar && ex.some(r => r.entregaron.length), ico: 'fa-pen-to-square', sub: porCalificar ? `${porCalificar} por calificar` : 'Al día', ir: 'calificar', cta: 'Ver lo que falta calificar' }
+    ];
+    const actual = pasos.findIndex(p => !p.ok);
+    if (actual < 0 || (actual >= 3 && !porEnviar && !porCalificar)) return '';
+    const p = pasos[actual];
+    return `<div class="guia"><div class="guia-pasos">${pasos.map((q, i) => `<div class="guia-p ${q.ok ? 'hecho' : i === actual ? 'actual' : ''}"><span class="guia-n">${q.ok ? '<i class="fas fa-check"></i>' : i + 1}</span><span class="guia-t"><b>${q.t}</b><small>${esc(q.sub)}</small></span></div>`).join('')}</div>
+      <div class="guia-cta"><span><b>Siguiente paso:</b> ${esc(p.cta)}</span><button class="btn primario" data-gir="${p.ir}"><i class="fas ${p.ico}"></i> ${esc(p.cta)}</button></div></div>`;
   }
 
   function vistaExamenes() {
-    const d = st.d;
-    return `<div class="ex-top"><div><h2 style="margin:0">Mis exámenes</h2><small class="sub">Crea un examen, envía las invitaciones y califica lo que te entreguen.</small></div>
-      <div style="display:flex;gap:8px;align-items:center"><button class="btn" id="exActualizar" title="Actualizar"><i class="fas fa-rotate"></i></button><button class="btn primario" data-nuevo><i class="fas fa-plus"></i> Nuevo examen</button></div></div>
-      ${d.examenes.length ? d.examenes.map(tarjetaExamen).join('')
+    const d = st.d, x = st.ex, v = examenesVisibles();
+    const vivos = d.examenes.flatMap(e => e.intentos.filter(i => i.estado !== 'ANULADO'));
+    const kpis = [
+      ['fa-clipboard-list', d.examenes.length, 'exámenes', 'todos', 'azul'],
+      ['fa-users', vivos.length, `personas invitadas · ${vivos.filter(i => i.estado === 'ENTREGADO').length} entregaron`, null, 'azul'],
+      ['fa-pen-to-square', vivos.filter(i => i.estado === 'ENTREGADO' && (i.calificadas || 0) < i.preguntas).length, 'por calificar', 'calificar', 'morado'],
+      ['fa-triangle-exclamation', vivos.filter(i => i.estado === 'ENTREGADO' && i.incidencias > 0).length, 'con incidencias para revisar', null, 'ambar']
+    ].map(([ic, n, t, f, c]) => `<${f ? 'button' : 'div'} class="kpi ${c}" ${f ? `data-exf="${f}"` : ''}><i class="fas ${ic}"></i><b>${n}</b><span>${t}</span></${f ? 'button' : 'div'}>`).join('');
+    const filtros = FILTROS_EX.map(([k, t]) => `<button class="fch ${x.filtro === k ? 'on' : ''}" data-exf="${k}">${t} <span>${v.conteo[k]}</span></button>`).join('');
+    const hayFiltro = x.filtro !== 'todos' || x.q;
+    return `${guiaPasos()}<div class="kpis">${kpis}</div>
+      <div class="toolbar"><div class="buscar"><i class="fas fa-search"></i><input id="exBuscar" type="search" placeholder="Buscar examen o persona" value="${esc(x.q)}"></div>
+        <div class="chips-filtro">${filtros}</div>
+        <label class="orden">Ordenar<select id="exOrden">${ORDENES_EX.map(([k, t]) => `<option value="${k}" ${x.orden === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <div class="plegar-todo"><button class="btn chico" data-explegar="1" title="Mostrar la lista de personas de todos los exámenes">Abrir todo</button><button class="btn chico" data-explegar="0">Cerrar todo</button></div>
+        <button class="btn" id="exActualizar" title="Actualizar la lista"><i class="fas fa-rotate"></i></button></div>
+      ${v.lista.length ? `<div class="sub resultados-n">${v.lista.length} de ${v.total} examen(es)${hayFiltro ? ' · <a href="#" data-exf="todos" data-limpiar="1">Quitar filtros</a>' : ''}</div><div class="rejilla-ex">${v.lista.map(o => tarjetaExamen(o.e, o.c)).join('')}</div>`
+        : d.examenes.length ? `<div class="ex-card vacio-grande"><i class="fas fa-filter-circle-xmark"></i><h3>Ningún examen coincide</h3><p class="sub">Prueba con otra búsqueda o quita los filtros.</p><a class="btn" href="#" data-exf="todos" data-limpiar="1">Quitar filtros</a></div>`
         : `<div class="ex-card vacio-grande"><i class="fas fa-clipboard-list"></i><h3>Aún no has creado ningún examen</h3><p class="sub">Elige a quién evaluar, cuántas preguntas y cuánto tiempo. Les llegará un enlace por correo.</p><button class="btn primario" data-nuevo><i class="fas fa-plus"></i> Crear mi primer examen</button></div>`}`;
   }
 
-  // ---------- ventana «Nuevo examen» ----------
+  // ---------- «Nuevo examen» por pasos (una pregunta a la vez, como en Visitas) ----------
   const FILTROS = [['perfiles', 'Perfil', 'PERFIL'], ['lineas', 'Línea de negocio', 'LINEA'], ['tipos', 'Tipo de pregunta', 'TIPO'], ['dificultades', 'Dificultad', 'DIFICULTAD']];
-  function nxNuevo() { return { nombre: '', cant: 10, min: 45, vig: 7, pant: true, ia: false, adj: false, ev: new Set(), q: '', f: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, error: '' }; }
+  const NX_PASOS = [
+    ['¿A quién vas a evaluar?', 'Marca a las personas que recibirán el examen. Cada una recibe preguntas distintas, sorteadas al azar.'],
+    ['¿Cómo se llama y cuánto dura?', 'Ponle un nombre que reconozcas y elige cuántas preguntas y cuánto tiempo tendrán.'],
+    ['¿Qué reglas tiene?', 'Activa solo lo que necesites. Si dudas, déjalo como está.'],
+    ['Revisa y crea', 'Si algo no está bien, toca la fila para cambiarlo.']
+  ];
+  function nxNuevo() { return { paso: 1, nombre: '', cant: 10, min: 45, vig: 7, pant: true, ia: false, adj: false, ev: new Set(), q: '', f: { perfiles: [], lineas: [], tipos: [], dificultades: [] }, error: '', creando: false, listo: null }; }
 
+  const nxFiltra = () => { const q = quitarTildes(st.nx.q); return st.d.perfiles.filter(f => f.rol === 'EVALUADO' && (!q || quitarTildes(`${f.nombre} ${f.perfil} ${f.correo}`).includes(q))); };
   function nxListaPersonas() {
-    const n = st.nx, q = quitarTildes(n.q);
-    const todos = st.d.perfiles.filter(f => f.rol === 'EVALUADO');
-    const vis = todos.filter(f => !q || quitarTildes(`${f.nombre} ${f.perfil} ${f.correo}`).includes(q));
-    return `<div class="lista-eval">${vis.length ? vis.map(f => `<label class="fila-chk"><input type="checkbox" data-nxev="${f.id}" ${n.ev.has(f.id) ? 'checked' : ''}><span><b>${esc(f.nombre)}</b> <span class="sub">· ${esc(f.perfil)}${f.lineas.length ? ' · ' + esc(f.lineas.join(', ')) : ' · todas las líneas'}</span></span></label>`).join('')
-      : `<p class="vacio">${todos.length ? 'Nadie coincide con la búsqueda.' : 'Aún no hay personas para evaluar.'}</p>`}</div>`;
+    const n = st.nx, vis = nxFiltra(), total = st.d.perfiles.filter(f => f.rol === 'EVALUADO').length;
+    return vis.length ? vis.map(f => `<label class="nx-persona ${n.ev.has(f.id) ? 'on' : ''}"><input type="checkbox" data-nxev="${f.id}" ${n.ev.has(f.id) ? 'checked' : ''}><span class="nx-check"><i class="fas fa-check"></i></span>${avatar(f.nombre, fotoDePerfil(f.id))}
+        <span class="nx-pt"><b>${esc(f.nombre)}</b><small>${esc(f.perfil)}${f.lineas.length ? ' · ' + esc(f.lineas.join(', ')) : ' · todas las líneas'}</small></span></label>`).join('')
+      : `<p class="vacio">${total ? 'Nadie coincide con la búsqueda.' : 'Aún no hay personas para evaluar.'}</p>`;
+  }
+  const nxCuenta = () => st.nx.ev.size ? `${st.nx.ev.size} elegida${st.nx.ev.size === 1 ? '' : 's'}` : 'Ninguna elegida todavía';
+
+  // Opciones rápidas (toca una) más un campo para otro valor
+  function nxOpc(k, valores, sufijo, min, max) {
+    const n = st.nx;
+    return `<div class="gv-chips">${valores.map(v => `<button type="button" class="gv-chip ${n[k] === v ? 'on' : ''}" data-nx="set" data-k="${k}" data-v="${v}">${v}${sufijo ? ' ' + sufijo : ''}</button>`).join('')}</div>
+      <input class="nx-otro" type="number" inputmode="numeric" min="${min}" max="${max}" data-nxin="${k}" value="${esc(n[k])}" aria-label="Otro valor">`;
+  }
+
+  function nxErrorPaso(paso) {
+    const n = st.nx;
+    if (paso >= 1 && !n.ev.size) return 'Elige al menos una persona para evaluar.';
+    if (paso >= 2) {
+      if (!n.nombre.trim()) return 'Ponle un nombre al examen.';
+      if (!(n.cant >= 1 && n.cant <= 100)) return 'Las preguntas por persona deben ser entre 1 y 100.';
+      if (!(n.min >= 1 && n.min <= 600)) return 'El tiempo debe estar entre 1 y 600 minutos.';
+      if (!(n.vig >= 1 && n.vig <= 60)) return 'El enlace puede valer entre 1 y 60 días.';
+    }
+    return '';
   }
 
   function nxHtml() {
-    const d = st.d, n = st.nx;
-    const avisos = [d.preguntas === 0 ? 'Todavía no tienes preguntas. <a href="#" data-ir="banco">Carga o escribe algunas en «Banco de preguntas»</a>.' : '',
-      !d.perfiles.some(f => f.rol === 'EVALUADO') ? 'Todavía no hay personas para evaluar. <a href="#" data-ir="personas">Agrégalas en «Personas»</a>.' : ''].filter(Boolean);
-    const sw = (id, on, titulo, ayuda) => `<label class="sw"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}><span class="knob"></span><span class="sw-txt"><b>${titulo}</b><small>${ayuda}</small></span></label>`;
-    const nFiltros = FILTROS.reduce((a, [k]) => a + n.f[k].length, 0);
-    return `<div class="mdl-head"><h2>Nuevo examen</h2><button class="x" data-cerrar aria-label="Cerrar">×</button></div>
-      <div class="mdl-body">
-        ${avisos.map(a => `<p class="msg aviso">${a}</p>`).join('')}
-        <section><h3><span class="paso">1</span> Datos del examen</h3>
-          <div class="fila"><label>Nombre<input id="nxNombre" value="${esc(n.nombre)}" placeholder="Ej. Evaluación de ingreso Q4" maxlength="80"></label>
-            <label>Preguntas por persona<input id="nxCant" type="number" min="1" max="100" value="${n.cant}"></label>
-            <label>Tiempo (minutos)<input id="nxMin" type="number" min="1" max="600" value="${n.min}"></label>
-            <label>El enlace vale (días)<input id="nxVig" type="number" min="1" max="60" value="${n.vig}"></label></div></section>
-        <section><h3><span class="paso">2</span> ¿A quién evalúas? <span class="sub" id="nxCuenta">${n.ev.size ? n.ev.size + ' elegido(s)' : ''}</span></h3>
-          <div class="barra-lista"><input type="search" id="nxBuscar" placeholder="Buscar persona" value="${esc(n.q)}"><button class="btn chico" data-nxtodos>Marcar / desmarcar todos</button></div>
-          <div id="nxPersonas">${nxListaPersonas()}</div></section>
-        <section><h3><span class="paso">3</span> Opciones</h3>
-          ${sw('nxPant', n.pant, 'Exigir compartir toda la pantalla', 'Se toman capturas durante el examen para detectar si buscan respuestas en otro lugar.')}
-          ${sw('nxAdj', n.adj, 'Permitir adjuntar archivos', 'Cada persona puede subir hasta 3 archivos por pregunta (10 MB cada uno).')}
-          ${sw('nxIA', n.ia, 'Permitir calificar con IA', 'Les avisamos antes de empezar. La IA solo ve la pregunta y la respuesta, nunca nombres ni correos. Tú decides cuándo usarla.')}</section>
-        <details class="avanzado" ${nFiltros ? 'open' : ''}><summary>Elegir qué preguntas entran <span class="sub">(opcional${nFiltros ? ' · ' + nFiltros + ' filtro(s)' : ': por defecto, según el perfil y las líneas de cada persona'})</span></summary>
-          ${FILTROS.map(([k, tit, cat]) => `<div class="sub" style="margin-top:8px">${tit}</div><div class="chips">${(d.catalogo[cat] || []).map(v => `<span class="chip ${n.f[k].includes(v) ? 'on' : ''}" data-nxchip="${k}" data-v="${esc(v)}">${esc(v)}</span>`).join('')}</div>`).join('')}</details>
-        <p class="msg mal" id="nxError" ${n.error ? '' : 'hidden'}>${esc(n.error)}</p>
-      </div>
-      <div class="mdl-pie"><span class="sub">Cada persona recibe preguntas distintas, sorteadas al azar.</span><button class="btn" data-cerrar>Cancelar</button><button class="btn primario" id="nxCrear"><i class="fas fa-check"></i> Crear examen</button></div>`;
-  }
-
-  function nxLeer() {
-    const n = st.nx, g = id => document.getElementById(id);
-    if (!n || !g('nxNombre')) return;
-    Object.assign(n, { nombre: g('nxNombre').value, cant: Number(g('nxCant').value), min: Number(g('nxMin').value), vig: Number(g('nxVig').value), pant: g('nxPant').checked, adj: g('nxAdj').checked, ia: g('nxIA').checked });
+    const d = st.d, n = st.nx, paso = n.paso;
+    const sw = (k, titulo, ayuda) => `<label class="sw"><input type="checkbox" data-nxsw="${k}" ${n[k] ? 'checked' : ''}><span class="knob"></span><span class="sw-txt"><b>${titulo}</b><small>${ayuda}</small></span></label>`;
+    const x = `<button type="button" class="x" data-nx="cerrar" aria-label="Cerrar">×</button>`;
+    if (n.listo) {
+      const l = n.listo;
+      return `<div class="mdl-head"><h2>Examen creado</h2>${x}</div>
+        <div class="mdl-body centro"><div class="gran-ico verde"><i class="fas fa-check"></i></div>
+          <p class="gv-pregunta">«${esc(l.nombre)}» está listo</p>
+          <p class="txt-ayuda">${l.ok} persona${l.ok === 1 ? '' : 's'} con su examen armado. Falta enviarles el enlace por correo para que puedan rendirlo.</p>
+          ${l.notas.length ? `<p class="msg aviso" style="text-align:left"><b>Ojo:</b><br>${l.notas.join('<br>')}</p>` : ''}
+          ${n.error ? `<p class="msg mal" style="text-align:left">${esc(n.error)}</p>` : ''}</div>
+        <div class="mdl-pie"><button class="btn" data-nx="despues" ${n.creando ? 'disabled' : ''}>Enviar más tarde</button>
+          <button class="btn primario grande" data-nx="enviar" ${n.creando ? 'disabled' : ''}>${n.creando ? '<i class="fas fa-spinner fa-spin"></i> Enviando…' : '<i class="fas fa-paper-plane"></i> Enviar invitaciones ahora'}</button></div>`;
+    }
+    const avisos = [d.preguntas === 0 ? 'Todavía no tienes preguntas. <a href="#" data-nx="ir-banco">Cárgalas en «Banco de preguntas»</a>.' : '',
+      !d.perfiles.some(f => f.rol === 'EVALUADO') ? 'Todavía no hay personas para evaluar. <a href="#" data-nx="ir-personas">Agrégalas en «Personas»</a>.' : ''].filter(Boolean);
+    const [preg, ayuda] = NX_PASOS[paso - 1];
+    let campos = '', pie = '';
+    if (paso === 1) {
+      campos = `${avisos.map(a => `<p class="msg aviso">${a}</p>`).join('')}
+        <div class="barra-lista"><input type="search" data-nxq placeholder="Buscar persona" value="${esc(n.q)}"><button type="button" class="btn chico" data-nx="todos">Marcar todos</button></div>
+        <div class="nx-cuenta" id="nxCuenta">${nxCuenta()}</div><div class="nx-personas" id="nxPersonas">${nxListaPersonas()}</div>`;
+    } else if (paso === 2) {
+      campos = `<label class="gv-campo"><span>Nombre del examen</span><input data-nxin="nombre" maxlength="80" value="${esc(n.nombre)}" placeholder="Ej. Evaluación de ingreso Q4" autocomplete="off"></label>
+        <div class="gv-campo"><span>Preguntas por persona</span>${nxOpc('cant', [5, 10, 15, 20], '', 1, 100)}</div>
+        <div class="gv-campo"><span>Tiempo para rendirlo (minutos)</span>${nxOpc('min', [30, 45, 60, 90], 'min', 1, 600)}</div>
+        <div class="gv-campo"><span>El enlace vale (días)</span>${nxOpc('vig', [3, 7, 14, 30], 'días', 1, 60)}</div>`;
+    } else if (paso === 3) {
+      const nF = FILTROS.reduce((a, [k]) => a + n.f[k].length, 0);
+      campos = `${sw('pant', 'Exigir compartir toda la pantalla', 'Se toman capturas durante el examen para detectar si buscan respuestas en otro lugar.')}
+        ${sw('adj', 'Permitir adjuntar archivos', 'Cada persona puede subir hasta 3 archivos por pregunta (10 MB cada uno).')}
+        ${sw('ia', 'Permitir calificar con IA', 'Les avisamos antes de empezar. La IA solo ve la pregunta y la respuesta, nunca nombres ni correos. Tú decides cuándo usarla.')}
+        <details class="avanzado" ${nF ? 'open' : ''}><summary>Elegir qué preguntas entran <span class="sub">(opcional${nF ? ' · ' + nF + ' filtro(s)' : ': por defecto, según el perfil y las líneas de cada persona'})</span></summary>
+          ${FILTROS.map(([k, tit, cat]) => `<div class="sub" style="margin-top:8px">${tit}</div><div class="chips">${(d.catalogo[cat] || []).map(v => `<span class="chip ${n.f[k].includes(v) ? 'on' : ''}" data-nx="chip" data-k="${k}" data-v="${esc(v)}">${esc(v)}</span>`).join('')}</div>`).join('')}</details>`;
+    } else {
+      const fila = (etq, val, ir) => `<button type="button" class="nx-res" data-nx="ir" data-paso="${ir}"><span>${etq}</span><strong>${val}</strong><i class="fas fa-pen"></i></button>`;
+      const nom = [...n.ev].map(id => (d.perfiles.find(f => f.id === id) || {}).nombre).filter(Boolean);
+      const reglas = [n.pant && 'Pantalla compartida', n.adj && 'Admite archivos', n.ia && 'Con IA'].filter(Boolean).join(' · ') || 'Sin reglas extra';
+      const nF = FILTROS.reduce((a, [k]) => a + n.f[k].length, 0);
+      campos = `<div class="nx-resumen">${fila('Personas', `${n.ev.size} · <span class="sub">${esc(nom.slice(0, 3).join(', '))}${nom.length > 3 ? ' y ' + (nom.length - 3) + ' más' : ''}</span>`, 1)}
+          ${fila('Nombre', esc(n.nombre), 2)}${fila('Preguntas y tiempo', `${n.cant} preguntas · ${n.min} min`, 2)}${fila('El enlace vale', `${n.vig} días`, 2)}
+          ${fila('Reglas', esc(reglas), 3)}${fila('Preguntas que entran', nF ? `${nF} filtro(s)` : 'Según perfil y líneas', 3)}</div>
+        <p class="nx-nota"><i class="fas fa-paper-plane"></i> Al crearlo te preguntamos si quieres enviar las invitaciones por correo en ese momento.</p>`;
+    }
+    pie = paso < 4 ? `<button type="submit" class="btn primario grande">Siguiente <i class="fas fa-arrow-right"></i></button>`
+      : `<button type="submit" class="btn primario grande" ${n.creando ? 'disabled' : ''}>${n.creando ? '<i class="fas fa-spinner fa-spin"></i> Creando…' : '<i class="fas fa-check"></i> Crear examen'}</button>`;
+    return `<form novalidate autocomplete="off" class="nx-form"><div class="mdl-head"><button type="button" class="volver" data-nx="${paso > 1 ? 'atras' : 'cerrar'}" aria-label="Atrás"><i class="fas fa-arrow-left"></i></button><h2>Nuevo examen · paso ${paso} de 4</h2>${x}</div>
+      <div class="mdl-body"><div class="gv-progreso">${[1, 2, 3, 4].map(i => `<span class="${i < paso ? 'hecho' : i === paso ? 'actual' : ''}"></span>`).join('')}</div>
+        <p class="gv-pregunta">${preg}</p><p class="gv-ayuda">${ayuda}</p>
+        ${n.error ? `<div class="msg mal" role="alert"><i class="fas fa-circle-exclamation"></i> ${esc(n.error)}</div>` : ''}${campos}</div>
+      <div class="mdl-pie">${pie}</div></form>`;
   }
 
   function abrirNuevoExamen() {
     if (!st.nx) st.nx = nxNuevo();
-    const m = modal(nxHtml(), { ancho: 760, antesCerrar: nxLeer });
-    const rear = () => { nxLeer(); m.set(nxHtml()); enlazar2(); };
-    const enlazar2 = () => {
-      const b = m.box, n = st.nx;
-      b.querySelectorAll('[data-cerrar]').forEach(x => x.onclick = () => m.cerrar());
-      b.querySelectorAll('[data-ir]').forEach(a => a.onclick = ev => { ev.preventDefault(); m.cerrar(); st.tab = a.dataset.ir; pintar(); if (st.tab === 'banco') ejecutar(async () => { st.banco = Object.assign(st.banco || {}, { lista: (await rpc({ accion: 'banco_listar' })).preguntas }); }); });
-      const lista = () => { const w = b.querySelector('#nxPersonas'); w.innerHTML = nxListaPersonas(); ligarPersonas(); b.querySelector('#nxCuenta').textContent = n.ev.size ? n.ev.size + ' elegido(s)' : ''; };
-      const ligarPersonas = () => b.querySelectorAll('[data-nxev]').forEach(c => c.onchange = () => { const id = Number(c.dataset.nxev); c.checked ? n.ev.add(id) : n.ev.delete(id); b.querySelector('#nxCuenta').textContent = n.ev.size ? n.ev.size + ' elegido(s)' : ''; });
-      ligarPersonas();
-      b.querySelector('#nxBuscar').oninput = ev => { n.q = ev.target.value; lista(); const i = b.querySelector('#nxBuscar'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); };
-      b.querySelector('[data-nxtodos]').onclick = () => {
-        const q = quitarTildes(n.q), ids = st.d.perfiles.filter(f => f.rol === 'EVALUADO' && (!q || quitarTildes(`${f.nombre} ${f.perfil} ${f.correo}`).includes(q))).map(f => f.id);
-        if (ids.every(i => n.ev.has(i))) ids.forEach(i => n.ev.delete(i)); else ids.forEach(i => n.ev.add(i));
-        lista();
-      };
-      b.querySelectorAll('[data-nxchip]').forEach(c => c.onclick = () => { const a = n.f[c.dataset.nxchip], v = c.dataset.v, i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); rear(); });
-      b.querySelector('#nxCrear').onclick = async ev => {
-        nxLeer();
-        const falla = !n.nombre.trim() ? 'Ponle un nombre al examen.' : !n.ev.size ? 'Elige al menos una persona para evaluar.'
-          : !(n.cant >= 1 && n.cant <= 100) ? 'Las preguntas por persona deben ser entre 1 y 100.' : !(n.min >= 1 && n.min <= 600) ? 'El tiempo debe estar entre 1 y 600 minutos.' : !(n.vig >= 1 && n.vig <= 60) ? 'El enlace puede valer entre 1 y 60 días.' : '';
-        const err = b.querySelector('#nxError');
-        if (falla) { n.error = falla; err.textContent = falla; err.hidden = false; return; }
-        n.error = ''; err.hidden = true;
-        const btn = ev.currentTarget; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando…';
-        try {
-          const r = await rpc({ accion: 'examen_generar', nombre: n.nombre.trim(), cantidad: n.cant, minutos: n.min, vigenciaDias: n.vig, exigirPantalla: n.pant, permitirAdjuntos: n.adj, iaPermitida: n.ia, perfilIds: [...n.ev], filtros: n.f });
-          const notas = r.detalle.filter(x => !x.ok || x.faltan).map(x => x.ok ? `${esc(x.nombre)}: solo hay ${x.preguntas} preguntas disponibles (faltan ${x.faltan})` : `${esc(x.nombre)}: ${esc(x.error)}`);
-          st.nx = null; m.cerrar(); await recargar(); pintar();
-          aviso('<b>Examen creado.</b> ' + (notas.length ? 'Ojo:<br>' + notas.join('<br>') : 'Ahora envía las invitaciones desde su tarjeta.'), notas.length ? 'aviso' : 'ok');
-        } catch (e) {
-          if (e.sesion) { setTimeout(() => location.reload(), 1200); }
-          n.error = e.message; err.textContent = e.message; err.hidden = false; btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Crear examen';
-        }
-      };
+    const m = modal(nxHtml(), { ancho: 620 });
+    const redib = foco => { m.set(nxHtml()); if (foco) { const i = m.box.querySelector(foco); if (i) { i.focus(); if (i.select) i.select(); } } };
+    const ir = (paso, foco) => {
+      const n = st.nx, err = paso > n.paso ? nxErrorPaso(paso - 1) : '';
+      if (err) { n.error = err; return redib(); }
+      n.paso = paso; n.error = ''; redib(foco);
+      m.box.querySelector('.mdl-body') && (m.box.querySelector('.mdl-body').scrollTop = 0);
     };
-    enlazar2();
+    const b = m.box;
+    b.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const n = st.nx; if (!n || n.creando) return;
+      if (n.paso < 4) return ir(n.paso + 1, n.paso === 1 ? '[data-nxin="nombre"]' : '');
+      const falla = nxErrorPaso(3);
+      if (falla) { n.error = falla; return redib(); }
+      n.creando = true; n.error = ''; redib();
+      try {
+        const r = await rpc({ accion: 'examen_generar', nombre: n.nombre.trim(), cantidad: n.cant, minutos: n.min, vigenciaDias: n.vig, exigirPantalla: n.pant, permitirAdjuntos: n.adj, iaPermitida: n.ia, perfilIds: [...n.ev], filtros: n.f });
+        const notas = r.detalle.filter(x => !x.ok || x.faltan).map(x => x.ok ? `${esc(x.nombre)}: solo hay ${x.preguntas} preguntas disponibles (faltan ${x.faltan})` : `${esc(x.nombre)}: ${esc(x.error)}`);
+        n.listo = { id: r.examenId, nombre: n.nombre.trim(), ok: r.detalle.length ? r.detalle.filter(x => x.ok).length : n.ev.size, notas }; n.creando = false;
+        await recargar(); pintar(); redib();
+      } catch (e) {
+        if (e.sesion) setTimeout(() => location.reload(), 1200);
+        n.creando = false; n.error = e.message; redib();
+      }
+    });
+    b.addEventListener('click', async ev => {
+      const el = ev.target.closest('[data-nx]'); if (!el) return;
+      const n = st.nx, a = el.dataset.nx;
+      if (a === 'cerrar') { if (n && n.listo) st.nx = null; return m.cerrar(); }   // el borrador se conserva hasta crearlo
+      if (a === 'despues') { st.nx = null; return m.cerrar(); }
+      if (a === 'atras') { n.paso = Math.max(1, n.paso - 1); n.error = ''; return redib(); }
+      if (a === 'ir') { n.paso = Number(el.dataset.paso); n.error = ''; return redib(); }
+      if (a === 'set') { n[el.dataset.k] = Number(el.dataset.v); n.error = ''; return redib(); }
+      if (a === 'chip') { const arr = n.f[el.dataset.k], v = el.dataset.v, i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); return redib(); }
+      if (a === 'todos') {
+        const ids = nxFiltra().map(f => f.id);
+        if (ids.every(i => n.ev.has(i))) ids.forEach(i => n.ev.delete(i)); else ids.forEach(i => n.ev.add(i));
+        n.error = ''; b.querySelector('#nxPersonas').innerHTML = nxListaPersonas(); b.querySelector('#nxCuenta').textContent = nxCuenta();
+        el.textContent = ids.every(i => n.ev.has(i)) ? 'Desmarcar todos' : 'Marcar todos'; return;
+      }
+      if (a === 'ir-banco' || a === 'ir-personas') {
+        ev.preventDefault(); m.cerrar(); st.tab = a === 'ir-banco' ? 'banco' : 'personas'; pintar();
+        if (st.tab === 'banco') ejecutar(async () => { st.banco = Object.assign(st.banco || {}, { lista: (await rpc({ accion: 'banco_listar' })).preguntas }); });
+        return;
+      }
+      if (a === 'enviar') {
+        n.creando = true; n.error = ''; redib();
+        try {
+          const r = await fb()._post({ accion: 'examenEnviar', token: st.ses.token, examenId: n.listo.id });
+          if (!r || r.ok === false) { if (r && r.sesion) { cerrarSesion(); setTimeout(() => location.reload(), 1200); } throw new Error((r && r.error) || 'No se pudieron enviar las invitaciones'); }
+          st.nx = null; m.cerrar(); await recargar(); pintar();
+          aviso(`<b>${r.enviados} invitación(es) enviada(s).</b>${r.fallos ? ` ${r.fallos} no se pudieron enviar: míralas en la tabla.` : ' Cada persona recibirá un enlace por correo.'}`, r.fallos ? 'aviso' : 'ok');
+        } catch (e) { n.creando = false; n.error = e.message; redib(); }
+      }
+    });
+    b.addEventListener('input', ev => {
+      const n = st.nx, t = ev.target;
+      if (t.dataset.nxin) {
+        const k = t.dataset.nxin; n[k] = k === 'nombre' ? t.value : Number(t.value);
+        if (k !== 'nombre') b.querySelectorAll(`[data-k="${k}"]`).forEach(c => c.classList.toggle('on', Number(c.dataset.v) === n[k]));
+        if (n.error) { n.error = ''; const e = b.querySelector('.msg.mal'); if (e) e.remove(); }
+      } else if ('nxq' in t.dataset) { n.q = t.value; b.querySelector('#nxPersonas').innerHTML = nxListaPersonas(); }
+    });
+    b.addEventListener('change', ev => {
+      const n = st.nx, t = ev.target;
+      if (t.dataset.nxev) {
+        const id = Number(t.dataset.nxev); t.checked ? n.ev.add(id) : n.ev.delete(id);
+        t.closest('.nx-persona').classList.toggle('on', t.checked); b.querySelector('#nxCuenta').textContent = nxCuenta(); n.error = '';
+        const e = b.querySelector('.msg.mal'); if (e) e.remove();
+      } else if (t.dataset.nxsw) n[t.dataset.nxsw] = t.checked;
+    });
   }
 
   // ---------- ventana «Revisar» ----------
   async function abrirRevision(intentoId, tab) {
     const d = await rpc({ accion: 'intento_detalle', intentoId });
     const previo = st.rev && st.rev.id === intentoId ? st.rev : null;
-    st.rev = Object.assign(d, { id: intentoId, tab: tab || (previo && previo.tab) || 'resp', edit: previo ? previo.edit : {}, sucio: previo ? previo.sucio : false });
+    const sinNota = d.preguntas.findIndex(q => q.calificacion == null);
+    st.rev = Object.assign(d, { id: intentoId, tab: tab || (previo && previo.tab) || 'resp', edit: previo ? previo.edit : {}, sucio: previo ? previo.sucio : false,
+      vista: previo ? previo.vista : 'paso', i: previo ? Math.min(previo.i, d.preguntas.length - 1) : Math.max(0, sinNota) });
     if (!st.revModal || !st.revModal.el.isConnected) {
       st.revModal = modal('', { ancho: 1000, alCerrar: () => { st.rev = null; st.revModal = null; }, puedeCerrar: () => !st.rev || !st.rev.sucio || window.confirm('Tienes notas sin guardar. ¿Cerrar sin guardarlas?') });
     }
@@ -632,7 +789,12 @@
   }
   function leerCalif() {
     const x = st.rev, m = st.revModal; if (!x || !m) return;
-    m.box.querySelectorAll('[data-cn]').forEach(i => { const n = Number(i.dataset.cn), c = m.box.querySelector(`[data-cc="${n}"]`); x.edit[n] = { puntos: i.value, comentario: c ? c.value : '' }; });
+    m.box.querySelectorAll('[data-cn]').forEach(i => {
+      const n = Number(i.dataset.cn), c = m.box.querySelector(`[data-cc="${n}"]`), q = x.preguntas.find(y => y.n === n);
+      const v = { puntos: i.value, comentario: c ? c.value : '' };
+      const orig = q ? { puntos: q.calificacion == null ? '' : String(Number(q.calificacion)), comentario: q.comentario || '' } : null;
+      if (x.edit[n] || !orig || v.puntos !== orig.puntos || v.comentario !== orig.comentario) x.edit[n] = v;   // lo que no se tocó conserva su origen (p. ej. «Sugerida por la IA»)
+    });
   }
   function refrescarTotales() {
     const x = st.rev, m = st.revModal; if (!x || !m) return;
@@ -648,11 +810,21 @@
     const t = totalesRevision();
     const hayIA = x.preguntas.some(q => q.origenCalif === 'IA' && !x.edit[q.n]);
     const graves = x.eventos.filter(e => GRAVES.includes(e.tipo));
-    const tabs = [['resp', 'Respuestas', x.preguntas.length, ''], ['inc', 'Incidencias', graves.length, graves.length ? 'alerta' : ''], ['cap', 'Capturas', x.capturas.length, '']];
+    const tabs = [['resp', 'Respuestas', x.preguntas.length, ''], ['graf', 'Gráficas', '', ''], ['inc', 'Incidencias', graves.length, graves.length ? 'alerta' : ''], ['cap', 'Capturas', x.capturas.length, '']];
+    const it = ex && ex.intentos.find(i => i.id === x.id);
     const resumenTxt = ESTADO_TXT[x.estado] ? ESTADO_TXT[x.estado][0] : x.estado;
     let cuerpo = '';
     if (x.tab === 'resp') {
-      cuerpo = x.preguntas.map(q => {
+      const unaPorUna = x.vista !== 'todas' && x.preguntas.length > 1;
+      const idx = Math.min(Math.max(0, x.i || 0), x.preguntas.length - 1);
+      const hecha = q => { const v = valorCalif(x, q); return v.puntos !== '' && !isNaN(Number(v.puntos)); };
+      const barraPasos = unaPorUna ? `<div class="rv-pasos"><div class="rv-pts" role="tablist">${x.preguntas.map((q, k) => `<button type="button" class="rv-pt ${hecha(q) ? 'hecho' : ''} ${k === idx ? 'actual' : ''}" data-rir="${k}" title="Pregunta ${q.n}${hecha(q) ? ' (calificada)' : ''}">${q.n}</button>`).join('')}</div>
+          <button type="button" class="btn chico" data-rvista="todas">Ver todas juntas</button></div>`
+        : x.preguntas.length > 1 ? `<div class="rv-pasos"><span class="sub">Estás viendo todas las preguntas.</span><button type="button" class="btn chico" data-rvista="paso">Ver una por una</button></div>` : '';
+      const navAbajo = unaPorUna ? `<div class="rv-nav"><button type="button" class="btn" data-rnav="-1" ${idx === 0 ? 'disabled' : ''}><i class="fas fa-arrow-left"></i> Anterior</button>
+          <span class="sub">Pregunta ${idx + 1} de ${x.preguntas.length}</span>
+          <button type="button" class="btn primario" data-rnav="1">${idx === x.preguntas.length - 1 ? (x.sucio ? '<i class="fas fa-floppy-disk"></i> Guardar notas' : 'Terminar') : 'Siguiente <i class="fas fa-arrow-right"></i>'}</button></div>` : '';
+      cuerpo = barraPasos + (unaPorUna ? [x.preguntas[idx]] : x.preguntas).map(q => {
         const v = valorCalif(x, q), max = Number(q.puntosMax);
         const origen = x.edit[q.n] ? '<span class="ins azul">Editada</span>' : q.origenCalif === 'IA' ? '<span class="ins morado" title="La calificó la IA: revísala y cámbiala si no estás de acuerdo">Sugerida por la IA</span>' : q.origenCalif === 'EXCEL' ? '<span class="ins gris">Cargada de Excel</span>' : q.origenCalif === 'MANUAL' ? '<span class="ins gris">Manual</span>' : '';
         return `<article class="preg"><header><span class="num">${q.n}</span><span class="enc">${esc(q.tipo)} · ${esc(q.codigo)}</span><span class="vale">Vale ${fmtPts(max)} pts</span></header>
@@ -663,7 +835,17 @@
           <div class="calif2"><div class="pts"><label>Nota</label><div class="entrada-pts"><input type="number" min="0" max="${max}" step="0.5" data-cn="${q.n}" value="${esc(v.puntos)}" placeholder="—"><span>/ ${fmtPts(max)}</span></div>
               <div class="rapidos"><button data-rap="0" data-n="${q.n}" data-max="${max}">0</button><button data-rap="mitad" data-n="${q.n}" data-max="${max}">Mitad</button><button data-rap="max" data-n="${q.n}" data-max="${max}">Completa</button></div></div>
             <div class="com"><label>Comentario <span class="sub">(opcional)</span></label><textarea rows="2" data-cc="${q.n}" placeholder="Qué estuvo bien o qué faltó">${esc(v.comentario)}</textarea></div><div class="orig">${origen}</div></div></article>`;
-      }).join('');
+      }).join('') + navAbajo;
+    } else if (x.tab === 'graf') {
+      const its = x.preguntas.map(q => { const v = valorCalif(x, q); return { q, v: v.puntos === '' || isNaN(Number(v.puntos)) ? null : Number(v.puntos), mx: Number(q.puntosMax) }; });
+      const cal = its.filter(o => o.v != null && o.mx > 0), por = {};
+      cal.forEach(o => { const t = o.q.tipo || 'Sin tipo'; (por[t] = por[t] || { s: 0, mx: 0 }); por[t].s += o.v; por[t].mx += o.mx; });
+      const resp = x.preguntas.filter(q => q.respuesta).length;
+      cuerpo = !cal.length ? '<div class="vacio-grande chico"><i class="fas fa-chart-simple"></i><h3>Aún no hay notas para graficar</h3><p class="sub">Califica las respuestas y aquí verás cómo le fue en cada pregunta.</p></div>'
+        : `<div class="kpis kpis-chicos"><div class="kpi azul"><i class="fas fa-list-check"></i><b>${resp}</b><span>de ${x.preguntas.length} respondidas</span></div><div class="kpi morado"><i class="fas fa-pen-to-square"></i><b>${cal.length}</b><span>calificadas</span></div>
+            <div class="kpi"><i class="fas fa-circle-check"></i><b>${cal.filter(o => o.v / o.mx >= 0.8).length}</b><span>con 80 % o más</span></div><div class="kpi ambar"><i class="fas fa-circle-exclamation"></i><b>${cal.filter(o => o.v / o.mx < 0.6).length}</b><span>por debajo del 60 %</span></div></div>
+          <div class="rejilla-2"><section class="ex-card"><h2>Por pregunta</h2>${barrasH(cal.map(o => ({ t: `P${o.q.n} · ${o.q.codigo}`, p: 100 * o.v / o.mx, det: `${fmtPts(o.v)} de ${fmtPts(o.mx)}` })))}</section>
+            <section class="ex-card"><h2>Por tipo de pregunta</h2>${barrasH(Object.entries(por).map(([t, v]) => ({ t, p: 100 * v.s / v.mx, det: `${fmtPts(v.s)} de ${fmtPts(v.mx)}` })).sort((a, b) => b.p - a.p))}</section></div>`;
     } else if (x.tab === 'inc') {
       const cuenta = {}; x.eventos.forEach(e => { cuenta[e.tipo] = (cuenta[e.tipo] || 0) + 1; });
       const fuera = x.eventos.reduce((a, e) => a + (Number(e.segundos) || 0), 0);
@@ -674,13 +856,13 @@
       cuerpo = !x.capturas.length ? `<div class="vacio-grande chico"><i class="fas fa-camera"></i><h3>Sin capturas</h3><p class="sub">${x.pantallaOk ? 'No se guardó ninguna.' : 'Esta persona no compartió su pantalla.'}</p></div>`
         : `<p class="sub">Toca una hora para ver lo que había en su pantalla en ese momento.</p><div class="caps">${x.capturas.map(c => `<button class="btn chico" data-captura="${c.id}"><i class="fas fa-camera"></i> ${hora(c.en)} <span class="sub">${esc(c.motivo || '')}</span></button>`).join('')}</div><div id="revCap"></div>`;
     }
-    m.set(`<div class="mdl-head sticky"><div><h2>${esc(x.nombre)}</h2><div class="sub">${esc(resumenTxt)}${x.iniciadoEn ? ' · empezó ' + esc(fechaCorta(x.iniciadoEn)) : ''}${x.entregadoEn ? ' · entregó ' + esc(fechaCorta(x.entregadoEn)) : ''}${x.motivoCierre === 'tiempo' ? ' (se acabó el tiempo)' : ''}</div></div><button class="x" data-rcerrar aria-label="Cerrar">×</button></div>
+    m.set(`<div class="mdl-head sticky"><div class="ficha-cab">${avatar(x.nombre, it ? fotoDePerfil(it.perfilId) : '', 'grande')}<div><h2>${it ? `<button class="enlace-nombre grande-n" data-fp="${it.perfilId}" title="Ver el detalle de esta persona">${esc(x.nombre)}</button>` : esc(x.nombre)}</h2><div class="sub">${esc(resumenTxt)}${x.iniciadoEn ? ' · empezó ' + esc(fechaCorta(x.iniciadoEn)) : ''}${x.entregadoEn ? ' · entregó ' + esc(fechaCorta(x.entregadoEn)) : ''}${x.motivoCierre === 'tiempo' ? ' (se acabó el tiempo)' : ''}</div></div></div><button class="x" data-rcerrar aria-label="Cerrar">×</button></div>
       <div class="rev-resumen"><div class="nota-bloque"><div class="nota-grande"><b id="revNota">${t.n ? fmtPts(t.suma) : '—'}</b><span> / ${fmtPts(t.maximo)} puntos</span> <em id="revPct">${t.n ? pct(t.suma, t.maximo) + ' %' : ''}</em></div><div id="revBarra">${barra(t.suma, t.maximo)}</div><div class="sub" id="revCont">${t.n} de ${t.total} preguntas calificadas</div></div>
         <div class="rev-acciones">${ex && ex.iaPermitida ? `<button class="btn ${t.n < t.total ? 'primario' : ''}" id="revIA"><i class="fas fa-wand-magic-sparkles"></i> Calificar con IA</button>` : ''}
           <button class="btn primario" id="revGuardar" ${x.sucio ? '' : 'disabled'}><i class="fas fa-floppy-disk"></i> Guardar notas</button></div></div>
       <div class="sub aviso-sucio" id="revSucio" ${x.sucio ? '' : 'hidden'}>Tienes cambios sin guardar.</div>
       ${hayIA ? '<p class="aviso-ia"><i class="fas fa-wand-magic-sparkles"></i> Hay notas sugeridas por la IA. Revísalas: puedes cambiar cualquiera y luego pulsar «Guardar notas».</p>' : ''}
-      <div class="tabs-mini">${tabs.map(([k, n, c, cl]) => `<button data-rtab="${k}" class="${x.tab === k ? 'on' : ''}">${n} <span class="cnt ${cl}">${c}</span></button>`).join('')}</div>
+      <div class="tabs-mini">${tabs.map(([k, n, c, cl]) => `<button data-rtab="${k}" class="${x.tab === k ? 'on' : ''}">${n}${c !== '' ? ` <span class="cnt ${cl}">${c}</span>` : ''}</button>`).join('')}</div>
       <div class="mdl-body">${cuerpo}</div>`);
     enlazarRevision();
   }
@@ -688,12 +870,21 @@
   function enlazarRevision() {
     const x = st.rev, m = st.revModal, b = m.box;
     b.querySelector('[data-rcerrar]').onclick = () => m.intentarCerrar();
+    b.querySelectorAll('[data-fp]').forEach(a => a.onclick = () => abrirFicha(Number(a.dataset.fp)));
     b.querySelectorAll('[data-rtab]').forEach(t => t.onclick = () => { leerCalif(); x.tab = t.dataset.rtab; pintarRevision(); });
     b.querySelectorAll('[data-ver]').forEach(v => v.onclick = () => verArchivo(Number(v.dataset.ver), v.dataset.nombre, v.dataset.mime));
     b.querySelectorAll('[data-captura]').forEach(c => c.onclick = async () => {
       const box = b.querySelector('#revCap'); box.innerHTML = '<p class="sub">Cargando captura…</p>';
       try { const r = await rpc({ accion: 'captura_ver', capturaId: Number(c.dataset.captura) }); box.innerHTML = `<img class="cap-img" src="${r.imagen}" alt="Captura de pantalla">`; }
       catch (e) { box.innerHTML = `<p class="msg mal">${esc(e.message)}</p>`; }
+    });
+    const irA = k => { leerCalif(); x.i = k; pintarRevision(); const c = m.box.querySelector('.mdl-body'); if (c) c.scrollTop = 0; };
+    b.querySelectorAll('[data-rir]').forEach(t => t.onclick = () => irA(Number(t.dataset.rir)));
+    b.querySelectorAll('[data-rvista]').forEach(t => t.onclick = () => { leerCalif(); x.vista = t.dataset.rvista; pintarRevision(); });
+    b.querySelectorAll('[data-rnav]').forEach(t => t.onclick = () => {
+      const d = Number(t.dataset.rnav), k = x.i + d;
+      if (k >= x.preguntas.length) { leerCalif(); const g = b.querySelector('#revGuardar'); if (x.sucio && g) g.click(); else m.intentarCerrar(); return; }
+      irA(Math.max(0, k));
     });
     const marcar = () => { x.sucio = true; leerCalif(); refrescarTotales(); };
     b.querySelectorAll('[data-cn],[data-cc]').forEach(i => i.oninput = marcar);
@@ -772,7 +963,22 @@
 
   // ---------- acciones de las tarjetas ----------
   function enlazarExamenes(q) {
+    const eb = document.getElementById('exBuscar');
+    if (eb) eb.oninput = () => {
+      st.ex.q = eb.value; clearTimeout(st.ex._t);
+      st.ex._t = setTimeout(() => { pintar(); const i = document.getElementById('exBuscar'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250);
+    };
+    q('[data-exf]', b => b.onclick = ev => { ev.preventDefault(); st.ex.filtro = b.dataset.exf; if (b.dataset.limpiar) st.ex.q = ''; guardarPrefsEx(); pintar(); });
+    const eo = document.getElementById('exOrden'); if (eo) eo.onchange = () => { st.ex.orden = eo.value; guardarPrefsEx(); pintar(); };
+    q('[data-togg]', b => b.onclick = () => { st.ex.vista.set(Number(b.dataset.togg), b.getAttribute('aria-expanded') !== 'true'); pintar(); });
+    q('[data-explegar]', b => b.onclick = () => { const abrir = b.dataset.explegar === '1'; examenesVisibles().lista.forEach(o => st.ex.vista.set(o.e.id, abrir)); pintar(); });
     q('[data-nuevo]', b => b.onclick = () => abrirNuevoExamen());
+    q('[data-gir]', b => b.onclick = () => {
+      const k = b.dataset.gir;
+      if (k === 'nuevo') return abrirNuevoExamen();
+      if (k === 'personas' || k === 'banco') return app.querySelector(`[data-tab="${k}"]`).click();
+      st.ex.filtro = k; st.ex.q = ''; guardarPrefsEx(); pintar();
+    });
     const act = document.getElementById('exActualizar'); if (act) act.onclick = () => ejecutar(async () => { await recargar(); aviso('Lista actualizada.'); }, act);
     q('[data-revisar]', b => b.onclick = () => ejecutar(() => abrirRevision(Number(b.dataset.revisar)), b));
     q('[data-ia]', b => b.onclick = () => ejecutar(() => calificarIA(Number(b.dataset.ia), undefined, !!b.dataset.iaRe), b));
@@ -851,15 +1057,84 @@
     await recargar();
   }
 
+  // ---------- Banco: filtrar, ordenar y paginar ----------
+  const nuevoBq = () => ({ q: '', tipo: '', perfil: '', linea: '', dif: '', adj: '', orden: 'codigo', dir: 1, mostrar: 40, herram: false });
+  const BQ_COLS = [['codigo', 'ID'], ['tipo', 'Tipo'], ['aplica', 'Aplica a'], ['dificultad', 'Dificultad'], ['puntos', 'Pts'], ['pregunta', 'Pregunta'], ['adj', 'Adjuntos']];
+  const RANGO_DIF = ['Bajo', 'Medio', 'Alto'];
+
+  function bancoFiltrado() {
+    const b = st.bq, lista = (st.banco && st.banco.lista) || [], q = quitarTildes(b.q);
+    const l = lista.filter(p => (!q || quitarTildes(`${p.codigo} ${p.pregunta} ${p.respuestaModelo || ''}`).includes(q))
+      && (!b.tipo || p.tipo === b.tipo) && (!b.dif || p.dificultad === b.dif)
+      && (!b.perfil || !p.perfiles.length || p.perfiles.includes(b.perfil)) && (!b.linea || !p.lineas.length || p.lineas.includes(b.linea))
+      && (!b.adj || (b.adj === 'con' ? (p.adjuntos || []).length > 0 : !(p.adjuntos || []).length)));
+    const clave = { codigo: p => p.codigo, tipo: p => p.tipo, aplica: p => `${p.perfiles.join(',')}|${p.lineas.join(',')}`, dificultad: p => RANGO_DIF.indexOf(p.dificultad),
+      puntos: p => Number(p.puntos), pregunta: p => p.pregunta, adj: p => (p.adjuntos || []).length }[b.orden] || (p => p.codigo);
+    l.sort((a, c) => {
+      const x = clave(a), y = clave(c);
+      const r = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true });
+      return (r || String(a.codigo).localeCompare(String(c.codigo), 'es', { numeric: true })) * b.dir;
+    });
+    return { lista, filtrado: l };
+  }
+
+  function toolbarBanco() {
+    const b = st.bq, lista = (st.banco && st.banco.lista) || [], cat = st.d.catalogo;
+    const sel = (id, tit, valor, ops) => `<label class="filtro"><span>${tit}</span><select id="${id}"><option value="">Todos</option>${ops.map(o => `<option ${o === valor ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
+    const porTipo = (cat.TIPO || []).map(t => [t, lista.filter(p => p.tipo === t).length]);
+    const activos = ['tipo', 'perfil', 'linea', 'dif', 'adj', 'q'].filter(k => b[k]).length;
+    return `<div class="kpis kpis-chicos"><div class="kpi azul"><i class="fas fa-database"></i><b>${lista.length}</b><span>preguntas en tu banco</span></div>
+        ${porTipo.map(([t, n]) => `<button class="kpi ${b.tipo === t ? 'activo' : ''}" data-bqtipo="${esc(t)}" title="Filtrar por ${esc(t)}"><b>${n}</b><span>${esc(t)}</span></button>`).join('')}
+        <div class="kpi"><i class="fas fa-paperclip"></i><b>${lista.filter(p => (p.adjuntos || []).length).length}</b><span>con adjuntos</span></div></div>
+      <div class="toolbar"><div class="buscar"><i class="fas fa-search"></i><input id="bqBuscar" type="search" placeholder="Buscar por texto o ID" value="${esc(b.q)}"></div>
+        ${sel('bqPerfil', 'Aplica al perfil', b.perfil, cat.PERFIL || [])}${sel('bqLinea', 'Línea de negocio', b.linea, cat.LINEA || [])}${sel('bqDif', 'Dificultad', b.dif, cat.DIFICULTAD || [])}
+        <label class="filtro"><span>Adjuntos</span><select id="bqAdj"><option value="">Todas</option><option value="con" ${b.adj === 'con' ? 'selected' : ''}>Con adjuntos</option><option value="sin" ${b.adj === 'sin' ? 'selected' : ''}>Sin adjuntos</option></select></label>
+        ${activos ? '<a href="#" class="btn chico" data-bqlimpiar>Quitar filtros</a>' : ''}
+        <span class="espacio"></span><button class="btn ${b.herram ? 'activo' : ''}" id="bqHerr"><i class="fas fa-file-import"></i> Cargar desde Excel o material</button>
+        <button class="btn primario" id="pqAbrir"><i class="fas fa-plus"></i> Nueva pregunta</button></div>`;
+  }
+
+  function tablaBanco() {
+    const b = st.bq, B = st.banco;
+    if (!B || !B.lista) return '<p class="vacio">Cargando…</p>';
+    if (!B.lista.length) return '<div class="vacio-grande"><i class="fas fa-database"></i><h3>Tu banco está vacío</h3><p class="sub">Escribe tu primera pregunta o cárgalas desde un Excel con «Cargar desde Excel o material».</p></div>';
+    const { filtrado } = bancoFiltrado();
+    if (!filtrado.length) return '<div class="vacio-grande chico"><i class="fas fa-filter-circle-xmark"></i><h3>Ninguna pregunta coincide</h3><a class="btn" href="#" data-bqlimpiar>Quitar filtros</a></div>';
+    const vis = filtrado.slice(0, b.mostrar);
+    const flecha = k => b.orden === k ? `<i class="fas fa-arrow-${b.dir > 0 ? 'up' : 'down'}"></i>` : '<i class="fas fa-sort sutil"></i>';
+    const difIns = d => !d ? '<span class="sub">—</span>' : `<span class="ins ${d === 'Alto' ? 'rojo' : d === 'Medio' ? 'ambar' : 'verde'}">${esc(d)}</span>`;
+    return `<div class="scroll"><table class="tabla tabla-banco"><tr>${BQ_COLS.map(([k, t]) => `<th class="ordenable ${b.orden === k ? 'on' : ''}" data-bqs="${k}">${t} ${flecha(k)}</th>`).join('')}<th></th></tr>
+      ${vis.map(q => `<tr><td class="cod">${esc(q.codigo)}</td><td><span class="ins gris">${esc(q.tipo)}</span></td>
+        <td><div class="aplica"><span class="meta">${esc(q.perfiles.join(', ') || 'Todos los perfiles')}</span><span class="meta">${esc(q.lineas.join(', ') || 'Todas las líneas')}</span></div></td>
+        <td>${difIns(q.dificultad)}</td><td>${fmtPts(q.puntos)}</td>
+        <td class="col-preg"><div class="clamp2">${esc(q.pregunta)}</div>${q.respuestaModelo ? `<div class="sub clamp1">Modelo: ${esc(q.respuestaModelo)}</div>` : '<div class="sub">Sin respuesta modelo</div>'}</td>
+        <td><button class="btn chico" data-adj="${q.id}" title="Ver o agregar adjuntos"><i class="fas fa-paperclip"></i> ${(q.adjuntos || []).length}</button></td>
+        <td class="acc"><button class="btn chico" data-editar="${q.id}">Editar</button> <button class="btn chico enlace-mal" data-borrar="${q.id}">Eliminar</button></td></tr>`).join('')}</table></div>
+      <div class="pie-tabla"><span class="sub">Mostrando ${vis.length} de ${filtrado.length}${filtrado.length !== B.lista.length ? ` (filtradas de ${B.lista.length})` : ''}</span>
+        ${filtrado.length > vis.length ? `<button class="btn" id="bqMas">Mostrar ${Math.min(40, filtrado.length - vis.length)} más</button>` : ''}</div>`;
+  }
+
+  function enlazarBanco(q) {
+    const b = st.bq;
+    const bb = document.getElementById('bqBuscar');
+    if (bb) bb.oninput = () => {
+      b.q = bb.value; b.mostrar = 40; clearTimeout(b._t);
+      b._t = setTimeout(() => { pintar(); const i = document.getElementById('bqBuscar'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250);
+    };
+    for (const [id, k] of [['bqPerfil', 'perfil'], ['bqLinea', 'linea'], ['bqDif', 'dif'], ['bqAdj', 'adj']]) { const el = document.getElementById(id); if (el) el.onchange = () => { b[k] = el.value; b.mostrar = 40; pintar(); }; }
+    q('[data-bqtipo]', x => x.onclick = () => { b.tipo = b.tipo === x.dataset.bqtipo ? '' : x.dataset.bqtipo; b.mostrar = 40; pintar(); });
+    q('[data-bqs]', th => th.onclick = () => { if (b.orden === th.dataset.bqs) b.dir *= -1; else { b.orden = th.dataset.bqs; b.dir = 1; } pintar(); });
+    q('[data-bqlimpiar]', a => a.onclick = ev => { ev.preventDefault(); Object.assign(b, { q: '', tipo: '', perfil: '', linea: '', dif: '', adj: '', mostrar: 40 }); pintar(); });
+    const mas = document.getElementById('bqMas'); if (mas) mas.onclick = () => { b.mostrar += 40; pintar(); };
+    const hb = document.getElementById('bqHerr'); if (hb) hb.onclick = () => { b.herram = !b.herram; pintar(); };
+    const hc = document.getElementById('bqHerrCerrar'); if (hc) hc.onclick = () => { b.herram = false; pintar(); };
+  }
+
   function vistaBanco() {
     const b = st.banco;
     const rep = b && b.reporte ? `<div class="msg ${b.reporte.errores.length ? 'aviso' : 'ok'}"><b>${b.reporte.guardadas}</b> preguntas guardadas${b.reporte.errores.length ? `, <b>${b.reporte.errores.length}</b> con error:` : '.'}
       ${b.reporte.errores.length ? `<ul>${b.reporte.errores.slice(0, 40).map(e => `<li>Fila ${e.fila}${e.codigo ? ' (' + esc(e.codigo) + ')' : ''}: ${esc(e.error)}</li>`).join('')}</ul>` : ''}</div>` : '';
-    const lista = b && b.lista ? `<div class="scroll"><table class="tabla"><tr><th>ID</th><th>Usuario</th><th>Línea</th><th>Tipo</th><th>Dif.</th><th>Pts</th><th>Pregunta</th><th>Adjuntos</th><th></th></tr>
-      ${b.lista.map(q => `<tr><td>${esc(q.codigo)}</td><td>${esc(q.perfiles.join(', ') || 'Todos')}</td><td>${esc(q.lineas.join(', ') || 'Todas')}</td><td>${esc(q.tipo)}</td><td>${esc(q.dificultad || '')}</td><td>${Number(q.puntos)}</td>
-        <td>${esc(q.pregunta)}${q.respuestaModelo ? `<br><small class="sub">Modelo: ${esc(q.respuestaModelo.slice(0, 160))}${q.respuestaModelo.length > 160 ? '…' : ''}</small>` : ''}</td>
-        <td><button class="btn chico" data-adj="${q.id}"><i class="fas fa-paperclip"></i> ${(q.adjuntos || []).length}</button></td>
-        <td style="white-space:nowrap"><button class="btn chico" data-editar="${q.id}">Editar</button> <button class="btn chico peligro" data-borrar="${q.id}">Eliminar</button></td></tr>`).join('')}</table></div>` : '<p class="vacio">Cargando…</p>';
+    const lista = tablaBanco();
     const qa = st.adj && b && b.lista ? b.lista.find(x => x.id === st.adj) : null;
     const panel = qa ? `<div class="ex-card"><div class="ex-top"><div><h2 style="margin:0">Adjuntos de ${esc(qa.codigo)}</h2><small class="sub">${esc(qa.pregunta.slice(0, 140))}</small></div><button class="btn chico" id="adjCerrar">Cerrar</button></div>
       <p class="sub">Material que verá el evaluado dentro de la pregunta: imágenes, audio, video, PDF o documentos (hasta 25 MB cada uno), o enlaces https (YouTube, Drive, SharePoint…). Máximo 5 por pregunta.</p>
@@ -885,7 +1160,7 @@
           <td>${it.estado === 'listo' ? '<span class="etq ENVIADO">LISTO</span>' : `<span class="etq ${it.estado === 'error' ? 'ANULADO' : 'GENERADO'}">${it.estado === 'error' ? 'ERROR' : 'OMITIDO'}</span> <small class="sub">${esc(it.motivo)}</small>`}</td></tr>`).join('')}</table></div>
         <button class="btn primario" id="mvSubir" ${nListos && !mv.subiendo ? '' : 'disabled'}><i class="fas fa-cloud-arrow-up"></i> ${mv.subiendo ? 'Subiendo…' : `Subir ${nListos} archivo(s)`}</button> <span class="sub" id="mvProg"></span>` : ''}</div>`;
     const f = st.pq, cat = st.d.catalogo;
-    const formulario = !f ? `<div class="ex-card ex-top"><div><h2 style="margin:0">Agregar una pregunta</h2><small class="sub">Escríbela aquí, sin Excel. Después puedes adjuntarle archivos.</small></div><button class="btn primario" id="pqAbrir"><i class="fas fa-plus"></i> Nueva pregunta</button></div>`
+    const formulario = !f ? ''
       : `<div class="ex-card"><div class="ex-top"><h2 style="margin:0">${f.id ? 'Editar pregunta ' + esc(f.codigo) : 'Nueva pregunta'}</h2><button class="btn chico" id="pqCerrar">Cancelar</button></div>
       <div class="fila"><label>ID <span class="sub">(opcional: si lo dejas vacío se asigna solo)</span><input id="pqCod" value="${esc(f.codigo)}" placeholder="Ej. P101"></label>
         <label>Tipo de pregunta<select id="pqTipo">${(cat.TIPO || []).map(v => `<option ${v === (f.tipo || cat.TIPO[0]) ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
@@ -897,11 +1172,14 @@
       <label>Respuesta modelo <span class="sub">(opcional; la verá solo el evaluador, para calificar después)</span><textarea id="pqModelo" rows="4">${esc(f.modelo)}</textarea></label>
       <button class="btn primario" id="pqGuardar"><i class="fas fa-floppy-disk"></i> Guardar pregunta</button>
       <button class="btn" id="pqGuardarAdj"><i class="fas fa-paperclip"></i> Guardar y adjuntar archivos</button></div>`;
-    return `${panel}${formulario}${masivo}<div class="ex-card"><h2>Cargar preguntas desde Excel</h2>
+    const excelCard = `<div class="ex-card"><h2>Cargar preguntas desde Excel</h2>
       <p class="sub">Columnas: ID, Usuario, Línea de negocio, Dificultad (opcional), Tipo de pregunta, Pregunta y Respuesta modelo. Para varias opciones sepáralas con «;» (Pasante;Ingeniero). Vacío = aplica a todos. Si el ID ya existe se actualiza. Opcional: «Puntos» (lo que vale la pregunta; si falta, 10) y «Enlaces» con enlaces https (separados por «;»); los archivos se adjuntan después, pregunta por pregunta, con el clip.</p>
       <input type="file" id="exArchivo" accept=".xlsx,.xls" style="max-width:360px"> <button class="btn chico" id="exPlantilla"><i class="fas fa-download"></i> Descargar plantilla</button>
-      ${rep}</div>
-      <div class="ex-card"><h2>Banco de preguntas (${b && b.lista ? b.lista.length : '…'})</h2>${lista}</div>`;
+      ${rep}</div>`;
+    const herram = st.bq.herram || mv.items.length || mv.resumen || (b && b.reporte);
+    return `${toolbarBanco()}${panel}${formulario}
+      ${herram ? `<div class="herram"><div class="herram-cab"><h3><i class="fas fa-file-import"></i> Cargar preguntas y material</h3><button class="btn chico" id="bqHerrCerrar">Cerrar</button></div><div class="herram-grid">${excelCard}${masivo}</div></div>` : ''}
+      <div class="ex-card tabla-banco-card">${lista}</div>`;
   }
 
   function vistaPersonas() {
@@ -914,8 +1192,8 @@
     const filas = visibles.map(e => {
       const v = valorDe(e), cambio = hayCambio(e);
       const sinCorreo = v.evaluado && !v.correo;
-      return `<tr class="${cambio ? 'fila-cambio' : ''}"><td><b>${esc(e.nombre)}</b><div class="sub">${esc(e.id)} · ${esc(e.cargo || e.cargoNomina || '')}</div></td>
-        <td class="sub">${esc(e.evaluadorId ? nombreDe(e.evaluadorId) : '—')}</td>
+      return `<tr class="${cambio ? 'fila-cambio' : ''}"><td><div class="pers">${avatar(e.nombre, fotoSrc(e.foto))}<div><b>${esc(e.nombre)}</b><div class="sub">${esc(e.id)} · ${esc(e.cargo || e.cargoNomina || '')}</div></div></div></td>
+        <td class="sub">${e.evaluadorId ? `<div class="pers">${avatar(nombreDe(e.evaluadorId), fotoDeEmp(e.evaluadorId), 'chico')}<span>${esc(nombreDe(e.evaluadorId))}</span></div>` : '—'}</td>
         <td style="text-align:center"><input type="checkbox" class="chk" data-p="evaluado" data-id="${esc(e.id)}" ${v.evaluado ? 'checked' : ''}></td>
         <td style="text-align:center"><input type="checkbox" class="chk" data-p="evaluador" data-id="${esc(e.id)}" ${v.evaluador ? 'checked' : ''} ${d.master ? '' : 'disabled title="Solo el administrador master asigna evaluadores"'}></td>
         <td>${v.evaluado ? `<select class="sel-chico ${v.perfil ? '' : 'falta'}" data-p="perfil" data-id="${esc(e.id)}"><option value="">— Perfil —</option>${(cat.PERFIL || []).map(o => `<option ${o === v.perfil ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>` : '<span class="sub">—</span>'}</td>
@@ -934,25 +1212,169 @@
       <div class="scroll"><table class="tabla"><tr><th>Colaborador</th><th>Jefe inmediato</th><th>Evaluado</th><th>Evaluador</th><th>Perfil</th><th>Líneas de negocio</th><th>Correo</th></tr>
       ${filas || '<tr><td colspan="7" class="vacio">Sin colaboradores para este filtro.</td></tr>'}</table></div>
       <p class="sub">Las filas resaltadas tienen cambios sin guardar (también las sugeridas que aún no se han guardado). «Guardar cambios» solo guarda lo que ves con el filtro actual.</p></div>
-      <div class="ex-card"><h2>Candidatos externos</h2><p class="sub">Personas que no están en la nómina; solo se identifican por correo.</p>
+      <div class="rejilla-2"><details class="ex-card plegable" open><summary><h2>Candidatos externos</h2></summary><p class="sub">Personas que no están en la nómina; solo se identifican por correo.</p>
       <div class="fila"><label>Nombre<input id="xNombre"></label><label>Correo electrónico<input id="xCorreo" type="email"></label>
         <label>Perfil<select id="xPerfil">${(cat.PERFIL || []).map(v => `<option>${esc(v)}</option>`).join('')}</select></label></div>
       <div class="sub">Líneas de negocio (varias; sin marcar = todas)</div>${chips('lineas_ext', cat.LINEA || [])}
       <button class="btn primario" id="xGuardar">Agregar candidato</button>
-      ${ext.length ? `<div class="scroll"><table class="tabla"><tr><th>Nombre</th><th>Correo</th><th>Perfil</th><th></th></tr>${ext.map(f => `<tr><td>${esc(f.nombre)}</td><td>${esc(f.correo)}</td><td>${esc(f.perfil + (f.lineas.length ? ' · ' + f.lineas.join(', ') : ' · todas'))}</td><td><button class="btn chico peligro" data-baja="${f.id}">Eliminar</button></td></tr>`).join('')}</table></div>` : ''}</div>
-      <div class="ex-card"><h2>Catálogos</h2><p class="sub">Agrega opciones nuevas que luego podrás usar en perfiles, en el Excel y en los filtros.</p>
+      ${ext.length ? `<div class="scroll"><table class="tabla"><tr><th>Nombre</th><th>Correo</th><th>Perfil</th><th></th></tr>${ext.map(f => `<tr><td><div class="pers">${avatar(f.nombre, '', 'chico')}<span>${esc(f.nombre)}</span></div></td><td>${esc(f.correo)}</td><td>${esc(f.perfil + (f.lineas.length ? ' · ' + f.lineas.join(', ') : ' · todas'))}</td><td><button class="btn chico peligro" data-baja="${f.id}">Eliminar</button></td></tr>`).join('')}</table></div>` : ''}</details>
+      <details class="ex-card plegable"><summary><h2>Catálogos</h2></summary><p class="sub">Agrega opciones nuevas que luego podrás usar en perfiles, en el Excel y en los filtros.</p>
       <div class="fila"><label>Catálogo<select id="cTipo"><option value="PERFIL">Perfil</option><option value="LINEA">Línea de negocio</option><option value="TIPO">Tipo de pregunta</option><option value="DIFICULTAD">Dificultad</option></select></label>
-      <label>Nuevo valor<input id="cValor"></label></div><button class="btn" id="cAgregar">Agregar</button></div>`;
+      <label>Nuevo valor<input id="cValor"></label></div><button class="btn" id="cAgregar">Agregar</button></details></div>`;
+  }
+
+  // ---------- fotos y avatares ----------
+  function fotoSrc(url, size = 120) {   // misma lógica que el panel: enlaces de Drive → miniatura del CDN de Google
+    url = String(url || '').trim();
+    if (!url) return '';
+    if (/^(data:image|blob:)/.test(url)) return url;
+    if (url.includes('googleusercontent.com/d/')) return url.includes('=') ? url : `${url}=w${size}`;
+    const m = url.match(/\/file\/d\/([\w-]+)/) || url.match(/[?&]id=([\w-]+)/) || url.match(/\/d\/([\w-]+)/);
+    return m ? `https://lh3.googleusercontent.com/d/${m[1]}=w${size}` : url;
+  }
+  const iniciales = n => String(n || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  const avatar = (nombre, foto, cl) => `<span class="av ${cl || ''}">${foto ? `<img src="${esc(foto)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<span>${esc(iniciales(nombre))}</span></span>`;
+  const perfilDe = perfilId => (st.d.perfiles || []).find(f => f.id === perfilId) || null;
+  const fotoDePerfil = perfilId => { const f = perfilDe(perfilId), e = f && f.empleadoId ? empPorId(f.empleadoId) : null; return e ? fotoSrc(e.foto) : ''; };
+  const fotoDeEmp = id => { const e = empPorId(id); return e ? fotoSrc(e.foto) : ''; };
+
+  // ---------- gráficas (SVG y barras, sin librerías) ----------
+  const colNota = p => p >= 80 ? 'var(--ok)' : p >= 60 ? 'var(--aviso)' : 'var(--mal)';
+  const diaCorto = t => t ? new Date(t).toLocaleDateString('es-EC', { day: '2-digit', month: 'short' }) : '';
+  function graficaLinea(pts) {          // pts: [{ p, etq, tip }]
+    const W = 560, H = 230, L = 38, R = 16, T = 14, B = 34, n = pts.length;
+    const x = i => n === 1 ? L + (W - L - R) / 2 : L + i * (W - L - R) / (n - 1), y = v => T + (H - T - B) * (1 - v / 100);
+    const grid = [0, 20, 40, 60, 80, 100].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="gr-grid ${v === 60 || v === 80 ? 'meta' : ''}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" class="gr-t">${v}</text>`).join('');
+    const ruta = pts.map((q, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(q.p).toFixed(1)}`).join(' ');
+    const paso = Math.ceil(n / 8);
+    return `<svg viewBox="0 0 ${W} ${H}" class="gr" role="img" aria-label="Evolución de las notas por examen">${grid}
+      ${n > 1 ? `<path d="${ruta}" class="gr-linea"/>` : ''}
+      ${pts.map((q, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(q.p).toFixed(1)}" r="6" fill="${colNota(q.p)}" class="gr-punto"><title>${esc(q.tip)}</title></circle>
+        <text x="${x(i).toFixed(1)}" y="${(y(q.p) - 11).toFixed(1)}" text-anchor="middle" class="gr-v">${Math.round(q.p)}%</text>
+        ${i % paso === 0 ? `<text x="${x(i).toFixed(1)}" y="${H - 12}" text-anchor="middle" class="gr-t">${esc(q.etq)}</text>` : ''}`).join('')}</svg>`;
+  }
+  function barrasH(items) {             // items: [{ t, p, det }]
+    return `<div class="gb">${items.map(it => `<div class="gb-f"><span class="gb-t" title="${esc(it.t)}">${esc(it.t)}</span><div class="gb-b"><i style="width:${Math.max(2, Math.min(100, it.p))}%;background:${colNota(it.p)}"></i></div><b>${Math.round(it.p)}%</b>${it.det ? `<small>${esc(it.det)}</small>` : ''}</div>`).join('')}</div>`;
+  }
+  function histograma(vals) {
+    const rangos = [['Menos de 40', 0, 40, 'var(--mal)'], ['40 a 59', 40, 60, '#f97316'], ['60 a 79', 60, 80, 'var(--aviso)'], ['80 o más', 80, 101, 'var(--ok)']];
+    const cuentas = rangos.map(([, a, b]) => vals.filter(v => v >= a && v < b).length), mx = Math.max(1, ...cuentas);
+    return `<div class="hist">${rangos.map(([t, , , c], i) => `<div class="hist-c"><b>${cuentas[i]}</b><div class="hist-b"><i style="height:${Math.round(100 * cuentas[i] / mx)}%;background:${c}"></i></div><span>${t}</span></div>`).join('')}</div>`;
+  }
+  function spark(vals) {
+    if (vals.length < 2) return `<span class="sub">—</span>`;
+    const W = 84, H = 26, x = i => 3 + i * (W - 6) / (vals.length - 1), y = v => 3 + (H - 6) * (1 - v / 100);
+    return `<svg viewBox="0 0 ${W} ${H}" class="spark"><path d="${vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')}"/><circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.6" fill="${colNota(vals[vals.length - 1])}"/></svg>`;
+  }
+
+  // ---------- resultados por persona ----------
+  const completa = i => i.estado === 'ENTREGADO' && Number(i.maximo) > 0 && (i.calificadas || 0) >= i.preguntas && i.calificadas > 0;
+  const pctDe = i => 100 * Number(i.puntos) / Number(i.maximo);
+  function resultadosPersonas() {
+    const m = new Map();
+    st.d.examenes.forEach(e => e.intentos.forEach(i => {
+      if (i.estado === 'ANULADO') return;
+      let p = m.get(i.perfilId); if (!p) { p = { perfilId: i.perfilId, nombre: i.nombre, correo: i.correo, intentos: [] }; m.set(i.perfilId, p); }
+      p.intentos.push(Object.assign({}, i, { examenNombre: e.nombre, examenId: e.id }));
+    }));
+    return [...m.values()].map(p => {
+      p.cal = p.intentos.filter(completa).sort((a, b) => new Date(a.entregadoEn) - new Date(b.entregadoEn));
+      const v = p.cal.map(pctDe);
+      p.pcts = v; p.prom = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+      p.mejor = v.length ? Math.max(...v) : null; p.ultimo = v.length ? v[v.length - 1] : null;
+      p.tend = v.length > 1 ? v[v.length - 1] - v[v.length - 2] : null;
+      p.entregados = p.intentos.filter(i => i.estado === 'ENTREGADO').length;
+      p.incid = p.intentos.reduce((a, i) => a + (i.incidencias || 0), 0);
+      p.porCalificar = p.intentos.filter(i => i.estado === 'ENTREGADO' && !completa(i)).length;
+      return p;
+    });
+  }
+  const ORDENES_RES = [['prom', 'Mejor promedio'], ['nombre', 'Nombre (A–Z)'], ['recientes', 'Entrega más reciente'], ['alertas', 'Con más incidencias']];
+  const flechaTend = t => t == null ? '' : Math.abs(t) < 1 ? '<span class="tend igual" title="Igual que el examen anterior">= igual</span>'
+    : t > 0 ? `<span class="tend sube" title="Frente al examen anterior"><i class="fas fa-arrow-trend-up"></i> +${Math.round(t)} pts</span>` : `<span class="tend baja" title="Frente al examen anterior"><i class="fas fa-arrow-trend-down"></i> ${Math.round(t)} pts</span>`;
+
+  function vistaResultados() {
+    const R = st.res, q = quitarTildes(R.q);
+    const todos = resultadosPersonas();
+    const conNota = todos.filter(p => p.prom != null);
+    const ultimaEntrega = p => Math.max(0, ...p.intentos.map(i => i.entregadoEn ? new Date(i.entregadoEn).getTime() : 0));
+    const orden = { prom: (a, b) => (b.prom ?? -1) - (a.prom ?? -1) || a.nombre.localeCompare(b.nombre, 'es'), nombre: (a, b) => a.nombre.localeCompare(b.nombre, 'es'),
+      recientes: (a, b) => ultimaEntrega(b) - ultimaEntrega(a), alertas: (a, b) => b.incid - a.incid || a.nombre.localeCompare(b.nombre, 'es') }[R.orden];
+    const lista = todos.filter(p => !q || quitarTildes(p.nombre + ' ' + p.correo).includes(q)).sort(orden);
+    const prom = conNota.length ? conNota.reduce((a, p) => a + p.prom, 0) / conNota.length : null;
+    const top = [...conNota].sort((a, b) => b.prom - a.prom)[0];
+    if (!todos.length) return `<div class="ex-card vacio-grande"><i class="fas fa-chart-line"></i><h3>Aún no hay resultados</h3><p class="sub">Cuando las personas entreguen sus exámenes y los califiques, aquí verás sus notas, su evolución y sus gráficas.</p></div>`;
+    const kpis = [['fa-users', todos.length, 'personas con exámenes', 'azul'], ['fa-percent', prom == null ? '—' : Math.round(prom) + ' %', 'promedio general', 'morado'],
+      ['fa-trophy', top ? Math.round(top.prom) + ' %' : '—', top ? 'mejor promedio · ' + top.nombre.split(' ')[0] : 'mejor promedio', 'azul'], ['fa-triangle-exclamation', todos.filter(p => p.incid > 0).length, 'con incidencias para revisar', 'ambar']]
+      .map(([ic, n, t, c]) => `<div class="kpi ${c}"><i class="fas ${ic}"></i><b>${n}</b><span>${esc(t)}</span></div>`).join('');
+    const tarjetas = lista.map(p => {
+      const pe = perfilDe(p.perfilId);
+      return `<button class="pcard" data-ficha="${p.perfilId}">
+        <div class="pcard-top">${avatar(p.nombre, fotoDePerfil(p.perfilId), 'grande')}<div class="pcard-n"><b>${esc(p.nombre)}</b><small>${esc(pe ? pe.perfil : '')}${pe && pe.lineas && pe.lineas.length ? ' · ' + esc(pe.lineas.join(', ')) : ''}</small></div>
+          ${p.incid ? `<span class="alerta" title="Incidencias en sus exámenes"><i class="fas fa-triangle-exclamation"></i> ${p.incid}</span>` : ''}</div>
+        <div class="pcard-nota">${p.prom == null ? '<span class="sub">Sin calificar todavía</span>' : `<b style="color:${colNota(p.prom)}">${Math.round(p.prom)} %</b><span class="sub">promedio</span>${flechaTend(p.tend)}`}<span class="espacio"></span>${spark(p.pcts)}</div>
+        <div class="pcard-pie"><span>${p.intentos.length} examen${p.intentos.length === 1 ? '' : 'es'}</span><span>${p.entregados} entregado${p.entregados === 1 ? '' : 's'}</span>${p.porCalificar ? `<span class="ins morado">${p.porCalificar} por calificar</span>` : ''}</div></button>`;
+    }).join('');
+    return `<div class="kpis">${kpis}</div>
+      <div class="rejilla-2"><div class="ex-card"><h2>Cómo se reparten las notas</h2><p class="sub">Un examen calificado por persona: se cuenta el promedio de cada una.</p>${conNota.length ? histograma(conNota.map(p => p.prom)) : '<p class="vacio">Todavía no hay notas.</p>'}</div>
+        <div class="ex-card"><h2>Ranking de promedios</h2>${conNota.length ? barrasH([...conNota].sort((a, b) => b.prom - a.prom).slice(0, 8).map(p => ({ t: p.nombre, p: p.prom, det: `${p.cal.length} examen${p.cal.length === 1 ? '' : 'es'}` }))) : '<p class="vacio">Todavía no hay notas.</p>'}</div></div>
+      <div class="toolbar"><div class="buscar"><i class="fas fa-search"></i><input id="rsBuscar" type="search" placeholder="Buscar persona" value="${esc(R.q)}"></div>
+        <label class="orden">Ordenar<select id="rsOrden">${ORDENES_RES.map(([k, t]) => `<option value="${k}" ${R.orden === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
+      ${lista.length ? `<div class="sub resultados-n">${lista.length} de ${todos.length} persona(s) · toca una para ver su detalle</div><div class="rejilla-personas">${tarjetas}</div>` : '<div class="ex-card vacio-grande chico"><h3>Nadie coincide</h3></div>'}`;
+  }
+
+  // ---------- ficha de una persona: datos, evolución y rendimiento por tipo de pregunta ----------
+  async function abrirFicha(perfilId) {
+    const p = resultadosPersonas().find(x => x.perfilId === perfilId); if (!p) return;
+    const pe = perfilDe(perfilId), emp = pe && pe.empleadoId ? empPorId(pe.empleadoId) : null;
+    const datos = [emp && emp.cargo, emp && emp.unidad, emp && emp.area, pe && pe.perfil, pe && (pe.lineas && pe.lineas.length ? pe.lineas.join(', ') : 'Todas las líneas')].filter(Boolean);
+    const filas = [...p.intentos].sort((a, b) => new Date(b.entregadoEn || b.iniciadoEn || 0) - new Date(a.entregadoEn || a.iniciadoEn || 0)).map(i => {
+      const parcial = i.calificadas > 0 && !completa(i);
+      return `<tr><td><b>${esc(i.examenNombre)}</b></td><td>${insignia(i.estado)}</td><td class="sub">${esc(i.entregadoEn ? fechaCorta(i.entregadoEn) : i.iniciadoEn ? 'Empezó ' + fechaCorta(i.iniciadoEn) : '—')}</td>
+        <td>${i.calificadas > 0 ? `<b>${fmtPts(i.puntos)}</b> / ${fmtPts(i.maximo)} <span class="sub">· ${pct(i.puntos, i.maximo)} %${parcial ? ' (parcial)' : ''}</span>${barra(i.puntos, i.maximo)}` : i.estado === 'ENTREGADO' ? '<span class="sub">Sin calificar</span>' : '<span class="sub">—</span>'}</td>
+        <td>${i.incidencias ? `<span class="alerta"><i class="fas fa-triangle-exclamation"></i> ${i.incidencias}</span>` : '<span class="sub">0</span>'}</td>
+        <td class="acc">${i.iniciadoEn ? `<button class="btn chico" data-fr="${i.id}">${i.estado === 'ENTREGADO' ? 'Revisar' : 'Ver avance'}</button>` : ''}</td></tr>`;
+    }).join('');
+    const m = modal(`<div class="mdl-head sticky"><div class="ficha-cab">${avatar(p.nombre, fotoDePerfil(perfilId), 'xl')}<div><h2>${esc(p.nombre)}</h2><div class="sub">${esc(p.correo || '')}</div>
+        <div class="metas" style="margin-top:6px">${datos.map(d => `<span class="meta">${esc(d)}</span>`).join('')}</div></div></div><button class="x" data-fx aria-label="Cerrar">×</button></div>
+      <div class="mdl-body">
+        <div class="kpis kpis-chicos"><div class="kpi azul"><i class="fas fa-clipboard-list"></i><b>${p.intentos.length}</b><span>examen${p.intentos.length === 1 ? '' : 'es'} · ${p.entregados} entregado${p.entregados === 1 ? '' : 's'}</span></div>
+          <div class="kpi morado"><i class="fas fa-percent"></i><b>${p.prom == null ? '—' : Math.round(p.prom) + ' %'}</b><span>promedio${p.tend != null ? ' · ' + (p.tend > 0 ? 'subiendo' : p.tend < 0 ? 'bajando' : 'estable') : ''}</span></div>
+          <div class="kpi"><i class="fas fa-trophy"></i><b>${p.mejor == null ? '—' : Math.round(p.mejor) + ' %'}</b><span>mejor nota</span></div>
+          <div class="kpi ambar"><i class="fas fa-triangle-exclamation"></i><b>${p.incid}</b><span>incidencias en total</span></div></div>
+        <div class="rejilla-2">
+          <section class="ex-card"><h2>Evolución de sus notas</h2>${p.cal.length ? graficaLinea(p.cal.map(i => ({ p: pctDe(i), etq: diaCorto(i.entregadoEn), tip: `${i.examenNombre}: ${fmtPts(i.puntos)} de ${fmtPts(i.maximo)} (${Math.round(pctDe(i))} %)` }))) + '<p class="sub">Las líneas punteadas marcan el 60 % y el 80 %.</p>' : '<p class="vacio">Aún no tiene exámenes calificados por completo.</p>'}</section>
+          <section class="ex-card"><h2>Rendimiento por tipo de pregunta</h2><div id="fichaTipos"><p class="sub">${p.cal.length ? 'Calculando…' : 'Se mostrará cuando tenga exámenes calificados.'}</p></div></section></div>
+        <section class="ex-card"><h2>Sus exámenes</h2><div class="scroll"><table class="tabla gente"><tr><th>Examen</th><th>Estado</th><th>Fecha</th><th>Nota</th><th>Incidencias</th><th></th></tr>${filas}</table></div></section>
+      </div>`, { ancho: 1000 });
+    m.box.querySelector('[data-fx]').onclick = () => m.cerrar();
+    m.box.querySelectorAll('[data-fr]').forEach(b => b.onclick = () => ejecutar(() => abrirRevision(Number(b.dataset.fr)), b));
+    if (!p.cal.length) return;
+    try {   // el detalle por pregunta se pide aparte (solo exámenes ya calificados)
+      const dets = await Promise.all(p.cal.map(i => rpc({ accion: 'intento_detalle', intentoId: i.id })));
+      const por = {};
+      dets.forEach(d => d.preguntas.forEach(q => { if (q.calificacion == null) return; const t = q.tipo || 'Sin tipo'; (por[t] = por[t] || { s: 0, mx: 0, n: 0 }); por[t].s += Number(q.calificacion); por[t].mx += Number(q.puntosMax); por[t].n++; }));
+      const items = Object.entries(por).filter(([, v]) => v.mx > 0).map(([t, v]) => ({ t, p: 100 * v.s / v.mx, det: `${v.n} preg.` })).sort((a, b) => b.p - a.p);
+      const box = m.box.querySelector('#fichaTipos');
+      if (box) box.innerHTML = items.length ? barrasH(items) + (items.length > 1 ? `<p class="sub">Su punto fuerte: <b>${esc(items[0].t)}</b>. A reforzar: <b>${esc(items[items.length - 1].t)}</b>.</p>` : '') : '<p class="sub">Sin preguntas calificadas.</p>';
+    } catch (e) { const box = m.box.querySelector('#fichaTipos'); if (box) box.innerHTML = `<p class="msg mal">${esc(e.message)}</p>`; }
+  }
+
+  function enlazarResultados(q) {
+    q('[data-ficha]', b => b.onclick = () => abrirFicha(Number(b.dataset.ficha)));
+    const rb = document.getElementById('rsBuscar');
+    if (rb) rb.oninput = () => { st.res.q = rb.value; clearTimeout(st.res._t); st.res._t = setTimeout(() => { pintar(); const i = document.getElementById('rsBuscar'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); };
+    const ro = document.getElementById('rsOrden'); if (ro) ro.onchange = () => { st.res.orden = ro.value; pintar(); };
   }
 
   function pintar() {
     if (!st.d) return;
     st.sel.lineas_ext = st.sel.lineas_ext || [];
-    const tabs = [['examenes', 'Exámenes', 'fa-clipboard-list'], ['banco', 'Banco de preguntas', 'fa-database'], ['personas', 'Personas', 'fa-users']];
+    const tabs = [['examenes', 'Exámenes', 'fa-clipboard-list'], ['banco', 'Banco de preguntas', 'fa-database'], ['resultados', 'Resultados', 'fa-chart-line'], ['personas', 'Personas', 'fa-users']];
     app.innerHTML = `<div class="ex-top"><div><h1><i class="fas fa-clipboard-question"></i> Evaluaciones técnicas</h1><small>Evaluador ${esc(st.d.yo)}${st.d.master ? ' · master' : ''}</small></div>
-      <button class="btn chico" id="exSalir">Salir</button></div>
+      <div class="ex-top-acc">${st.tab === 'examenes' ? '<button class="btn primario" data-nuevo><i class="fas fa-plus"></i> Nuevo examen</button>' : ''}<button class="btn chico" id="exSalir">Salir</button></div></div>
       <div class="ex-tabs">${tabs.map(t => `<button data-tab="${t[0]}" class="${st.tab === t[0] ? 'on' : ''}"><i class="fas ${t[2]}"></i> ${t[1]}</button>`).join('')}</div>
-      ${st.tab === 'examenes' ? vistaExamenes() : st.tab === 'banco' ? vistaBanco() : vistaPersonas()}`;
+      ${st.tab === 'examenes' ? vistaExamenes() : st.tab === 'banco' ? vistaBanco() : st.tab === 'resultados' ? vistaResultados() : vistaPersonas()}`;
     enlazar();
   }
 
@@ -978,6 +1400,8 @@
     const salir = document.getElementById('exSalir'); if (salir) salir.onclick = () => { cerrarSesion(); location.reload(); };
 
     enlazarExamenes(q);
+    enlazarBanco(q);
+    enlazarResultados(q);
 
     const arch = document.getElementById('exArchivo');
     if (arch) arch.onchange = () => ejecutar(async () => {
@@ -1123,6 +1547,7 @@
       }
     }
     await cargarEmpleados();
+    st.ex = cargarPrefsEx(); st.bq = nuevoBq();
     pintar();
   }
   iniciar();
