@@ -2220,6 +2220,58 @@ window.FirebaseBackend = {
         return await this.actualizarRegistroGeneral(params);
     },
 
+    // Gestión de jornada (panel): fija la hora de ENTRADA o SALIDA de un día. Días pasados o archivados van a
+    // REGISTROS (la hoja crea la fila si falta). Hoy vive en Firestore: actualizarRegistroGeneral nunca crea
+    // documentos, así que una marcación que no existía no se guardaba aunque el panel dijera «guardado».
+    // Aquí se crea como marcación manual del supervisor y se quitan las ausencias de ese día.
+    async guardarMarcacionSupervisor(params) {
+        const empleadoId = String(params.empleadoId || '').trim();
+        const fecha = params.fecha;
+        const tipo = params.tipo === 'SALIDA' ? 'SALIDA' : 'ENTRADA';
+        const hora = String(params.hora || '').trim();
+        if (!empleadoId || !fecha || !/^\d{2}:\d{2}:\d{2}$/.test(hora)) return { error: 'Hora o datos incompletos' };
+        const [y, mo, d] = fecha.split('-');
+        const valorTs = `${d}/${mo}/${y} ${hora}`;
+        const docId = params.docId || null;
+        const base = { docId, empleadoId, tipo, fecha, campo: 'timestamp', valor: valorTs, modo: params.modo };
+        if (tipo === 'ENTRADA') { base.almuerzo = params.almuerzo; base.horasExtra = params.horasExtra; }
+        if (fecha < this._hoyStr() || (docId && String(docId).startsWith('arch_'))) {
+            return await this.actualizarRegistroGeneral(base);
+        }
+
+        const TIPOS = tipo === 'ENTRADA' ? ['ENTRADA', 'RETORNO_CAMPO', 'ENTRADA_CAMPO'] : ['SALIDA', 'SALIDA_CAMPO'];
+        const MARCAS = ['ENTRADA', 'SALIDA', 'RETORNO_CAMPO', 'ENTRADA_CAMPO', 'SALIDA_CAMPO', 'SALIDA_PASANTE', 'ESTADO', 'SOLO_ALMUERZO'];
+        const snap = await db.collection('registros').where('empleadoId', '==', empleadoId).get({ source: 'server' });
+        const delDia = [];
+        snap.forEach(doc => {
+            const r = this._processDoc(doc.id, doc.data());
+            if (r && this._normFecha(r.fecha) === fecha) delDia.push(r);
+        });
+        const existente = (docId && delDia.find(r => r.id === docId)) || delDia.find(r => TIPOS.includes(String(r.tipo || '').toUpperCase()));
+        let res;
+        if (existente) {
+            res = await this.actualizarRegistroGeneral({ ...base, docId: existente.id });
+        } else {
+            res = await this.guardarRegistro({
+                id: empleadoId, tipo, fecha, hora, modo: params.modo || 'EMPRESA',
+                almuerzo: tipo === 'ENTRADA' ? (params.almuerzo || '') : '',
+                dispositivo: 'MANUAL_SUPERVISOR', esManual: true
+            });
+            if (res && res.ok && res.id && tipo === 'ENTRADA' && params.horasExtra === 'SI') {
+                await db.collection('registros').doc(res.id).update({ horasExtra: 'SI' });
+            }
+        }
+        // El día deja de ser ausencia: quitar los documentos de ausencia (vacación, falta, permiso del día…)
+        if (res && res.ok) {
+            for (const r of delDia) {
+                if (MARCAS.includes(String(r.tipo || '').toUpperCase())) continue;
+                try { await db.collection('registros').doc(r.id).delete(); }
+                catch (e) { console.warn('Ausencia del día no quitada:', r.id, e.message || e); }
+            }
+        }
+        return res;
+    },
+
     // Ajuste por día del descuento de receso y almuerzo (Gestionar jornada): un solo documento
     // configuracion/ajustes_descanso con dias["ID_YYYY-MM-DD"] = { d: 'SI' | 'NO', por, en }. 'AUTO' lo quita.
     // Vive aparte de las marcaciones para que no dependa del archivado (Firestore → Sheets → Postgres).
@@ -5057,18 +5109,26 @@ window.FirebaseBackend = {
             // 1. PRIMERO: Buscar y actualizar en la hoja REGISTROS de Google Sheets
             //    (solo días archivados: hoy vive en Firestore y llega a la hoja al archivar)
             const sheetsParams = { ...params, accion: 'guardarPermisoSupervisor' };
+            const esPasado = fecha < this._hoyStr();
+            let errorHoja = null;
             try {
-                const resSheets = fecha < this._hoyStr()
+                const resSheets = esPasado
                     ? await this._enviarCambioArchivado(sheetsParams, 1, 35000)
                     : { ok: true, msg: 'día actual: solo Firestore' };
                 if (resSheets && resSheets.ok) {
                     console.log("✅ Permiso actualizado en Google Sheets (Hoja REGISTROS):", resSheets.msg || 'OK');
                 } else if (resSheets && resSheets.error) {
                     console.warn("⚠️ Sheets reportó al guardar permiso:", resSheets.error);
+                    errorHoja = resSheets.error;
+                } else if (esPasado) {
+                    errorHoja = 'el histórico no confirmó el cambio';
                 }
             } catch (errSheets) {
                 console.warn("⚠️ Advertencia al actualizar permiso en Google Sheets:", errSheets.message);
+                errorHoja = errSheets.message || 'el histórico no respondió';
             }
+            // Antes estos fallos se ignoraban y el panel decía «guardado» aunque el permiso no quedara registrado
+            if (esPasado && errorHoja) return { error: errorHoja };
 
             // 2. EN FIRESTORE: Solo buscar y actualizar SI YA EXISTE. NUNCA crear nuevo documento.
             const regSnap = await db.collection('registros')
@@ -5096,6 +5156,9 @@ window.FirebaseBackend = {
 
             if (targetDocId) {
                 await db.collection('registros').doc(targetDocId).update(updateObj);
+            } else if (!esPasado) {
+                // Hoy solo existe en Firestore: sin marcación del día no hay dónde guardar el permiso
+                return { error: 'no hay marcaciones de ese día donde guardar el permiso (registre primero la entrada)' };
             } else {
                 // Si no existía registro previo en Firestore, NO CREAR NUEVO DOCUMENTO para evitar duplicados con Google Sheets
                 console.log(`ℹ️ [guardarPermisoSupervisor] No hay doc previo en Firestore para ${empleadoId} en ${fecha}. Actualizado en Sheets sin crear duplicado en Firestore.`);

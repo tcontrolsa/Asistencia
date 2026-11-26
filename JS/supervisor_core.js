@@ -14184,42 +14184,71 @@ window.cerrarModalGestionJornada = function () {
   }
 };
 
-window.actualizarEtiquetasMinutosModal = function (origen) {
-  const elJust = document.getElementById('modalJornadaMinsJustificado');
-  const elPers = document.getElementById('modalJornadaMinsPersonal');
-  const elMed = document.getElementById('modalJornadaMinsMedico');
+// Sección 3: cada tiempo se escribe en horas y minutos (campos …H… y …M…); el total en minutos vive en el
+// campo oculto modalJornadaMins… que usan el guardado y las acciones rápidas.
+const CAMPOS_TIEMPO_MODAL = { justificado: 'Justificado', personal: 'Personal', medico: 'Medico' };
 
-  let just = parseInt(elJust?.value || '0') || 0;
-  let pers = parseInt(elPers?.value || '0') || 0;
-  let med = parseInt(elMed?.value || '0') || 0;
+function textoHorasMinutos(min) {
+  const t = Math.max(0, Math.round(Number(min) || 0));
+  const h = Math.floor(t / 60), m = t % 60;
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
 
-  // Límite técnico máximo de 720 min (12 horas) por categoría
-  if (just > 720) { just = 720; if (elJust) elJust.value = 720; }
-  if (pers > 720) { pers = 720; if (elPers) elPers.value = 720; }
-  if (med > 720) { med = 720; if (elMed) elMed.value = 720; }
+window.alEditarHorasMinutosModal = function (cat, alSalir) {
+  const id = CAMPOS_TIEMPO_MODAL[cat];
+  if (!id) return;
+  const elH = document.getElementById('modalJornadaH' + id);
+  const elM = document.getElementById('modalJornadaM' + id);
+  const elTot = document.getElementById('modalJornadaMins' + id);
+  const num = el => Math.max(0, parseFloat(String(el?.value || '0').replace(',', '.')) || 0);
+  let total = Math.round(num(elH) * 60 + num(elM)); // admite 1,5 h o 90 min
+  if (total > 720) total = 720; // límite técnico: 12 horas por categoría
+  if (elTot) elTot.value = total;
+  // Mientras escribe no se tocan sus campos; al salir se ordenan (90 min → 1 h 30 min)
+  window.actualizarEtiquetasMinutosModal(cat, !alSalir);
+};
 
-  const fnFormat = (typeof minutosAHHMMSS === 'function') ? minutosAHHMMSS : (m => `${m} min`);
-
-  const lblJust = document.getElementById('modalJornadaLblJustificado');
-  if (lblJust) lblJust.textContent = fnFormat(just);
-
-  const lblPers = document.getElementById('modalJornadaLblPersonal');
-  if (lblPers) lblPers.textContent = fnFormat(pers);
-
-  const lblMed = document.getElementById('modalJornadaLblMedico');
-  if (lblMed) lblMed.textContent = fnFormat(med);
+window.actualizarEtiquetasMinutosModal = function (origen, sinTocarCampos) {
+  const vals = {};
+  Object.entries(CAMPOS_TIEMPO_MODAL).forEach(([cat, id]) => {
+    const elTot = document.getElementById('modalJornadaMins' + id);
+    let v = Math.max(0, parseInt(elTot?.value || '0', 10) || 0);
+    if (v > 720) v = 720; // Límite técnico máximo de 720 min (12 horas) por categoría
+    if (elTot) elTot.value = v;
+    vals[cat] = v;
+    if (!sinTocarCampos) {
+      const elH = document.getElementById('modalJornadaH' + id);
+      const elM = document.getElementById('modalJornadaM' + id);
+      if (elH) elH.value = Math.floor(v / 60);
+      if (elM) elM.value = v % 60;
+    }
+    const lbl = document.getElementById('modalJornadaLbl' + id);
+    if (lbl) lbl.textContent = v ? `= ${v} min` : '0 min';
+  });
 
   const totalTxt = document.getElementById('modalJornadaTotalPermisosTxt');
-  const total = just + pers + med;
+  const total = vals.justificado + vals.personal + vals.medico;
   if (totalTxt) {
-    totalTxt.textContent = `Total Permisos: ${fnFormat(total)} (${total} min)`;
+    totalTxt.textContent = `Total permisos: ${textoHorasMinutos(total)}${total >= 60 ? ` (${total} min)` : ''}`;
     totalTxt.style.color = '#15803d';
   }
 };
 
+// Hora escrita en la ventana: acepta 7:30, 07:30, 7.30, 7h30 o 07:30:15 → "07:30:00". Vacía → '', inválida → null.
+function normalizarHoraModal(v) {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  const m = s.match(/^(\d{1,2})[:.hH](\d{2})(?:[:.](\d{2}))?$/);
+  if (!m || +m[1] > 23 || +m[2] > 59 || +(m[3] || 0) > 59) return null;
+  return `${m[1].padStart(2, '0')}:${m[2]}:${m[3] || '00'}`;
+}
+
 window.recalcularTiemposModalJornada = function () {
-  const hE = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
-  const hS = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
+  const hEtxt = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
+  const hStxt = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
+  const hE = normalizarHoraModal(hEtxt) || hEtxt;
+  const hS = normalizarHoraModal(hStxt) || hStxt;
 
   if (hE || hS) {
     const razonSel = document.getElementById('modalJornadaRazonSelect');
@@ -14417,10 +14446,23 @@ window.guardarModalGestionJornada = async function () {
   if (!ctx) return;
   const { empleadoId, fecha, emp, esCumpleHoy } = ctx;
 
-  const hEntrada = document.getElementById('modalJornadaHoraEntrada')?.value.trim() || '';
-  const hSalida = document.getElementById('modalJornadaHoraSalida')?.value.trim() || '';
+  // Horas: se guardan siempre como HH:MM:SS (antes "7:30" se enviaba sin segundos ni cero inicial y una
+  // salida anterior a la entrada se guardaba igual)
+  const normHoraModal = normalizarHoraModal;
+  const hEntrada = normHoraModal(document.getElementById('modalJornadaHoraEntrada')?.value);
+  const hSalida = normHoraModal(document.getElementById('modalJornadaHoraSalida')?.value);
+  if (hEntrada === null || hSalida === null) {
+    mostrarToast(`⚠️ La hora de ${hEntrada === null ? 'entrada' : 'salida'} no es válida. Escríbala como HH:MM (por ejemplo 07:30).`, 'warn');
+    return;
+  }
+  if (hEntrada && hSalida && hSalida <= hEntrada) {
+    mostrarToast('⚠️ La hora de salida debe ser posterior a la de entrada.', 'warn');
+    return;
+  }
   const modalidad = document.getElementById('modalJornadaModoSelect')?.value || 'EMPRESA';
 
+  // Si dejó el cursor en un campo de horas o minutos, tomar lo último que escribió
+  Object.keys(CAMPOS_TIEMPO_MODAL).forEach(cat => window.alEditarHorasMinutosModal(cat, true));
   const minsJust = parseInt(document.getElementById('modalJornadaMinsJustificado')?.value || '0') || 0;
   const minsPers = parseInt(document.getElementById('modalJornadaMinsPersonal')?.value || '0') || 0;
   const minsMed = parseInt(document.getElementById('modalJornadaMinsMedico')?.value || '0') || 0;
@@ -14650,8 +14692,24 @@ window.guardarModalGestionJornada = async function () {
         }
       }
     } else {
+      // Marcaciones primero y permisos después: el permiso se escribe en la fila/documento de la entrada, y si
+      // iban en paralelo con una entrada nueva no encontraba dónde guardarse
+      let cadena = Promise.resolve();
+      const enOrden = run => () => { const p = cadena.then(run, run); cadena = p.catch(() => null); return p; };
+      const marcaFB = window.FirebaseBackend && window.FirebaseBackend.guardarMarcacionSupervisor;
+      const docIdReal = r => (r && r.id && !String(r.id).startsWith('temp_')) ? r.id : null;
+      if (marcaFB) {
+        if (hEntrada) backgroundTasks.push(['Entrada', enOrden(() => window.FirebaseBackend.guardarMarcacionSupervisor({
+          docId: docIdReal(regE), empleadoId, fecha, tipo: 'ENTRADA', hora: hEntrada,
+          modo: modalidad, almuerzo: almuerzoVal, horasExtra: horasExtrasVal
+        }))]);
+        if (hSalida) backgroundTasks.push(['Salida', enOrden(() => window.FirebaseBackend.guardarMarcacionSupervisor({
+          docId: docIdReal(regS), empleadoId, fecha, tipo: 'SALIDA', hora: hSalida, modo: modalidad
+        }))]);
+      }
+
       // Guardar Entrada
-      if (hEntrada && fullTsEntrada) {
+      if (!marcaFB && hEntrada && fullTsEntrada) {
         const firestoreDocIdE = (regE && regE.id && !String(regE.id).startsWith('arch_') && !String(regE.id).startsWith('temp_')) ? regE.id : null;
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
           backgroundTasks.push(['Entrada', () => window.FirebaseBackend.actualizarRegistroGeneral({
@@ -14681,7 +14739,7 @@ window.guardarModalGestionJornada = async function () {
       }
 
       // Guardar Salida
-      if (hSalida && fullTsSalida) {
+      if (!marcaFB && hSalida && fullTsSalida) {
         const firestoreDocIdS = (regS && regS.id && !String(regS.id).startsWith('arch_') && !String(regS.id).startsWith('temp_')) ? regS.id : null;
         if (window.FirebaseBackend && window.FirebaseBackend.actualizarRegistroGeneral) {
           backgroundTasks.push(['Salida', () => window.FirebaseBackend.actualizarRegistroGeneral({
@@ -14713,8 +14771,10 @@ window.guardarModalGestionJornada = async function () {
         { tipo: 'medico', valor: minsMed, previo: ctx.minsMedico || 0 }
       ];
 
+      // Un cambio solo en la observación también se guarda (va con el tiempo justificado, como el comentario)
+      const cambiaObs = observacion !== String(ctx.observacionActual || '').trim() && (tieneHoras || tiposPermisos.some(p => p.previo > 0));
       for (const p of tiposPermisos) {
-        if (p.valor > 0 || p.previo > 0) {
+        if (p.valor > 0 || p.previo > 0 || (cambiaObs && p.tipo === 'justificado' && !tiposPermisos.some(q => q.valor > 0 || q.previo > 0))) {
           const permParams = {
             empleadoId,
             fecha,
@@ -14724,7 +14784,7 @@ window.guardarModalGestionJornada = async function () {
             supervisorId
           };
           if (window.FirebaseBackend && window.FirebaseBackend.guardarPermisoSupervisor) {
-            backgroundTasks.push([`Permiso ${p.tipo}`, () => window.FirebaseBackend.guardarPermisoSupervisor(permParams)]);
+            backgroundTasks.push([`Permiso ${p.tipo}`, enOrden(() => window.FirebaseBackend.guardarPermisoSupervisor(permParams))]);
           } else if (typeof jsonpRequest === 'function') {
             backgroundTasks.push([`Permiso ${p.tipo}`, () => jsonpRequest({ accion: 'guardarPermisoSupervisor', ...permParams })]);
           }
