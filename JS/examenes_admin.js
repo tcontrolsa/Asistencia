@@ -503,14 +503,12 @@
   }
   const PRIO_PERSONA = { ENTREGADO: 1, INICIADO: 2, ENVIADO: 3, GENERADO: 4, ANULADO: 5 };
   const ordenGente = (a, b) => ((a.estado === 'ENTREGADO' && a.calificadas >= a.preguntas) ? 1.5 : PRIO_PERSONA[a.estado] || 9) - ((b.estado === 'ENTREGADO' && b.calificadas >= b.preguntas) ? 1.5 : PRIO_PERSONA[b.estado] || 9) || a.nombre.localeCompare(b.nombre, 'es');
-  const guardarPrefsEx = () => { try { localStorage.setItem('exm_prefs_ex', JSON.stringify({ filtro: st.ex.filtro, orden: st.ex.orden })); } catch (e) { } };
-  const cargarPrefsEx = () => { let p = {}; try { p = JSON.parse(localStorage.getItem('exm_prefs_ex') || '{}'); } catch (e) { } return { q: '', filtro: FILTROS_EX.some(f => f[0] === p.filtro) ? p.filtro : 'todos', orden: ORDENES_EX.some(o => o[0] === p.orden) ? p.orden : 'accion', vista: new Map() }; };
+  const guardarPrefsEx = () => { try { localStorage.setItem('exm_prefs_ex', JSON.stringify({ filtro: st.ex.filtro, orden: st.ex.orden, modo: st.ex.modo })); } catch (e) { } };
+  const cargarPrefsEx = () => { let p = {}; try { p = JSON.parse(localStorage.getItem('exm_prefs_ex') || '{}'); } catch (e) { } return { q: '', filtro: FILTROS_EX.some(f => f[0] === p.filtro) ? p.filtro : 'todos', orden: ORDENES_EX.some(o => o[0] === p.orden) ? p.orden : 'accion', vista: new Map(), modo: p.modo === 'lista' ? 'lista' : 'tarjetas' }; };
 
   // ---------- pestaña Exámenes ----------
-  function tarjetaExamen(e, clase) {
-    const r = resumenExamen(e);
-    const meta = [`${e.minutos} min`, `${e.cantidad} preguntas`, e.exigirPantalla && 'Pantalla compartida', e.permitirAdjuntos && 'Admite archivos', e.iaPermitida && 'Con IA']
-      .filter(Boolean).map(t => `<span class="meta">${esc(t)}</span>`).join('');
+  // Lo que sigue para un examen (único botón destacado) y las acciones del menú «Más»
+  function pasoYMenu(e, r) {
     // El siguiente paso lógico es el único botón destacado
     let paso = null;
     if (r.sinEnviar.length) paso = { txt: `Enviar invitaciones (${r.sinEnviar.length})`, ico: 'fa-paper-plane', attr: `data-enviar="${e.id}"` };
@@ -526,10 +524,11 @@
       e.intentos.some(i => i.estado === 'ENVIADO') && `<button data-enviar="${e.id}"><i class="fas fa-paper-plane"></i> Reenviar invitaciones a quienes no han entregado</button>`,
       `<div class="menu-sep"></div><button class="peligro-item" data-elim-ex="${e.id}"><i class="fas fa-trash"></i> Eliminar este examen…</button>`
     ].filter(Boolean);
-    const progreso = (n, de, txt, cl) => `<div class="prog"><div class="prog-cab"><b>${n}</b><span>de ${de}</span><small>${txt}</small></div><div class="prog-barra"><i class="${cl}" style="width:${de ? Math.round(100 * n / de) : 0}%"></i></div></div>`;
-    const estadoRes = e.resultadosEnviadoEn
-      ? `<p class="linea-ok"><i class="fas fa-circle-check"></i> Resultados enviados a tu correo el ${esc(fechaCorta(e.resultadosEnviadoEn))}</p>`
-      : e.resultadosError ? `<p class="msg aviso">Los resultados no se pudieron enviar solos: ${esc(e.resultadosError)}. Usa «Enviar resultados a mi correo» o «Descargar Excel».</p>` : '';
+    return { paso, items };
+  }
+
+  // Personas de un examen. Si nadie ha empezado, se ocultan las columnas vacías (avance, nota, incidencias)
+  function tablaGente(e) {
     const gente = [...e.intentos].sort(ordenGente);
     const filas = gente.map(i => {
       const nota = i.estado === 'ANULADO' ? '' : (i.calificadas > 0
@@ -546,6 +545,37 @@
         <td>${i.incidencias ? `<span class="alerta" title="Salidas de la ventana, intentos de pegar, etc."><i class="fas fa-triangle-exclamation"></i> ${i.incidencias}</span>` : (i.iniciadoEn ? '<span class="sub">Ninguna</span>' : '')}</td>
         <td class="acc">${acc}</td></tr>`;
     }).join('');
+    const conAvance = e.intentos.some(i => i.iniciadoEn);
+    return `<div class="scroll"><table class="tabla gente ${conAvance ? '' : 'sin-avance'}"><tr><th>Evaluado</th><th>Estado</th><th>Avance</th><th>Nota</th><th>Incidencias</th><th></th></tr>${filas}</table></div>`;
+  }
+
+  // Vista de lista: una fila por examen, para ver muchos de un vistazo
+  function tablaListaExamenes(lista) {
+    const filas = lista.map(({ e, c }) => {
+      const r = resumenExamen(e), { paso, items } = pasoYMenu(e, r), [ct, cc, ci] = CLASES[c];
+      const abierta = st.ex.vista.get(e.id) === true, prom = notaProm(e);
+      const celda = (n, de) => `<td class="num"><b>${n}</b><span class="sub"> / ${de}</span></td>`;
+      const chips = [`${e.minutos} min`, `${e.cantidad} preg.`, e.exigirPantalla && 'Pantalla', e.permitirAdjuntos && 'Archivos', e.iaPermitida && 'IA'].filter(Boolean).map(t => `<span class="meta">${esc(t)}</span>`).join('');
+      return `<tr class="fila-ex clase-${c} ${abierta ? 'abierta' : ''}"><td><span class="ins ${cc}"><i class="fas ${ci}"></i> ${ct}</span></td>
+        <td><button class="enlace-nombre nombre-ex" data-togg="${e.id}" aria-expanded="${abierta}"><i class="fas fa-chevron-${abierta ? 'down' : 'right'}"></i> <b>${esc(e.nombre)}</b></button><div class="metas">${chips}</div></td>
+        ${celda(r.enviadas.length, r.vivos.length)}${celda(r.entregaron.length, r.vivos.length)}${celda(r.calificadas.length, r.entregaron.length)}
+        <td class="num">${prom >= 0 ? `<b>${Math.round(prom * 100)} %</b>` : '<span class="sub">—</span>'}</td><td class="sub">${esc(fechaCorta(e.creadoEn))}</td>
+        <td class="acc">${paso ? `<button class="btn chico primario" ${paso.attr}><i class="fas ${paso.ico}"></i> ${paso.txt}</button>` : ''}
+          ${items.length ? `<details class="menu"><summary class="btn chico"><i class="fas fa-ellipsis"></i></summary><div class="menu-lista">${items.join('')}</div></details>` : ''}</td></tr>
+        ${abierta ? `<tr class="fila-detalle"><td colspan="8">${tablaGente(e)}</td></tr>` : ''}`;
+    }).join('');
+    return `<div class="ex-card lista-ex"><div class="scroll"><table class="tabla tabla-lista"><tr><th>Estado</th><th>Examen</th><th>Invitadas</th><th>Entregaron</th><th>Calificadas</th><th>Nota prom.</th><th>Creado</th><th></th></tr>${filas}</table></div></div>`;
+  }
+
+  function tarjetaExamen(e, clase) {
+    const r = resumenExamen(e);
+    const meta = [`${e.minutos} min`, `${e.cantidad} preguntas`, e.exigirPantalla && 'Pantalla compartida', e.permitirAdjuntos && 'Admite archivos', e.iaPermitida && 'Con IA']
+      .filter(Boolean).map(t => `<span class="meta">${esc(t)}</span>`).join('');
+    const { paso, items } = pasoYMenu(e, r);
+    const progreso = (n, de, txt, cl) => `<div class="prog"><div class="prog-cab"><b>${n}</b><span>de ${de}</span><small>${txt}</small></div><div class="prog-barra"><i class="${cl}" style="width:${de ? Math.round(100 * n / de) : 0}%"></i></div></div>`;
+    const estadoRes = e.resultadosEnviadoEn
+      ? `<p class="linea-ok"><i class="fas fa-circle-check"></i> Resultados enviados a tu correo el ${esc(fechaCorta(e.resultadosEnviadoEn))}</p>`
+      : e.resultadosError ? `<p class="msg aviso">Los resultados no se pudieron enviar solos: ${esc(e.resultadosError)}. Usa «Enviar resultados a mi correo» o «Descargar Excel».</p>` : '';
     const abierta = st.ex.vista.has(e.id) ? st.ex.vista.get(e.id) : clase !== 'terminado';
     const [claseTxt, claseCol, claseIco] = CLASES[clase];
     const cuenta = e.intentos.filter(i => i.estado !== 'ANULADO').length;
@@ -556,7 +586,7 @@
           ${items.length ? `<details class="menu"><summary class="btn">Más <i class="fas fa-chevron-down"></i></summary><div class="menu-lista">${items.join('')}</div></details>` : ''}</div></div>
       ${estadoRes}
       <button class="plegar-gente" data-togg="${e.id}" aria-expanded="${abierta}"><i class="fas fa-chevron-${abierta ? 'down' : 'right'}"></i> Personas <span class="cnt">${cuenta}</span>${r.porCalificar.length ? `<span class="cnt morado">${r.porCalificar.length} por calificar</span>` : ''}</button>
-      ${abierta ? `<div class="scroll"><table class="tabla gente"><tr><th>Evaluado</th><th>Estado</th><th>Avance</th><th>Nota</th><th>Incidencias</th><th></th></tr>${filas}</table></div>` : ''}</div>`;
+      ${abierta ? tablaGente(e) : ''}</div>`;
   }
 
   // Guía de «qué sigue»: Personas → Preguntas → Crear → Enviar → Calificar (resalta el paso que toca)
@@ -593,9 +623,10 @@
       <div class="toolbar"><div class="buscar"><i class="fas fa-search"></i><input id="exBuscar" type="search" placeholder="Buscar examen o persona" value="${esc(x.q)}"></div>
         <div class="chips-filtro">${filtros}</div>
         <label class="orden">Ordenar<select id="exOrden">${ORDENES_EX.map(([k, t]) => `<option value="${k}" ${x.orden === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-        <div class="plegar-todo"><button class="btn chico" data-explegar="1" title="Mostrar la lista de personas de todos los exámenes">Abrir todo</button><button class="btn chico" data-explegar="0">Cerrar todo</button></div>
+        <div class="plegar-todo"><button class="btn chico" data-explegar="1" title="Abrir el detalle de todos los exámenes" aria-label="Abrir todo"><i class="fas fa-angles-down"></i></button><button class="btn chico" data-explegar="0" title="Cerrar el detalle de todos los exámenes" aria-label="Cerrar todo"><i class="fas fa-angles-up"></i></button></div>
+        <div class="vista-toggle" role="group" aria-label="Forma de ver los exámenes"><button class="${x.modo === 'tarjetas' ? 'on' : ''}" data-vmodo="tarjetas" title="Tarjetas con detalle"><i class="fas fa-table-cells-large"></i></button><button class="${x.modo === 'lista' ? 'on' : ''}" data-vmodo="lista" title="Lista compacta"><i class="fas fa-list"></i></button></div>
         <button class="btn" id="exActualizar" title="Actualizar la lista"><i class="fas fa-rotate"></i></button></div>
-      ${v.lista.length ? `<div class="sub resultados-n">${v.lista.length} de ${v.total} examen(es)${hayFiltro ? ' · <a href="#" data-exf="todos" data-limpiar="1">Quitar filtros</a>' : ''}</div><div class="rejilla-ex">${v.lista.map(o => tarjetaExamen(o.e, o.c)).join('')}</div>`
+      ${v.lista.length ? `<div class="sub resultados-n">${v.lista.length} de ${v.total} examen(es)${hayFiltro ? ' · <a href="#" data-exf="todos" data-limpiar="1">Quitar filtros</a>' : ''}</div>${x.modo === 'lista' ? tablaListaExamenes(v.lista) : `<div class="rejilla-ex">${v.lista.map(o => tarjetaExamen(o.e, o.c)).join('')}</div>`}`
         : d.examenes.length ? `<div class="ex-card vacio-grande"><i class="fas fa-filter-circle-xmark"></i><h3>Ningún examen coincide</h3><p class="sub">Prueba con otra búsqueda o quita los filtros.</p><a class="btn" href="#" data-exf="todos" data-limpiar="1">Quitar filtros</a></div>`
         : `<div class="ex-card vacio-grande"><i class="fas fa-clipboard-list"></i><h3>Aún no has creado ningún examen</h3><p class="sub">Elige a quién evaluar, cuántas preguntas y cuánto tiempo. Les llegará un enlace por correo.</p><button class="btn primario" data-nuevo><i class="fas fa-plus"></i> Crear mi primer examen</button></div>`}`;
   }
@@ -970,6 +1001,7 @@
     };
     q('[data-exf]', b => b.onclick = ev => { ev.preventDefault(); st.ex.filtro = b.dataset.exf; if (b.dataset.limpiar) st.ex.q = ''; guardarPrefsEx(); pintar(); });
     const eo = document.getElementById('exOrden'); if (eo) eo.onchange = () => { st.ex.orden = eo.value; guardarPrefsEx(); pintar(); };
+    q('[data-vmodo]', b => b.onclick = () => { st.ex.modo = b.dataset.vmodo; guardarPrefsEx(); pintar(); });
     q('[data-togg]', b => b.onclick = () => { st.ex.vista.set(Number(b.dataset.togg), b.getAttribute('aria-expanded') !== 'true'); pintar(); });
     q('[data-explegar]', b => b.onclick = () => { const abrir = b.dataset.explegar === '1'; examenesVisibles().lista.forEach(o => st.ex.vista.set(o.e.id, abrir)); pintar(); });
     q('[data-nuevo]', b => b.onclick = () => abrirNuevoExamen());
@@ -1531,10 +1563,19 @@
   const pintarOriginal = pintar;
   pintar = function () { pintarOriginal(); Object.keys(campos).forEach(k => { const e = document.getElementById(k); if (e && campos[k] !== '') e.value = campos[k]; }); };
 
+  // Mientras llegan los datos se muestra la forma de la pantalla (en vez de un hueco o un «Cargando…»)
+  function esqueleto() {
+    const bloque = (h, extra) => `<div class="esq ${extra || ''}" style="height:${h}px"></div>`;
+    return `<div class="ex-top"><div><h1><i class="fas fa-clipboard-question"></i> Evaluaciones técnicas</h1><small class="sub">Cargando tus datos…</small></div></div>
+      <div class="ex-tabs"><button class="on">Exámenes</button><button>Banco de preguntas</button><button>Resultados</button><button>Personas</button></div>
+      <div class="kpis">${bloque(70)}${bloque(70)}${bloque(70)}${bloque(70)}</div>${bloque(64)}<div style="height:14px"></div>${bloque(210)}<div style="height:14px"></div>${bloque(210)}`;
+  }
+
   async function iniciar() {
     st.ses = sesionGuardada();
     for (;;) {
       if (!st.ses) st.ses = await pedirPin();
+      app.innerHTML = esqueleto();
       try { await recargar(); break; } catch (e) {
         if (e.sesion) { st.ses = null; continue; }
         if (/permiso de evaluador/.test(e.message)) {

@@ -107,33 +107,48 @@
   const tarjeta = (ico, titulo, html, tipo = '') => { app.innerHTML = `<div class="caja"><div class="tarjeta"><span class="ico"><i class="fas ${ico}"></i></span><h1>${titulo}</h1>${html}</div></div>`; };
   const pantallaError = msg => tarjeta('fa-link-slash', 'No se puede abrir el examen', `<p>${esc(msg)}</p><p class="sub">Si crees que es un error, escribe a ${CONTACTO}.</p>`);
   function pantallaEntregado(info) {
+    document.querySelectorAll('.velo-e').forEach(x => x.remove());
     detener();
     try { sessionStorage.removeItem('exm_t'); } catch (e) { }
-    tarjeta('fa-circle-check', 'Examen entregado', `<p>Gracias${info && info.nombre ? ', ' + esc(info.nombre) : ''}. Tus respuestas quedaron registradas${info && info.motivoCierre === 'tiempo' ? ' (se cerró porque se acabó el tiempo)' : ''}.</p>
-      <p class="sub">Ya puedes cerrar esta ventana. El equipo evaluador revisará tus respuestas.</p>`);
+    const porTiempo = info && info.motivoCierre === 'tiempo';
+    const tot = S.preguntas.length, hechas = S.preguntas.filter(q => q.respuesta.trim()).length;
+    const hora = new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+    app.innerHTML = `<div class="caja"><div class="tarjeta final"><span class="ico-ok"><i class="fas fa-check"></i></span>
+      <h1>Examen entregado</h1>
+      <p class="gracias">Gracias${info && info.nombre ? ', ' + esc(info.nombre) : ''}. Tus respuestas quedaron registradas${porTiempo ? ' (se cerró porque se acabó el tiempo)' : ''}.</p>
+      ${tot ? `<div class="datos"><div><i class="fas fa-circle-check"></i><b>${hechas} de ${tot}</b><span>preguntas respondidas</span></div><div><i class="fas fa-clock"></i><b>${hora}</b><span>hora de entrega</span></div></div>` : ''}
+      <p class="sub">Ya puedes cerrar esta ventana. El equipo evaluador revisará tus respuestas y se pondrá en contacto contigo.</p></div></div>`;
   }
 
   // ---------------------------------------------------------------- introducción
   function pantallaIntro() {
     const i = S.info, continuar = i.estado === 'INICIADO';
     const compartir = i.exigirPantalla;
-    app.innerHTML = `<div class="caja"><div class="tarjeta"><span class="ico"><i class="fas fa-clipboard-question"></i></span>
-      <h1>Hola${i.nombre ? ', ' + esc(i.nombre) : ''}</h1><p class="sub">${esc(i.examen)}</p>
-      <div class="dato"><div><b>${i.preguntas}</b><span class="sub">preguntas</span></div><div><b>${continuar ? fmt(i.restante) : i.minutos + ' min'}</b><span class="sub">${continuar ? 'tiempo restante' : 'de tiempo'}</span></div></div>
+    const regla = (ico, tit, txt, cl) => `<div class="regla ${cl || ''}"><span class="r-ico"><i class="fas ${ico}"></i></span><div><b>${tit}</b><span>${txt}</span></div></div>`;
+    app.innerHTML = `<div class="caja ancha"><div class="tarjeta intro">
+      <div class="pasos-intro"><span class="on"><b>1</b> Lee las reglas</span><i></i><span id="pi2"><b>2</b> Acepta</span><i></i><span id="pi3"><b>3</b> Inicia</span></div>
+      <div class="intro-cab"><span class="ico"><i class="fas fa-clipboard-question"></i></span><div><p class="sup">Evaluación técnica</p><h1>Hola${i.nombre ? ', ' + esc(i.nombre) : ''}</h1><p class="sub">${esc(i.examen)}</p></div></div>
+      <div class="datos"><div><i class="fas fa-list-check"></i><b>${i.preguntas}</b><span>preguntas</span></div>
+        <div><i class="fas fa-stopwatch"></i><b>${continuar ? fmt(i.restante) : i.minutos + ' min'}</b><span>${continuar ? 'tiempo restante' : 'de tiempo'}</span></div>
+        ${compartir ? '<div><i class="fas fa-display"></i><b>Pantalla</b><span>compartida</span></div>' : ''}</div>
       ${continuar ? '<p class="msg aviso">Ya habías empezado este examen. El tiempo siguió corriendo mientras estuviste fuera.</p>' : ''}
-      <h2>Antes de empezar</h2>
-      <ul class="reglas"><li>El tiempo empieza cuando presiones «${continuar ? 'Continuar' : 'Iniciar'}» y <b>no se puede pausar</b>.</li>
-        <li>Responde con tus propias palabras. Las respuestas se guardan solas.</li>
-        <li>Se <b>registra</b> si sales de esta ventana o cambias de pestaña, y los intentos de copiar o pegar. Pegar está bloqueado.</li>
-        ${compartir ? '<li>Debes <b>compartir toda tu pantalla</b> (no una pestaña) durante el examen. Se tomarán capturas periódicas. Necesitas un computador con Chrome, Edge o Firefox.</li>' : ''}
-        ${i.iaPermitida ? '<li>Tus respuestas podrán revisarse con <b>apoyo de inteligencia artificial</b> (sin tu nombre); la nota final la decide una persona.</li>' : ''}
-        ${i.permitirAdjuntos ? '<li>Puedes <b>adjuntar archivos</b> a tus respuestas (hasta 3 por pregunta, 10 MB cada uno).</li>' : ''}
-        <li>Busca un lugar tranquilo y con buena conexión. Usa pantalla completa.</li></ul>
-      <label class="chk"><input type="checkbox" id="acepto"><span>Entiendo y acepto que durante la evaluación se registren estos datos${compartir ? ' y capturas de mi pantalla' : ''}. Se usarán solo para evaluar la prueba y los verá únicamente el equipo evaluador, según la política de datos personales de TCONTROL.${i.iaPermitida ? ' Mis respuestas escritas, sin mi nombre, podrán ser analizadas con una herramienta de inteligencia artificial de un proveedor externo (Anthropic) como apoyo a la calificación; la decisión final es de la persona evaluadora.' : ''}</span></label>
+      <h2>Lo que debes saber</h2>
+      <div class="reglas-grid">
+        ${regla('fa-stopwatch', 'El tiempo no se pausa', `Corre desde que presionas «${continuar ? 'Continuar' : 'Iniciar'}».`)}
+        ${regla('fa-floppy-disk', 'Se guarda solo', 'Responde con tus propias palabras; tus respuestas se guardan mientras escribes.')}
+        ${regla('fa-eye', 'Se registra tu actividad', 'Salir de la ventana, cambiar de pestaña o intentar copiar y pegar queda anotado. Pegar está bloqueado.', 'aviso')}
+        ${compartir ? regla('fa-display', 'Comparte toda tu pantalla', 'No una pestaña: toda la pantalla. Se toman capturas periódicas. Usa Chrome, Edge o Firefox en un computador.', 'aviso') : ''}
+        ${i.iaPermitida ? regla('fa-wand-magic-sparkles', 'Apoyo de inteligencia artificial', 'Tus respuestas, sin tu nombre, podrán revisarse con IA. La nota final la decide una persona.') : ''}
+        ${i.permitirAdjuntos ? regla('fa-paperclip', 'Puedes adjuntar archivos', 'Hasta 3 por pregunta, de 10 MB cada uno.') : ''}
+        ${regla('fa-wifi', 'Prepárate', 'Busca un lugar tranquilo, con buena conexión, y usa pantalla completa.')}</div>
+      <label class="consent"><input type="checkbox" id="acepto"><span>Entiendo y acepto que durante la evaluación se registren estos datos${compartir ? ' y capturas de mi pantalla' : ''}. Se usarán solo para evaluar la prueba y los verá únicamente el equipo evaluador, según la política de datos personales de TCONTROL.${i.iaPermitida ? ' Mis respuestas escritas, sin mi nombre, podrán ser analizadas con una herramienta de inteligencia artificial de un proveedor externo (Anthropic) como apoyo a la calificación; la decisión final es de la persona evaluadora.' : ''}</span></label>
       <p class="msg mal" id="err" hidden></p>
-      <button class="btn" id="ini" disabled>${continuar ? 'Continuar' : 'Iniciar'} examen</button></div></div>`;
+      <button class="btn grande" id="ini" disabled>${continuar ? 'Continuar' : 'Iniciar'} examen <i class="fas fa-arrow-right"></i></button></div></div>`;
     const chk = document.getElementById('acepto'), btn = document.getElementById('ini'), err = document.getElementById('err');
-    chk.onchange = () => { btn.disabled = !chk.checked; };
+    chk.onchange = () => {
+      btn.disabled = !chk.checked;
+      document.getElementById('pi2').classList.toggle('on', chk.checked); document.getElementById('pi3').classList.toggle('on', chk.checked);
+    };
     btn.onclick = async () => {
       btn.disabled = true; err.hidden = true;
       try { await comenzar(); } catch (e) { err.textContent = e.message; err.hidden = false; btn.disabled = !chk.checked; }
@@ -197,7 +212,7 @@
   function tick() {
     const el = document.getElementById('reloj');
     const s = segundos();
-    if (el) { el.textContent = fmt(s); el.classList.toggle('poco', s <= 300); }
+    if (el) { el.textContent = fmt(s); el.classList.toggle('poco', s <= 300 && s > 60); el.classList.toggle('critico', s <= 60); }
     if (s <= 0 && S.enExamen && !S.entregando) entregar('tiempo');
   }
   function detener() {
@@ -210,12 +225,33 @@
   }
 
   // ---------------------------------------------------------------- examen
+  // Resumen antes de entregar: qué respondió y qué dejó en blanco (reemplaza al cuadro gris del navegador)
+  function revisarEntrega() {
+    if (S.entregando || document.querySelector('.velo-e')) return;
+    guardar();
+    const vacias = S.preguntas.filter(q => !q.respuesta.trim()).length;
+    const ov = document.createElement('div');
+    ov.className = 'velo-e';
+    ov.innerHTML = `<div class="tarjeta rev"><h2>Revisa antes de entregar</h2>
+      <p class="${vacias ? 'rev-aviso' : 'rev-ok'}"><i class="fas ${vacias ? 'fa-triangle-exclamation' : 'fa-circle-check'}"></i> ${vacias ? `Tienes <b>${vacias}</b> pregunta${vacias === 1 ? '' : 's'} en blanco.` : 'Respondiste todas las preguntas.'} Al entregar ya no podrás cambiar tus respuestas.</p>
+      <div class="rev-lista">${S.preguntas.map((q, i) => `<button class="rev-fila ${q.respuesta.trim() ? 'ok' : 'vacia'}" data-ir="${i}"><span class="rn">${i + 1}</span><span class="rt">${esc(q.texto.length > 100 ? q.texto.slice(0, 100) + '…' : q.texto)}</span><span class="re">${q.respuesta.trim() ? '<i class="fas fa-check"></i> Respondida' : 'En blanco'}</span></button>`).join('')}</div>
+      <div class="nav"><button class="btn sec" id="revSeguir">Seguir revisando</button><button class="btn ${vacias ? 'mal' : ''}" id="revEntregar"><i class="fas fa-paper-plane"></i> Entregar examen</button></div></div>`;
+    document.body.appendChild(ov);
+    const cerrar = () => ov.remove();
+    ov.querySelector('#revSeguir').onclick = cerrar;
+    ov.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => { cerrar(); ir(Number(b.dataset.ir)); });
+    ov.querySelector('#revEntregar').onclick = () => { cerrar(); entregar('manual'); };
+  }
+
   function pintarExamen() {
     const p = S.preguntas[S.idx], total = S.preguntas.length;
     const hechas = S.preguntas.filter(q => q.respuesta.trim()).length;
-    app.innerHTML = `<div class="barra"><div><b>${esc(S.info.examen)}</b><div class="sub">Respondidas ${hechas} de ${total}</div></div><div class="t" id="reloj">${fmt(segundos())}</div></div>
-      <div class="cuerpo"><div class="mapa">${S.preguntas.map((q, i) => `<button data-i="${i}" class="${q.respuesta.trim() ? 'hecha' : ''} ${i === S.idx ? 'actual' : ''}">${i + 1}</button>`).join('')}</div>
-      <div class="tarjeta"><span class="etiqueta">Pregunta ${S.idx + 1} de ${total}${p.tipo ? ' · ' + esc(p.tipo) : ''}</span>
+    app.innerHTML = `<div class="barra"><div class="barra-izq"><b>${esc(S.info.examen)}</b><div class="prog-lin"><div class="pl-barra"><i style="width:${Math.round(100 * hechas / total)}%"></i></div><span>${hechas} de ${total} respondidas</span></div></div>
+        <div class="reloj-caja"><i class="fas fa-stopwatch"></i><span class="t" id="reloj">${fmt(segundos())}</span></div></div>
+      <div class="cuerpo"><div class="mapa-fila"><div class="mapa">${S.preguntas.map((q, i) => `<button data-i="${i}" title="Pregunta ${i + 1}${q.respuesta.trim() ? ' · respondida' : ' · en blanco'}" class="${q.respuesta.trim() ? 'hecha' : ''} ${i === S.idx ? 'actual' : ''}">${i + 1}</button>`).join('')}</div>
+        <button class="btn sec chico" id="finTop"><i class="fas fa-paper-plane"></i> Revisar y entregar</button></div>
+      <div class="leyenda"><span><i class="pt hecha"></i> Respondida</span><span><i class="pt"></i> En blanco</span><span><i class="pt actual"></i> Estás aquí</span></div>
+      <div class="tarjeta q-tarjeta"><div class="q-cab"><span class="q-num">${S.idx + 1}</span><div><div class="q-sup">Pregunta ${S.idx + 1} de ${total}</div>${p.tipo ? `<span class="etiqueta">${esc(p.tipo)}</span>` : ''}</div></div>
         <div class="pregunta">${esc(p.texto)}</div>
         ${(p.adjuntos || []).length ? `<div class="material">${p.adjuntos.map((a, i) => a.tipo === 'enlace'
           ? `<div class="adj"><i class="fas fa-link"></i> <a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.titulo || a.url)}</a></div>`
@@ -224,12 +260,22 @@
         ${S.permitir ? `<div class="mis-archivos"><div class="sub">Archivos de tu respuesta</div>
           ${(p.archivos || []).map(a => `<div class="adj-cab"><i class="fas ${ico(a.mime)}"></i> ${esc(a.nombre)} <span class="sub">· ${tam(a.tamano)}</span> <button class="btn sec chico" data-quitar="${a.id}">Quitar</button></div>`).join('')}
           <label class="btn sec chico" style="display:inline-block;margin-top:6px"><i class="fas fa-paperclip"></i> Adjuntar archivo<input type="file" id="adjuntar" multiple hidden></label> <span class="sub" id="adjEstado"></span></div>` : ''}
-        <div class="estado" id="estado"></div>
+        <div class="pie-resp"><div class="estado" id="estado"></div><span class="sub" id="cuenta"></span></div>
         <div class="nav"><button class="btn sec" id="ant" ${S.idx === 0 ? 'disabled' : ''}>Anterior</button>
-          ${S.idx < total - 1 ? '<button class="btn" id="sig">Siguiente</button>' : '<button class="btn mal" id="fin">Entregar examen</button>'}</div></div></div>
+          ${S.idx < total - 1 ? '<button class="btn" id="sig">Siguiente</button>' : '<button class="btn" id="fin"><i class="fas fa-paper-plane"></i> Revisar y entregar</button>'}</div></div></div>
       ${S.bloqueo ? velo() : ''}`;
     const ta = document.getElementById('resp');
-    ta.oninput = () => { p.respuesta = ta.value; S.sucias.add(S.idx); clearTimeout(S.tDeb); S.tDeb = setTimeout(guardar, 1500); estado('Escribiendo…'); };
+    const contar = () => { const n = (ta.value.trim().match(/\S+/g) || []).length; const c = document.getElementById('cuenta'); if (c) c.textContent = n + (n === 1 ? ' palabra' : ' palabras'); };
+    contar();
+    // El progreso de la barra y el mapa se actualiza mientras escribe
+    const vivo = () => {
+      const n = S.preguntas.filter(q => q.respuesta.trim()).length, tot = S.preguntas.length;
+      const sp = app.querySelector('.prog-lin span'); if (sp) sp.textContent = `${n} de ${tot} respondidas`;
+      const bi = app.querySelector('.pl-barra i'); if (bi) bi.style.width = `${Math.round(100 * n / tot)}%`;
+      const mb = app.querySelector(`.mapa button[data-i="${S.idx}"]`); if (mb) { mb.classList.toggle('hecha', !!p.respuesta.trim()); mb.title = `Pregunta ${S.idx + 1}${p.respuesta.trim() ? ' · respondida' : ' · en blanco'}`; }
+    };
+    const finTop = document.getElementById('finTop'); if (finTop) finTop.onclick = () => revisarEntrega();
+    ta.oninput = () => { p.respuesta = ta.value; contar(); vivo(); S.sucias.add(S.idx); clearTimeout(S.tDeb); S.tDeb = setTimeout(guardar, 1500); estado('Escribiendo…'); };
     ta.addEventListener('paste', e => { e.preventDefault(); evento('pegar', `Intento de pegar (${(e.clipboardData && e.clipboardData.getData('text') || '').length} caracteres)`); aviso('Pegar está bloqueado durante el examen.'); });
     ta.addEventListener('drop', e => e.preventDefault());
     app.querySelectorAll('.mapa button').forEach(b => b.onclick = () => ir(Number(b.dataset.i)));
@@ -264,7 +310,7 @@
     const a = document.getElementById('ant'), s = document.getElementById('sig'), f = document.getElementById('fin');
     if (a) a.onclick = () => ir(S.idx - 1);
     if (s) s.onclick = () => ir(S.idx + 1);
-    if (f) f.onclick = () => { const vacias = S.preguntas.filter(q => !q.respuesta.trim()).length; if (confirm(vacias ? `Tienes ${vacias} pregunta(s) sin responder. ¿Entregar de todos modos?` : '¿Entregar el examen? No podrás cambiar tus respuestas.')) entregar('manual'); };
+    if (f) f.onclick = () => revisarEntrega();
     if (!S.bloqueo) ta.focus();
   }
   const estado = (t, mal) => { const e = document.getElementById('estado'); if (e) { e.textContent = t; e.className = 'estado' + (mal ? ' mal' : ''); } };
