@@ -313,6 +313,7 @@ button, .marco, .tab, .paso-btn { -webkit-tap-highlight-color: transparent; touc
 const VERSION = '1.2';
 const FECHA = '25/11/2026';
 const CAMBIOS = [
+  ['26/11/2026', 'Desde el 26/11, lo que supera la bolsa de 4 horas (atrasos, faltantes, faltas sin justificar) se descuenta de las vacaciones (8 h = 1 día); solo sin saldo de vacaciones va al rol.'],
   ['25/11/2026', 'Toda solicitud espera la aprobación del jefe; sin respuesta no es válida y no llega a TTHH. Permiso médico y calamidad también. El permiso personal es solo por horas.'],
   ['19/11/2026', 'Adaptada a teléfonos: texto a tamaño normal, tablas en tarjetas, botones Anterior/Siguiente siempre a mano y cambio de paso deslizando la captura.'],
   ['18/11/2026', 'Primera versión: flujo completo (fases 1 a 5), permisos por horas según el horario pedido, vista de vacaciones en días completos y pie de la app con «Más».']
@@ -528,6 +529,7 @@ const CALC = `<section class="bloque"><h2>Calculadora de un permiso por horas</h
 const FAQ = [
   ['¿El tiempo de la bolsa pasa al mes siguiente?', 'No. La bolsa de 4 horas es por período de nómina (26 al 25) y se renueva completa. Lo que no se usa se pierde.'],
   ['¿Las horas cargadas a vacaciones se pierden al cambiar de año?', 'No. Cada 8 horas se descuenta 1 día. Si al 30 de noviembre quedan horas que no llegan a 8, pasan al año de vacaciones siguiente.'],
+  ['¿Qué pasa con los atrasos y faltantes que superan la bolsa?', 'Desde el 26/11/2026 se acumulan contra tus vacaciones: cada 8 horas descuentan 1 día. Se calcula cada noche y, si un supervisor justifica el día antes del cierre del período (25), se devuelve. Solo cuando ya no tienes vacaciones va al rol.'],
   ['¿Qué pasa si no tengo bolsa ni vacaciones?', 'Igual puedes pedir el permiso. La app te avisa que el tiempo se descontará del rol y debes aceptarlo antes de enviar.'],
   ['¿Tengo que marcar la salida y la entrada de un permiso por horas?', 'No. El horario pedido manda: el sistema descuenta ese tramo de la jornada. Si marcas igual, no se cuenta dos veces.'],
   ['¿Puedo cancelar una solicitud?', 'Sí, mientras espera al jefe o a TTHH. Una vez aprobada o registrada, habla con TTHH.'],

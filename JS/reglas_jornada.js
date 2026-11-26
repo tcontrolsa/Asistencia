@@ -598,6 +598,39 @@
     return { porDia: mapBeneficioPorDia, saldo: saldoBeneficio4h, pasante: esPasanteDet };
   }
 
+  // ---------------------------------------------------------------- excedente de la bolsa → vacaciones (2026-11-26)
+  // Desde el 26/11/2026 lo que no cubre la bolsa (atrasos, faltantes, faltas sin justificar, permisos no aprobados:
+  // descuentoNeto de cada día) se acumula contra las vacaciones (cada 8 h = 1 día) mientras haya saldo; lo que ya no
+  // cabe va al rol. El reparto oficial lo calcula Apps Script cada noche (cargo_jornada.gs) para el período abierto
+  // y lo deja en empleados/{id}.cargos_jornada; el período queda fijo al cerrarse (26 del mes siguiente).
+  const CARGO_VACACIONES_DESDE = '2026-11-26';
+  // mapa: resultado de calcularBolsa().porDia. capacidadMin: minutos de vacaciones disponibles.
+  function repartirExcedente(mapa, capacidadMin, { desde = CARGO_VACACIONES_DESDE, hasta = '' } = {}) {
+    let cap = Math.max(0, Math.floor(Number(capacidadMin) || 0));
+    const porDia = {};
+    let vac = 0, rol = 0;
+    Object.keys(mapa || {}).filter(f => f >= desde && (!hasta || f <= hasta)).sort().forEach(f => {
+      const n = Math.max(0, Math.round(Number(mapa[f] && mapa[f].descuentoNeto) || 0));
+      if (!n) return;
+      const v = Math.min(cap, n);
+      cap -= v;
+      porDia[f] = { vac: v, rol: n - v };
+      vac += v; rol += n - v;
+    });
+    return { por_dia: porDia, vac_min: vac, rol_min: rol, capacidad_restante: cap };
+  }
+  // Reparto guardado en la ficha: { por_dia: { fecha: {vac, rol} }, hasta: última fecha calculada }
+  function cargosJornadaDe(emp) {
+    const out = { por_dia: {}, hasta: '' };
+    const c = (emp && emp.cargos_jornada) || {};
+    Object.keys(c).forEach(k => {
+      const p = c[k] || {};
+      Object.assign(out.por_dia, p.por_dia || {});
+      if (p.hasta && p.hasta > out.hasta) out.hasta = p.hasta;
+    });
+    return out;
+  }
+
   // Saldo de la bolsa del período en curso para un colaborador (app: aviso del permiso personal)
   function saldoBolsaPeriodo({ empleado, registros, vacaciones, hoy, solicitudes }) {
     const h = hoy || hoyLocal();
@@ -616,6 +649,7 @@
     obtenerMinutos, normalizarFechaStr, esFeriadoODomingo, obtenerDiasHabiles, periodoDe, esEmpleadoPasante,
     obtenerFechaInicioEfectivaEmpleado, ajusteDescansoDia, almorzoEnPlanta, almuerzoFinSemana, descansoDia,
     calcularNetWorkedOrdinario, esSalidaSinRegistrar, contarRegistrosInconclusos, recortarPeriodos, esCumpleanosEmpleadoEnFecha,
-    beneficioCumpleanosDia, armarPorDia, calcularBolsa, saldoBolsaPeriodo
+    beneficioCumpleanosDia, armarPorDia, calcularBolsa, saldoBolsaPeriodo,
+    CARGO_VACACIONES_DESDE, repartirExcedente, cargosJornadaDe
   };
 })();

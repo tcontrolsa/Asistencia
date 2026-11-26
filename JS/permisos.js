@@ -390,8 +390,18 @@
     const total = b.pasante ? 0 : RJ.BOLSA_MIN;
     const reservado = Math.min(Math.max(0, b.saldo), reservadoBolsa(sols, per, hoy));
 
-    let rolOcurrido = 0;
-    Object.keys(b.mapa || {}).forEach(f => { if (f >= per.inicio && f <= per.fin) rolOcurrido += Number(b.mapa[f].descuentoNeto) || 0; });
+    // Desde el 26/11/2026 lo que supera la bolsa va primero a vacaciones: el reparto oficial lo deja Apps Script cada
+    // noche en la ficha (cargos_jornada); lo de hoy y lo que cambió después se muestra «por calcular».
+    let rolOcurrido = 0, aVacJornada = 0, porCalcular = 0;
+    const CJ = RJ.cargosJornadaDe ? RJ.cargosJornadaDe(emp) : { por_dia: {}, hasta: '' };
+    Object.keys(b.mapa || {}).forEach(f => {
+      if (f < per.inicio || f > per.fin) return;
+      const n = Number(b.mapa[f].descuentoNeto) || 0;
+      if (!RJ.CARGO_VACACIONES_DESDE || f < RJ.CARGO_VACACIONES_DESDE) { rolOcurrido += n; return; }
+      const c = CJ.por_dia[f];
+      if (c && f <= CJ.hasta) { rolOcurrido += Number(c.rol) || 0; aVacJornada += Number(c.vac) || 0; }
+      else porCalcular += n;
+    });
     let rolProgramado = 0;
     const pv = periodoVacacionesDe(hoy);
     let vacAprobadasMin = 0, vacAntesMin = 0, vacPorAprobarMin = 0, diasSinSaldo = 0;
@@ -411,6 +421,13 @@
       }
       if (s.tipo === 'VACACIONES' && s.acepta_descuento && s.desde >= pv.inicio && s.desde <= pv.fin) diasSinSaldo += Number(s.dias_sin_saldo) || 0;
     });
+    // Atrasos y faltantes cargados a vacaciones (desde el 26/11/2026): cuentan igual que las horas de permisos
+    Object.keys(CJ.por_dia).forEach(f => {
+      const v = Number(CJ.por_dia[f].vac) || 0;
+      if (!v || f > pv.fin) return;
+      vacAprobadasMin += v;
+      if (f < pv.inicio) vacAntesMin += v;
+    });
     return {
       emp: { id: String(emp.id), nombre: emp.nombre || '' }, hoy, calculado: new Date(),
       bolsa: { periodo: per, total, usado: Math.max(0, total - b.saldo), reservado, libre: Math.max(0, b.saldo - reservado), pasante: !!b.pasante },
@@ -420,7 +437,7 @@
         haciaSiguiente: vacAprobadasMin % MIN_DIA, arrastre: vacAntesMin % MIN_DIA,
         saldoDias: vac ? vac.disponible : null, comprometidos: vac ? vac.comprometidos : 0, diasSinSaldo
       },
-      rol: { periodo: per, ocurrido: rolOcurrido, programado: rolProgramado }
+      rol: { periodo: per, ocurrido: rolOcurrido, programado: rolProgramado, aVacaciones: aVacJornada, porCalcular }
     };
   }
 
@@ -447,36 +464,38 @@
         <div class="pm-leyenda"><span><i class="pm-p pm-b-vac"></i>Aprobado ${durTxt(V.haciaSiguiente)}</span>${V.porAprobarMin ? `<span><i class="pm-p pm-b-reserva"></i>Por aprobar ${durTxt(V.porAprobarMin)}</span>` : ''}</div>
         <ul class="pm-tlista">
           ${V.arrastre ? `<li><span>Horas que vienen del año anterior</span><strong>${durTxt(V.arrastre)}</strong></li>` : ''}
-          <li><span>Días descontados por horas este año</span><strong>${V.diasPorHoras}</strong></li>
+          <li><span>Días descontados por horas este año (permisos, atrasos y faltantes)</span><strong>${V.diasPorHoras}</strong></li>
           ${conPend >= MIN_DIA ? `<li class="pm-tavisa"><span>Si se aprueba lo pendiente, se descuenta</span><strong>${Math.floor(conPend / MIN_DIA)} día${Math.floor(conPend / MIN_DIA) === 1 ? '' : 's'} más</strong></li>` : ''}
           <li><span>Saldo de vacaciones disponible</span><strong>${V.saldoDias === null ? '—' : `${Math.floor(V.saldoDias)} día${Math.floor(V.saldoDias) === 1 ? '' : 's'}`}</strong></li>
           ${V.diasSinSaldo ? `<li class="pm-tavisa"><span>Vacaciones pedidas sin saldo (van al rol)</span><strong>${V.diasSinSaldo} día${V.diasSinSaldo === 1 ? '' : 's'}</strong></li>` : ''}
         </ul>
-        <div class="pm-sub">Año de vacaciones ${fechaCorta(V.periodo.inicio)} – ${fechaCorta(V.periodo.fin)}. Cada 8 h de permiso que no cubre la bolsa descuentan 1 día; lo que al 30/11 no llegue a 8 h pasa al año siguiente.</div>`;
+        <div class="pm-sub">Año de vacaciones ${fechaCorta(V.periodo.inicio)} – ${fechaCorta(V.periodo.fin)}. Cada 8 h que no cubre la bolsa (permisos y, desde el 26/11/2026, atrasos y faltantes) descuentan 1 día; lo que al 30/11 no llegue a 8 h pasa al año siguiente.</div>`;
     // Vista del colaborador (2026-11-12): solo días completos; las horas acumuladas hacia el próximo día las ve el panel
     const diasPend = Math.floor(conPend / MIN_DIA);
     const saldoEntero = V.saldoDias === null ? null : Math.max(0, Math.floor(V.saldoDias));
     const vacacionesColab = `<div class="pm-tnum">${saldoEntero === null ? '—' : `${saldoEntero} día${saldoEntero === 1 ? '' : 's'}`} <small>disponibles</small></div>
         <ul class="pm-tlista">
-          <li><span>Días descontados por permisos este año</span><strong>${V.diasPorHoras}</strong></li>
+          <li><span>Días descontados por permisos, atrasos y faltantes este año</span><strong>${V.diasPorHoras}</strong></li>
           ${diasPend ? `<li class="pm-tavisa"><span>Si se aprueba lo pendiente, se descuenta</span><strong>${diasPend} día${diasPend === 1 ? '' : 's'} más</strong></li>` : ''}
           ${V.diasSinSaldo ? `<li class="pm-tavisa"><span>Vacaciones pedidas sin saldo (van al rol)</span><strong>${V.diasSinSaldo} día${V.diasSinSaldo === 1 ? '' : 's'}</strong></li>` : ''}
         </ul>
-        <div class="pm-sub">Año de vacaciones ${fechaCorta(V.periodo.inicio)} – ${fechaCorta(V.periodo.fin)}. Cada 8 h de permiso que no cubre la bolsa descuentan 1 día de vacaciones.</div>`;
+        <div class="pm-sub">Año de vacaciones ${fechaCorta(V.periodo.inicio)} – ${fechaCorta(V.periodo.fin)}. Cada 8 h que no cubre la bolsa (permisos, atrasos y faltantes) descuentan 1 día de vacaciones.</div>`;
     const totalRol = R.ocurrido + R.programado;
     const rol = `<div class="pm-tnum ${totalRol ? 'pm-c-rojo' : 'pm-c-verde'}">${totalRol ? durTxt(totalRol) : 'Sin descuento'}</div>
         <ul class="pm-tlista">
-          <li><span>Atrasos, faltantes y permisos que ya superaron la bolsa</span><strong>${R.ocurrido ? durTxt(R.ocurrido) : '0'}</strong></li>
+          <li><span>Atrasos, faltantes y permisos que ya superaron la bolsa y las vacaciones</span><strong>${R.ocurrido ? durTxt(R.ocurrido) : '0'}</strong></li>
           <li><span>Permisos que vienen y no tienen saldo</span><strong>${R.programado ? durTxt(R.programado) : '0'}</strong></li>
+          ${R.aVacaciones ? `<li><span>Atrasos y faltantes cargados a vacaciones</span><strong>${durTxt(R.aVacaciones)}</strong></li>` : ''}
+          ${R.porCalcular ? `<li class="pm-tavisa"><span>Por calcular esta noche (va a vacaciones si hay saldo; si no, al rol)</span><strong>${durTxt(R.porCalcular)}</strong></li>` : ''}
         </ul>
-        <div class="pm-sub">Período de nómina ${perTxt}. Lo que no cubren la bolsa ni las vacaciones se descuenta del rol.</div>`;
+        <div class="pm-sub">Período de nómina ${perTxt}. Desde el 26/11/2026 lo que no cubre la bolsa se descuenta de las vacaciones (8 h = 1 día); solo sin saldo de vacaciones va al rol.</div>`;
     const tarjeta = (icono, color, titulo, sub, cuerpo) => `<article class="pm-tcard"><div class="pm-tcard-cab"><i class="fas ${icono} ${color}" aria-hidden="true"></i><div><h4>${titulo}</h4><div class="pm-sub">${sub}</div></div></div>${cuerpo}</article>`;
     return `<div class="pm-tcab"><h3>${panel ? 'Tiempo de permisos · período actual' : 'Mi tiempo de permisos'}</h3>
         <button type="button" class="pm-btn pm-btn-sec pm-btn-chico" data-pm="tiempo" title="Volver a calcular"><i class="fas fa-rotate"></i> ${r.calculado.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</button></div>
       <div class="pm-tgrid">
         ${tarjeta('fa-piggy-bank', 'pm-c-violeta', 'Bolsa de 4 horas', `Período ${perTxt}`, bolsa)}
-        ${panel ? tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos cargados a sus vacaciones', vacaciones)
-                : opts.soloDias === false ? tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos cargados a tus vacaciones', vacaciones)
+        ${panel ? tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos, atrasos y faltantes cargados a sus vacaciones', vacaciones)
+                : opts.soloDias === false ? tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Horas a vacaciones', 'Permisos, atrasos y faltantes cargados a tus vacaciones', vacaciones)
                 : tarjeta('fa-umbrella-beach', 'pm-c-azul', 'Vacaciones', 'Saldo en días completos', vacacionesColab)}
         ${tarjeta('fa-file-invoice-dollar', totalRol ? 'pm-c-rojo' : 'pm-c-verde', 'Descuento al rol', `Período ${perTxt}`, rol)}
       </div>`;

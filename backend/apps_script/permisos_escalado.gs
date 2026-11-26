@@ -29,8 +29,19 @@ var PERM_COL = 'solicitudes_permiso';
 var PERM_CFG = 'configuracion/permisos';
 var PERM_TIPOS = { VACACIONES: 'vacaciones', PERMISO_PERSONAL: 'permiso personal', PERMISO_MEDICO: 'permiso médico', CALAMIDAD: 'calamidad doméstica' };
 
-function escalarPermisosVencidos() { revisarPendientesPermisos_(true); sincronizarCargosVacaciones_(true); quitarCargosEliminados_(true); if (typeof vencerDocumentosPermisos_ === 'function') vencerDocumentosPermisos_(true); }
-function revisarEscaladoPermisos() { revisarPendientesPermisos_(false); sincronizarCargosVacaciones_(false); quitarCargosEliminados_(false); if (typeof vencerDocumentosPermisos_ === 'function') vencerDocumentosPermisos_(false); }
+// Todo bajo el candado del proyecto: cargo_jornada.gs reescribe la hoja VACACIONES_HORAS y no debe cruzarse con esto
+function escalarPermisosVencidos() { conCandadoPermisos_(true); }
+function revisarEscaladoPermisos() { conCandadoPermisos_(false); }
+function conCandadoPermisos_(aplicar) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) { Logger.log('Otra ejecución en curso'); return; }
+  try {
+    revisarPendientesPermisos_(aplicar); sincronizarCargosVacaciones_(aplicar); quitarCargosEliminados_(aplicar);
+    if (typeof vencerDocumentosPermisos_ === 'function') vencerDocumentosPermisos_(aplicar);
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 var PERM_ZONA = 'America/Guayaquil';
 var PERM_JORNADA = { ini: 7 * 60 + 30, fin: 16 * 60 + 15 };
@@ -38,9 +49,7 @@ var PERM_RECORDATORIOS_MAX = 3;     // diarios, además del final
 var PERM_MIN_FINAL = 4 * 60;        // recordatorio final: quedan 4 horas laborables o menos
 
 function revisarPendientesPermisos_(aplicar) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) { Logger.log('Otra ejecución en curso'); return; }
-  try {
+  {
     var ahora = new Date();
     var pendientes = solicitudesPorEstado_('PENDIENTE_JEFE').concat(solicitudesPorEstado_('PENDIENTE_TTHH'));
     Logger.log(pendientes.length + ' solicitud(es) sin responder');
@@ -67,8 +76,6 @@ function revisarPendientesPermisos_(aplicar) {
       Logger.log('Recordatorio ' + motivo + ': ' + linea);
       recordarPermiso_(s, caduca, campos.recordatorios);
     });
-  } finally {
-    lock.releaseLock();
   }
 }
 

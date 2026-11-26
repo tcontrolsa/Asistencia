@@ -863,11 +863,16 @@ function motivosDescuento(b, { sinMarcas = false, conRegistros = false, pasante 
 }
 
 // Celda «T. Descontar» de un día: valor y, si intervino la bolsa de 4 h, la cuenta a la vista
-function celdaDescontarHtml(b, aDescontar, enCurso) {
+// vac (desde 2026-11-26): { min: minutos cargados a vacaciones ese día, pendiente: aún no lo calculó Apps Script }
+function celdaDescontarHtml(b, aDescontar, enCurso, vac) {
   const t = m => minutosAHHMMSS(m || 0).slice(0, 5);
-  const titulo = escapeHtml(desgloseDescontarTexto(b, aDescontar));
+  const titulo = escapeHtml(desgloseDescontarTexto(b, aDescontar) + (vac && vac.min ? ` · A vacaciones ${t(vac.min)} (no va al rol)` : '') +
+    (vac && vac.pendiente ? ' · Se calcula esta noche: va a vacaciones si hay saldo' : ''));
   const usado = (b && b.consumo4h) || 0;
-  const curso = enCurso ? '<div class="td-nota">En curso</div>' : '';
+  const curso = (enCurso ? '<div class="td-nota">En curso</div>' : '') +
+    (vac && vac.min ? `<div class="td-nota" style="color:#0f766e;"><i class="fas fa-umbrella-beach" style="font-size:9px;"></i> ${t(vac.min)} a vacaciones</div>` : '') +
+    (vac && vac.pendiente ? '<div class="td-nota" style="color:#b45309;">a vacaciones si hay saldo</div>' : '');
+  if (aDescontar <= 0 && vac && vac.min) return `<span class="td-bolsa" title="${titulo}">Sin rol</span>${curso}`;
   if (aDescontar > 0) {
     const cuenta = usado > 0 ? `<div class="td-nota">${t(b.rawDescuento)} − bolsa ${t(usado)}</div>` : '';
     return `<span class="td-valor" title="${titulo}">${minutosAHHMMSS(aDescontar)}</span>${cuenta}${curso}`;
@@ -894,6 +899,11 @@ function cuadroDescontarHtml({ dias, bolsa, verificando, abierto }) {
   const usado = lista.reduce((s, d) => s + d.b.consumo4h, 0);
   const neto = lista.reduce((s, d) => s + d.b.descuentoNeto, 0);
   const libre = Math.max(0, bolsa - usado);
+  const aVac = lista.reduce((s, d) => s + (d.aVac || 0), 0);
+  const porCalc = lista.reduce((s, d) => s + (d.vacPendiente ? d.b.descuentoNeto : 0), 0);
+  const notaVac = aVac || porCalc
+    ? `<div class="td-cuenta" style="margin-top:4px;">Desde el 26/11/2026 lo que supera la bolsa va primero a vacaciones (8 h = 1 día): ${aVac ? `<b>${t(aVac)} cargado a vacaciones</b>` : ''}${aVac && porCalc ? ' y ' : ''}${porCalc ? `<b>${t(porCalc)} por calcular esta noche</b>` : ''} · al rol <b class="${neto - aVac - porCalc > 0 ? 'td-rojo' : 'td-verde'}">${t(Math.max(0, neto - aVac - porCalc))}</b>${porCalc ? ' (más lo que no alcance a cubrir el saldo de vacaciones)' : ''}.</div>`
+    : '';
 
   const porMotivo = {};
   lista.forEach(d => d.motivos.forEach(m => {
@@ -932,13 +942,14 @@ function cuadroDescontarHtml({ dias, bolsa, verificando, abierto }) {
             <td>${t(d.b.rawDescuento)}</td>
             <td>${d.b.consumo4h ? '−' + t(d.b.consumo4h) : '—'}</td>
             <td>${t(d.b.saldoBolsa)}</td>
-            <td class="${d.b.descuentoNeto > 0 ? 'td-rojo' : 'td-verde'}"><b>${t(d.b.descuentoNeto)}</b></td>
+            <td class="${d.b.descuentoNeto > 0 ? 'td-rojo' : 'td-verde'}"><b>${t(d.b.descuentoNeto)}</b>${d.aVac ? `<div class="td-nota" style="color:#0f766e;">${t(d.aVac)} a vacaciones</div>` : ''}${d.vacPendiente ? '<div class="td-nota" style="color:#b45309;">por calcular</div>' : ''}</td>
           </tr>`).join('');
 
   return `
       <div class="td-cuadro">
         <div class="td-titulo"><i class="fas fa-calculator"></i> ¿De dónde sale T. Descontar?</div>
         <div class="td-cuenta">${cuenta}</div>
+        ${notaVac}
         <div class="td-chips">${chips}</div>
         ${avisos}
         <details id="detDescontarDias"${abierto ? ' open' : ''}>
@@ -4113,6 +4124,14 @@ window.obtenerRangoFechasReportes = function () {
   };
 };
 
+// Minutos que cargo_jornada.gs cargó a vacaciones (excedente de la bolsa, desde el 26/11/2026) entre dos fechas
+function minutosAVacacionesJornada(e, desde, hasta) {
+  const RJ = window.ReglasJornada;
+  if (!RJ || !RJ.cargosJornadaDe) return 0;
+  const c = RJ.cargosJornadaDe(e);
+  return Object.keys(c.por_dia).reduce((t, f) => (f >= desde && f <= hasta ? t + (Number(c.por_dia[f].vac) || 0) : t), 0);
+}
+
 function cargarReportes() {
   const empCache = personalDelGrupo();   // solo el grupo elegido (Empresa o Servicios externos)
   const rango = window.obtenerRangoFechasReportes();
@@ -4547,7 +4566,7 @@ function cargarReportes() {
       permisoMedico: totalTiempoMedico,
       permisoPersonal: totalTiempoPersonal,
       tiempoPorJustificar: noAplicaAsistencia ? 0 : esPasanteEmp ? totalTiempoPorJustificar : Math.max(0, totalTiempoPorJustificar - 240),
-      tiempoADescontar: noAplicaAsistencia ? 0 : esPasanteEmp ? totalDescuentoBruto : Math.max(0, totalDescuentoBruto - 240),
+      tiempoADescontar: noAplicaAsistencia ? 0 : Math.max(0, (esPasanteEmp ? totalDescuentoBruto : Math.max(0, totalDescuentoBruto - 240)) - minutosAVacacionesJornada(e, R_INI, R_FIN)),
       atrasos: atrasos,
       minutosAtrasos: minutosAtrasos,
       almPlanta: almPlanta,
@@ -5618,6 +5637,16 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
     // cálculo anterior el 2026-11-11 sin diferencias). Los permisos personales por horas aprobados con parte cargada
     // a vacaciones no se vuelven a descontar ese día (fase 2 de permisos).
     const mapBeneficioPorDia = window.ReglasJornada.calcularBolsa({ empleado: e, porDia, hoy: hoyStrLocal, solicitudes: solicitudesPermisoEmp }).porDia;
+    // Desde el 26/11/2026 lo que supera la bolsa va primero a vacaciones (cargo_jornada.gs, cada noche): aquí se resta
+    // de T. Descontar lo que ya se cargó a vacaciones; lo que aún no calcula el servidor se marca «a vacaciones si hay saldo».
+    const RJd = window.ReglasJornada;
+    const cargoJ = RJd.cargosJornadaDe ? RJd.cargosJornadaDe(e) : { por_dia: {}, hasta: '' };
+    const repartoVacDia = (f, n) => {
+      if (!RJd.CARGO_VACACIONES_DESDE || f < RJd.CARGO_VACACIONES_DESDE || !(n > 0)) return { min: 0, pendiente: false };
+      const c = cargoJ.por_dia[f];
+      if (c && f <= cargoJ.hasta) return { min: Math.min(n, Number(c.vac) || 0), pendiente: false };
+      return { min: 0, pendiente: !(f <= cargoJ.hasta) || !c };
+    };
 
     let filas = fechasOrdenadas.map(f => {
       let d = porDia[f];
@@ -6125,13 +6154,15 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       const descuentoDia = (infoBeneficio.descuentoNeto !== undefined)
         ? infoBeneficio.descuentoNeto
         : (tiempoPersonal + (tiempoPorJustificar > 0 ? Math.max(tiempoPorJustificar, atrasoMins) : atrasoMins));
-      const descuentoDiaVis = descuentoDia;
+      const vacDia = repartoVacDia(f, descuentoDia);
+      const descuentoDiaVis = Math.max(0, descuentoDia - vacDia.min);
       const sinMarcas = !tieneAsistencia;
       const campoDia = (sinMarcas && e.campo_autorizado === true && e.campo_desde && f >= e.campo_desde && f <= (e.campo_hasta || e.campo_desde))
         ? { desde: e.campo_desde, hasta: e.campo_hasta || e.campo_desde, motivo: (e.campo_solicitud && e.campo_solicitud.motivo) || e.campo_motivo || '' }
         : null;
       diasDescontar.push({
         fecha: f, b: infoBeneficio, sinMarcas, conRegistros: regsDia.length > 0, enCurso: f === hoyStrLocal, campo: campoDia,
+        aVac: vacDia.min, vacPendiente: vacDia.pendiente,
         sinDatos: Boolean(sinMarcas && window._diasSinDatosAsistencia && window._diasSinDatosAsistencia.has(f))
       });
 
@@ -6183,7 +6214,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       totTJustificado += tiempoJustificado;
       totTJ += tiempoPorJustificar;
       totDescuentoBruto += (infoBeneficio.rawDescuento !== undefined ? infoBeneficio.rawDescuento : descuentoDia);
-      totDescuentoNeto += descuentoDia;
+      totDescuentoNeto += descuentoDiaVis;   // al rol: sin lo cargado a vacaciones
       totHoras += netWorked;
       totAtrasos += atrasoMins;
       totEmpresa += minsEmpresa;
@@ -6341,7 +6372,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
             </button>
           </div>
         </td>
-        <td style="text-align:center; font-size:11px; padding:6px 8px;">${celdaDescontarHtml(infoBeneficio, descuentoDiaVis, f === hoyStrLocal)}</td>
+        <td style="text-align:center; font-size:11px; padding:6px 8px;">${celdaDescontarHtml(infoBeneficio, descuentoDiaVis, f === hoyStrLocal, vacDia)}</td>
         <td colspan="2" style="text-align:center; color:#94a3b8;">—</td>
       </tr>`;
       }
@@ -6403,7 +6434,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
       <td style="font-size:11px; padding:6px 8px; text-align:center;">${aBadge}</td>
       <td style="text-align:center; font-size:10.5px; padding:6px 8px;">${celdaNovedadesHtml}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;">
-        ${celdaDescontarHtml(infoBeneficio, descuentoDiaVis, f === hoyStrLocal)}
+        ${celdaDescontarHtml(infoBeneficio, descuentoDiaVis, f === hoyStrLocal, vacDia)}
       </td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h50)} | Campo: ${minutosAHHMMSS(hC50)}">${celdaH50Html}</td>
       <td style="text-align:center; font-size:11px; padding:6px 8px;" title="Oficina: ${minutosAHHMMSS(h100)} | Campo: ${minutosAHHMMSS(hC100)}">${celdaH100Html}</td>
@@ -6836,7 +6867,7 @@ async function mostrarDetalle(id, indexPeriodo = 0, customInicio = null, customF
                   <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Total Horas Trabajadas">Horas Trab.</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Dónde almorzó: en planta o fuera">Lugar de almuerzo</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center;" title="Atrasos, Salidas Anticipadas, Justificaciones, Permisos y Observaciones">Novedades & Permisos</th>
-                  <th style="font-size:11px; padding:6px 8px; text-align:center; color:var(--red);" title="Tiempo neto a descontar">T. Descontar</th>
+                  <th style="font-size:11px; padding:6px 8px; text-align:center; color:var(--red);" title="Al rol: lo que no cubren la bolsa de 4 h ni (desde el 26/11/2026) las vacaciones">T. Descontar</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center; color:#1d4ed8;" title="Horas Extra 50% con estado de autorización">H.E. 50%</th>
                   <th style="font-size:11px; padding:6px 8px; text-align:center; color:#4338ca;" title="Horas Extra 100% con estado de autorización">H.E. 100%</th>
                 </tr>
