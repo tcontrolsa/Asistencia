@@ -117,8 +117,8 @@ function equipoDeEvaluador_(id) {
     var eid = String(e.id || r.document.name.split('/').pop()).trim();
     if (!eid || eid === id) return;
     if (String(e.activo || 'SI').toUpperCase() === 'NO' || e.activo === false) return;
-    var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase();
-    if (rol.indexOf('EVALUADO') === -1) return;
+    var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase().trim();
+    if ((rol !== 'EVALUADO' && rol !== 'EVALUADOR Y EVALUADO')) return;
     equipo.push({ id: eid, nombre: e.nombre || '', area: e.area || '', cargo: e.cargo || '',
                   fecha_ingreso: e.fecha_ingreso || e.fechaIngreso || '', foto_url: e.foto_url || '' });
   });

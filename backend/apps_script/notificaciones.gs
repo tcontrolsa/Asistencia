@@ -326,8 +326,8 @@ function recordatoriosDiarios() {
       evals.forEach(function (e) { if (e.tipo === tipoPeriodo && e.periodo === mesObjetivo && e.estado !== 'devuelta') hechas[e.empleadoId] = true; });
       var pendientesPorJefe = {};
       activos.forEach(function (e) {
-        var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase();
-        if (rol.indexOf('EVALUADO') === -1 || !e.evaluador_id || hechas[e.id]) return;
+        var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase().trim();
+        if ((rol !== 'EVALUADO' && rol !== 'EVALUADOR Y EVALUADO') || !e.evaluador_id || hechas[e.id]) return;
         var dias = diasDesdeIngreso_(e.fecha_ingreso || e.fechaIngreso, hoy);
         // Desde 2026-11-27 todos se evalúan desde el día 0: ya no se omite a quienes están en período de prueba
         (pendientesPorJefe[e.evaluador_id] = pendientesPorJefe[e.evaluador_id] || []).push(e.nombre || e.id);

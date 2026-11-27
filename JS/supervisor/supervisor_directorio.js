@@ -1193,7 +1193,7 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
   if ($('editDirExtrasAuto')) datos.extras_auto = $('editDirExtrasAuto').value;   // '' = según el área
   if ($('editDirEvalRol')) {
     datos.evaluacion_rol = $('editDirEvalRol').value;
-    datos.evaluador_id = datos.evaluacion_rol.includes('EVALUADO') && $('editDirEvaluador') ? $('editDirEvaluador').value : '';
+    datos.evaluador_id = (datos.evaluacion_rol === 'EVALUADO' || datos.evaluacion_rol === 'EVALUADOR Y EVALUADO') && $('editDirEvaluador') ? $('editDirEvaluador').value : '';
   }
   // Nómina y jerarquía
   if ($('editDirUnidad')) {
@@ -1207,7 +1207,7 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
     const jefe = (empCache || []).find(e => String(e.id) === datos.jefe_inmediato_id);
     datos.jefe_inmediato = jefe ? (jefe.nombre || '') : '';
     // Sin evaluador elegido, el jefe inmediato es el evaluador por defecto
-    if (datos.evaluacion_rol && datos.evaluacion_rol.includes('EVALUADO') && !datos.evaluador_id && datos.jefe_inmediato_id) {
+    if (datos.evaluacion_rol && (datos.evaluacion_rol === 'EVALUADO' || datos.evaluacion_rol === 'EVALUADOR Y EVALUADO') && !datos.evaluador_id && datos.jefe_inmediato_id) {
       datos.evaluador_id = datos.jefe_inmediato_id;
     }
   }
@@ -1262,7 +1262,7 @@ window.actualizarSelectEvaluadorDirectorio = function (prefijo, empId, seleccion
   const sel = $(prefijo + 'Evaluador');
   const grupo = $(prefijo + 'EvaluadorGrupo');
   if (!rolSel || !sel || !window.EvaluacionDesempeno) return;
-  const aplica = rolSel.value.includes('EVALUADO');
+  const aplica = (rolSel.value === 'EVALUADO' || rolSel.value === 'EVALUADOR Y EVALUADO');
   if (grupo) grupo.style.display = aplica ? '' : 'none';
   if (seleccionado === undefined) seleccionado = sel.value;
   if (empId === undefined) empId = prefijo === 'editDir' ? ($('editDirId') ? $('editDirId').value : '') : '';
@@ -1358,7 +1358,7 @@ window.guardarNuevoEmpleadoDirectorio = async function () {
   };
   if ($('nuevoDirEvalRol')) {
     empObj.evaluacion_rol = $('nuevoDirEvalRol').value;
-    empObj.evaluador_id = empObj.evaluacion_rol.includes('EVALUADO') && $('nuevoDirEvaluador') ? $('nuevoDirEvaluador').value : '';
+    empObj.evaluador_id = (empObj.evaluacion_rol === 'EVALUADO' || empObj.evaluacion_rol === 'EVALUADOR Y EVALUADO') && $('nuevoDirEvaluador') ? $('nuevoDirEvaluador').value : '';
   }
 
   mostrarLoader(true);

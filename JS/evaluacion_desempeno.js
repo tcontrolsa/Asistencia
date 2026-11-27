@@ -235,7 +235,8 @@
     return (sup === 'SI' || sup.includes('SUPERVISOR') || sup.includes('ADMIN')) ? 'EVALUADOR Y EVALUADO' : 'EVALUADO';
   }
   const esEvaluador = emp => rolDe(emp).includes('EVALUADOR');
-  const esEvaluado = emp => { const r = rolDe(emp); return r === 'EVALUADO' || r === 'EVALUADOR Y EVALUADO'; };   // un EVALUADOR puro no se evalua
+  const rolEsEvaluado = r => r === 'EVALUADO' || r === 'EVALUADOR Y EVALUADO';
+  const esEvaluado = emp => rolEsEvaluado(rolDe(emp));   // un EVALUADOR puro no se evalua
 
   function hoyLocal() {
     const d = new Date();
@@ -738,16 +739,16 @@
     try {
       if (typeof firebase === 'undefined' || !firebase.firestore) return true;
       const snap = await firebase.firestore().collection('empleados').where('evaluador_id', '==', String(ses.empleadoId)).get();
-      const actual = new Set();
+      const actual = new Set(), puros = new Set();   // puros: EVALUADOR sin evaluarse; el servidor viejo aun los incluia en el equipo
       snap.forEach(d => {
         const e = d.data() || {};
         const id = String(e.id || d.id).trim();
         if (!id || id === String(ses.empleadoId)) return;
         if (String(e.activo || 'SI').toUpperCase() === 'NO' || e.activo === false) return;
-        if (!String(e.evaluacion_rol || 'EVALUADO').toUpperCase().includes('EVALUADO')) return;
+        if (!rolEsEvaluado(String(e.evaluacion_rol || 'EVALUADO').toUpperCase().trim())) { puros.add(id); return; }
         actual.add(id);
       });
-      const enSesion = new Set((ses.equipo || []).map(m => String(m.id)));
+      const enSesion = new Set((ses.equipo || []).map(m => String(m.id)).filter(id => !puros.has(id)));
       return actual.size === enSesion.size && [...actual].every(id => enSesion.has(id));
     } catch (e) {
       console.warn('Evaluaciones: no se pudo verificar el equipo', e);
@@ -2041,9 +2042,9 @@
       const sinStatus = emps.filter(e => !e.evaluacion_rol && !(st.cambios.get(String(e.id)) || {}).evaluacion_rol).length;
       const visibles = emps.filter(e => (!st.unidad || unidadDe(e) === st.unidad) && (!st.area || areaDe(e) === st.area)
         && (!q || `${e.nombre} ${e.id} ${e.cargo} ${unidadDe(e)} ${areaDe(e)} ${e.jefe_inmediato || ''}`.toLowerCase().includes(q))
-        && (!st.soloSin || (valor(e, 'evaluacion_rol').includes('EVALUADO') && !valor(e, 'evaluador_id'))));
+        && (!st.soloSin || (rolEsEvaluado(valor(e, 'evaluacion_rol')) && !valor(e, 'evaluador_id'))));
       const nCambios = st.cambios.size;
-      const sinEval = emps.filter(e => valor(e, 'evaluacion_rol').includes('EVALUADO') && !valor(e, 'evaluador_id')).length;
+      const sinEval = emps.filter(e => rolEsEvaluado(valor(e, 'evaluacion_rol')) && !valor(e, 'evaluador_id')).length;
       cont.innerHTML = `<div class="ev-root"><div class="ev-card">
         <p class="ev-muted">Define el status de cada colaborador y su jefe inmediato (evaluador). <strong>EVALUADOR</strong> califica a su equipo; <strong>EVALUADO</strong> recibe evaluaciones; un jefe puede ser ambas. La fecha de ingreso decide si corresponde el seguimiento Día 75 o la evaluación mensual.</p>
         ${sinStatus ? `<div class="ev-aviso"><i class="fas fa-info-circle"></i> ${sinStatus} colaborador(es) aún no tienen status guardado; se muestra el sugerido (supervisores: EVALUADOR Y EVALUADO, resto: EVALUADO). <button class="ev-btn ev-btn-sm" data-a="defaults">Aplicar a todos</button></div>` : ''}
@@ -2069,10 +2070,10 @@
             return `<tr class="${Object.keys(ch).length ? 'ev-fila-cambio' : ''}">
               <td><strong>${esc(e.nombre || id)}</strong><div class="ev-muted ev-small">${esc(id)} · ${esc(subtituloEmp(e))}</div></td>
               <td><select class="ev-select ev-select-sm ${'evaluacion_rol' in ch || !e.evaluacion_rol ? 'ev-sel-cambio' : ''}" data-a="rol" data-id="${esc(id)}">${ROLES.map(r => `<option ${r === rol ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
-              <td>${rol.includes('EVALUADO')
+              <td>${rolEsEvaluado(rol)
                 ? `<select class="ev-select ev-select-sm ${'evaluador_id' in ch ? 'ev-sel-cambio' : ''} ${!evid ? 'ev-sel-falta' : ''}" data-a="evaluador" data-id="${esc(id)}"><option value="">— Sin asignar —</option>${evInvalido ? `<option value="${esc(evid)}" selected>(${esc(evid)}: ya no es evaluador)</option>` : ''}${opcionesEv}</select>`
                 : '<span class="ev-muted">No aplica</span>'}
-                ${rol.includes('EVALUADO') && e.jefe_inmediato_id && String(e.jefe_inmediato_id) !== String(evid)
+                ${rolEsEvaluado(rol) && e.jefe_inmediato_id && String(e.jefe_inmediato_id) !== String(evid)
                   ? `<div class="ev-small ev-warn">Jefe en nómina: ${esc((porIdA.get(String(e.jefe_inmediato_id)) || {}).nombre || e.jefe_inmediato || e.jefe_inmediato_id)}</div>` : ''}</td>
               <td><input type="date" class="ev-select-sm ${'fecha_ingreso' in ch ? 'ev-sel-cambio' : ''}" data-a="ingreso" data-id="${esc(id)}" value="${esc(fi)}" max="${hoyLocal()}">
                 ${et.dias !== null && et.dias < 90 ? `<div class="ev-small ev-warn">Período de prueba · día ${et.dias}</div>` : ''}</td>
@@ -2086,7 +2087,7 @@
       const el = ev.target, a = el.dataset.a;
       if (a === 'rol') {
         cambiar(el.dataset.id, 'evaluacion_rol', el.value);
-        if (!el.value.includes('EVALUADO')) cambiar(el.dataset.id, 'evaluador_id', '');
+        if (!rolEsEvaluado(el.value)) cambiar(el.dataset.id, 'evaluador_id', '');
       } else if (a === 'evaluador') cambiar(el.dataset.id, 'evaluador_id', el.value);
       else if (a === 'ingreso') cambiar(el.dataset.id, 'fecha_ingreso', el.value);
       else if (a === 'unidad') { st.unidad = el.value; st.area = ''; }
