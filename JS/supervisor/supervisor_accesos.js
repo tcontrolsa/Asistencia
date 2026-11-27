@@ -3,6 +3,8 @@
 // El Admin Master define qué secciones y subpestañas del panel ve cada rol (Supervisor Admin y Supervisor).
 // El Admin Master siempre ve todo (así nunca se queda nadie sin poder corregirlo).
 // Se guarda en Firestore configuracion/acceso_pestanas: { SUPERVISOR_ADMIN: {clave: bool}, SUPERVISOR: {...} }.
+// Excepciones por persona (2026-11-27): usuarios: { '<id>': { solo: ['desempeno'], nota } } → esa persona solo ve las
+// secciones listadas (aunque su rol vea más). Se administran abajo de la tabla (solo Admin Master).
 // Sin configuración guardada rige lo de siempre (PREDETERMINADO). Es una restricción de la interfaz: oculta y
 // bloquea la navegación; no reemplaza los permisos de cada acción.
 // =====================================================================
@@ -49,10 +51,20 @@
   }
 
   // ¿El rol puede ver esta clave? (sección o 'seccion.subpestaña')
+  function idActual() {
+    try { return String(JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}').id || '').trim(); } catch (e) { return ''; }
+  }
+  // Lista de secciones a las que está limitada esta persona (null = sin excepción)
+  function soloDe(id) {
+    const u = st.cfg && st.cfg.usuarios && st.cfg.usuarios[id];
+    return u && Array.isArray(u.solo) && u.solo.length ? u.solo : null;
+  }
   function permitido(rol, clave) {
     if (rol === 'ADMIN_MASTER') return true;
     const sec = CATALOGO.find(s => s.clave === clave.split('.')[0]);
     if (sec && sec.soloMaster) return false;
+    const solo = soloDe(idActual());
+    if (solo) return solo.includes(clave.split('.')[0]) || solo.includes(clave);
     const mapa = (st.cfg && st.cfg[rol]) || PREDETERMINADO[rol] || {};
     if (clave.includes('.') && !permitido(rol, clave.split('.')[0])) return false;
     return mapa[clave] !== false;
@@ -143,6 +155,54 @@
     return clave in m ? m[clave] !== false : ((PREDETERMINADO[rol] || {})[clave] !== false);
   }
 
+  // ---------------------------------------------------------------- excepciones por persona
+  const empleados = () => (typeof empCache !== 'undefined' && Array.isArray(empCache) ? empCache : []);
+  function bloquePersonas() {
+    const us = (st.cfg && st.cfg.usuarios) || {};
+    const nombreDe = id => { const e = empleados().find(x => String(x.id) === String(id)); return e ? e.nombre : ''; };
+    const secs = CATALOGO.filter(sec => !sec.soloMaster);
+    const filas = Object.keys(us).map(id => {
+      const solo = (us[id] && us[id].solo) || [];
+      return `<li style="display:flex; justify-content:space-between; gap:10px; align-items:center; padding:8px 0; border-top:1px solid #e2e8f0; font-size:12.5px;">
+        <span><b>${esc(nombreDe(id) || 'ID ' + id)}</b> <span style="color:#64748b;">· ${esc(id)}</span><br>
+          <span style="color:#475569;">Solo ve: ${solo.map(c => esc((CATALOGO.find(x => x.clave === c) || { nombre: c }).nombre)).join(', ') || '—'}${us[id].nota ? ' · ' + esc(us[id].nota) : ''}</span></span>
+        <button type="button" data-acc-pers-quitar="${esc(id)}" style="padding:6px 12px; border-radius:8px; border:1.5px solid #fecaca; background:#fef2f2; color:#b91c1c; font-weight:700; font-size:12px; cursor:pointer;">Quitar</button></li>`;
+    }).join('');
+    return `<section style="margin-top:22px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:12px; padding:14px 16px;">
+      <div style="font-weight:800; font-size:14px; color:#1e3a8a;"><i class="fas fa-user-lock"></i> Acceso por persona</div>
+      <p style="font-size:12px; color:#475569; margin:4px 0 10px;">Limita a una persona a ciertas secciones del panel, sin importar su rol. Debe ser supervisor para entrar al panel. Se aplica al instante.</p>
+      <form data-acc-pers style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; align-items:end;">
+        <div><label style="display:block; font-size:11px; font-weight:700; color:#334155; text-transform:uppercase; margin-bottom:4px;">Persona</label>
+          <input name="persona" list="accPersonas" required autocomplete="off" placeholder="ID o nombre" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #cbd5e1; font-size:13px; box-sizing:border-box;">
+          <datalist id="accPersonas">${empleados().map(e => `<option value="${esc(e.id)} · ${esc(e.nombre || '')}">`).join('')}</datalist></div>
+        <div style="grid-column:1/-1; display:flex; gap:14px; flex-wrap:wrap; font-size:13px;">${secs.map(sec => `<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" name="sec" value="${esc(sec.clave)}" ${sec.clave === 'desempeno' ? 'checked' : ''}> ${esc(sec.nombre)}</label>`).join('')}</div>
+        <div style="grid-column:1/-1;"><input name="nota" maxlength="100" placeholder="Nota (opcional)" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #cbd5e1; font-size:13px; box-sizing:border-box;"></div>
+        <div style="grid-column:1/-1; text-align:right;"><button type="submit" style="padding:8px 16px; border-radius:8px; border:0; background:#2563eb; color:#fff; font-weight:800; font-size:12.5px; cursor:pointer;"><i class="fas fa-save"></i> Guardar acceso</button></div>
+      </form>
+      <p id="accPersMsg" role="status" style="font-size:12px; margin:6px 0 0; min-height:16px;"></p>
+      ${filas ? `<ul style="list-style:none; margin:6px 0 0; padding:0;">${filas}</ul>` : '<p style="font-size:12px; color:#64748b; margin:6px 0 0;">Nadie tiene acceso limitado todavía.</p>'}
+    </section>`;
+  }
+  async function guardarPersona(form) {
+    const decir = (t, ok) => { const m = document.getElementById('accPersMsg'); if (m) { m.textContent = t; m.style.color = ok ? '#15803d' : '#b91c1c'; } };
+    const id = String(form.persona.value.split('·')[0] || '').trim();
+    const solo = [...form.querySelectorAll('[name=sec]:checked')].map(x => x.value);
+    if (!empleados().some(e => String(e.id) === id)) return decir('Elige a la persona de la lista (ID · nombre).');
+    if (!solo.length) return decir('Marca al menos una sección.');
+    let ses = {}; try { ses = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+    try {
+      await ref().set({ usuarios: { [id]: { solo, nota: form.nota.value.trim(), por: ses.nombre || ses.id || '', en: new Date().toISOString() } } }, { merge: true });
+      decir('Acceso guardado.', true); form.reset();
+    } catch (e) { decir('No se pudo guardar: ' + (e.message || e)); }
+  }
+  async function quitarPersona(id) {
+    if (!confirm('¿Quitar la limitación de esta persona? Volverá a ver lo que permite su rol.')) return;
+    try { await ref().update({ ['usuarios.' + id]: window.firebase.firestore.FieldValue.delete() }); }
+    catch (e) { alert('No se pudo quitar: ' + (e.message || e)); }
+  }
+  document.addEventListener('submit', ev => { if (ev.target.matches('[data-acc-pers]')) { ev.preventDefault(); guardarPersona(ev.target); } });
+  document.addEventListener('click', ev => { const b = ev.target.closest('[data-acc-pers-quitar]'); if (b) quitarPersona(b.dataset.accPersQuitar); });
+
   function pintar() {
     const cont = document.getElementById('accesosPestanasCont');
     if (!cont) return;
@@ -192,7 +252,8 @@
           <button type="button" class="btn btn-success" data-acc-guardar style="padding:8px 18px; border-radius:8px; font-size:12.5px; font-weight:700;"><i class="fas fa-save"></i> Guardar accesos</button>
         </div>
       </div>
-      <p id="accesosMsg" role="status" style="font-size:12px; margin:10px 0 0; min-height:16px;"></p>`;
+      <p id="accesosMsg" role="status" style="font-size:12px; margin:10px 0 0; min-height:16px;"></p>
+      ${bloquePersonas()}`;
   }
 
   async function guardar() {
@@ -209,6 +270,7 @@
     try { sesion = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
     const datos = { actualizado_por: sesion.nombre || sesion.id || 'Admin Master', actualizado_en: new Date().toISOString() };
     ROLES.forEach(r => { datos[r.clave] = { ...st.borrador[r.clave] }; });
+    if (st.cfg && st.cfg.usuarios) datos.usuarios = st.cfg.usuarios;   // las excepciones por persona no se pierden
     const btn = document.querySelector('[data-acc-guardar]');
     if (btn) btn.disabled = true;
     try {
