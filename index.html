@@ -36,6 +36,7 @@
     <link rel="stylesheet" href="./CSS/permisos.css?v=20261126_04">
     <link rel="stylesheet" href="./CSS/notificaciones.css?v=20261117_p2">
     <link rel="stylesheet" href="./CSS/sugerencias.css?v=20261119_01">
+    <link rel="stylesheet" href="./CSS/campo.css?v=20261127_c4">
     <link rel="stylesheet" href="./CSS/credencial_campo.css?v=20261020_05">
     <!-- ===== FIREBASE SDKS & BACKEND ===== -->
     <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
@@ -224,6 +225,11 @@
                         <i class="fas fa-hard-hat"></i>
                         <span>EPP</span>
                     </button>
+                    <!-- Campo: solo quien TTHH designó encargado de un proyecto de campo (JS/campo.js) -->
+                    <button class="nav-item" id="navItemCampo" data-page="campo" style="display: none;">
+                        <i class="fas fa-helmet-safety"></i>
+                        <span>Campo</span>
+                    </button>
                     <button class="nav-item" id="navItemVisitas" data-page="visitas">
                         <i class="fas fa-id-card-alt"></i>
                         <span>Visitas</span>
@@ -281,10 +287,11 @@
     <script src="./JS/reglas_jornada.js?v=20261126_hor1"></script>
     <script src="./JS/permisos.js?v=20261126_hor1"></script>
     <script src="./JS/sugerencias.js?v=20261119_01"></script>
+    <script src="./JS/campo.js?v=20261127_c5"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
     <script src="./JS/credencial_campo.js?v=20261020_07"></script>
     <script src="./JS/supervisor/supervisor_emergencias.js?v=20261029_03"></script>
-    <script src="./JS/index_core.js?v=20261127_ex1"></script>
+    <script src="./JS/index_core.js?v=20261127_c2"></script>
 </body>
 
 </html>

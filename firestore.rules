@@ -180,6 +180,30 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Trabajo en campo por proyectos (JS/campo.js)
+    // Proyectos: los crea y edita un gestor (TTHH / supervisor admin desde el panel); leen quienes tienen sesión.
+    // Fotos: solo con sesión y solo a nombre del propio encargado del proyecto; las ven los gestores y el encargado.
+    // Confirmación del día: la escribe el encargado. Nada se borra: queda como respaldo.
+    match /campo_proyectos/{proyectoId} {
+      allow read: if conSesion();
+      allow create, update: if esGestor() && request.resource.data.keys().hasAll(['nombre', 'encargado_id', 'cuadrilla_ids', 'estado']);
+      allow delete: if false;
+    }
+    match /campo_fotos/{fotoId} {
+      allow create: if conSesion()
+                    && request.resource.data.encargadoId == request.auth.uid
+                    && get(/databases/$(database)/documents/campo_proyectos/$(request.resource.data.proyectoId)).data.encargado_id == request.auth.uid
+                    && request.resource.data.foto is string
+                    && request.resource.data.foto.size() < 800000;
+      allow read: if esGestor() || (conSesion() && resource.data.encargadoId == request.auth.uid);
+      allow update, delete: if false;
+    }
+    match /campo_dias/{diaId} {
+      allow create, update: if conSesion() && request.resource.data.encargadoId == request.auth.uid;
+      allow read: if esGestor() || (conSesion() && resource.data.encargadoId == request.auth.uid);
+      allow delete: if false;
+    }
+
     // Colección 'empleados_desvinculados' (Historial laboral pasivo LOPDP)
     // Custodia de registros pasivos: no pueden eliminarse desde clientes.
     match /empleados_desvinculados/{desvinculadoId} {

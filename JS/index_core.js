@@ -8659,6 +8659,8 @@ async function navigateTo(page) {
             renderCarnePage();
         } else if (page === 'sugerencias') {
             renderSugerenciasPage();
+        } else if (page === 'campo') {
+            renderCampoPage();
         }
         ajustarLayout();
     };
@@ -8736,6 +8738,36 @@ function renderSugerenciasPage() {
         return;
     }
     window.Sugerencias.montarApp(cont, { empleado: { id: String(empleado.id), nombre: empleado.nombre, area: empleado.area } });
+}
+
+// Campo (JS/campo.js): el encargado de un proyecto confirma a la cuadrilla con fotografías
+function renderCampoPage() {
+    const mainContent = document.getElementById('mainContent');
+    mainContent.innerHTML = `<div class="page" style="padding-bottom: 30px; animation: fadeIn 0.35s ease;"><div id="cpCampoApp"></div></div>`;
+    const cont = document.getElementById('cpCampoApp');
+    if (!window.Campo || !empleado) {
+        cont.innerHTML = '<div class="glass-card text-center" style="background:white; border-radius:20px; padding:30px;">No se pudo cargar esta sección. Recarga la app.</div>';
+        return;
+    }
+    window.Campo.montarApp(cont, { empleado: { id: String(empleado.id), nombre: empleado.nombre } });
+}
+
+// El botón «Campo» solo existe para quien TTHH designó encargado de un proyecto activo
+function actualizarAccesoCampo() {
+    const nav = document.getElementById('navItemCampo');
+    if (!nav || !window.Campo || !empleado || !empleado.id) return;
+    // Sin señal: el botón sale con los proyectos guardados en el teléfono la última vez que hubo conexión
+    const guardados = window.Campo.cacheEncargado ? window.Campo.cacheEncargado(empleado.id) : null;
+    if (guardados && guardados.length) { nav.style.display = 'flex'; ajustarLayout(); }
+    // Las fotos y confirmaciones pendientes se envían solas al abrir la app (JS/campo.js)
+    if (window.Campo.sincronizarPendientes) window.Campo.sincronizarPendientes().catch(() => { });
+    // Al arrancar la sesión de Firebase puede no estar lista: si la consulta falla se reintenta (3 s, 8 s, 20 s)
+    const intentar = (n) => {
+        window.Campo.proyectosDeEncargado(empleado.id)
+            .then(ps => { nav.style.display = ps.length ? 'flex' : 'none'; ajustarLayout(); })
+            .catch(() => { if (n < 3) setTimeout(() => intentar(n + 1), [3000, 8000, 20000][n]); });
+    };
+    intentar(0);
 }
 
 function pintarInsigniaPermisos(n) {
@@ -9005,12 +9037,15 @@ function abrirEnlaceAviso(enlace) {
     } else if (enlace.modulo === 'permisos') {
         window.__pmEnlacePendiente = enlace;
         navigateTo('permisos');
+    } else if (enlace.modulo === 'campo') {
+        navigateTo('campo');
     }
 }
 
 function actualizarInterfazSegunCargo() {
     try { montarCampanaApp(); } catch (e) { console.warn('Campana de notificaciones:', e); }
     try { actualizarInsigniaPermisos(); } catch (e) { console.warn('Permisos:', e); }
+    try { actualizarAccesoCampo(); } catch (e) { console.warn('Campo:', e); }
     const navItemExtras = document.getElementById('navItemExtras');
     const navItemAdmin = document.getElementById('navItemAdmin');
     if (!navItemExtras) return;

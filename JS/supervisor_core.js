@@ -7595,7 +7595,8 @@ function cambiarPanel(panel) {
     whatsapp: 'Notificaciones WhatsApp',
     desempeno: 'Evaluación de desempeño',
     permisos: 'Permisos y vacaciones',
-    sugerencias: 'Comentarios, sugerencias e ideas'
+    sugerencias: 'Comentarios, sugerencias e ideas',
+    campo: 'Trabajo en campo por proyectos'
   };
   const titleText = titles[panel] || 'Supervisor';
   if ($('pageTitle')) $('pageTitle').textContent = titleText;
@@ -7633,6 +7634,9 @@ function cambiarPanel(panel) {
     else if (panel === 'sugerencias') {
       cargarPanelSugerencias();
     }
+    else if (panel === 'campo') {
+      cargarPanelCampo();
+    }
     else if (panel === 'opciones') {
       if (window.actualizarKPIsOpciones) window.actualizarKPIsOpciones();
       if (window.poblarTablaRolesActuales) window.poblarTablaRolesActuales();
@@ -7649,6 +7653,7 @@ function mostrarSoporteSegunRol(rol) {
   if ($('navItemSoporte')) $('navItemSoporte').style.display = rol === 'ADMIN_MASTER' ? 'flex' : 'none';
   // Acceso a pestañas configurable (supervisor_accesos.js): se aplica después de los valores fijos de arriba
   if (typeof window.aplicarAccesosPestanas === 'function') window.aplicarAccesosPestanas(rol);
+  if (typeof window.aplicarVisibilidadCampo === 'function') window.aplicarVisibilidadCampo();
 }
 
 // ============================================================
@@ -9695,6 +9700,32 @@ function cargarPanelPermisos(enlace) {
     onPendientes: pintarInsigniaPermisosPanel
   });
 }
+
+// Trabajo en campo por proyectos (JS/campo.js): solo Admin Master, supervisores admin y TTHH
+function sesionSupervisorCampo() {
+  let ses = {};
+  try { ses = JSON.parse(localStorage.getItem('SUPERVISOR_SESSION') || '{}'); } catch (e) { }
+  const yo = (typeof empCache !== 'undefined' ? empCache : []).find(e => String(e.id) === String(ses.id)) || {};
+  return { id: String(ses.id || ''), nombre: ses.nombre || yo.nombre || (String(ses.id) === '1058' ? 'Admin Master' : '') };
+}
+function cargarPanelCampo() {
+  const cont = $('cpPanelCampo');
+  if (!cont || !window.Campo) return;
+  const usuario = sesionSupervisorCampo();
+  window.Campo.montarPanel(cont, { usuario, admin: tienePermisoAdmin() });
+}
+// Muestra la pestaña Campo solo a quien puede verla; si ya está en ella sin permiso, vuelve a Asistencia
+async function aplicarVisibilidadCampo() {
+  const nav = $('navItemCampo');
+  if (!nav || !window.Campo) return;
+  const u = sesionSupervisorCampo();
+  let ver = false;
+  try { ver = !!u.id && await window.Campo.puedeGestionar(u.id, tienePermisoAdmin()); } catch (e) { ver = false; }
+  nav.style.display = ver ? 'flex' : 'none';
+  nav.classList.toggle('acceso-oculto', !ver);
+  if (!ver && typeof panelActual !== 'undefined' && panelActual === 'campo') cambiarPanel('asistencia');
+}
+window.aplicarVisibilidadCampo = aplicarVisibilidadCampo;
 
 // Comentarios, sugerencias e ideas (JS/sugerencias.js): bandeja para responder
 function cargarPanelSugerencias() {
