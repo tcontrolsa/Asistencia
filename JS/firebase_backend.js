@@ -2924,6 +2924,11 @@ window.FirebaseBackend = {
             return { ok: true, mensaje: "Configuración de WhatsApp guardada con éxito" };
         } catch (e) {
             console.error("Error al guardar configuración de WhatsApp:", e);
+            // Las reglas de Firestore exigen sesión de seguridad: sin ella se pide la contraseña y se avisa (antes se ocultaba el fallo)
+            if (e && e.code === 'permission-denied') {
+                try { if (window.SesionFirebase && window.SesionFirebase.pedirPorPermiso) window.SesionFirebase.pedirPorPermiso(); } catch (x) { }
+                return { error: 'Tu sesión de seguridad no está activa. Confirma tu contraseña y vuelve a guardar.' };
+            }
             return { error: e.message };
         }
     },

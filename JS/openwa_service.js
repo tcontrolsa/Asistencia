@@ -225,7 +225,8 @@
 
             try {
                 if (window.FirebaseBackend && typeof window.FirebaseBackend.guardarConfiguracionWhatsApp === 'function') {
-                    await window.FirebaseBackend.guardarConfiguracionWhatsApp({ config: this.config });
+                    const r = await window.FirebaseBackend.guardarConfiguracionWhatsApp({ config: this.config });
+                    if (r && r.error) throw new Error(r.error);   // no decir «guardado» si Firestore lo rechazó
                 } else if (typeof window.jsonpRequest === 'function') {
                     await window.jsonpRequest({
                         accion: 'guardarConfiguracionWhatsApp',
@@ -234,6 +235,7 @@
                 }
             } catch (e) {
                 console.error("[OpenWA] Error persistiendo configuración en la nube:", e);
+                throw e;
             }
             return { ok: true, config: this.config };
         },
