@@ -623,12 +623,15 @@
   let bloqueoEscucha = false;
   const bloqueoOyentes = new Set();
   const CLAVE_BLOQUEO = 'tcontrol_eval_bloqueo';
+  // Excepción por persona (2026-11-27): configuracion/bloqueo_desarrollo.permitidos = ['2030', …] → esas personas
+  // ven Desarrollo abierto aunque el módulo esté bloqueado para los demás.
+  const estaBloqueado = st => !!(bloqueo && bloqueo.activo && !((bloqueo.permitidos || []).map(String).includes(String((st && st.emp && st.emp.id) || ''))));
   function bloqueoGuardado() {
     try { return JSON.parse(localStorage.getItem(CLAVE_BLOQUEO) || 'null'); } catch (e) { return null; }
   }
   function aplicarBloqueo(b) {
     bloqueo = b;
-    try { localStorage.setItem(CLAVE_BLOQUEO, JSON.stringify({ activo: b.activo, mensaje: b.mensaje })); } catch (e) { }
+    try { localStorage.setItem(CLAVE_BLOQUEO, JSON.stringify({ activo: b.activo, mensaje: b.mensaje, permitidos: b.permitidos || [] })); } catch (e) { }
     bloqueoOyentes.forEach(o => { if (o.cont.isConnected) o.f(); else bloqueoOyentes.delete(o); });
   }
   const refBloqueo = () => firebase.firestore().collection('configuracion').doc('bloqueo_desarrollo');
@@ -645,7 +648,7 @@
       refBloqueo().onSnapshot(d => {
         if (!d.exists) { if (!d.metadata.fromCache) aplicarBloqueo(Object.assign({}, BLOQUEO_BASE)); return; }
         const x = d.data() || {};
-        aplicarBloqueo({ activo: x.activo === true, mensaje: String(x.mensaje || BLOQUEO_BASE.mensaje) });
+        aplicarBloqueo({ activo: x.activo === true, mensaje: String(x.mensaje || BLOQUEO_BASE.mensaje), permitidos: Array.isArray(x.permitidos) ? x.permitidos.map(String) : [] });
       }, e => { bloqueoEscucha = false; console.warn('Evaluaciones: no se pudo leer el bloqueo', e); sinRespuesta(); });
     } catch (e) { bloqueoEscucha = false; sinRespuesta(); }
   }
@@ -717,7 +720,7 @@
       st.bloqueable = true;
       pintar(st);
       alCambiarBloqueo(cont, () => {
-        if (bloqueo.activo || st.iniciado) return pintar(st);
+        if (estaBloqueado(st) || st.iniciado) return pintar(st);
         st.iniciado = true;
         if (st.ses) cargar(st); else pintar(st);
       });
@@ -750,7 +753,7 @@
   const AVISO_EQUIPO = 'Tu equipo de evaluación cambió. Ingresa tu contraseña de nuevo para actualizarlo.';
 
   async function cargar(st) {
-    if (st.bloqueable && (!bloqueo || bloqueo.activo)) return pintar(st);
+    if (st.bloqueable && (!bloqueo || estaBloqueado(st))) return pintar(st);
     st.iniciado = true;
     st.cargando = true; st.error = '';
     pintar(st);
@@ -2382,7 +2385,7 @@
   const pintarGenerico = pintar;
   pintar = function (st) {
     if (st.bloqueable && !bloqueo) { st.cont.innerHTML = '<div class="ev-root"><div class="ev-card ev-vacio"><i class="fas fa-spinner fa-spin"></i> Cargando…</div></div>'; return; }
-    if (st.bloqueable && bloqueo.activo) { st.cont.innerHTML = `<div class="ev-root">${bloqueoHtml(bloqueo.mensaje)}</div>`; return; }
+    if (st.bloqueable && estaBloqueado(st)) { st.cont.innerHTML = `<div class="ev-root">${bloqueoHtml(bloqueo.mensaje)}</div>`; return; }
     if (st.pintarInicio && st.ses && !st.cargando && !['form', 'detalle', 'persona'].includes(st.vista)) return st.pintarInicio();
     return pintarGenerico(st);
   };
