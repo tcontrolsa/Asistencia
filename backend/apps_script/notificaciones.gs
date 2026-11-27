@@ -329,7 +329,7 @@ function recordatoriosDiarios() {
         var rol = String(e.evaluacion_rol || 'EVALUADO').toUpperCase();
         if (rol.indexOf('EVALUADO') === -1 || !e.evaluador_id || hechas[e.id]) return;
         var dias = diasDesdeIngreso_(e.fecha_ingreso || e.fechaIngreso, hoy);
-        if (dias !== null && dias < 90) return; // en período de prueba: le toca Día 75
+        // Desde 2026-11-27 todos se evalúan desde el día 0: ya no se omite a quienes están en período de prueba
         (pendientesPorJefe[e.evaluador_id] = pendientesPorJefe[e.evaluador_id] || []).push(e.nombre || e.id);
       });
       Object.keys(pendientesPorJefe).forEach(function (jefe) {

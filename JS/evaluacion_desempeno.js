@@ -329,10 +329,11 @@
       : new Date(d.getFullYear(), d.getMonth() + 2, 0);
     return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
   }
-  // Período de prueba de 90 días: Día 75 entre los días 60 y 120; mensual desde el día 90
+  // Desde 2026-11-27 todos se evalúan desde el día 0 (mensual siempre disponible). El seguimiento Día 75 sigue
+  // ofreciéndose entre los días 60 y 120 como evaluación adicional.
   function etapa(emp) {
     const dias = diasDesde(emp && (emp.fecha_ingreso || emp.fechaIngreso));
-    return { dias, dia75: dias !== null && dias >= 60 && dias <= 120, mensual: dias === null || dias >= 90 };
+    return { dias, dia75: dias !== null && dias >= 60 && dias <= 120, mensual: true };
   }
 
   // Plazo para evaluar un período (mes o trimestre): el día evaluarDia del mes siguiente a su cierre
