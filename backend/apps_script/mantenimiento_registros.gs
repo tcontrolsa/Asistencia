@@ -532,6 +532,15 @@ function confirmarExtrasPorConfirmar(simular) {
     if (id) areas[id] = String(f[2] || '').trim().toUpperCase();
   });
 
+  // Propiedad extras_auto de la ficha (SI/NO) manda sobre el área; sin ella, TALLER y BODEGA (igual que el panel)
+  const extrasFicha = {};
+  try {
+    listarEmpleadosFirestore_().forEach(e => {
+      const v = String(e.extras_auto === undefined || e.extras_auto === null ? '' : e.extras_auto).trim().toUpperCase();
+      if (v === 'SI' || v === 'NO') extrasFicha[String(e.id).trim()] = v;
+    });
+  } catch (err) { Logger.log('extras_auto: no se pudo leer Firestore, se usa el área (' + err + ')'); }
+
   // A–V: fecha, id, nombre, tipo, …, hora (F), dispositivo (I), horas extra (M), autoriza (N), razón (O), razón just. (V)
   const values = sheet.getRange(2, 1, lastRow - 1, 22).getValues();
   const dias = {};
@@ -556,7 +565,7 @@ function confirmarExtrasPorConfirmar(simular) {
   Object.keys(dias).forEach(k => {
     const d = dias[k];
     if (d.filas.some(r => r.aut.indexOf('SUPERVISOR:') === 0)) return;          // ya confirmado
-    const autorizado = CONFIRMAR_EXTRAS_AREAS.indexOf(areas[d.id] || '') !== -1 ||
+    const autorizado = (extrasFicha[d.id] ? extrasFicha[d.id] === 'SI' : CONFIRMAR_EXTRAS_AREAS.indexOf(areas[d.id] || '') !== -1) ||
       d.filas.some(r => r.aut.indexOf('(CAMPO)') !== -1) ||
       d.filas.some(r => r.he === 'SI' && r.aut === '');
     if (!autorizado) return;

@@ -19,7 +19,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-auth-compat.js"></script>
-  <script src="./JS/firebase_backend.js?v=20261127_wa1"></script>
+  <script src="./JS/firebase_backend.js?v=20261127_ex1"></script>
   <script src="./JS/sesion_firebase.js?v=20261112_s2"></script>
   <script>window.USE_FIREBASE = true;</script>
   <!-- Librerías de exportación (XLSX, html2pdf) ahora se cargan bajo demanda (Lazy Load) sin bloquear el render inicial -->
@@ -3906,6 +3906,20 @@
                 </div>
               </div>
             </div>
+
+            <div class="modal-form-grid" style="grid-template-columns: 1fr; gap: 12px;">
+              <div class="form-group-modern">
+                <label for="editDirExtrasAuto" class="form-label-modern">Horas extra automáticas</label>
+                <div class="input-with-icon">
+                  <i class="fas fa-clock input-icon"></i>
+                  <select id="editDirExtrasAuto" class="select-modern" title="Con «Sí», lo trabajado después de la salida (más de 45 min) cuenta como extra sin que un supervisor lo autorice">
+                    <option value="">Según el área (Taller y Bodega: sí)</option>
+                    <option value="SI">Sí: cuentan sin autorización</option>
+                    <option value="NO">No: solo las autoriza un supervisor</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- SECCIÓN 3: ACCESO, SEGURIDAD Y CREDENCIALES -->
@@ -5380,7 +5394,7 @@
   <script src="./JS/openwa_service.js?v=20261127_wa1"></script>
   <script src="./JS/tcontrol_core.js?v=20260918_03"></script>
   <script src="./JS/reglas_jornada.js?v=20261126_hor1"></script>
-  <script src="./JS/supervisor_core.js?v=20261126_hor1"></script>
+  <script src="./JS/supervisor_core.js?v=20261127_ex1"></script>
   <script src="./JS/supervisor/supervisor_extras.js?v=20261126_hor1"></script>
   <script src="./JS/supervisor/supervisor_cultura.js?v=20260917_05"></script>
   <script src="./JS/supervisor/supervisor_whatsapp.js?v=20261117_02"></script>
@@ -5395,7 +5409,7 @@
   <script src="./JS/visitas_anfitrion.js?v=20261119_01"></script>
   <script src="./JS/permisos.js?v=20261126_hor1"></script>
   <script src="./JS/sugerencias.js?v=20261119_01"></script>
-  <script src="./JS/supervisor/supervisor_directorio.js?v=20261111_01"></script>
+  <script src="./JS/supervisor/supervisor_directorio.js?v=20261127_ex1"></script>
   <script src="./JS/supervisor/supervisor_registro.js?v=20261126_hor1"></script>
   <script src="./JS/supervisor/supervisor_horarios.js?v=20261126_hor1"></script>
   <script src="./JS/supervisor/supervisor_frecuentes.js?v=20261112_02"></script>

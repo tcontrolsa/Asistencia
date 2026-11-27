@@ -1094,7 +1094,7 @@ window.esAreaTaller = esAreaTaller;
 // Áreas con horas extra autorizadas automáticamente (más de 45 min después de la salida)
 const AREAS_EXTRAS_AUTOMATICAS = ['TALLER', 'BODEGA'];
 function tieneExtrasAutomaticas(e) {
-  return AREAS_EXTRAS_AUTOMATICAS.includes(String((e && (e.area || e.departamento)) || '').trim().toUpperCase());
+  return window.extrasAutoFicha ? window.extrasAutoFicha(e) : AREAS_EXTRAS_AUTOMATICAS.includes(String((e && (e.area || e.departamento)) || '').trim().toUpperCase());
 }
 window.tieneExtrasAutomaticas = tieneExtrasAutomaticas;
 

@@ -2,6 +2,17 @@
 // MOTOR FIREBASE PARA TCONTROL ASISTENCIA
 // =========================================================
 
+// Horas extra automáticas (>45 min después de la salida): propiedad de la ficha extras_auto = 'SI' | 'NO'.
+// Si la ficha no la trae, vale lo de siempre: áreas TALLER y BODEGA. Sirve para la ficha (extras_auto)
+// y para el objeto de la app (extrasAuto).
+window.extrasAutoFicha = function (e) {
+    if (!e) return false;
+    const v = e.extras_auto !== undefined && e.extras_auto !== null && e.extras_auto !== '' ? e.extras_auto : e.extrasAuto;
+    if (v === true || String(v).trim().toUpperCase() === 'SI') return true;
+    if (v === false || String(v).trim().toUpperCase() === 'NO') return false;
+    return ['TALLER', 'BODEGA'].includes(String(e.area || e.departamento || '').trim().toUpperCase());
+};
+
 // Configuración de Firebase provista por el usuario
 const firebaseConfig = {
     apiKey: "AIzaSyDHAOvwmq4nt4IdalNdowYcak0clwEvFc4",
@@ -436,6 +447,7 @@ window.FirebaseBackend = {
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
                 tipoPersonal: empData.tipo_personal || '',
+                extrasAuto: window.extrasAutoFicha(empData) ? 'SI' : 'NO',
                 horario_especial: empData.horario_especial || '',   // excepción de horario (ReglasJornada.horarioDe)
                 campoSolicitud: empData.campo_solicitud || null,
                 teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
@@ -611,6 +623,7 @@ window.FirebaseBackend = {
                 campoDesde: empData.campo_desde || '',
                 campoHasta: empData.campo_hasta || '',
                 tipoPersonal: empData.tipo_personal || '',
+                extrasAuto: window.extrasAutoFicha(empData) ? 'SI' : 'NO',
                 horario_especial: empData.horario_especial || '',   // excepción de horario (ReglasJornada.horarioDe)
                 campoSolicitud: empData.campo_solicitud || null,
                 teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
@@ -969,6 +982,7 @@ window.FirebaseBackend = {
             campoDesde: empData.campo_desde || '',
             campoHasta: empData.campo_hasta || '',
             tipoPersonal: empData.tipo_personal || '',
+                extrasAuto: window.extrasAutoFicha(empData) ? 'SI' : 'NO',
             horario_especial: empData.horario_especial || '',   // excepción de horario (ReglasJornada.horarioDe)
             campoSolicitud: empData.campo_solicitud || null,
             teletrabajoHabilitado: window.FirebaseBackend._teletrabajoHabilitado(empData),
@@ -1301,9 +1315,9 @@ window.FirebaseBackend = {
         let horasExtra = modo === "CAMPO" ? "SI" : "NO";
         let autoriza = data.autoriza || (modo === "CAMPO" ? "SISTEMA (CAMPO)" : "");
 
-        // Autorización automática de extras (>45 min después de la salida): solo áreas TALLER y BODEGA.
-        // El resto necesita que un supervisor las autorice.
-        const esTaller = ['TALLER', 'BODEGA'].includes(String(infoEmpleado.area || '').trim().toUpperCase());
+        // Autorización automática de extras (>45 min después de la salida): solo si la ficha tiene extras_auto = SI
+        // (por defecto TALLER y BODEGA). El resto necesita que un supervisor las autorice.
+        const esTaller = window.extrasAutoFicha(infoEmpleado);
         if (data.tipo === 'SALIDA' && esTaller) {
             const hPartes = String(horaStr).trim().split(':');
             if (hPartes.length >= 2) {

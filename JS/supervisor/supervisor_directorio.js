@@ -1114,6 +1114,11 @@ window.abrirModalEditarEmpleado = function (empleadoId) {
     $('editDirCultura').value = (emp.cultura_habilitada === false || emp.cultura_activa === false) ? 'NO' : 'SI';
   }
 
+  if ($('editDirExtrasAuto')) {
+    const v = String(emp.extras_auto === undefined || emp.extras_auto === null ? '' : emp.extras_auto).trim().toUpperCase();
+    $('editDirExtrasAuto').value = (v === 'SI' || v === 'NO') ? v : '';
+  }
+
   if ($('editDirEvalRol') && window.EvaluacionDesempeno) {
     $('editDirEvalRol').value = window.EvaluacionDesempeno.rolDe(emp);
     actualizarSelectEvaluadorDirectorio('editDir', emp.id, emp.evaluador_id || '');
@@ -1185,6 +1190,7 @@ window.guardarEdicionEmpleadoDirectorio = async function () {
     cultura_activa: (cultura === 'SI'),
     fechaNacimiento: fechaNacimiento
   };
+  if ($('editDirExtrasAuto')) datos.extras_auto = $('editDirExtrasAuto').value;   // '' = según el área
   if ($('editDirEvalRol')) {
     datos.evaluacion_rol = $('editDirEvalRol').value;
     datos.evaluador_id = datos.evaluacion_rol.includes('EVALUADO') && $('editDirEvaluador') ? $('editDirEvaluador').value : '';

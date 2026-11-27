@@ -3290,6 +3290,7 @@ async function verificarPIN() {
                 campoDesde: res.empleado.campoDesde || '',
                 campoHasta: res.empleado.campoHasta || '',
                 tipoPersonal: res.empleado.tipoPersonal || '',
+                extrasAuto: res.empleado.extrasAuto || '',
                 horario_especial: res.empleado.horario_especial || '',
                 campoSolicitud: res.empleado.campoSolicitud || null,
                 teletrabajoHabilitado: res.empleado.teletrabajoHabilitado === true || (typeof estadoRes !== 'undefined' && estadoRes && estadoRes.teletrabajoHabilitado === true),
@@ -3535,6 +3536,7 @@ window.ejecutarCambioPasswordDirecto = async function(empleadoId) {
                 campoDesde: estadoRes.campoDesde || '',
                 campoHasta: estadoRes.campoHasta || '',
                 tipoPersonal: estadoRes.tipoPersonal || '',
+                extrasAuto: estadoRes.extrasAuto || '',
                 horario_especial: estadoRes.horario_especial || '',
                 campoSolicitud: estadoRes.campoSolicitud || null,
                 teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
@@ -3774,6 +3776,7 @@ async function confirmarRegistroInicial() {
                     campoDesde: estadoRes.campoDesde || '',
                     campoHasta: estadoRes.campoHasta || '',
                     tipoPersonal: estadoRes.tipoPersonal || '',
+                    extrasAuto: estadoRes.extrasAuto || '',
                     horario_especial: estadoRes.horario_especial || '',
                     campoSolicitud: estadoRes.campoSolicitud || null,
                     teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
@@ -6124,10 +6127,10 @@ function calcularEstadisticas(offset = 0) {
         else if (netWorked > 240) netWorked -= 45; // Restar almuerzo (sábado, domingo, feriado y días anteriores al 26/09/2026)
 
         // Autorización de horas extras (mismas reglas que el panel de supervisor):
-        // automática solo para las áreas TALLER y BODEGA (y trabajo de campo); el resto, solo si un supervisor
+        // automática solo con la propiedad extras_auto de la ficha (por defecto TALLER y BODEGA) y trabajo de campo; el resto, solo si un supervisor
         // la autorizó ("SISTEMA (>45 MIN)" no cuenta para otras áreas)
         const autorizaDe = r => String(getVal(r, 'autoriza', 13) || r.autoriza || '').trim().toUpperCase();
-        const esTallerEmp = ['TALLER', 'BODEGA'].includes(String((empleado && empleado.area) || '').trim().toUpperCase());
+        const esTallerEmp = window.extrasAutoFicha(empleado);
         // Lo que autoriza un coordinador desde la pestaña Extras (su nombre) solo vale para TALLER;
         // el supervisor autoriza desde el panel ("SUPERVISOR: nombre", o sin nombre en registros antiguos)
         let autorizado = registrosDia.some(r => autorizaDe(r).includes('(CAMPO)'))
@@ -8905,6 +8908,7 @@ async function verificarEstadoInicial() {
                         campoDesde: estadoRes.campoDesde || '',
                         campoHasta: estadoRes.campoHasta || '',
                         tipoPersonal: estadoRes.tipoPersonal || '',
+                        extrasAuto: estadoRes.extrasAuto || '',
                         horario_especial: estadoRes.horario_especial || '',
                         campoSolicitud: estadoRes.campoSolicitud || null,
                         teletrabajoHabilitado: estadoRes.teletrabajoHabilitado === true,
