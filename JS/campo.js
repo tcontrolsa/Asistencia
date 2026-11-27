@@ -163,7 +163,8 @@
   // ================================================================ PANEL DEL SUPERVISOR
   function montarPanel(cont, opts) {
     const usuario = opts.usuario || {};
-    const st = { proyectos: [], puede: false, abierto: null, fecha: hoyStr() };
+    // Borrar proyectos (con sus fotos) es solo del Admin Master y los supervisores admin; TTHH puede cerrarlos
+    const st = { proyectos: [], puede: false, abierto: null, fecha: hoyStr(), admin: !!opts.admin || String(usuario.id) === '1058' };
     cont.classList.add('cp-raiz');
     if (!cont._cpDelegado) { delegarAmpliar(cont); cont._cpDelegado = true; }
 
@@ -210,7 +211,8 @@
           <h3><i class="fas fa-helmet-safety"></i> ${esc(p.nombre)} ${p.estado === 'CERRADO' ? '<span class="cp-chip">Cerrado</span>' : ''}</h3>
           <p>${esc(p.lugar || '')} · Encargado: <b>${esc(nombreCorto(p.encargado_nombre))}</b> (${esc(p.encargado_id)}) · ${fechaCorta(p.desde)} – ${fechaCorta(p.hasta)}</p></div>
           <div class="cp-acc"><input type="date" class="cp-input" value="${esc(st.fecha)}" data-fecha>
-            ${st.puede ? '<button type="button" class="cp-btn" data-editar><i class="fas fa-pen"></i> Editar</button>' : ''}</div></div>
+            ${st.puede ? '<button type="button" class="cp-btn" data-editar><i class="fas fa-pen"></i> Editar</button>' : ''}
+            ${st.admin ? '<button type="button" class="cp-btn cp-btn-peligro-suave" data-eliminar><i class="fas fa-trash"></i> Eliminar</button>' : ''}</div></div>
         <div class="cp-resumen"><div><b>${marcaron}/${(p.cuadrilla || []).length}</b><span>marcaron</span></div>
           <div><b>${fotos.length}</b><span>fotos</span></div>
           <div><b class="${dia ? 'cp-ok' : 'cp-mal'}">${dia ? 'Sí' : 'No'}</b><span>lugar confirmado por el encargado${dia ? ' · ' + esc(horaDe(msDe(dia.confirmado_en))) : ''}</span></div></div>
@@ -220,6 +222,65 @@
       cont.querySelector('[data-volver]').onclick = () => { st.abierto = null; lista(); };
       cont.querySelector('[data-fecha]').onchange = e => { if (e.target.value) { st.fecha = e.target.value; detalle(p); } };
       const ed = cont.querySelector('[data-editar]'); if (ed) ed.onclick = () => editor(p);
+      const el = cont.querySelector('[data-eliminar]'); if (el) el.onclick = () => eliminar(p);
+    }
+
+    // ---- eliminar proyecto (solo admin). Validaciones: se revisa qué se perdería, si hay fotos o días confirmados se exige
+    // escribir el nombre del proyecto, se borra por lotes (fotos → días → proyecto, para poder reintentar si se corta) y
+    // queda un registro en «logs». Las reglas de Firestore repiten la restricción: solo master y admin borran campo_*.
+    async function eliminar(p) {
+      if (!st.admin) return toast('Solo el Admin Master o un supervisor admin puede eliminar proyectos', 'warning');
+      let nDias = 0, hayFotos = false, fotosDias = 0;
+      try {
+        const [dsnap, fsnap] = await Promise.all([
+          db().collection(COL_D).where('proyectoId', '==', p.id).get(),
+          db().collection(COL_F).where('proyectoId', '==', p.id).limit(1).get()]);
+        nDias = dsnap.size; dsnap.forEach(d => { fotosDias += Number(d.data().fotos) || 0; }); hayFotos = !fsnap.empty;
+      } catch (e) { return toast('No se pudo revisar el proyecto antes de eliminarlo: ' + (e.message || e), 'error'); }
+      const hayDatos = hayFotos || nDias > 0;
+      const ov = document.createElement('div');
+      ov.className = 'cp-modal';
+      ov.innerHTML = `<div class="cp-modal-caja" role="dialog" aria-modal="true">
+        <h3><i class="fas fa-triangle-exclamation" style="color:#dc2626"></i> Eliminar proyecto</h3>
+        <p style="margin:0;font-size:13px">Vas a eliminar <b>${esc(p.nombre)}</b> (encargado: ${esc(nombreCorto(p.encargado_nombre))}, ${fechaCorta(p.desde)} – ${fechaCorta(p.hasta)}).</p>
+        <ul class="cp-lista-elim">
+          <li>${hayFotos ? `<b>Tiene fotografías${fotosDias ? ` (unas ${fotosDias} según las confirmaciones)` : ''}</b>: se borrarán todas.` : 'No tiene fotografías.'}</li>
+          <li>${nDias ? `<b>${nDias} día(s) confirmado(s)</b> por el encargado se borrarán.` : 'No tiene días confirmados.'}</li>
+          <li>Las marcaciones de asistencia del personal <b>no se tocan</b>.</li></ul>
+        <div class="cp-aviso">No se puede deshacer. Si el proyecto ya terminó, mejor ciérralo (Editar → «Proyecto cerrado») y conserva las fotos.${hayFotos ? ' Si vas a usar alguna foto, descárgala antes.' : ''}</div>
+        ${hayDatos ? `<label>Para confirmar, escribe el nombre del proyecto: <b>${esc(p.nombre)}</b><input class="cp-input" id="cpConfirmaNombre" autocomplete="off" placeholder="Nombre del proyecto"></label>` : ''}
+        <div class="cp-modal-pie"><button type="button" class="cp-btn" data-x>Cancelar</button><button type="button" class="cp-btn cp-btn-peligro" data-ok${hayDatos ? ' disabled' : ''}><i class="fas fa-trash"></i> Eliminar definitivamente</button></div></div>`;
+      document.body.appendChild(ov);
+      const ok = ov.querySelector('[data-ok]'), caja = ov.querySelector('#cpConfirmaNombre');
+      const igual = () => !caja || norm(caja.value).trim() === norm(p.nombre).trim();
+      if (caja) { caja.oninput = () => { ok.disabled = !igual(); }; caja.focus(); }
+      ov.querySelector('[data-x]').onclick = () => ov.remove();
+      ok.onclick = async () => {
+        if (!igual()) return;
+        ok.disabled = true; ov.querySelector('[data-x]').disabled = true; ok.textContent = 'Eliminando…';
+        const borraLote = async (col) => {
+          let n = 0;
+          for (let i = 0; i < 500; i++) {   // tope de seguridad
+            const s = await db().collection(col).where('proyectoId', '==', p.id).limit(20).get();
+            if (s.empty) break;
+            const b = db().batch(); s.docs.forEach(d => b.delete(d.ref)); await b.commit(); n += s.size;
+          }
+          return n;
+        };
+        try {
+          const fotos = await borraLote(COL_F);
+          const dias = await borraLote(COL_D);
+          await db().collection(COL_P).doc(p.id).delete();
+          db().collection('logs').add({ tipo: 'CAMPO_PROYECTO_ELIMINADO', proyectoId: p.id, nombre: p.nombre, encargado_id: p.encargado_id, fotos, dias,
+            por: usuario.id, fecha: new Date().toISOString(), timestamp: window.firebase.firestore.FieldValue.serverTimestamp() }).catch(() => { });
+          ov.remove(); toast(`Proyecto eliminado (${fotos} foto(s), ${dias} día(s))`, 'success');
+          st.abierto = null; cargar();
+        } catch (e) {
+          ok.disabled = !igual(); ov.querySelector('[data-x]').disabled = false; ok.innerHTML = '<i class="fas fa-trash"></i> Eliminar definitivamente';
+          const permiso = e && (e.code === 'permission-denied' || /permission/i.test(e.message || ''));
+          toast(permiso ? 'Firestore no permite borrar: faltan publicar las reglas nuevas de Campo (borrado solo para admin).' : 'No se pudo eliminar: ' + (e.message || e), 'error');
+        }
+      };
     }
 
     // ---- editor de proyecto (TTHH / supervisor admin)
