@@ -235,7 +235,7 @@
     return (sup === 'SI' || sup.includes('SUPERVISOR') || sup.includes('ADMIN')) ? 'EVALUADOR Y EVALUADO' : 'EVALUADO';
   }
   const esEvaluador = emp => rolDe(emp).includes('EVALUADOR');
-  const esEvaluado = emp => rolDe(emp).includes('EVALUADO');
+  const esEvaluado = emp => { const r = rolDe(emp); return r === 'EVALUADO' || r === 'EVALUADOR Y EVALUADO'; };   // un EVALUADOR puro no se evalua
 
   function hoyLocal() {
     const d = new Date();
