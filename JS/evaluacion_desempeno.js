@@ -919,7 +919,7 @@
     }
     if (soyEvaluado) {
       aviso = e.estado === 'confirmada'
-        ? `<div class="ev-aviso ev-aviso-recibida"><i class="fas fa-check-circle"></i> <span><strong>Evaluación recibida el ${fechaDeHora(e.confirmadaEn)}.</strong> Quedó registrada al abrirla: no necesitas confirmarla.</span></div>`
+        ? `<div class="ev-aviso ev-aviso-recibida"><i class="fas fa-check-circle"></i> <span><strong>Evaluación recibida el ${fechaDeHora(e.confirmadaEn)}.</strong> Quedó registrada al aceptarla: no necesitas confirmarla.</span></div>`
         : (e.correccionHasta ? `<div class="ev-aviso"><i class="fas fa-pen"></i> Tu evaluador puede corregir esta evaluación hasta el ${fechaCorta(e.correccionHasta)}.</div>` : '');
       if (!e.comentarioColaborador && e.estado === 'confirmada') {
         acciones = `<div class="ev-card"><h4 class="ev-h4">Tu comentario (opcional)</h4>
