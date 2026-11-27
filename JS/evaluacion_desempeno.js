@@ -383,7 +383,7 @@
       if (/API Key|Acción no reconocida|No autorizado/i.test(err)) throw new Error('La evaluación de desempeño aún no está habilitada en el servidor.');
       throw new Error(err || 'No se pudo verificar tu contraseña.');
     }
-    const s = { token: res.token, exp: res.exp, empleadoId: String(empleadoId), equipo: res.equipo || [], rrhh: !!res.rrhh, master: !!res.master };
+    const s = { token: res.token, exp: res.exp, empleadoId: String(empleadoId), equipo: res.equipo || [], rrhh: !!res.rrhh, master: !!res.master, revisor: !!res.revisor };
     try { sessionStorage.setItem(KEY_SESION, JSON.stringify(s)); } catch (e) { }
     return s;
   }
@@ -1470,7 +1470,7 @@
     st.rVista = 'dashboard';
     st.filtro = { periodo: periodoPorDefecto(), q: '', unidad: '', area: '', estado: '', nivel: '', interv: '', orden: '' };
     st.alIniciar = async () => {
-      if (!st.ses.rrhh) { st.vista = 'sin-permiso'; return pintarResultados(st, opts); }
+      if (!st.ses.rrhh && !st.ses.revisor) { st.vista = 'sin-permiso'; return pintarResultados(st, opts); }   // revisor: solo lectura
       await cargarTodas(st, opts);
     };
     // Reemplaza la vista de inicio por el consolidado
@@ -1584,7 +1584,7 @@
     if (!st.ses) return pintar(st);
     if (st.cargando) return pintar(st);
     if (st.vista === 'detalle' || st.vista === 'persona') return pintar(st);
-    if (!st.ses.rrhh) {
+    if (!st.ses.rrhh && !st.ses.revisor) {
       c.innerHTML = `<div class="ev-root"><div class="ev-card"><h3 class="ev-h3"><i class="fas fa-lock"></i> Resultados consolidados</h3>
         <p class="ev-muted">Solo Psicología Organizacional y los supervisores administradores ven los resultados de toda la empresa. Tus evaluaciones como jefe inmediato están en <strong>Mi equipo</strong>.</p></div></div>`;
       return;

@@ -75,15 +75,17 @@ function emitirTokenEvaluacion(p) {
   var sup = String(emp.supervisor || emp.rol || '').toUpperCase();
   var master = id === EVAL_ADMIN_MASTER;
   var rrhh = master || sup.indexOf('ADMIN') !== -1;
+  // Revisor de desempeño (2026-11-27): ve todas las evaluaciones en solo lectura (empleados/{id}.revisor_desempeno = 'SI')
+  var revisor = String(emp.revisor_desempeno || '').toUpperCase() === 'SI';
   var exp = Math.floor(Date.now() / 1000) + 8 * 3600;
   var b64url = function (x) { return Utilities.base64EncodeWebSafe(x).replace(/=+$/, ''); };
   var header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   var payload = b64url(Utilities.newBlob(JSON.stringify({
     role: 'tcontrol_lector', eval: true, empleado_id: id,
-    equipo: equipo.map(function (e) { return e.id; }), rrhh: rrhh, master: master, exp: exp
+    equipo: equipo.map(function (e) { return e.id; }), rrhh: rrhh, master: master, revisor: revisor, exp: exp
   })).getBytes());
   var firma = b64url(Utilities.computeHmacSha256Signature(header + '.' + payload, secreto));
-  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp, rrhh: rrhh, master: master, equipo: equipo };
+  return { ok: true, token: header + '.' + payload + '.' + firma, exp: exp, rrhh: rrhh, master: master, revisor: revisor, equipo: equipo };
 }
 
 function leerEmpleadoFirestore_(id) {
