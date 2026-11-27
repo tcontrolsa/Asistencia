@@ -65,15 +65,15 @@
   ];
   // Escala y categorías del documento SISTEMA DE EVALUACION (la nota n toma el color de la categoría n)
   let ESCALA = [
-    { v: 1, t: 'Requiere intervención', d: 'Plan de mejora y acompañamiento.' },
-    { v: 2, t: 'En desarrollo', d: 'Existen oportunidades de mejora.' },
-    { v: 3, t: 'Cumple lo esperado en términos generales', d: 'Requiere apoyo y/o supervisión ocasional, y existen oportunidades de desarrollo.' },
-    { v: 4, t: 'Cumple plenamente lo esperado', d: 'Mantener desempeño, requiere apoyo esporádico y existen oportunidades de desarrollo.' },
-    { v: 5, t: 'Supera las expectativas de desempeño', d: 'Desempeño sobresaliente, aplica innovación, genera valor adicional en sus actividades y puede servir de referente para otros.' }
+    { v: 1, t: 'Requieren intervención', d: 'Requieren intervención. Evidencia brechas críticas respecto a las expectativas del rol, siendo imprescindible de forma inmediata un plan de acción correctivo con supervisión permanente.' },
+    { v: 2, t: 'En desarrollo', d: 'En desarrollo. Presenta oportunidades de mejora sustanciales en el cumplimiento de sus funciones, por lo que requiere la implementación de un plan de mejora estructurado y seguimiento cercano para alcanzar el nivel esperado.' },
+    { v: 3, t: 'Cumple lo esperado en términos generales', d: 'Cumple lo esperado en términos generales. Evidencia un desempeño aceptable que demanda seguimiento ocasional, identificándose oportunidades de mejora clave para potenciar su evolución profesional.' },
+    { v: 4, t: 'Cumple plenamente lo esperado', d: 'Cumple plenamente lo esperado. Consolida un rendimiento adecuado y requiere acompañamiento enfocado en desarrollar competencias estratégicas, específicamente el liderazgo situacional y la innovación alineada a los objetivos organizacionales.' },
+    { v: 5, t: 'Supera las expectativas de desempeño', d: 'Supera las expectativas de desempeño. Evidencia un desempeño excepcional, impulsando la innovación y generando alto valor en sus funciones. Constituye un referente para sus pares y presenta un gran potencial de desarrollo que requiere acompañamiento estratégico.' }
   ];
   // Qué hacer (lo lee el evaluado)
   let RECOMENDACION = {
-    'Requiere intervención': 'Solicita a tu evaluador una reunión de feedback para establecer planes de mejora.',
+    'Requieren intervención': 'Solicita a tu evaluador una reunión de feedback para establecer planes de mejora.',
     'En desarrollo': 'Solicita a tu evaluador una reunión de feedback para establecer tus oportunidades y compromisos.',
     'Cumple lo esperado en términos generales': 'Si deseas, puedes solicitar una reunión con tu evaluador para conversar sobre tus oportunidades de desarrollo.',
     'Cumple plenamente lo esperado': 'Si deseas, puedes solicitar una reunión con tu evaluador para conversar sobre tus oportunidades de desarrollo.',
@@ -82,11 +82,11 @@
   // Categorías por defecto (editables en Configuración): 'min' es el límite inferior inclusivo; 'i' = requiere intervención inmediata
   const NIVELES_BASE = [
     { min: 0.90, n: 'Supera las expectativas de desempeño', color: 'azul', msg: ESCALA[4].d },
-    { min: 0.80, n: 'Cumple plenamente lo esperado', color: 'verde', msg: ESCALA[3].d },
+    { min: 0.80, n: 'Cumple plenamente lo esperado', color: 'turquesa', msg: ESCALA[3].d },
     { min: 0.70, n: 'Cumple lo esperado en términos generales', color: 'verde', msg: ESCALA[2].d },
-    { min: 0.60, n: 'En desarrollo', color: 'ambar', i: true, msg: ESCALA[1].d },
-    { min: 0, n: 'Requiere intervención', color: 'rojo', i: true, msg: ESCALA[0].d }];
-  const COLORES = ['rojo', 'ambar', 'verde', 'azul'];
+    { min: 0.60, n: 'En desarrollo', color: 'naranja', i: true, msg: ESCALA[1].d },
+    { min: 0, n: 'Requieren intervención', color: 'rojo', i: true, msg: ESCALA[0].d }];
+  const COLORES = ['rojo', 'naranja', 'ambar', 'verde', 'turquesa', 'azul'];
   const ROLES = ['EVALUADO', 'EVALUADOR', 'EVALUADOR Y EVALUADO', 'NO APLICA'];
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const MAX_OBS = 200, MAX_TXT = 500;
@@ -109,6 +109,9 @@
   // Una configuración guardada sin colores es anterior al documento SISTEMA DE EVALUACION: toma categorías, escala y conceptos nuevos
   function actualizarConfig(cfg) {
     const g = Object.assign({}, BASE, cfg || {});
+    // Configuración guardada con los textos/colores anteriores (4 colores, «Requiere intervención»): pasa a los de 5 categorías
+    const vieja = Array.isArray(g.niveles) && g.niveles.some(n => n.n === 'Requiere intervención');
+    if (vieja) { g.escala = BASE.escala; g.recomendaciones = BASE.recomendaciones; g.niveles = NIVELES_BASE; }
     if (!Array.isArray(g.niveles) || !g.niveles.some(n => n.color)) {
       g.niveles = NIVELES_BASE; g.recomendaciones = BASE.recomendaciones; g.escala = BASE.escala;
       g.items = g.items.map(x => { const b = BASE.items.find(y => y.c === x.c); return b && b.a && !x.a ? Object.assign({}, x, { a: b.a }) : x; });
@@ -899,6 +902,21 @@
     const soyEvaluado = String(e.empleadoId) === String(st.emp.id);
     const soyEvaluador = st.ses.equipo.some(m => m.id === e.empleadoId);
     let acciones = '', aviso = '';
+    // Antes de ver su resultado, el colaborador lee y acepta el mensaje; recién ahí queda recibida
+    if (soyEvaluado && e.estado === 'enviada' && !e.correccionHasta && !retenida(e)) {
+      return `<div class="ev-topbar"><button class="ev-back" data-ev="volver"><i class="fas fa-arrow-left"></i> Volver</button></div>
+        <div class="ev-card ev-acepta">
+          <h3 class="ev-h3"><i class="fas fa-clipboard-check"></i> Antes de ver tu evaluación</h3>
+          <p>Tu evaluación de desempeño es <strong>confidencial</strong> y su propósito es tu desarrollo profesional. Al continuar:</p>
+          <ul>
+            <li>Recibes tu resultado, los comentarios de tu evaluador y los compromisos acordados.</li>
+            <li>Te comprometes a mantener la confidencialidad de la información que veas.</li>
+            <li>Puedes solicitar una reunión de feedback con tu evaluador y dejar tu comentario sobre el resultado.</li>
+          </ul>
+          <p class="ev-muted ev-small">Tu aceptación queda registrada con fecha y hora. Aceptar no significa estar de acuerdo con el resultado.</p>
+          <div class="ev-actions ev-mt"><button class="ev-btn ev-btn-primary" data-ev="aceptar-eval" data-id="${e.id}"><i class="fas fa-check"></i> Acepto y ver mi evaluación</button></div>
+        </div>`;
+    }
     if (soyEvaluado) {
       aviso = e.estado === 'confirmada'
         ? `<div class="ev-aviso ev-aviso-recibida"><i class="fas fa-check-circle"></i> <span><strong>Evaluación recibida el ${fechaDeHora(e.confirmadaEn)}.</strong> Quedó registrada al abrirla: no necesitas confirmarla.</span></div>`
@@ -1264,6 +1282,12 @@
     } else if (a === 'ver') {
       const sel = buscarEval(st, b.dataset.id);
       if (sel) ir(st, 'detalle', { sel });
+    } else if (a === 'aceptar-eval') {
+      b.disabled = true;
+      const sel = buscarEval(st, b.dataset.id);
+      marcarRecibida(st, sel).then(() => {
+        if (sel && sel.estado === 'enviada' && !sel.correccionHasta) { b.disabled = false; toast('No se pudo registrar tu aceptación. Inténtalo de nuevo.', 'error'); }
+      });
     } else if (a === 'persona') {
       ir(st, 'persona', { persona: b.dataset.emp });
     } else if (a === 'volver') {
@@ -1810,6 +1834,7 @@
     const filas = filasResultados(st, opts);
     const conEval = filas.filter(x => x.ev && !retenida(x.ev));
     const enRevision = filas.filter(x => x.ev && retenida(x.ev));
+    const sinEvaluar = filas.filter(x => !x.ev);
     const prom = promedio(conEval.map(x => Number(x.ev.porcentaje)));
     const cobertura = filas.length ? conEval.length / filas.length : 0;
     const bajoUmbral = requiereIntervencion;
@@ -1868,6 +1893,12 @@
         <div class="ev-kpi"><span>Intervención inmediata</span><strong class="ev-danger">${enRiesgo.length}</strong><small>${conEval.length ? `${sinAtender.length} sin atender · ${pct(enRiesgo.length / conEval.length)}` : 'sin evaluaciones'}</small></div>
         <div class="ev-kpi"><span>Pendientes</span><strong class="ev-warn">${filas.filter(x => x.estado === 'pendiente').length}</strong><small>${filas.filter(x => x.estado === 'sin-evaluador').length} sin evaluador</small></div>
       </div>
+      ${sinEvaluar.length ? `<div class="ev-card"><h4 class="ev-h4"><i class="fas fa-user-clock ev-warn"></i> Sin evaluar · ${esc(etiquetaPeriodo(f.periodo))} (${sinEvaluar.length})</h4>
+        <div class="ev-tabla-wrap"><table class="ev-tabla"><thead><tr><th>Colaborador</th><th>Unidad / área</th><th>Evaluador</th><th>Estado</th></tr></thead>
+        <tbody>${sinEvaluar.map(x => `<tr><td><strong>${esc(x.emp.nombre || x.emp.id)}</strong> <span class="ev-muted ev-small">${esc(x.emp.id)}</span></td>
+          <td>${esc([unidadDe(x.emp), areaDe(x.emp)].filter(Boolean).join(' · ') || '—')}</td>
+          <td>${esc(x.evaluador || '—')}</td><td>${{ 'en-prueba': '<span class="ev-chip ev-chip-pend">En período de prueba</span>', 'pendiente': '<span class="ev-chip ev-chip-pend">Pendiente</span>', 'vencida': '<span class="ev-chip ev-chip-warn"><i class="fas fa-lock"></i> Plazo vencido</span>', 'sin-evaluador': '<span class="ev-chip ev-chip-warn">Sin evaluador</span>' }[x.estado] || esc(x.estado)}</td></tr>`).join('')}</tbody></table></div>
+        <p class="ev-muted ev-small">El detalle completo y los filtros están en la pestaña Resultados.</p></div>` : ''}
       ${enRevision.length ? `<div class="ev-card ev-sesgo"><h4 class="ev-h4"><i class="fas fa-balance-scale"></i> Evaluaciones con posible sesgo</h4>
         ${enRevision.map(x => `<button class="ev-mia" data-ev="ver" data-id="${x.ev.id}">
           <div><strong>${esc(x.emp.nombre || x.emp.id)}</strong><span class="ev-muted">Evaluó ${esc(x.evaluador || '')} · ${esc(etiquetaPeriodo(x.ev.periodo))}</span></div>
@@ -1935,7 +1966,6 @@
     st.pila.push({ vista: st.vista, sel: st.sel, persona: st.persona });
     Object.assign(st, cambios, { vista, confirmandoEliminar: false, reuPedir: false, reuAgendar: false, reuRealizar: false });
     pintar(st);
-    if (vista === 'detalle') marcarRecibida(st, st.sel);
   }
   function volver(st) {
     const prev = (st.pila || []).pop();
@@ -2302,7 +2332,7 @@
           <span class="ev-cal-pill ${claseNivelCfg(g, n.n)}">&nbsp;</span>
           <input type="text" class="ev-cfg-in ev-cfg-grow" data-ev="cfg" data-p="niveles.${i}.n" data-t="txt" data-old="${esc(n.n)}" value="${esc(n.n)}" maxlength="40">
           <label class="ev-small">desde ${por(`niveles.${i}.min`, n.min)} %</label>
-          <select class="ev-select ev-select-sm" data-ev="cfg" data-p="niveles.${i}.color" data-t="txt" title="Color">${COLORES.map(k => `<option value="${k}" ${k === colorNivel(n.n, g.niveles) ? 'selected' : ''}>${{ rojo: 'Rojo', ambar: 'Ámbar', verde: 'Verde', azul: 'Azul' }[k]}</option>`).join('')}</select>
+          <select class="ev-select ev-select-sm" data-ev="cfg" data-p="niveles.${i}.color" data-t="txt" title="Color">${COLORES.map(k => `<option value="${k}" ${k === colorNivel(n.n, g.niveles) ? 'selected' : ''}>${{ rojo: 'Rojo', naranja: 'Naranja', ambar: 'Ámbar', verde: 'Verde', turquesa: 'Turquesa', azul: 'Azul' }[k]}</option>`).join('')}</select>
           <label class="ev-check ev-small"><input type="checkbox" data-ev="cfg-interv" data-i="${i}" ${n.i ? 'checked' : ''}> Intervención inmediata</label>
           ${btnIco('cfg-del-nivel', i, 'fa-trash-alt', 'Quitar nivel')}
         </div>${area(`niveles.${i}.msg`, n.msg, 1, 'Mensaje que acompaña al resultado', 300)}</div>`).join('')}</div>
